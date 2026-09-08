@@ -351,7 +351,16 @@ class _PairingPanel extends StatelessWidget {
             ] else if (state.pairingPhase == DevicePairingPhase.failed) ...<Widget>[
               Icon(Icons.error_outline_rounded, color: Theme.of(context).colorScheme.error),
               const SizedBox(height: AppSpacing.compact),
-              Text(state.lastErrorCode == 'device_pairing_offer_expired' ? '配对码已过期，请重新生成。' : '配对未完成，请确认两台设备在同一局域网后重试。'),
+              Text(_pairingFailureMessage(state.lastErrorCode)),
+              if (state.lastErrorDetails case final details?) ...<Widget>[
+                const SizedBox(height: AppSpacing.compact),
+                SelectableText(
+                  '错误码：${state.lastErrorCode ?? 'device_pairing_failed'}\n$details',
+                  key: const Key('device-pairing-error-details'),
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
@@ -366,6 +375,17 @@ class _PairingPanel extends StatelessWidget {
     );
   }
 }
+
+String _pairingFailureMessage(String? code) => switch (code) {
+  'device_pairing_offer_expired' => '配对码已过期，请重新生成。',
+  'lan_sync_wifi_required' => '手机未连接 Wi-Fi，无法开始配对。',
+  'lan_sync_local_network_unavailable' || 'lan_sync_address_not_private' => '未检测到可用的私有局域网地址。',
+  'lan_sync_connect_timeout' => '连接配对设备超时，请检查防火墙和局域网访问权限。',
+  'lan_sync_http_failed' || 'lan_sync_connect_failed' => '无法建立局域网 HTTP 连接，请检查代理、防火墙和两端网络。',
+  'lan_sync_pairing_invalid' || 'lan_sync_handshake_invalid' => '配对响应无效，请重新生成二维码。',
+  'lan_sync_pairing_rejected' => '另一台设备已拒绝配对。',
+  _ => '配对未完成，请根据下方错误信息检查后重试。',
+};
 
 class DeviceSettingsSheet extends ConsumerWidget {
   const DeviceSettingsSheet({required this.deviceId, super.key});

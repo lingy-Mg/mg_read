@@ -27,6 +27,7 @@ import 'package:mg_read/features/lan_sync/application/lan_sync_network_environme
 import 'package:mg_read/features/lan_sync/application/paired_device_repository.dart';
 import 'package:mg_read/features/lan_sync/application/paired_sync_failure.dart';
 import 'package:mg_read/features/lan_sync/data/lan_pairing_transport.dart';
+import 'package:mg_read/features/lan_sync/data/lan_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/data/paired_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_pairing_payload.dart';
 import 'package:mg_read/features/lan_sync/domain/paired_device_models.dart';
@@ -587,7 +588,7 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
   }
 
   @override
-  void _pairingFailed(String code) {
+  void _pairingFailed(String code, {String? details}) {
     unawaited(_closePairingResources());
     state = state.copyWith(
       pairingPhase: DevicePairingPhase.failed,
@@ -595,6 +596,7 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
       pairingCode: null,
       pairingPeer: null,
       lastErrorCode: code,
+      lastErrorDetails: details,
     );
   }
 

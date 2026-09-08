@@ -1,6 +1,7 @@
 /// 使用真实 dart:io HTTP 客户端/服务端验证标准制品响应，不以伪造调用代替协议行为。
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -76,6 +77,52 @@ void main() {
     expect(await stream.fold<List<int>>(<int>[], (all, chunk) => all..addAll(chunk)), bytes);
   });
 
+  test('client resumes an interrupted response from the received byte offset', () async {
+    await server.close(force: true);
+    var requests = 0;
+    String? resumedRange;
+    final rawServer = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(rawServer.close);
+    rawServer.listen((socket) async {
+      requests++;
+      final requestHeader = await _readRequestHeader(socket);
+      if (requests == 1) {
+        socket.add(
+          utf8.encode(
+            'HTTP/1.1 200 OK\r\n'
+            'Content-Length: ${bytes.length}\r\n'
+            'ETag: "sha256-${sha256.convert(bytes)}"\r\n'
+            'Connection: close\r\n\r\n'
+            '0123',
+          ),
+        );
+        await socket.flush();
+        socket.destroy();
+        return;
+      }
+      resumedRange = RegExp(r'^Range:\s*([^\r\n]+)', caseSensitive: false, multiLine: true).firstMatch(requestHeader)?.group(1);
+      socket.add(
+        utf8.encode(
+          'HTTP/1.1 206 Partial Content\r\n'
+          'Content-Length: 6\r\n'
+          'Content-Range: bytes 4-9/10\r\n'
+          'ETag: "sha256-${sha256.convert(bytes)}"\r\n'
+          'Connection: close\r\n\r\n'
+          '456789',
+        ),
+      );
+      await socket.flush();
+      await socket.close();
+    });
+    uri = Uri.parse('http://${rawServer.address.address}:${rawServer.port}/artifact');
+
+    final stream = await const LanSyncHttpArtifactClient().download(uri, _descriptor(bytes));
+
+    expect(await stream.fold<List<int>>(<int>[], (all, chunk) => all..addAll(chunk)), bytes);
+    expect(resumedRange, 'bytes=4-');
+    expect(requests, 2);
+  });
+
   test('materialization rejects a generation whose declared hash changed', () async {
     final descriptor = _descriptor(bytes, sha: 'a' * 64);
     await expectLater(
@@ -83,6 +130,26 @@ void main() {
       throwsA(isA<LanSyncTransportException>().having((error) => error.code, 'code', 'lan_sync_plugin_hash_mismatch')),
     );
   });
+}
+
+Future<String> _readRequestHeader(Socket socket) {
+  final completed = Completer<String>();
+  final bytes = <int>[];
+  late StreamSubscription<List<int>> subscription;
+  subscription = socket.listen(
+    (chunk) {
+      bytes.addAll(chunk);
+      final text = ascii.decode(bytes, allowInvalid: true);
+      if (!text.contains('\r\n\r\n') || completed.isCompleted) return;
+      completed.complete(text);
+      unawaited(subscription.cancel());
+    },
+    onError: completed.completeError,
+    onDone: () {
+      if (!completed.isCompleted) completed.complete(ascii.decode(bytes, allowInvalid: true));
+    },
+  );
+  return completed.future.timeout(const Duration(seconds: 2));
 }
 
 LanSyncPluginDescriptor _descriptor(List<int> bytes, {String? sha}) => LanSyncPluginDescriptor(

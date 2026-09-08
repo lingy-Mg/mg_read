@@ -13,6 +13,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 
 import 'package:mg_read/features/lan_sync/data/lan_sync_http_artifact.dart';
+import 'package:mg_read/features/lan_sync/data/lan_sync_http_client.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_endpoint_policy.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_pairing_payload.dart';
@@ -208,54 +209,84 @@ final class LanPairingClientConnection {
   final Uri _baseUri;
   final String _requestId;
   final String _localDeviceId;
-  final HttpClient _client = HttpClient();
+  final HttpClient _client = createLanSyncHttpClient();
 
   static Future<LanPairingClientConnection> connect(LanPairingOffer offer, LocalDeviceIdentity identity) async {
-    Object? lastError;
-    for (final address in offer.addresses) {
-      final client = HttpClient();
-      try {
-        final base = Uri.parse('http://$address:${offer.port}');
-        final clientNonce = _randomToken(16);
-        final body = <String, Object?>{
-          'sessionId': offer.sessionId,
-          'deviceId': identity.deviceId,
-          'label': identity.label,
-          'platform': _localPlatform.name,
-          'clientNonce': clientNonce,
-        };
-        final result = await _requestJson(client, base.resolve('/v3/pair'), 'POST', body, identity.deviceId, offer.secret);
-        final serverNonce = result['serverNonce'];
-        final code = result['pairingCode'];
-        final requestId = result['requestId'];
-        final expected = _pairingCode(offer.secret, '${offer.sessionId}|$clientNonce|$serverNonce|${offer.deviceId}|${identity.deviceId}');
-        if (!_validNonce(serverNonce) || !_validNonce(requestId) || code != expected) {
-          throw const LanSyncTransportException('lan_sync_pairing_invalid');
-        }
-        client.close(force: true);
-        return LanPairingClientConnection._(
-          code! as String,
-          PairedDevice(
-            autoSync: true,
-            createdAtUtc: DateTime.now().toUtc(),
-            deviceId: offer.deviceId,
-            label: offer.label,
-            mode: PairedSyncMode.bidirectional,
-            platform: PairedDevicePlatform.unknown,
-            syncBookshelf: true,
-            syncPlugins: true,
-          ),
-          offer.secret,
-          base,
-          requestId! as String,
-          identity.deviceId,
-        );
-      } on Object catch (error) {
-        client.close(force: true);
-        lastError = error;
+    final result = Completer<LanPairingClientConnection>();
+    final timeout = Timer(const Duration(seconds: 8), () {
+      if (!result.isCompleted) {
+        result.completeError(const LanSyncTransportException('lan_sync_connect_timeout'));
       }
+    });
+    Object? lastError;
+    StackTrace? lastStackTrace;
+    var remaining = offer.addresses.length;
+    for (final address in offer.addresses) {
+      unawaited(() async {
+        try {
+          final connection = await _connectAddress(offer, identity, address);
+          if (!result.isCompleted) {
+            result.complete(connection);
+          } else {
+            await connection.close();
+          }
+        } on Object catch (error, stackTrace) {
+          lastError = error;
+          lastStackTrace = stackTrace;
+          remaining--;
+          if (remaining == 0 && !result.isCompleted) {
+            result.completeError(lastError!, lastStackTrace!);
+          }
+        }
+      }());
     }
-    throw lastError ?? const LanSyncTransportException('lan_sync_connect_failed');
+    try {
+      return await result.future;
+    } finally {
+      timeout.cancel();
+    }
+  }
+
+  static Future<LanPairingClientConnection> _connectAddress(LanPairingOffer offer, LocalDeviceIdentity identity, String address) async {
+    final client = createLanSyncHttpClient();
+    try {
+      final base = Uri.parse('http://$address:${offer.port}');
+      final clientNonce = _randomToken(16);
+      final body = <String, Object?>{
+        'sessionId': offer.sessionId,
+        'deviceId': identity.deviceId,
+        'label': identity.label,
+        'platform': _localPlatform.name,
+        'clientNonce': clientNonce,
+      };
+      final result = await _requestJson(client, base.resolve('/v3/pair'), 'POST', body, identity.deviceId, offer.secret);
+      final serverNonce = result['serverNonce'];
+      final code = result['pairingCode'];
+      final requestId = result['requestId'];
+      final expected = _pairingCode(offer.secret, '${offer.sessionId}|$clientNonce|$serverNonce|${offer.deviceId}|${identity.deviceId}');
+      if (!_validNonce(serverNonce) || !_validNonce(requestId) || code != expected) {
+        throw const LanSyncTransportException('lan_sync_pairing_invalid');
+      }
+      return LanPairingClientConnection._(
+        code! as String,
+        PairedDevice(
+          autoSync: true,
+          createdAtUtc: DateTime.now().toUtc(),
+          deviceId: offer.deviceId,
+          label: offer.label,
+          mode: PairedSyncMode.bidirectional,
+          platform: PairedDevicePlatform.unknown,
+          syncBookshelf: true,
+          syncPlugins: true,
+        ),
+        offer.secret,
+        base,
+        requestId! as String,
+        identity.deviceId,
+      );
+    } finally {
+      client.close(force: true);
+    }
   }
 
   Future<PairedDevice> waitForApproval() async {

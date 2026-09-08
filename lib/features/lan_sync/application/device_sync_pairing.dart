@@ -18,7 +18,7 @@ abstract base class _DeviceSyncPairingBase extends _DeviceSyncNetworkBase {
   Future<void> _savePairing(PairedDevice peer, List<int> secret);
   Future<void> _deletePairing(String deviceId);
   Future<void> reloadDevices();
-  void _pairingFailed(String code);
+  void _pairingFailed(String code, {String? details});
 
   Future<void> beginPairing() async {
     if (!await _readNetworkAvailability()) {
@@ -54,8 +54,10 @@ abstract base class _DeviceSyncPairingBase extends _DeviceSyncNetworkBase {
         }),
       );
       state = state.copyWith(pairingPhase: DevicePairingPhase.showingOffer, pairingOffer: server.offer);
-    } on Object {
-      if (generation == _pairingGeneration) _pairingFailed('device_pairing_offer_failed');
+    } on Object catch (error) {
+      if (generation == _pairingGeneration) {
+        _pairingFailed(_pairingFailureCode(error, fallback: 'device_pairing_offer_failed'), details: _pairingFailureDetails(error));
+      }
     }
   }
 
@@ -162,8 +164,10 @@ abstract base class _DeviceSyncPairingBase extends _DeviceSyncNetworkBase {
         pairingPeer: peer,
         lastMessage: '已配对 ${peer.label}，可立即拉取或等待自动同步',
       );
-    } on Object {
-      if (generation == _pairingGeneration) _pairingFailed('device_pairing_failed');
+    } on Object catch (error) {
+      if (generation == _pairingGeneration) {
+        _pairingFailed(_pairingFailureCode(error, fallback: 'device_pairing_failed'), details: _pairingFailureDetails(error));
+      }
     }
   }
 
@@ -178,4 +182,17 @@ abstract base class _DeviceSyncPairingBase extends _DeviceSyncNetworkBase {
     _pairingFailed(code);
     state = state.copyWith(lastMessage: Platform.isAndroid ? '请先连接 Wi-Fi 再添加设备' : '请先连接 Wi-Fi 或网线再添加设备');
   }
+}
+
+String _pairingFailureCode(Object error, {required String fallback}) => switch (error) {
+  LanSyncTransportException(:final code) => code,
+  TimeoutException() => 'lan_sync_connect_timeout',
+  SocketException() => 'lan_sync_connect_failed',
+  _ => fallback,
+};
+
+String _pairingFailureDetails(Object error) {
+  final value = error.toString();
+  final bounded = value.length <= 512 ? value : value.substring(0, 512);
+  return '错误类型：${error.runtimeType}\n技术原因：$bounded';
 }

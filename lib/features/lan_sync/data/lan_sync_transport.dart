@@ -10,6 +10,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:mg_read/features/lan_sync/data/lan_sync_http_artifact.dart';
+import 'package:mg_read/features/lan_sync/data/lan_sync_http_client.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_endpoint_policy.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 
@@ -295,7 +296,7 @@ final class LanSyncReceiverConnection {
   bool _closed = false;
   static Future<LanSyncReceiverConnection> connect(LanSyncPeer peer, {Duration timeout = lanSyncHandshakeTimeout}) async {
     if (!isLanSyncPrivateIpv4(peer.address)) throw const LanSyncTransportException('lan_sync_address_not_private');
-    final client = HttpClient();
+    final client = createLanSyncHttpClient();
     try {
       final base = Uri.parse('http://${peer.address}:${peer.port}');
       final nonce = _randomToken(16);

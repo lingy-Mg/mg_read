@@ -129,6 +129,38 @@ void main() {
     expect(find.textContaining('Connection refused'), findsOneWidget);
     expect(find.textContaining('完整异常与堆栈'), findsOneWidget);
   });
+
+  testWidgets('pairing failure shows its real transport code instead of claiming a LAN mismatch', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: PairedDevicesSection(
+              state: const DeviceSyncState(
+                started: true,
+                pairingPhase: DevicePairingPhase.failed,
+                lastErrorCode: 'lan_sync_http_failed',
+                lastErrorDetails: '错误类型：LanSyncTransportException\n技术原因：status_502',
+              ),
+              supportsScanner: false,
+              onBeginPairing: () {},
+              onApprovePairing: () {},
+              onRejectPairing: () {},
+              onCancelPairing: () {},
+              onSync: (_, _) {},
+              onManage: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.textContaining('局域网 HTTP 连接'), findsOneWidget);
+    expect(find.byKey(const Key('device-pairing-error-details')), findsOneWidget);
+    expect(find.textContaining('status_502'), findsOneWidget);
+    expect(find.textContaining('确认两台设备在同一局域网'), findsNothing);
+  });
 }
 
 PairedDevice _device(String deviceId, {PairedSyncMode mode = PairedSyncMode.bidirectional}) => PairedDevice(

@@ -13,6 +13,7 @@ import 'dart:io';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
 
+import 'package:mg_read/features/lan_sync/data/lan_sync_http_client.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 
@@ -240,7 +241,7 @@ final class LanSyncHttpArtifactClient {
     void Function(HttpClientRequest request, String contentSha256)? authenticate,
   }) async {
     final ownedClient = client == null;
-    final http = client ?? HttpClient();
+    final http = client ?? createLanSyncHttpClient();
     final directory = await Directory.systemTemp.createTemp('mgread-lan-http-receive-');
     final file = File('${directory.path}${Platform.pathSeparator}artifact.part');
     var offset = 0;
@@ -275,8 +276,17 @@ final class LanSyncHttpArtifactClient {
           }
           etag = responseEtag;
           final sink = file.openWrite(mode: offset == 0 ? FileMode.write : FileMode.append);
-          await sink.addStream(response);
-          await sink.close();
+          try {
+            await sink.addStream(response);
+            await sink.close();
+          } on Object {
+            await sink.close().catchError((_) {});
+            offset = await file.length();
+            if (offset > descriptor.bytes) {
+              throw const LanSyncTransportException('lan_sync_plugin_size_mismatch');
+            }
+            rethrow;
+          }
           offset = await file.length();
           if (offset > descriptor.bytes) {
             throw const LanSyncTransportException('lan_sync_plugin_size_mismatch');
