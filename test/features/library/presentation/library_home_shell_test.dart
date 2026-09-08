@@ -749,7 +749,7 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('adapts the home content to the available viewport width', (WidgetTester tester) async {
+  testWidgets('adapts the home content to the full available viewport width', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 844));
     await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
@@ -765,13 +765,13 @@ void main() {
     expect(tabletLayout.width, 720 - AppSpacing.widePagePadding * 2);
     expect(tabletLayout.center.dx, closeTo(360, 0.1));
 
-    await _setViewport(tester, const Size(1280, 900));
+    await _setViewport(tester, const Size(1600, 900));
     await tester.pump();
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('library-mobile-layout')), findsOneWidget);
-    final Rect mobileLayout = tester.getRect(find.byKey(const Key('library-mobile-layout')));
-    expect(mobileLayout.width, AppSpacing.contentMaxWidth - AppSpacing.widePagePadding * 2);
-    expect(mobileLayout.center.dx, closeTo(640, 0.1));
+    final Rect wideLayout = tester.getRect(find.byKey(const Key('library-mobile-layout')));
+    expect(wideLayout.width, 1600 - AppSpacing.widePagePadding * 2);
+    expect(wideLayout.center.dx, closeTo(800, 0.1));
   });
 
   testWidgets('stretches the remaining empty-state card across a narrow window', (WidgetTester tester) async {

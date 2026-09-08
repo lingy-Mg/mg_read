@@ -9,6 +9,7 @@
 /// - 不在 build() 中执行持久化；删除由显式回调在动画后提交。
 /// - 当前滚动控制器只由本壳持有并在销毁时释放。
 /// - 分区筛选局部更新；顶部封面背景覆盖状态栏，交互内容仍按安全区下沿布局。
+/// - 首页内容跟随可用窗口全宽伸展，不参与其他主入口的最大内容宽度约束。
 ///
 library;
 
@@ -134,27 +135,22 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
             builder: (BuildContext context, BoxConstraints constraints) {
               final bool useWidePagePadding = constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint;
               final double pagePadding = useWidePagePadding ? AppSpacing.widePagePadding : AppSpacing.compactPagePadding;
-              return Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: AppSpacing.contentMaxWidth),
-                  child: RefreshIndicator(
-                    onRefresh: widget.onRefresh,
-                    child: Scrollbar(
-                      controller: _scrollController,
-                      child: CustomScrollView(
-                        key: const Key('library-home-content'),
-                        controller: _scrollController,
-                        primary: false,
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        slivers: <Widget>[
-                          _buildTopSliver(context, pagePadding),
-                          SliverPadding(
-                            padding: EdgeInsets.fromLTRB(pagePadding, AppSpacing.comfortable, pagePadding, AppSpacing.page),
-                            sliver: _buildBodySlivers(context),
-                          ),
-                        ],
+              return RefreshIndicator(
+                onRefresh: widget.onRefresh,
+                child: Scrollbar(
+                  controller: _scrollController,
+                  child: CustomScrollView(
+                    key: const Key('library-home-content'),
+                    controller: _scrollController,
+                    primary: false,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: <Widget>[
+                      _buildTopSliver(context, pagePadding),
+                      SliverPadding(
+                        padding: EdgeInsets.fromLTRB(pagePadding, AppSpacing.comfortable, pagePadding, AppSpacing.page),
+                        sliver: _buildBodySlivers(context),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               );

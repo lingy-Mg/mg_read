@@ -347,6 +347,11 @@ abstract final class AppSpacing {
   static const double statusFilterHeight = unit * 6;
   static const double mobileViewportWidth = 390;
   static const double mobileContentMaxWidth = mobileViewportWidth;
+
+  /// Shared maximum width for constrained destinations and secondary pages.
+  ///
+  /// The library home intentionally stays full-width so its shelf can use all
+  /// available space on large displays.
   static const double contentMaxWidth = 1184;
   static const double compactLayoutBreakpoint = 720;
   static const double continueReadingCoverWidth = unit * 28;
@@ -450,7 +455,6 @@ abstract final class AppSpacing {
   static const double dataSourceAddIconSize = 27;
   static const double dataSourceAddButtonHeight = unit * 12;
   static const double dataSourceNavigationHeight = unit * 15;
-  static const double searchPageContentMaxWidth = 640;
   static const double searchPageHorizontalPadding = unit * 5;
   static const double searchTopBarHeight = unit * 10;
   static const double searchQueryHeight = unit * 10;

@@ -32,6 +32,16 @@ void main() {
     expect(tester.getRect(find.byType(AppPageTitle)).top, 30);
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/search_page_compact_light.png'));
   });
+
+  testWidgets('uses the shared primary content width on wide windows', (WidgetTester tester) async {
+    await _setViewport(tester, const Size(1600, 900));
+    await tester.pumpWidget(const _SearchPageGoldenHost());
+    await tester.pumpAndSettle();
+
+    final Rect content = tester.getRect(find.byKey(const Key('search-page-scroll')));
+    expect(content.width, AppSpacing.contentMaxWidth);
+    expect(content.center.dx, closeTo(800, 0.1));
+  });
 }
 
 class _SearchPageGoldenHost extends StatelessWidget {

@@ -7,6 +7,7 @@
 /// 注意：
 /// - 首次进入不主动搜索；封面加载不得延迟搜索结果主体。
 /// - 控制器负责异步状态，页面不直接读取 Runtime 或持久化。
+/// - 顶级内容与发现、我的共用主入口最大宽度，超宽窗口中保持操作区集中。
 ///
 library;
 
@@ -131,7 +132,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           bottom: false,
           child: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: AppSpacing.searchPageContentMaxWidth),
+              constraints: const BoxConstraints(maxWidth: AppSpacing.contentMaxWidth),
               child: ListView(
                 key: const Key('search-page-scroll'),
                 controller: _scrollController,
