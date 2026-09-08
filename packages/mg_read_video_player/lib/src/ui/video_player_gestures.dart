@@ -16,6 +16,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../api/models.dart';
 import 'video_player_visuals.dart';
@@ -30,6 +31,9 @@ final class VideoPlayerGestureLayer extends StatefulWidget {
     required this.onVolume,
     required this.onReadBrightness,
     required this.onBrightness,
+    required this.locked,
+    required this.onInteractionStart,
+    required this.onInteractionEnd,
     super.key,
   });
 
@@ -41,6 +45,9 @@ final class VideoPlayerGestureLayer extends StatefulWidget {
   final ValueChanged<double> onVolume;
   final Future<double?> Function() onReadBrightness;
   final ValueChanged<double> onBrightness;
+  final bool locked;
+  final VoidCallback onInteractionStart;
+  final VoidCallback onInteractionEnd;
 
   @override
   State<VideoPlayerGestureLayer> createState() =>
@@ -70,6 +77,13 @@ final class _VideoPlayerGestureLayerState
       _seekPreview = null;
       _horizontalDistance = 0;
     }
+    if (_longPressActive &&
+        (!widget.snapshot.playing || (!oldWidget.locked && widget.locked))) {
+      _longPressActive = false;
+      widget.onRate(_rateBeforeLongPress);
+      _finishHudSoon();
+      widget.onInteractionEnd();
+    }
   }
 
   void _showHud(_GestureHud hud, {bool persistent = false}) {
@@ -83,6 +97,7 @@ final class _VideoPlayerGestureLayerState
   }
 
   void _startSeek(DragStartDetails details) {
+    widget.onInteractionStart();
     _hudTimer?.cancel();
     _horizontalDistance = 0;
     _seekBase = widget.snapshot.position;
@@ -128,14 +143,17 @@ final class _VideoPlayerGestureLayerState
     if (target != null) widget.onSeek(target);
     _seekPreview = null;
     _finishHudSoon();
+    widget.onInteractionEnd();
   }
 
   void _cancelSeek() {
     _seekPreview = null;
     _finishHudSoon();
+    widget.onInteractionEnd();
   }
 
   void _startVertical(DragStartDetails details) {
+    widget.onInteractionStart();
     _hudTimer?.cancel();
     _verticalGestureActive = true;
     _verticalDistance = 0;
@@ -208,16 +226,20 @@ final class _VideoPlayerGestureLayerState
   void _finishVertical(DragEndDetails details) {
     _verticalGestureActive = false;
     _finishHudSoon();
+    widget.onInteractionEnd();
   }
 
   void _cancelVertical() {
     _verticalGestureActive = false;
     _brightnessReadGeneration++;
     _finishHudSoon();
+    widget.onInteractionEnd();
   }
 
   void _togglePlayback() {
+    widget.onInteractionStart();
     widget.onPlayOrPause();
+    unawaited(HapticFeedback.selectionClick());
     final willPlay = !widget.snapshot.playing;
     _showHud(
       _GestureHud(
@@ -225,13 +247,16 @@ final class _VideoPlayerGestureLayerState
         title: willPlay ? '播放' : '暂停',
       ),
     );
+    widget.onInteractionEnd();
   }
 
   void _startLongPress(LongPressStartDetails details) {
     if (!widget.snapshot.playing || _longPressActive) return;
     _longPressActive = true;
+    widget.onInteractionStart();
     _rateBeforeLongPress = widget.snapshot.rate;
     widget.onRate(2);
+    unawaited(HapticFeedback.mediumImpact());
     _showHud(
       const _GestureHud(
         icon: Icons.fast_forward_rounded,
@@ -247,9 +272,22 @@ final class _VideoPlayerGestureLayerState
     _longPressActive = false;
     widget.onRate(_rateBeforeLongPress);
     _finishHudSoon();
+    widget.onInteractionEnd();
   }
 
-  void _finishHudSoon() => _showHud(_hud ?? const _GestureHud(title: ''));
+  void _finishHudSoon() {
+    _hudTimer?.cancel();
+    if (_hud == null) return;
+    _hudTimer = Timer(const Duration(milliseconds: 650), () {
+      if (mounted) setState(() => _hud = null);
+    });
+  }
+
+  void _handleTap() {
+    widget.onToggleControls();
+    if (widget.locked) return;
+    widget.onInteractionEnd();
+  }
 
   @override
   Widget build(BuildContext context) => Stack(
@@ -257,23 +295,25 @@ final class _VideoPlayerGestureLayerState
     children: <Widget>[
       Semantics(
         label: '视频手势区域',
-        hint: '双击播放暂停，长按二倍速，横滑快进快退，左侧调亮度，右侧调音量',
+        hint: widget.locked
+            ? '播放器手势已锁定，点击显示解锁按钮'
+            : '双击播放暂停，长按二倍速，横滑快进快退，左侧调亮度，右侧调音量',
         child: GestureDetector(
           key: const Key('video-player-gesture-layer'),
           behavior: HitTestBehavior.opaque,
-          onTap: widget.onToggleControls,
-          onDoubleTap: _togglePlayback,
-          onHorizontalDragStart: _startSeek,
-          onHorizontalDragUpdate: _updateSeek,
-          onHorizontalDragEnd: _finishSeek,
-          onHorizontalDragCancel: _cancelSeek,
-          onVerticalDragStart: _startVertical,
-          onVerticalDragUpdate: _updateVertical,
-          onVerticalDragEnd: _finishVertical,
-          onVerticalDragCancel: _cancelVertical,
-          onLongPressStart: _startLongPress,
-          onLongPressEnd: (_) => _finishLongPress(),
-          onLongPressCancel: _finishLongPress,
+          onTap: _handleTap,
+          onDoubleTap: widget.locked ? null : _togglePlayback,
+          onHorizontalDragStart: widget.locked ? null : _startSeek,
+          onHorizontalDragUpdate: widget.locked ? null : _updateSeek,
+          onHorizontalDragEnd: widget.locked ? null : _finishSeek,
+          onHorizontalDragCancel: widget.locked ? null : _cancelSeek,
+          onVerticalDragStart: widget.locked ? null : _startVertical,
+          onVerticalDragUpdate: widget.locked ? null : _updateVertical,
+          onVerticalDragEnd: widget.locked ? null : _finishVertical,
+          onVerticalDragCancel: widget.locked ? null : _cancelVertical,
+          onLongPressStart: widget.locked ? null : _startLongPress,
+          onLongPressEnd: widget.locked ? null : (_) => _finishLongPress(),
+          onLongPressCancel: widget.locked ? null : _finishLongPress,
         ),
       ),
       if (_hud case final hud?)

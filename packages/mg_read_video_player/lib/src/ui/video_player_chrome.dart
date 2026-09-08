@@ -31,6 +31,11 @@ final class VideoPlayerChrome extends StatefulWidget {
     required this.onFit,
     required this.onEpisodes,
     required this.onFullscreen,
+    required this.onPreviousEpisode,
+    required this.onNextEpisode,
+    required this.onAutoAdvance,
+    required this.onInteractionStart,
+    required this.onInteractionEnd,
     super.key,
   });
 
@@ -44,6 +49,11 @@ final class VideoPlayerChrome extends StatefulWidget {
   final VoidCallback onFit;
   final VoidCallback onEpisodes;
   final ValueChanged<bool> onFullscreen;
+  final VoidCallback onPreviousEpisode;
+  final VoidCallback onNextEpisode;
+  final ValueChanged<bool> onAutoAdvance;
+  final VoidCallback onInteractionStart;
+  final VoidCallback onInteractionEnd;
 
   @override
   State<VideoPlayerChrome> createState() => _VideoPlayerChromeState();
@@ -65,48 +75,54 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
     final snapshot = widget.snapshot;
     return IgnorePointer(
       ignoring: !snapshot.controlsVisible,
-      child: AnimatedOpacity(
-        key: const Key('video-player-controls'),
-        opacity: snapshot.controlsVisible ? 1 : 0,
-        duration: widget.reduceMotion
-            ? Duration.zero
-            : const Duration(milliseconds: 160),
-        curve: Curves.easeOut,
-        child: Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            const IgnorePointer(child: _ChromeGradient()),
-            Column(
-              children: <Widget>[
-                VideoPlayerGlassPanel(
-                  key: const Key('video-player-top-band'),
-                  borderRadius: BorderRadius.zero,
-                  padding: EdgeInsets.only(
-                    top: MediaQuery.paddingOf(context).top,
-                  ),
-                  showBorder: false,
-                  showShadow: false,
-                  blurSigma: 22,
-                  child: _TopBar(
-                    title: snapshot.title,
-                    fullscreen: snapshot.fullscreenRequested,
-                    onExit: widget.onExit,
-                    onFullscreen: widget.onFullscreen,
-                  ),
-                ),
-                Expanded(
-                  child: Center(
-                    child: _TransportControls(
-                      playing: snapshot.playing,
-                      onPlayOrPause: widget.onPlayOrPause,
-                      onSkip: widget.onSkip,
+      child: Listener(
+        onPointerDown: (_) => widget.onInteractionStart(),
+        onPointerUp: (_) => widget.onInteractionEnd(),
+        onPointerCancel: (_) => widget.onInteractionEnd(),
+        child: AnimatedOpacity(
+          key: const Key('video-player-controls'),
+          opacity: snapshot.controlsVisible ? 1 : 0,
+          duration: widget.reduceMotion
+              ? Duration.zero
+              : const Duration(milliseconds: 160),
+          curve: Curves.easeOut,
+          child: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              const IgnorePointer(child: _ChromeGradient()),
+              Column(
+                children: <Widget>[
+                  VideoPlayerGlassPanel(
+                    key: const Key('video-player-top-band'),
+                    borderRadius: BorderRadius.zero,
+                    padding: EdgeInsets.only(
+                      top: MediaQuery.paddingOf(context).top,
+                    ),
+                    showBorder: false,
+                    showShadow: false,
+                    blurSigma: 22,
+                    child: _TopBar(
+                      title: snapshot.title,
+                      subtitle: _episodeLabel(snapshot),
+                      fullscreen: snapshot.fullscreenRequested,
+                      onExit: widget.onExit,
+                      onFullscreen: widget.onFullscreen,
                     ),
                   ),
-                ),
-                _buildBottomControls(context),
-              ],
-            ),
-          ],
+                  Expanded(
+                    child: Center(
+                      child: _TransportControls(
+                        playing: snapshot.playing,
+                        onPlayOrPause: widget.onPlayOrPause,
+                        onSkip: widget.onSkip,
+                      ),
+                    ),
+                  ),
+                  _buildBottomControls(context),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -120,6 +136,9 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
         ? 1
         : duration.inMilliseconds.toDouble();
     final double value = shownPosition.inMilliseconds
+        .clamp(0, max.toInt())
+        .toDouble();
+    final double buffered = snapshot.bufferedPosition.inMilliseconds
         .clamp(0, max.toInt())
         .toDouble();
     return LayoutBuilder(
@@ -157,6 +176,8 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
                   key: const Key('video-player-slider'),
                   value: value,
                   max: max,
+                  secondaryTrackValue: buffered < value ? value : buffered,
+                  onChangeStart: (_) => widget.onInteractionStart(),
                   onChanged: (double next) => setState(
                     () => _scrubPosition = Duration(milliseconds: next.round()),
                   ),
@@ -164,6 +185,7 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
                     final position = Duration(milliseconds: next.round());
                     setState(() => _scrubPosition = null);
                     widget.onSeek(position);
+                    widget.onInteractionEnd();
                   },
                 ),
               ),
@@ -192,6 +214,45 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                     icon: const Icon(Icons.video_library_rounded, size: 20),
+                  ),
+                  IconButton(
+                    key: const Key('video-player-previous-episode'),
+                    tooltip: '上一集',
+                    onPressed:
+                        snapshot.hasPreviousEpisode ||
+                            snapshot.position >= const Duration(seconds: 5)
+                        ? widget.onPreviousEpisode
+                        : null,
+                    style: IconButton.styleFrom(
+                      foregroundColor: videoPlayerForeground,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(Icons.skip_previous_rounded, size: 21),
+                  ),
+                  IconButton(
+                    key: const Key('video-player-next-episode'),
+                    tooltip: '下一集',
+                    onPressed: snapshot.hasNextEpisode
+                        ? widget.onNextEpisode
+                        : null,
+                    style: IconButton.styleFrom(
+                      foregroundColor: videoPlayerForeground,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(Icons.skip_next_rounded, size: 21),
+                  ),
+                  IconButton(
+                    key: const Key('video-player-auto-advance'),
+                    tooltip: snapshot.autoAdvance ? '关闭自动连播' : '开启自动连播',
+                    onPressed: () =>
+                        widget.onAutoAdvance(!snapshot.autoAdvance),
+                    style: IconButton.styleFrom(
+                      foregroundColor: snapshot.autoAdvance
+                          ? videoPlayerAccent
+                          : videoPlayerForeground,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(Icons.repeat_rounded, size: 20),
                   ),
                   PopupMenuButton<double>(
                     key: const Key('video-player-rate'),
@@ -243,6 +304,45 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                  ),
+                  TextButton.icon(
+                    key: const Key('video-player-previous-episode'),
+                    onPressed:
+                        snapshot.hasPreviousEpisode ||
+                            snapshot.position >= const Duration(seconds: 5)
+                        ? widget.onPreviousEpisode
+                        : null,
+                    style: TextButton.styleFrom(
+                      foregroundColor: videoPlayerForeground,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(Icons.skip_previous_rounded, size: 19),
+                    label: const Text('上一集'),
+                  ),
+                  TextButton.icon(
+                    key: const Key('video-player-next-episode'),
+                    onPressed: snapshot.hasNextEpisode
+                        ? widget.onNextEpisode
+                        : null,
+                    style: TextButton.styleFrom(
+                      foregroundColor: videoPlayerForeground,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(Icons.skip_next_rounded, size: 19),
+                    label: const Text('下一集'),
+                  ),
+                  IconButton(
+                    key: const Key('video-player-auto-advance'),
+                    tooltip: snapshot.autoAdvance ? '自动连播已开启' : '自动连播已关闭',
+                    onPressed: () =>
+                        widget.onAutoAdvance(!snapshot.autoAdvance),
+                    style: IconButton.styleFrom(
+                      foregroundColor: snapshot.autoAdvance
+                          ? videoPlayerAccent
+                          : videoPlayerForeground,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    icon: const Icon(Icons.repeat_rounded, size: 19),
                   ),
                   PopupMenuButton<double>(
                     key: const Key('video-player-rate'),
@@ -321,12 +421,14 @@ final class _ChromeGradient extends StatelessWidget {
 final class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.title,
+    required this.subtitle,
     required this.fullscreen,
     required this.onExit,
     required this.onFullscreen,
   });
 
   final String title;
+  final String subtitle;
   final bool fullscreen;
   final VoidCallback onExit;
   final ValueChanged<bool> onFullscreen;
@@ -345,16 +447,32 @@ final class _TopBar extends StatelessWidget {
         icon: const Icon(Icons.arrow_back_rounded, size: 23),
       ),
       Expanded(
-        child: Text(
-          title,
-          key: const Key('video-player-title'),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            color: videoPlayerForeground,
-            fontWeight: FontWeight.w600,
-            fontSize: 16,
-          ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              title,
+              key: const Key('video-player-title'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: videoPlayerForeground,
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+              ),
+            ),
+            if (subtitle != '选集')
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: videoPlayerSecondary,
+                  fontSize: 10,
+                ),
+              ),
+          ],
         ),
       ),
       IconButton(

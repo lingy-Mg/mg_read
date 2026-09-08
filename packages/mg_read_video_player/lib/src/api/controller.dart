@@ -36,6 +36,24 @@ abstract interface class VideoPlayerControllerDelegate {
   /// Changes output volume.
   Future<void> setVolume(double volume);
 
+  /// Toggles mute while retaining the most recent audible volume.
+  Future<void> toggleMute();
+
+  /// Replays the active episode from the beginning.
+  Future<void> replay();
+
+  /// Opens the previous ordered episode, or restarts the current one.
+  Future<void> playPreviousEpisode();
+
+  /// Opens the next ordered episode when available.
+  Future<void> playNextEpisode();
+
+  /// Changes whether natural completion advances to the next episode.
+  Future<void> setAutoAdvance(bool enabled);
+
+  /// Locks or unlocks touch playback controls.
+  Future<void> setControlsLocked(bool locked);
+
   /// Opens an episode within a host-defined group.
   Future<void> selectEpisode(String groupId, String episodeId);
 
@@ -85,6 +103,27 @@ final class VideoPlayerController extends ChangeNotifier {
 
   /// Sets volume in the 0–100 range.
   Future<void> setVolume(double volume) => _requireDelegate().setVolume(volume);
+
+  /// Toggles mute while retaining the most recent audible volume.
+  Future<void> toggleMute() => _requireDelegate().toggleMute();
+
+  /// Replays the active episode from the beginning.
+  Future<void> replay() => _requireDelegate().replay();
+
+  /// Opens the previous episode, or restarts the current episode after 5 s.
+  Future<void> playPreviousEpisode() =>
+      _requireDelegate().playPreviousEpisode();
+
+  /// Opens the next ordered episode when available.
+  Future<void> playNextEpisode() => _requireDelegate().playNextEpisode();
+
+  /// Enables or disables automatic episode advancement.
+  Future<void> setAutoAdvance(bool enabled) =>
+      _requireDelegate().setAutoAdvance(enabled);
+
+  /// Locks or unlocks touch playback controls.
+  Future<void> setControlsLocked(bool locked) =>
+      _requireDelegate().setControlsLocked(locked);
 
   /// Switches to [episodeId] within [groupId].
   Future<void> selectEpisode(String groupId, String episodeId) =>

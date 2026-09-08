@@ -207,6 +207,20 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
           (state) => state.copyWith(buffering: value),
         ),
       ),
+      session.player.stream.buffer.listen(
+        (Duration value) => _updateFrom(
+          session,
+          generation,
+          (state) => state.copyWith(bufferedPosition: value),
+        ),
+      ),
+      session.player.stream.completed.listen(
+        (bool value) => _updateFrom(
+          session,
+          generation,
+          (state) => state.copyWith(completed: value),
+        ),
+      ),
       session.player.stream.rate.listen(
         (double value) => _updateFrom(
           session,
@@ -280,7 +294,9 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
     final proxy = proxyUri;
     final endpoint = proxy == null ? null : 'tcp://${proxy.host}:${proxy.port}';
     if (endpoint != null &&
-        error.toLowerCase().contains('connection to ${endpoint.toLowerCase()} failed')) {
+        error.toLowerCase().contains(
+          'connection to ${endpoint.toLowerCase()} failed',
+        )) {
       return const _BackendStreamFailure(
         VideoPlaybackBackendErrorKind.proxyUnavailable,
         'The configured video proxy could not be reached.',
@@ -309,11 +325,16 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
     VideoPlaybackBackendErrorKind? kind,
   }) {
     if (!kDebugMode) return;
+    final detail = error.toString().replaceAll(RegExp(r'[\r\n]+'), ' ');
+    final boundedDetail = detail.length <= 600
+        ? detail
+        : '${detail.substring(0, 600)}…';
     debugPrint(
       'MgRead video backend [$event] '
       '${_debugResourceSummary(episode)} '
       'errorType=${error.runtimeType}'
-      '${kind == null ? '' : ' failure=${kind.name}'}',
+      '${kind == null ? '' : ' failure=${kind.name}'} '
+      'error=$boundedDetail',
     );
   }
 

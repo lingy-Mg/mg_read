@@ -50,3 +50,39 @@ VideoEpisodeSelection? videoSelectionById(
   }
   return null;
 }
+
+VideoEpisodeSelection? adjacentVideoSelection(
+  List<VideoEpisodeGroup> groups,
+  String? groupId,
+  String? episodeId, {
+  required int direction,
+}) {
+  if (direction != -1 && direction != 1) {
+    throw ArgumentError.value(direction, 'direction', 'Must be -1 or 1.');
+  }
+  final ordered = <VideoEpisodeSelection>[
+    for (final group in groups)
+      for (final episode in group.episodes) (group: group, episode: episode),
+  ];
+  final currentIndex = ordered.indexWhere(
+    (selection) =>
+        selection.group.id == groupId && selection.episode.id == episodeId,
+  );
+  if (currentIndex < 0) return null;
+  final target = currentIndex + direction;
+  return target < 0 || target >= ordered.length ? null : ordered[target];
+}
+
+Duration restorableVideoPosition(VideoPlaybackProgress? progress) {
+  if (progress == null || progress.position <= Duration.zero) {
+    return Duration.zero;
+  }
+  final duration = progress.duration;
+  if (duration <= Duration.zero) return progress.position;
+  final remaining = duration - progress.position;
+  final ratio = progress.position.inMilliseconds / duration.inMilliseconds;
+  if (remaining <= const Duration(seconds: 10) || ratio >= .95) {
+    return Duration.zero;
+  }
+  return progress.position;
+}

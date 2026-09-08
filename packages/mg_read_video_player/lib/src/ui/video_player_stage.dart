@@ -21,6 +21,8 @@ import 'package:flutter/services.dart';
 import '../api/contracts.dart';
 import '../api/models.dart';
 import 'video_player_chrome.dart';
+import 'video_player_buffering_indicator.dart';
+import 'video_player_completion_layer.dart';
 import 'video_player_gestures.dart';
 import 'video_player_status_layer.dart';
 import 'video_player_visuals.dart';
@@ -41,6 +43,13 @@ final class VideoPlayerStage extends StatelessWidget {
     required this.onSkip,
     required this.onRate,
     required this.onVolume,
+    required this.onReplay,
+    required this.onPreviousEpisode,
+    required this.onNextEpisode,
+    required this.onAutoAdvance,
+    required this.onControlsLocked,
+    required this.onInteractionStart,
+    required this.onInteractionEnd,
     required this.onFit,
     required this.onEpisodes,
     required this.onFullscreen,
@@ -63,6 +72,13 @@ final class VideoPlayerStage extends StatelessWidget {
   final Future<void> Function(Duration) onSkip;
   final Future<void> Function(double) onRate;
   final Future<void> Function(double) onVolume;
+  final Future<void> Function() onReplay;
+  final Future<void> Function() onPreviousEpisode;
+  final Future<void> Function() onNextEpisode;
+  final Future<void> Function(bool) onAutoAdvance;
+  final Future<void> Function(bool) onControlsLocked;
+  final VoidCallback onInteractionStart;
+  final VoidCallback onInteractionEnd;
   final Future<void> Function() onFit;
   final Future<void> Function() onEpisodes;
   final Future<void> Function(bool) onFullscreen;
@@ -85,64 +101,109 @@ final class VideoPlayerStage extends StatelessWidget {
             focusNode: focusNode,
             autofocus: true,
             onKeyEvent: onKeyEvent,
-            child: Scaffold(
-              backgroundColor: const Color(0xFF050607),
-              body: Stack(
-                fit: StackFit.expand,
-                children: <Widget>[
-                  Stack(
-                    key: const Key('video-player-surface'),
-                    fit: StackFit.expand,
-                    children: <Widget>[
-                      backend.buildSurface(
-                        key: const Key('video-player-engine-surface'),
-                        fit: videoBoxFit(snapshot.fitMode),
-                      ),
-                      if (snapshot.status == VideoPlayerStatus.ready)
-                        VideoPlayerGestureLayer(
-                          snapshot: snapshot,
-                          onToggleControls: () => unawaited(onToggleControls()),
-                          onPlayOrPause: () => unawaited(onPlayOrPause()),
-                          onSeek: (value) => unawaited(onSeek(value)),
-                          onRate: (value) => unawaited(onRate(value)),
-                          onVolume: (value) => unawaited(onVolume(value)),
-                          onReadBrightness: onReadBrightness,
-                          onBrightness: (value) =>
-                              unawaited(onBrightness(value)),
+            child: Listener(
+              onPointerHover: (_) {
+                onInteractionStart();
+                onInteractionEnd();
+              },
+              child: Scaffold(
+                backgroundColor: const Color(0xFF050607),
+                body: Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    Stack(
+                      key: const Key('video-player-surface'),
+                      fit: StackFit.expand,
+                      children: <Widget>[
+                        backend.buildSurface(
+                          key: const Key('video-player-engine-surface'),
+                          fit: videoBoxFit(snapshot.fitMode),
                         ),
-                    ],
-                  ),
-                  if (!snapshot.firstFrameReady ||
-                      snapshot.status != VideoPlayerStatus.ready)
-                    VideoSessionStatusLayer(
-                      snapshot: snapshot,
-                      onRetry: onRetry,
-                      onExit: onExit,
+                        if (snapshot.status == VideoPlayerStatus.ready)
+                          VideoPlayerGestureLayer(
+                            snapshot: snapshot,
+                            onToggleControls: () =>
+                                unawaited(onToggleControls()),
+                            onPlayOrPause: () => unawaited(onPlayOrPause()),
+                            onSeek: (value) => unawaited(onSeek(value)),
+                            onRate: (value) => unawaited(onRate(value)),
+                            onVolume: (value) => unawaited(onVolume(value)),
+                            onReadBrightness: onReadBrightness,
+                            onBrightness: (value) =>
+                                unawaited(onBrightness(value)),
+                            locked: snapshot.controlsLocked,
+                            onInteractionStart: onInteractionStart,
+                            onInteractionEnd: onInteractionEnd,
+                          ),
+                      ],
                     ),
-                  if (snapshot.status == VideoPlayerStatus.ready)
-                    VideoPlayerChrome(
-                      snapshot: snapshot,
-                      reduceMotion: reduceMotion,
-                      onExit: () => unawaited(onExit()),
-                      onPlayOrPause: () => unawaited(onPlayOrPause()),
-                      onSeek: (value) => unawaited(onSeek(value)),
-                      onSkip: (value) => unawaited(onSkip(value)),
-                      onRate: (value) => unawaited(onRate(value)),
-                      onFit: () => unawaited(onFit()),
-                      onEpisodes: () => unawaited(onEpisodes()),
-                      onFullscreen: (value) => unawaited(onFullscreen(value)),
-                    ),
-                  if (snapshot.status == VideoPlayerStatus.ready &&
-                      snapshot.buffering)
-                    const Align(
-                      alignment: Alignment.center,
-                      child: IgnorePointer(
-                        child: CircularProgressIndicator(
-                          color: Color(0xFFFFA43A),
+                    if (!snapshot.firstFrameReady ||
+                        snapshot.status != VideoPlayerStatus.ready)
+                      VideoSessionStatusLayer(
+                        snapshot: snapshot,
+                        onRetry: onRetry,
+                        onExit: onExit,
+                        onEpisodes: onEpisodes,
+                      ),
+                    if (snapshot.status == VideoPlayerStatus.ready &&
+                        !snapshot.controlsLocked)
+                      VideoPlayerChrome(
+                        snapshot: snapshot,
+                        reduceMotion: reduceMotion,
+                        onExit: () => unawaited(onExit()),
+                        onPlayOrPause: () => unawaited(onPlayOrPause()),
+                        onSeek: (value) => unawaited(onSeek(value)),
+                        onSkip: (value) => unawaited(onSkip(value)),
+                        onRate: (value) => unawaited(onRate(value)),
+                        onFit: () => unawaited(onFit()),
+                        onEpisodes: () => unawaited(onEpisodes()),
+                        onFullscreen: (value) => unawaited(onFullscreen(value)),
+                        onPreviousEpisode: () => unawaited(onPreviousEpisode()),
+                        onNextEpisode: () => unawaited(onNextEpisode()),
+                        onAutoAdvance: (value) =>
+                            unawaited(onAutoAdvance(value)),
+                        onInteractionStart: onInteractionStart,
+                        onInteractionEnd: onInteractionEnd,
+                      ),
+                    if (snapshot.status == VideoPlayerStatus.ready)
+                      VideoPlayerBufferingIndicator(
+                        buffering: snapshot.buffering && !snapshot.completed,
+                      ),
+                    if (snapshot.status == VideoPlayerStatus.ready &&
+                        snapshot.completed &&
+                        (!snapshot.autoAdvance || !snapshot.hasNextEpisode))
+                      VideoPlayerCompletionLayer(
+                        snapshot: snapshot,
+                        onReplay: () => unawaited(onReplay()),
+                        onNextEpisode: () => unawaited(onNextEpisode()),
+                      ),
+                    if (snapshot.fullscreenRequested &&
+                        snapshot.controlsVisible)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: SafeArea(
+                          minimum: const EdgeInsets.only(left: 8),
+                          child: IconButton.filledTonal(
+                            key: const Key('video-player-controls-lock'),
+                            tooltip: snapshot.controlsLocked ? '解锁手势' : '锁定手势',
+                            onPressed: () => unawaited(
+                              onControlsLocked(!snapshot.controlsLocked),
+                            ),
+                            style: IconButton.styleFrom(
+                              backgroundColor: const Color(0xA305070A),
+                              foregroundColor: videoPlayerForeground,
+                            ),
+                            icon: Icon(
+                              snapshot.controlsLocked
+                                  ? Icons.lock_rounded
+                                  : Icons.lock_open_rounded,
+                              size: 20,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

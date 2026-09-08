@@ -365,6 +365,8 @@ final class VideoPlaybackBackendState {
     this.position = Duration.zero,
     this.duration = Duration.zero,
     this.buffering = false,
+    this.bufferedPosition = Duration.zero,
+    this.completed = false,
     this.rate = 1,
     this.volume = 100,
     this.firstFrameReady = false,
@@ -383,6 +385,12 @@ final class VideoPlaybackBackendState {
 
   /// Whether the backend is buffering.
   final bool buffering;
+
+  /// Furthest position currently buffered by the backend.
+  final Duration bufferedPosition;
+
+  /// Whether the active episode reached its natural end.
+  final bool completed;
 
   /// Playback rate multiplier.
   final double rate;
@@ -405,6 +413,8 @@ final class VideoPlaybackBackendState {
     Duration? position,
     Duration? duration,
     bool? buffering,
+    Duration? bufferedPosition,
+    bool? completed,
     double? rate,
     double? volume,
     bool? firstFrameReady,
@@ -416,6 +426,8 @@ final class VideoPlaybackBackendState {
     position: position ?? this.position,
     duration: duration ?? this.duration,
     buffering: buffering ?? this.buffering,
+    bufferedPosition: bufferedPosition ?? this.bufferedPosition,
+    completed: completed ?? this.completed,
     rate: rate ?? this.rate,
     volume: volume ?? this.volume,
     firstFrameReady: firstFrameReady ?? this.firstFrameReady,
@@ -445,6 +457,12 @@ final class VideoPlayerSnapshot {
     required this.volume,
     required this.fitMode,
     required this.fullscreenRequested,
+    this.bufferedPosition = Duration.zero,
+    this.completed = false,
+    this.hasPreviousEpisode = false,
+    this.hasNextEpisode = false,
+    this.autoAdvance = true,
+    this.controlsLocked = false,
     this.failure,
   }) : groups = List<VideoEpisodeGroup>.unmodifiable(groups);
 
@@ -515,6 +533,24 @@ final class VideoPlayerSnapshot {
 
   /// Latest fullscreen intent sent to the host.
   final bool fullscreenRequested;
+
+  /// Furthest position currently buffered by the playback engine.
+  final Duration bufferedPosition;
+
+  /// Whether the active episode has ended.
+  final bool completed;
+
+  /// Whether ordered navigation can move to an earlier episode.
+  final bool hasPreviousEpisode;
+
+  /// Whether ordered navigation can move to a later episode.
+  final bool hasNextEpisode;
+
+  /// Whether natural completion automatically opens the next episode.
+  final bool autoAdvance;
+
+  /// Whether touch playback controls are locked against accidental input.
+  final bool controlsLocked;
 
   /// Recoverable terminal failure, when present.
   final VideoPlayerFailure? failure;

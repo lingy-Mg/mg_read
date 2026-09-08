@@ -1,11 +1,7 @@
 /// Embeddable video session and package-owned presentation.
 ///
-/// Responsibilities:
-/// - Resolve content/progress and own backend, controls, lifecycle, persistence and host intents.
-///
-/// Notes:
-/// - It owns no platform state; async loads use generations so stale results cannot replace state.
-/// - An open future completing cannot overwrite a stream-reported failure.
+/// Resolves content/progress and owns controls, lifecycle and persistence.
+/// Platform state remains host-owned; generations reject stale async results.
 library;
 
 import 'dart:async';
@@ -25,6 +21,8 @@ import 'video_player_shutdown.dart';
 import 'video_player_keyboard.dart';
 import 'video_player_stage.dart';
 
+part 'video_player_view_actions.dart';
+
 /// A complete video player backed by host content and persistence ports.
 final class VideoPlayerView extends StatefulWidget {
   /// Creates one independently owned video session.
@@ -37,8 +35,10 @@ final class VideoPlayerView extends StatefulWidget {
     this.controller,
     this.backendFactory = createMediaKitVideoPlaybackBackend,
     this.autoPlay = true,
+    this.autoAdvance = true,
     this.progressSaveThrottle = const Duration(seconds: 2),
     this.controlsAutoHideDelay = const Duration(seconds: 3),
+    this.firstFrameTimeout = const Duration(seconds: 25),
     super.key,
   });
 
@@ -71,11 +71,17 @@ final class VideoPlayerView extends StatefulWidget {
   /// Whether the restored episode should start automatically.
   final bool autoPlay;
 
+  /// Whether natural completion should continue with the next ordered episode.
+  final bool autoAdvance;
+
   /// Delay used to coalesce frequent position saves.
   final Duration progressSaveThrottle;
 
   /// Delay before playing chrome hides after interaction.
   final Duration controlsAutoHideDelay;
+
+  /// Maximum wait after backend open before a missing first frame can retry.
+  final Duration firstFrameTimeout;
 
   @override
   State<VideoPlayerView> createState() => _VideoPlayerViewState();
@@ -102,17 +108,22 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   VideoFitMode _fitMode = VideoFitMode.contain;
   bool _controlsVisible = true;
   bool _fullscreenRequested = false;
+  bool _controlsLocked = false;
+  late bool _autoAdvance;
   bool _exitAuthorized = false;
   bool _exitRequested = false;
   bool _disposed = false;
   bool _progressDirty = false;
+  double _volumeBeforeMute = 100;
   int _loadGeneration = 0;
   int _episodeGeneration = 0;
   int _reloadGeneration = 0;
+  int _completionGeneration = 0;
   String? _reportedFirstFrameSelection;
   String? _reportedBackendError;
   Timer? _saveTimer;
   Timer? _controlsTimer;
+  Timer? _firstFrameTimer;
   final VideoBackendCommandQueue _backendCommands = VideoBackendCommandQueue();
   Future<void> _saveQueue = Future<void>.value();
 
@@ -123,6 +134,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     _controller = widget.controller ?? VideoPlayerController();
     _controller.attach(this, this);
     _startupSession = widget.startupSession ?? VideoStartupSession.create();
+    _autoAdvance = widget.autoAdvance;
     _hostBridge = VideoPlayerHostBridge(widget.observer);
     _createBackend();
     _lifecycleListener = AppLifecycleListener(onStateChange: _handleLifecycle);
@@ -145,6 +157,9 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
         !identical(oldWidget.dataSource, widget.dataSource) ||
         !identical(oldWidget.stateStore, widget.stateStore)) {
       unawaited(_reloadSession());
+    }
+    if (oldWidget.autoAdvance != widget.autoAdvance) {
+      _autoAdvance = widget.autoAdvance;
     }
   }
 
@@ -184,6 +199,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
       _controlsVisible = true;
       _exitAuthorized = false;
       _exitRequested = false;
+      _controlsLocked = false;
     });
 
     _notifyStartup(
@@ -266,7 +282,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     final Duration initialPosition =
         restoredProgress?.groupId == selection.group.id &&
             restoredProgress?.episodeId == selection.episode.id
-        ? restoredProgress!.position
+        ? restorableVideoPosition(restoredProgress)
         : Duration.zero;
     _content = content;
     await _openEpisode(
@@ -296,6 +312,8 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
       return;
     }
     final generation = ++_episodeGeneration;
+    _cancelFirstFrameTimeout();
+    _completionGeneration = 0;
     _reportedFirstFrameSelection = null;
     _reportedBackendError = null;
     _update(() {
@@ -364,6 +382,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
       }
       if (_status == VideoPlayerStatus.failure) return;
       _update(() => _status = VideoPlayerStatus.ready);
+      _scheduleFirstFrameTimeout(generation);
       _scheduleControlsHide();
     } on Object {
       if (!_isCurrentEpisode(generation) || !identical(backend, _backend)) {
@@ -424,6 +443,9 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     _hostBridge.reportPlaybackActive(
       next.playing && _status != VideoPlayerStatus.failure,
     );
+    if (!previous.completed && next.completed) {
+      unawaited(_handlePlaybackCompleted());
+    }
     final groupId = _group?.id;
     final episodeId = _episode?.id;
     final selectionId = groupId == null || episodeId == null
@@ -434,6 +456,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
         selectionId != null &&
         _reportedFirstFrameSelection != selectionId) {
       _reportedFirstFrameSelection = selectionId;
+      _cancelFirstFrameTimeout();
       _notifyStartup(
         VideoStartupPhase.firstFrame,
         state: VideoStartupState.completed,
@@ -489,271 +512,111 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     VideoStartupPhase phase, {
     required VideoStartupState state,
     VideoStartupResourceRole? resourceRole,
-  }) {
-    final observer = widget.observer;
-    if (observer == null) return;
-    final event = _startupSession.mark(
-      phase,
-      state: state,
-      resourceRole: resourceRole,
-    );
-    _notify(() => observer.onStartupEvent(event));
-  }
+  }) => _actionNotifyStartup(phase, state: state, resourceRole: resourceRole);
+
+  void _scheduleFirstFrameTimeout(int generation) =>
+      _actionScheduleFirstFrameTimeout(generation);
+
+  void _cancelFirstFrameTimeout() => _actionCancelFirstFrameTimeout();
 
   @override
-  Future<void> play() =>
-      _runPlaybackCommand((backend) => backend.play(), code: 'play_failed');
+  Future<void> play() => _actionPlay();
 
   @override
-  Future<void> pause() async {
-    await _pauseBackend(code: 'pause_failed');
-    await _flushProgress(force: true);
-  }
+  Future<void> pause() => _actionPause();
 
   @override
-  Future<void> playOrPause() => _backendState.playing ? pause() : play();
+  Future<void> playOrPause() => _actionPlayOrPause();
 
   @override
-  Future<void> seek(Duration position) async {
-    final target = _clampPosition(position, _backendState.duration);
-    await _runPlaybackCommand(
-      (backend) => backend.seek(target),
-      code: 'seek_failed',
-    );
-    _progressDirty = true;
-    _scheduleProgressSave();
-    _showControls();
-  }
+  Future<void> seek(Duration position) => _actionSeek(position);
 
   @override
-  Future<void> skip(Duration delta) => seek(_backendState.position + delta);
+  Future<void> skip(Duration delta) =>
+      _actionSeek(_backendState.position + delta);
 
   @override
-  Future<void> setRate(double rate) => _runPlaybackCommand(
-    (backend) => backend.setRate(rate.clamp(.25, 3).toDouble()),
-    code: 'rate_failed',
+  Future<void> setRate(double rate) => _actionSetRate(rate);
+
+  @override
+  Future<void> setVolume(double volume) => _actionSetVolume(volume);
+
+  @override
+  Future<void> toggleMute() => setVolume(
+    _backendState.volume > 0 ? 0 : _volumeBeforeMute.clamp(1, 100).toDouble(),
   );
 
   @override
-  Future<void> setVolume(double volume) => _runPlaybackCommand(
-    (backend) => backend.setVolume(volume.clamp(0, 100).toDouble()),
-    code: 'volume_failed',
-  );
+  Future<void> replay() => _actionReplay();
 
   @override
-  Future<void> selectEpisode(String groupId, String episodeId) async {
-    if (_group?.id == groupId && _episode?.id == episodeId) return;
-    final content = _content;
-    if (content == null) return;
-    final selection = videoSelectionById(content.groups, groupId, episodeId);
-    if (selection == null) return;
-    _startupSession = VideoStartupSession.create();
-    await _openEpisode(
-      selection.group,
-      selection.episode,
-      initialPosition: Duration.zero,
-      play: true,
-      flushCurrent: true,
-    );
-  }
+  Future<void> playPreviousEpisode() => _actionPlayPreviousEpisode();
 
   @override
-  Future<void> cycleFitMode() async {
-    _update(() {
-      _fitMode = VideoFitMode
-          .values[(_fitMode.index + 1) % VideoFitMode.values.length];
-      _controlsVisible = true;
-    });
-    _scheduleControlsHide();
-  }
+  Future<void> playNextEpisode() => _selectAdjacentEpisode(1);
 
   @override
-  Future<void> toggleControls() async {
-    _update(() => _controlsVisible = !_controlsVisible);
-    if (_controlsVisible) _scheduleControlsHide();
-  }
+  Future<void> setAutoAdvance(bool enabled) => _actionSetAutoAdvance(enabled);
 
   @override
-  Future<void> requestFullscreen(bool fullscreen) async {
-    _update(() {
-      _fullscreenRequested = fullscreen;
-      _controlsVisible = true;
-    });
-    final observer = widget.observer;
-    if (observer != null) {
-      await _notify(() => observer.onFullscreenRequested(fullscreen));
-    }
-    if (!_disposed && mounted) {
-      _focusNode.requestFocus();
-    }
-    _scheduleControlsHide();
-  }
+  Future<void> setControlsLocked(bool locked) =>
+      _actionSetControlsLocked(locked);
 
   @override
-  Future<void> requestExit() async {
-    if (_fullscreenRequested) {
-      await requestFullscreen(false);
-      return;
-    }
-    if (_exitRequested) return;
-    _exitRequested = true;
-    await _pauseBackend(code: 'exit_pause_failed', reportFailure: false);
-    await _flushProgress(force: true);
-    if (_disposed) return;
-    _update(() => _exitAuthorized = true);
-    await WidgetsBinding.instance.endOfFrame;
-    if (_disposed || !mounted) return;
-    final route = ModalRoute.of(context);
-    final observer = widget.observer;
-    if (observer == null) {
-      await Navigator.of(context).maybePop();
-    } else {
-      await _notify(() => observer.onExitRequested(_currentProgress));
-    }
-    if (!_disposed && mounted && (route?.isCurrent ?? true)) {
-      _update(() {
-        _exitAuthorized = false;
-        _exitRequested = false;
-      });
-    }
+  Future<void> selectEpisode(String groupId, String episodeId) =>
+      _actionSelectEpisode(groupId, episodeId);
+
+  Future<void> _selectAdjacentEpisode(int direction) =>
+      _VideoPlayerViewActions(this)._selectAdjacentEpisode(direction);
+
+  Future<void> _handlePlaybackCompleted() => _actionHandlePlaybackCompleted();
+
+  @override
+  Future<void> cycleFitMode() => _actionCycleFitMode();
+
+  @override
+  Future<void> toggleControls() => _actionToggleControls();
+
+  void _handleInteractionStart() {
+    _controlsTimer?.cancel();
+    if (!_controlsVisible) _update(() => _controlsVisible = true);
   }
 
-  Future<void> _runPlaybackCommand(
-    Future<void> Function(VideoPlaybackBackend backend) command, {
-    required String code,
-    bool reportFailure = true,
-    bool allowWithoutEpisode = false,
-  }) async {
-    if (_disposed || (!allowWithoutEpisode && _episode == null)) return;
-    final backend = _backend;
-    final episodeGeneration = _episodeGeneration;
-    final operation = _backendCommands.enqueue(() async {
-      if (_disposed || !identical(backend, _backend)) return;
-      if (!allowWithoutEpisode &&
-          (_episode == null || episodeGeneration != _episodeGeneration)) {
-        return;
-      }
-      await command(backend);
-    });
-    try {
-      await operation;
-    } on Object {
-      if (reportFailure) {
-        _notifyFailure(
-          VideoPlayerFailure(
-            VideoPlayerFailureKind.playback,
-            '播放操作失败，请重试',
-            code: code,
-            location: '执行视频播放操作',
-          ),
-        );
-      }
-    }
-  }
+  void _handleInteractionEnd() => _scheduleControlsHide();
+
+  @override
+  Future<void> requestFullscreen(bool fullscreen) =>
+      _actionRequestFullscreen(fullscreen);
+
+  @override
+  Future<void> requestExit() => _actionRequestExit();
 
   Future<void> _pauseBackend({
     String code = 'transition_pause_failed',
     bool reportFailure = true,
-  }) => _runPlaybackCommand(
-    (backend) => backend.pause(),
-    code: code,
-    reportFailure: reportFailure,
-    allowWithoutEpisode: true,
-  );
+  }) => _actionPauseBackend(code: code, reportFailure: reportFailure);
 
-  void _scheduleProgressSave() {
-    if (_saveTimer != null || _episode == null || _disposed) return;
-    _saveTimer = Timer(widget.progressSaveThrottle, () {
-      _saveTimer = null;
-      unawaited(_flushProgress());
-    });
-  }
+  void _scheduleProgressSave() => _actionScheduleProgressSave();
 
-  Future<void> _flushProgress({bool force = false}) async {
-    _saveTimer?.cancel();
-    _saveTimer = null;
-    final progress = _currentProgress;
-    if (progress == null || (!force && !_progressDirty)) return;
-    _progressDirty = false;
-    final store = _activeStateStore ?? widget.stateStore;
-    final Future<void> operation = _saveQueue.then((_) => store.save(progress));
-    _saveQueue = operation.then<void>((_) {}, onError: (_) {});
-    try {
-      await operation;
-    } on Object {
-      _progressDirty = true;
-      _notifyFailure(
-        const VideoPlayerFailure(
-          VideoPlayerFailureKind.persistence,
-          '播放进度保存失败',
-          code: 'progress_save_failed',
-          location: '保存播放进度',
-        ),
-      );
-    }
-  }
+  Future<void> _flushProgress({bool force = false}) =>
+      _actionFlushProgress(force: force);
 
-  VideoPlaybackProgress? get _currentProgress {
-    final group = _group;
-    final episode = _episode;
-    final contentId = _activeContentId;
-    if (group == null || episode == null || contentId == null) return null;
-    return VideoPlaybackProgress(
-      contentId: contentId,
-      groupId: group.id,
-      episodeId: episode.id,
-      position: _clampPosition(_backendState.position, _backendState.duration),
-      duration: _backendState.duration,
-    );
-  }
+  VideoPlaybackProgress? get _currentProgress => _actionCurrentProgress;
 
   void _handleLifecycle(AppLifecycleState state) {
     if (pausesVideoForLifecycle(state)) {
-      unawaited(_pauseForBackground());
+      unawaited(_actionPauseForBackground());
     }
   }
 
-  Future<void> _pauseForBackground() async {
-    await _pauseBackend(code: 'background_pause_failed', reportFailure: false);
-    await _flushProgress(force: true);
-  }
+  void _showControls() => _actionShowControls();
 
-  void _showControls() {
-    _update(() => _controlsVisible = true);
-    _scheduleControlsHide();
-  }
+  void _scheduleControlsHide() => _actionScheduleControlsHide();
 
-  void _scheduleControlsHide() {
-    _controlsTimer?.cancel();
-    _controlsTimer = null;
-    if (!_backendState.playing || !_controlsVisible || _disposed) return;
-    _controlsTimer = Timer(widget.controlsAutoHideDelay, () {
-      if (_disposed || !_backendState.playing) return;
-      _update(() => _controlsVisible = false);
-    });
-  }
-
-  Future<void> _showEpisodes() async {
-    final content = _content;
-    if (content == null ||
-        firstPlayableVideoSelection(content.groups) == null) {
-      return;
-    }
-    _controlsTimer?.cancel();
-    final selected = await showVideoEpisodeSheet(
-      context: context,
-      groups: content.groups,
-      activeGroupId: _group?.id,
-      activeEpisodeId: _episode?.id,
-      playbackState: _backend.state,
-    );
-    if (!mounted || selected == null) return;
-    await selectEpisode(selected.groupId, selected.episodeId);
-    _focusNode.requestFocus();
-  }
+  Future<void> _showEpisodes() => _actionShowEpisodes();
 
   KeyEventResult _handleKey(FocusNode _, KeyEvent event) =>
-      handleVideoPlayerKeyEvent(event, this);
+      handleVideoPlayerKeyEvent(event, this, _snapshot);
 
   Future<void> _retry() async {
     _reportedBackendError = null;
@@ -763,6 +626,8 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   void _setFailure(VideoPlayerFailure failure) {
     if (_disposed) return;
     _hostBridge.reportPlaybackActive(false);
+    _cancelFirstFrameTimeout();
+    unawaited(_pauseBackend(reportFailure: false));
     _update(() {
       _failure = failure;
       _status = VideoPlayerStatus.failure;
@@ -804,12 +669,32 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     duration: _backendState.duration,
     playing: _backendState.playing,
     buffering: _backendState.buffering,
+    bufferedPosition: _backendState.bufferedPosition,
+    completed: _backendState.completed,
     firstFrameReady: _backendState.firstFrameReady,
     controlsVisible: _controlsVisible,
     rate: _backendState.rate,
     volume: _backendState.volume,
     fitMode: _fitMode,
     fullscreenRequested: _fullscreenRequested,
+    hasPreviousEpisode:
+        adjacentVideoSelection(
+          _content?.groups ?? const <VideoEpisodeGroup>[],
+          _group?.id,
+          _episode?.id,
+          direction: -1,
+        ) !=
+        null,
+    hasNextEpisode:
+        adjacentVideoSelection(
+          _content?.groups ?? const <VideoEpisodeGroup>[],
+          _group?.id,
+          _episode?.id,
+          direction: 1,
+        ) !=
+        null,
+    autoAdvance: _autoAdvance,
+    controlsLocked: _controlsLocked,
     failure: _failure,
   );
 
@@ -843,6 +728,13 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     onSkip: skip,
     onRate: setRate,
     onVolume: setVolume,
+    onReplay: replay,
+    onPreviousEpisode: playPreviousEpisode,
+    onNextEpisode: playNextEpisode,
+    onAutoAdvance: setAutoAdvance,
+    onControlsLocked: setControlsLocked,
+    onInteractionStart: _handleInteractionStart,
+    onInteractionEnd: _handleInteractionEnd,
     onFit: cycleFitMode,
     onEpisodes: _showEpisodes,
     onFullscreen: requestFullscreen,
@@ -858,6 +750,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     _episodeGeneration++;
     _saveTimer?.cancel();
     _controlsTimer?.cancel();
+    _firstFrameTimer?.cancel();
     _lifecycleListener.dispose();
     _focusNode.dispose();
     _controller.detach(this);
