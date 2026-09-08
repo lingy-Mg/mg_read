@@ -25,23 +25,33 @@ Future<void> showAudioPlaybackSettingsSheet(
   BuildContext context, {
   required AudioPlayerSnapshot snapshot,
   required AudioPlayerController controller,
+  required bool keepScreenOn,
+  Future<void> Function(bool enabled)? onKeepScreenOnChanged,
 }) => showModalBottomSheet<void>(
   context: context,
   isScrollControlled: true,
   backgroundColor: Colors.transparent,
   barrierColor: AudioPlayerColors.scrim,
-  builder: (sheetContext) =>
-      _AudioPlaybackSettingsSheet(snapshot: snapshot, controller: controller),
+  builder: (sheetContext) => _AudioPlaybackSettingsSheet(
+    snapshot: snapshot,
+    controller: controller,
+    keepScreenOn: keepScreenOn,
+    onKeepScreenOnChanged: onKeepScreenOnChanged,
+  ),
 );
 
 final class _AudioPlaybackSettingsSheet extends StatefulWidget {
   const _AudioPlaybackSettingsSheet({
     required this.snapshot,
     required this.controller,
+    required this.keepScreenOn,
+    this.onKeepScreenOnChanged,
   });
 
   final AudioPlayerSnapshot snapshot;
   final AudioPlayerController controller;
+  final bool keepScreenOn;
+  final Future<void> Function(bool enabled)? onKeepScreenOnChanged;
 
   @override
   State<_AudioPlaybackSettingsSheet> createState() =>
@@ -64,6 +74,7 @@ final class _AudioPlaybackSettingsSheetState
   late double _volume;
   late double _lastAudibleVolume;
   Duration? _timer;
+  late bool _keepScreenOn;
 
   @override
   void initState() {
@@ -72,6 +83,7 @@ final class _AudioPlaybackSettingsSheetState
     _volume = widget.snapshot.volume.clamp(0, 1);
     _lastAudibleVolume = _volume > 0 ? _volume : 1;
     _timer = widget.snapshot.sleepTimerDuration;
+    _keepScreenOn = widget.keepScreenOn;
   }
 
   @override
@@ -114,6 +126,17 @@ final class _AudioPlaybackSettingsSheetState
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                   child: Column(
                     children: <Widget>[
+                      _SettingsCard(
+                        key: const Key('audio-keep-screen-on'),
+                        icon: Icons.light_mode_rounded,
+                        title: '播放时保持屏幕常亮',
+                        value: _keepScreenOn ? '已开启' : '已关闭',
+                        child: _KeepScreenOnControl(
+                          enabled: _keepScreenOn,
+                          onChanged: _setKeepScreenOn,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
                       _SettingsCard(
                         key: const Key('audio-rate'),
                         icon: Icons.speed_rounded,
@@ -195,6 +218,20 @@ final class _AudioPlaybackSettingsSheetState
   void _setTimer(Duration? value) {
     setState(() => _timer = value);
     unawaited(widget.controller.setSleepTimer(value));
+  }
+
+  void _setKeepScreenOn(bool value) {
+    final previous = _keepScreenOn;
+    setState(() => _keepScreenOn = value);
+    final callback = widget.onKeepScreenOnChanged;
+    if (callback == null) return;
+    unawaited(() async {
+      try {
+        await callback(value);
+      } on Object {
+        if (mounted) setState(() => _keepScreenOn = previous);
+      }
+    }());
   }
 
   void _close() => Navigator.of(context).pop();

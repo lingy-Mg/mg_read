@@ -81,6 +81,21 @@ void main() {
     expect(gateway.contentCalls, <String>['chapter:free-3']);
   });
 
+  test('distinguishes an unavailable next resource from the real queue end', () async {
+    final source = SourceAudioPlaylistDataSource(
+      gateway: _AudioGateway(failingChapterId: 'chapter:free-3'),
+      pluginId: _pluginId,
+      initialDetail: _detail(),
+      initialCatalog: _catalog(),
+    );
+
+    await expectLater(
+      source.loadFollowingTracks('audio:book-1', afterTrackId: 'chapter:free-2', limit: 1),
+      throwsA(isA<AudioPlayerLoadException>().having((error) => error.code, 'code', 'audio_continuation_unavailable')),
+    );
+    expect(await source.loadFollowingTracks('audio:book-1', afterTrackId: 'chapter:free-3', limit: 1), isEmpty);
+  });
+
   test('resolves a catalog selection only when the listener chooses it', () async {
     final gateway = _AudioGateway();
     final source = SourceAudioPlaylistDataSource(

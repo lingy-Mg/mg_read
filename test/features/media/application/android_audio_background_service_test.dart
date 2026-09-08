@@ -38,8 +38,14 @@ void main() {
     addTearDown(controller.dispose);
     final handler = MgReadAudioHandler();
     var systemStopCalls = 0;
+    var feedbackCalls = 0;
 
-    await handler.attach(controller, synchronizeFocus: (_) async {}, onSystemStop: () async => systemStopCalls++);
+    await handler.attach(
+      controller,
+      synchronizeFocus: (_) async {},
+      onSystemStop: () async => systemStopCalls++,
+      commandFeedback: () async => feedbackCalls++,
+    );
 
     expect(handler.queue.value.map((item) => item.id), <String>['chapter-1', 'chapter-2', 'chapter-3']);
     expect(handler.mediaItem.value?.id, 'chapter-2');
@@ -60,11 +66,13 @@ void main() {
     expect(controller.previousCalls, 1);
     expect(controller.nextCalls, 1);
     expect(controller.selectedTrackIds, <String>['chapter-3']);
+    expect(feedbackCalls, 3);
 
     await handler.stop();
 
     expect(controller.pauseCalls, 1);
     expect(systemStopCalls, 1);
+    expect(feedbackCalls, 4);
     expect(handler.queue.value, isEmpty);
     expect(handler.mediaItem.value, isNull);
   });
@@ -86,6 +94,20 @@ void main() {
 
     await handler.detach(controller);
   });
+
+  test('screen-on recovery reaches only the attached controller', () async {
+    final controller = _RecordingAudioController(AudioPlayerSnapshot.initial());
+    addTearDown(controller.dispose);
+    final handler = MgReadAudioHandler();
+
+    await handler.recoverActiveController();
+    await handler.attach(controller, synchronizeFocus: (_) async {}, onSystemStop: () async {});
+    await handler.recoverActiveController();
+    await handler.detach(controller);
+    await handler.recoverActiveController();
+
+    expect(controller.recoverCalls, 1);
+  });
 }
 
 final class _RecordingAudioController extends AudioPlayerController {
@@ -95,6 +117,7 @@ final class _RecordingAudioController extends AudioPlayerController {
   int pauseCalls = 0;
   int previousCalls = 0;
   int nextCalls = 0;
+  int recoverCalls = 0;
   final List<String> selectedTrackIds = <String>[];
 
   @override
@@ -113,6 +136,11 @@ final class _RecordingAudioController extends AudioPlayerController {
   @override
   Future<void> next() async {
     nextCalls++;
+  }
+
+  @override
+  Future<void> recover() async {
+    recoverCalls++;
   }
 
   @override

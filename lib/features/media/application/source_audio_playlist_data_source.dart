@@ -122,7 +122,8 @@ final class SourceAudioPlaylistDataSource implements AudioPlaylistQueueDataSourc
     final currentIndex = available.indexWhere((chapter) => chapter.id == afterTrackId);
     if (currentIndex < 0) return const <AudioTrack>[];
     final tracks = <AudioTrack>[];
-    for (final chapter in available.skip(currentIndex + 1)) {
+    final following = available.skip(currentIndex + 1).toList(growable: false);
+    for (final chapter in following) {
       if (tracks.length >= limit) break;
       try {
         tracks.add(await _loadTrack(detail: detail, collectionId: collectionId, chapter: chapter));
@@ -130,6 +131,9 @@ final class SourceAudioPlaylistDataSource implements AudioPlaylistQueueDataSourc
         // Skip expired or locked-in-practice resources. The next available
         // chapter is still useful for uninterrupted sequential listening.
       }
+    }
+    if (following.isNotEmpty && tracks.isEmpty) {
+      throw const AudioPlayerLoadException(code: 'audio_continuation_unavailable', location: '下一章节的播放地址', message: '下一章节暂时无法加载，请检查网络后重试。');
     }
     return tracks;
   }

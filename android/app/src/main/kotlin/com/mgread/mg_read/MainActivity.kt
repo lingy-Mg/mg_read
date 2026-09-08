@@ -15,6 +15,9 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : AudioServiceActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        if (!flutterEngine.plugins.has(AudioBackgroundPlatformBridge::class.java)) {
+            flutterEngine.plugins.add(AudioBackgroundPlatformBridge())
+        }
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             DEVICE_IDENTITY_CHANNEL,

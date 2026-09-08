@@ -40,7 +40,7 @@ void main() {
     expect(find.byKey(const Key('audio-volume')), findsOneWidget);
     expect(find.byKey(const Key('audio-timer')), findsOneWidget);
     expect(find.byKey(const Key('audio-settings-summary')), findsOneWidget);
-    expect(find.text('播放调节'), findsOneWidget);
+    expect(find.text('音乐播放设置'), findsOneWidget);
     expect(find.text('0.5'), findsOneWidget);
     expect(find.text('0.75'), findsOneWidget);
     expect(find.textContaining(r'$'), findsNothing);
@@ -61,7 +61,10 @@ void main() {
     await tester.pump();
     expect(backend.volumes.last, 0);
 
-    await tester.tap(find.byKey(const Key('audio-timer-45')));
+    final timer45 = find.byKey(const Key('audio-timer-45'));
+    await tester.ensureVisible(timer45);
+    await tester.pumpAndSettle();
+    await tester.tap(timer45);
     await tester.pump();
     expect(controller.snapshot.sleepTimerDuration, const Duration(minutes: 45));
     await tester.tap(find.byKey(const Key('audio-timer-off')));

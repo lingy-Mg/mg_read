@@ -26,6 +26,7 @@ import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/media/application/android_audio_background_service.dart';
 import 'package:mg_read/features/media/application/source_audio_playback_coordinator.dart';
+import 'package:mg_read/features/media/application/source_audio_playback_lifecycle.dart';
 import 'package:mg_read/features/media/application/source_audio_playlist_data_source.dart';
 import 'package:mg_read/features/media/application/transient_source_audio_playback_state_store.dart';
 import 'package:mg_read/features/media/presentation/media_entry_cover.dart';
@@ -135,10 +136,10 @@ final class _ActiveSourceAudioPlaybackHost extends ConsumerStatefulWidget {
 
 final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSourceAudioPlaybackHost> {
   late final AudioPlayerController _controller;
+  SourceAudioPlaybackLifecycle? _playbackLifecycle;
   _AudioPlayerSetup? _setup;
   Object? _setupFailure;
-  bool _playerPresented = false;
-  bool _rememberExitChoice = false;
+  bool _playerPresented = false, _rememberExitChoice = false;
   Completer<_AudioExitDecision?>? _exitDecision;
   int _generation = 0;
   late final SourceAudioPlaybackCoordinator _coordinator;
@@ -155,6 +156,11 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
       _controller.dispose();
       return;
     }
+    _playbackLifecycle = SourceAudioPlaybackLifecycle(
+      controller: _controller,
+      settings: ref.read(appSettingsProvider),
+      onPreferenceChanged: () => setState(() {}),
+    );
     unawaited(_prepare());
   }
 
@@ -366,6 +372,8 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
         artworkBuilder: (context, track) => _sourceAudioArtwork(context, track, request),
         prefetchBatchSize: 1,
         prefetchLeadTime: const Duration(seconds: 30),
+        keepScreenOn: _playbackLifecycle!.keepScreenOn,
+        onKeepScreenOnChanged: _playbackLifecycle!.setKeepScreenOn,
       ),
     );
   }
@@ -418,6 +426,7 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
   @override
   void dispose() {
     _generation++;
+    _playbackLifecycle?.dispose();
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     _backButtonDispatcher.removeCallback(_handlePlatformBack);
     final exitDecision = _exitDecision;

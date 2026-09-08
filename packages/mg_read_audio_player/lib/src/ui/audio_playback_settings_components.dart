@@ -49,7 +49,7 @@ final class _SettingsHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Text(
-                '播放调节',
+                '音乐播放设置',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   color: AudioPlayerColors.ink,
                   fontWeight: FontWeight.w800,
@@ -58,7 +58,7 @@ final class _SettingsHeader extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                '仅作用于当前播放会话',
+                '屏幕常亮会保存，其余仅作用于当前会话',
                 style: Theme.of(
                   context,
                 ).textTheme.bodySmall?.copyWith(color: AudioPlayerColors.muted),
@@ -68,7 +68,7 @@ final class _SettingsHeader extends StatelessWidget {
         ),
         IconButton.filledTonal(
           key: const Key('audio-settings-close'),
-          tooltip: '关闭播放调节',
+          tooltip: '关闭音乐播放设置',
           onPressed: onClose,
           style: IconButton.styleFrom(
             backgroundColor: _SettingsTokens.neutralControl,
@@ -272,6 +272,34 @@ final class _SettingsIcon extends StatelessWidget {
       ),
       child: Icon(icon, size: 19, color: AudioPlayerColors.accentPressed),
     ),
+  );
+}
+
+final class _KeepScreenOnControl extends StatelessWidget {
+  const _KeepScreenOnControl({required this.enabled, required this.onChanged});
+
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: <Widget>[
+      Expanded(
+        child: Text(
+          '防止播放中自动息屏；手动锁屏后仍会继续后台播放。',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: AudioPlayerColors.muted,
+            height: 1.35,
+          ),
+        ),
+      ),
+      const SizedBox(width: 12),
+      Switch(
+        key: const Key('audio-keep-screen-on-switch'),
+        value: enabled,
+        onChanged: onChanged,
+      ),
+    ],
   );
 }
 

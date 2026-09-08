@@ -47,6 +47,8 @@ class AudioPlayerView extends StatefulWidget {
     this.prefetchThreshold = 1,
     this.prefetchBatchSize = 3,
     this.prefetchLeadTime,
+    this.keepScreenOn = true,
+    this.onKeepScreenOnChanged,
     super.key,
   });
 
@@ -74,6 +76,8 @@ class AudioPlayerView extends StatefulWidget {
   final int prefetchThreshold;
   final int prefetchBatchSize;
   final Duration? prefetchLeadTime;
+  final bool keepScreenOn;
+  final Future<void> Function(bool enabled)? onKeepScreenOnChanged;
 
   @override
   State<AudioPlayerView> createState() => _AudioViewState();
@@ -368,6 +372,9 @@ class _AudioViewState extends State<AudioPlayerView>
                               context,
                               snapshot: snapshot,
                               controller: _controller,
+                              keepScreenOn: widget.keepScreenOn,
+                              onKeepScreenOnChanged:
+                                  widget.onKeepScreenOnChanged,
                             ),
                           ),
                           if (snapshot.failure != null) ...<Widget>[

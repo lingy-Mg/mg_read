@@ -52,6 +52,7 @@ final class AudioPlayerSession extends ChangeNotifier {
       setVolume: setVolume,
       setSleepTimer: setSleepTimer,
       retry: initialize,
+      recover: recover,
       requestExit: requestExit,
     );
     _backendSubscription = backend.snapshots.listen(_acceptBackendSnapshot);
@@ -86,8 +87,10 @@ final class AudioPlayerSession extends ChangeNotifier {
   Future<void>? _closeFuture;
   Future<void>? _exitRequest;
   Future<void>? _prefetchRequest;
+  Future<void>? _recoveryRequest;
   String? _lastPrefetchTriggerTrackId;
   String? _lastBackendErrorMessage;
+  bool _continuationRecoveryPending = false;
   int _generation = 0;
   bool _backendSnapshotsEnabled = false;
   bool _closing = false;
@@ -101,6 +104,7 @@ final class AudioPlayerSession extends ChangeNotifier {
     _backendSnapshotsEnabled = false;
     _lastBackendErrorMessage = null;
     _lastPrefetchTriggerTrackId = null;
+    _continuationRecoveryPending = false;
     _playlist = null;
     _emit(
       AudioPlayerSnapshot(
@@ -304,7 +308,9 @@ final class AudioPlayerSession extends ChangeNotifier {
         afterTrackId: afterTrackId,
         limit: prefetchBatchSize,
       );
-      if (!_isCurrent(generation) || loaded.isEmpty) return;
+      if (!_isCurrent(generation)) return;
+      _continuationRecoveryPending = false;
+      if (loaded.isEmpty) return;
       final playlist = _playlist;
       if (playlist == null || playlist.tracks.last.id != afterTrackId) return;
       final knownIds = playlist.tracks.map((track) => track.id).toSet();
@@ -328,8 +334,70 @@ final class AudioPlayerSession extends ChangeNotifier {
       );
       _applyReadySnapshot(backend.snapshot);
     } catch (_) {
+      if (_isCurrent(generation)) _continuationRecoveryPending = true;
       // The already buffered chapter remains playable. A later track change
-      // retries the bounded prefetch instead of interrupting current audio.
+      // or an explicit lifecycle recovery retries this bounded prefetch.
+    }
+  }
+
+  /// Retries a failed active-session load without disturbing healthy audio.
+  ///
+  /// Foreground and screen-on signals may arrive together, so recovery is
+  /// single-flight. A failed queue continuation is retried and, if the old
+  /// track has already ended, playback advances after the new item is ready.
+  Future<void> recover() {
+    final active = _recoveryRequest;
+    if (active != null) return active;
+    final request = _recoverInterruptedPlayback();
+    _recoveryRequest = request;
+    return request.whenComplete(() {
+      if (identical(_recoveryRequest, request)) _recoveryRequest = null;
+    });
+  }
+
+  Future<void> _recoverInterruptedPlayback() async {
+    if (_closing || _closed) return;
+    final inFlightPrefetch = _prefetchRequest;
+    if (inFlightPrefetch != null) await inFlightPrefetch;
+    if (_closing || _closed) return;
+    if (_snapshot.status == AudioPlayerStatus.error ||
+        _snapshot.failure?.code == 'audio_backend_error') {
+      await initialize();
+      return;
+    }
+    final playlist = _playlist;
+    final source = dataSource;
+    if (!_continuationRecoveryPending ||
+        playlist == null ||
+        source is! AudioPlaylistContinuationDataSource) {
+      return;
+    }
+    final generation = _generation;
+    final previousTail = playlist.tracks.last.id;
+    final shouldResume =
+        !_snapshot.playing &&
+        _snapshot.currentIndex == playlist.tracks.length - 1 &&
+        _snapshot.duration > Duration.zero &&
+        _snapshot.duration - _snapshot.position <= const Duration(seconds: 2);
+    _lastPrefetchTriggerTrackId = null;
+    await _loadFollowingTracks(
+      source,
+      generation: generation,
+      afterTrackId: previousTail,
+    );
+    if (!_isCurrent(generation) || !shouldResume) return;
+    final recoveredPlaylist = _playlist;
+    if (recoveredPlaylist == null ||
+        recoveredPlaylist.tracks.last.id == previousTail) {
+      return;
+    }
+    try {
+      if (backend.snapshot.currentIndex == playlist.tracks.length - 1) {
+        await backend.next();
+      }
+      await backend.play();
+    } on Object {
+      _handleBackendError('continuation_resume_failed');
     }
   }
 
@@ -596,7 +664,11 @@ final class AudioPlayerSession extends ChangeNotifier {
   Future<void> handleLifecycle(AudioPlayerLifecycleState state) async {
     final progress = _progressFor(_snapshot);
     await _notify(() => observer?.onLifecycleChanged(state, progress));
-    if (state != AudioPlayerLifecycleState.resumed) await flushProgress();
+    if (state == AudioPlayerLifecycleState.resumed) {
+      await recover();
+    } else {
+      await flushProgress();
+    }
   }
 
   Future<void> requestExit() => _exitRequest ??= _beginExitRequest();
@@ -620,6 +692,7 @@ final class AudioPlayerSession extends ChangeNotifier {
     _generation++;
     _backendSnapshotsEnabled = false;
     _lastBackendErrorMessage = null;
+    _continuationRecoveryPending = false;
     _sleepTimer?.cancel();
     _saveTimer?.cancel();
     _sleepTimer = null;

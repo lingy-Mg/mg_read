@@ -156,6 +156,14 @@ final class AppSettingKeys {
     validator: _validateAudioExitBehavior,
   );
 
+  static const audioKeepScreenOn = SettingKey<bool>(
+    id: 'mediaPlayback.audioKeepScreenOn',
+    documentKind: 'settings.mediaPlayback',
+    defaultValue: true,
+    codec: SettingCodec<bool>(_boolEncode, _boolDecode),
+    validator: _validateBool,
+  );
+
   static const all = <SettingKey<dynamic>>[
     themeMode,
     homeLayoutMode,
@@ -171,6 +179,7 @@ final class AppSettingKeys {
     novelPreloadChapterCount,
     comicReaderPreferences,
     audioExitBehavior,
+    audioKeepScreenOn,
   ];
 
   static final registry = SettingsRegistry(

@@ -41,6 +41,7 @@ class AudioPlayerController extends ChangeNotifier {
   AudioDoubleCommand? _setVolume;
   AudioSleepTimerCommand? _setSleepTimer;
   AudioPlayerCommand? _retry;
+  AudioPlayerCommand? _recover;
   AudioPlayerCommand? _requestExit;
   bool _disposed = false;
 
@@ -62,6 +63,10 @@ class AudioPlayerController extends ChangeNotifier {
   Future<void> setSleepTimer(Duration? duration) =>
       _invokeArg(_setSleepTimer, duration);
   Future<void> retry() => _invoke(_retry);
+
+  /// Retries only playback work that was interrupted while the session was
+  /// already active. Unlike [retry], this is a no-op for healthy playback.
+  Future<void> recover() => _invoke(_recover);
   Future<void> requestExit() => _invoke(_requestExit);
 
   Future<void> _invoke(AudioPlayerCommand? command) {
@@ -90,6 +95,7 @@ class AudioPlayerController extends ChangeNotifier {
     required AudioDoubleCommand setVolume,
     required AudioSleepTimerCommand setSleepTimer,
     required AudioPlayerCommand retry,
+    required AudioPlayerCommand recover,
     required AudioPlayerCommand requestExit,
   }) {
     if (_disposed) return;
@@ -107,6 +113,7 @@ class AudioPlayerController extends ChangeNotifier {
     _setVolume = setVolume;
     _setSleepTimer = setSleepTimer;
     _retry = retry;
+    _recover = recover;
     _requestExit = requestExit;
   }
 
@@ -138,6 +145,7 @@ class AudioPlayerController extends ChangeNotifier {
     _setVolume = null;
     _setSleepTimer = null;
     _retry = null;
+    _recover = null;
     _requestExit = null;
   }
 
