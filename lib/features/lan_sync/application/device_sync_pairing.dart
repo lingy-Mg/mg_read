@@ -188,6 +188,7 @@ String _pairingFailureCode(Object error, {required String fallback}) => switch (
   LanSyncTransportException(:final code) => code,
   TimeoutException() => 'lan_sync_connect_timeout',
   SocketException() => 'lan_sync_connect_failed',
+  HttpException() => 'lan_sync_http_failed',
   _ => fallback,
 };
 

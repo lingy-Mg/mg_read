@@ -31,6 +31,24 @@ void main() {
     expect(approvedPeer.platform, _currentPlatform);
   });
 
+  test('commit response is delivered before approval closes the HTTP server', () async {
+    if ((await eligibleLanSyncAddresses()).isEmpty) return;
+    final server = await LanPairingServer.start(desktop);
+    addTearDown(server.close);
+    final requestFuture = server.requests.first;
+    final client = await LanPairingClientConnection.connect(server.offer, phone);
+    addTearDown(client.close);
+    final request = await requestFuture;
+    final approvedPeerFuture = client.waitForApproval();
+    final serverApproval = request.approve().whenComplete(server.close);
+
+    await approvedPeerFuture;
+    await client.confirmCommitted();
+    await serverApproval;
+
+    expect(request.isActive, isFalse);
+  });
+
   test('an unapproved request expires and closes both sides', () async {
     if ((await eligibleLanSyncAddresses()).isEmpty) return;
     final server = await LanPairingServer.start(desktop, requestLifetime: const Duration(milliseconds: 80));

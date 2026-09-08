@@ -173,8 +173,9 @@ final class LanPairingServer {
         if (item == null || !item.decision.isCompleted) {
           return await _json(request.response, HttpStatus.conflict, <String, Object?>{'error': 'not_approved'});
         }
+        await _json(request.response, HttpStatus.ok, <String, Object?>{'status': 'complete'});
         if (!item.committed.isCompleted) item.committed.complete();
-        return await _json(request.response, HttpStatus.ok, <String, Object?>{'status': 'complete'});
+        return;
       }
       return await _json(request.response, HttpStatus.notFound, <String, Object?>{'error': 'not_found'});
     } on Object {
