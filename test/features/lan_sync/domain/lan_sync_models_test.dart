@@ -1,4 +1,4 @@
-/// 局域网同步 v2 领域模型测试。
+/// 局域网同步领域模型测试。
 ///
 /// 职责：
 /// - 验证 manifest 与插件 artifact 格式的严格 JSON 往返。
@@ -55,6 +55,75 @@ void main() {
     expect(decoded.shelfItems.single.identity, 'source.example\u001fbook-1');
     expect(decoded.shelfItems.single.progress?.chapterIndex, 1);
     expect(decoded.skippedShelfItems, 1);
+  });
+
+  test('paired task schema separates bookshelf metadata from reading progress', () {
+    final progress = LanSyncReadingProgress(
+      chapterId: 'chapter-2',
+      paragraphId: 'paragraph-4',
+      characterOffset: 12,
+      chapterIndex: 1,
+      chapterFraction: 0.4,
+      bookFraction: 0.2,
+      updatedAtUtc: DateTime.utc(2026, 8, 25),
+      totalReadingSeconds: 80,
+    );
+    final manifest = LanSyncManifest(
+      plugins: const <LanSyncPluginDescriptor>[],
+      shelfItems: <LanSyncShelfItem>[
+        LanSyncShelfItem(
+          pluginId: 'source.example',
+          pluginVersion: '1.2.3',
+          remoteContentId: 'book-1',
+          contentKind: 'novel',
+          title: '测试书籍',
+          coverUrl: 'https://example.invalid/cover.jpg',
+          progress: progress,
+        ),
+      ],
+      skippedShelfItems: 0,
+    );
+
+    final wire = manifest.toPairedTasksJson();
+    final bookshelf = wire['bookshelf']! as Map<String, Object?>;
+    final shelfItem = (bookshelf['items']! as List<Object?>).single as Map<String, Object?>;
+    final progressTask = (wire['progress']! as List<Object?>).single as Map<String, Object?>;
+    final decoded = LanSyncManifest.fromPairedTasksJson(wire);
+
+    expect(wire['schemaVersion'], 3);
+    expect(shelfItem, isNot(contains('progress')));
+    expect(shelfItem, isNot(contains('catalog')));
+    expect(shelfItem, isNot(contains('content')));
+    expect(shelfItem, isNot(contains('coverBytes')));
+    expect(progressTask.keys, containsAll(<String>['pluginId', 'remoteContentId', 'value']));
+    expect(decoded.shelfItems.single.progress?.chapterId, progress.chapterId);
+  });
+
+  test('paired task schema rejects progress without matching bookshelf metadata', () {
+    expect(
+      () => LanSyncManifest.fromPairedTasksJson(<String, Object?>{
+        'schemaVersion': 3,
+        'plugins': <Object?>[],
+        'bookshelf': <String, Object?>{'items': <Object?>[], 'skippedItems': 0},
+        'progress': <Object?>[
+          <String, Object?>{
+            'pluginId': 'source.example',
+            'remoteContentId': 'missing-book',
+            'value': <String, Object?>{
+              'chapterId': 'chapter-1',
+              'paragraphId': 'p1',
+              'characterOffset': 0,
+              'chapterIndex': 0,
+              'chapterFraction': 0,
+              'bookFraction': 0,
+              'updatedAtUtc': '2026-08-25T00:00:00Z',
+              'totalReadingSeconds': 0,
+            },
+          },
+        ],
+      }),
+      throwsFormatException,
+    );
   });
 
   test('rejects malformed hashes, inconsistent sizes and duplicate plugins', () {

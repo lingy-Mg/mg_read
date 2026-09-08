@@ -315,6 +315,18 @@ final class LanSyncShelfItem {
 
   String get identity => '$pluginId\u001f$remoteContentId';
 
+  LanSyncShelfItem withProgress(LanSyncReadingProgress? value) => LanSyncShelfItem(
+    pluginId: pluginId,
+    pluginVersion: pluginVersion,
+    remoteContentId: remoteContentId,
+    contentKind: contentKind,
+    title: title,
+    author: author,
+    coverUrl: coverUrl,
+    sourceName: sourceName,
+    progress: value,
+  );
+
   Map<String, Object?> toJson() => <String, Object?>{
     'pluginId': pluginId,
     'pluginVersion': pluginVersion,
@@ -370,6 +382,55 @@ final class LanSyncManifest {
     'shelfItems': <Object?>[for (final item in shelfItems) item.toJson()],
     'skippedShelfItems': skippedShelfItems,
   };
+
+  /// Paired HTTP sessions keep the small bookshelf-metadata and progress tasks
+  /// separate. Plugin descriptors are task offers; each selected artifact is
+  /// transferred independently by the transport.
+  Map<String, Object?> toPairedTasksJson() => <String, Object?>{
+    'schemaVersion': 3,
+    'plugins': <Object?>[for (final plugin in plugins) plugin.toJson()],
+    'bookshelf': <String, Object?>{
+      'items': <Object?>[for (final item in shelfItems) item.withProgress(null).toJson()],
+      'skippedItems': skippedShelfItems,
+    },
+    'progress': <Object?>[
+      for (final item in shelfItems)
+        if (item.progress case final progress?)
+          <String, Object?>{'pluginId': item.pluginId, 'remoteContentId': item.remoteContentId, 'value': progress.toJson()},
+    ],
+  };
+
+  factory LanSyncManifest.fromPairedTasksJson(Map<String, Object?> json) {
+    if (json['schemaVersion'] != 3) throw const FormatException('unsupported_manifest');
+    final rawBookshelf = _requiredMap(json['bookshelf']);
+    final rawItems = _requiredList(rawBookshelf['items']);
+    final rawProgress = _requiredList(json['progress']);
+    if (rawItems.length > lanSyncMaxShelfItemCount || rawProgress.length > lanSyncMaxShelfItemCount) {
+      throw const FormatException('manifest_limit_exceeded');
+    }
+    final metadata = <LanSyncShelfItem>[for (final raw in rawItems) LanSyncShelfItem.fromJson(_requiredMap(raw))];
+    final metadataByIdentity = <String, LanSyncShelfItem>{for (final item in metadata) item.identity: item};
+    if (metadata.any((item) => item.progress != null) || metadataByIdentity.length != metadata.length) {
+      throw const FormatException('invalid_bookshelf_task');
+    }
+    final progressByIdentity = <String, LanSyncReadingProgress>{};
+    for (final raw in rawProgress) {
+      final value = _requiredMap(raw);
+      final pluginId = _requiredString(value, 'pluginId', maxLength: 256);
+      final remoteContentId = _requiredString(value, 'remoteContentId', maxLength: 2048);
+      final identity = '$pluginId\u001f$remoteContentId';
+      if (!metadataByIdentity.containsKey(identity) || progressByIdentity.containsKey(identity)) {
+        throw const FormatException('invalid_progress_task');
+      }
+      progressByIdentity[identity] = LanSyncReadingProgress.fromJson(_requiredMap(value['value']));
+    }
+    return LanSyncManifest.fromJson(<String, Object?>{
+      'schemaVersion': 2,
+      'plugins': _requiredList(json['plugins']),
+      'shelfItems': <Object?>[for (final item in metadata) item.withProgress(progressByIdentity[item.identity]).toJson()],
+      'skippedShelfItems': _requiredInt(rawBookshelf, 'skippedItems', min: 0, max: lanSyncMaxShelfItemCount),
+    });
+  }
 
   factory LanSyncManifest.fromJson(Map<String, Object?> json) {
     if (json['schemaVersion'] != 2) {

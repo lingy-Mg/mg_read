@@ -1,7 +1,8 @@
 /// 已配对设备的 HTTP 发现、请求认证和双向同步。
 ///
-/// JSON 业务接口负责编排；插件通过独立 HTTP PUT/GET 传输，GET 支持标准
-/// Range/ETag/If-Range。逐设备配对密钥只用于 HMAC 请求与 UDP 唤醒认证。
+/// HTTP v4 业务接口把书架元信息、阅读进度和单插件制品建模为独立任务；插件任务
+/// 最多三个并发，GET 支持标准 Range/ETag/If-Range。逐设备配对密钥只用于 HMAC
+/// 请求与 UDP 唤醒认证。
 library;
 
 import 'dart:async';
@@ -24,7 +25,7 @@ import 'package:mg_read/features/lan_sync/domain/paired_device_models.dart';
 part 'paired_sync_wake.dart';
 part 'paired_sync_http_session.dart';
 
-const int pairedSyncProtocolVersion = 3;
+const int pairedSyncProtocolVersion = 4;
 const int pairedSyncDiscoveryPort = 47232;
 const Duration pairedSyncPeerLifetime = Duration(seconds: 8);
 const Duration _sessionLifetime = Duration(minutes: 10);
@@ -259,7 +260,7 @@ final class PairedSyncHost {
           !LanSyncHttpAuthentication.verify(request, sharedSecret: secret, acceptedNonces: _requestNonces)) {
         return await _respond(request.response, HttpStatus.unauthorized, <String, Object?>{'error': 'unauthorized'});
       }
-      if (request.method == 'GET' && request.uri.path == '/v3/identity') {
+      if (request.method == 'GET' && request.uri.path == '/v4/identity') {
         return await _respond(request.response, HttpStatus.ok, <String, Object?>{
           'protocolVersion': pairedSyncProtocolVersion,
           'deviceId': identity.deviceId,
@@ -267,7 +268,7 @@ final class PairedSyncHost {
         });
       }
       final segments = request.uri.pathSegments;
-      if (request.method == 'POST' && request.uri.path == '/v3/sessions') {
+      if (request.method == 'POST' && request.uri.path == '/v4/sessions') {
         if (_closed) {
           return await _respond(request.response, HttpStatus.serviceUnavailable, <String, Object?>{'error': 'host_stopping'});
         }
@@ -300,7 +301,7 @@ final class PairedSyncHost {
         final value = await exchange.negotiation.future;
         return await _respond(request.response, HttpStatus.ok, value);
       }
-      if (segments.length < 3 || segments[0] != 'v3' || segments[1] != 'sessions') {
+      if (segments.length < 3 || segments[0] != 'v4' || segments[1] != 'sessions') {
         return await _respond(request.response, HttpStatus.notFound, <String, Object?>{'error': 'not_found'});
       }
       final exchange = _sessions[segments[2]];
@@ -354,13 +355,21 @@ final class PairedSyncHost {
       return await _respond(request.response, HttpStatus.notFound, <String, Object?>{'error': 'not_found'});
     } on Object catch (error, stack) {
       try {
-        final failure = error is PairedSyncPeerFailureException ? error : null;
+        final id = request.uri.pathSegments.length > 2 ? request.uri.pathSegments[2] : null;
+        final exchange = id == null ? null : _sessions[id];
+        final failure = error is PairedSyncPeerFailureException
+            ? error
+            : PairedSyncPeerFailureException(
+                code: _sessionFailureCode(exchange?.stage ?? 'request', error),
+                stage: exchange?.stage ?? 'request',
+                errorText: _boundedError(error),
+              );
         await _respond(request.response, _httpStatus(error), <String, Object?>{
           'error': _errorCode(error),
           'detail': _boundedError(error),
-          if (failure != null) 'code': failure.code,
-          if (failure != null) 'stage': failure.stage,
-          if (failure != null) 'errorText': failure.errorText,
+          'code': failure.code,
+          'stage': failure.stage,
+          'errorText': failure.errorText,
         });
       } on Object {
         // The peer may have closed while the failure response was written.
@@ -412,7 +421,7 @@ final class PairedSyncClientSession {
         final client = createLanSyncHttpClient();
         final value = await _jsonRequest(
           client,
-          Uri.parse('http://${endpoint.address}:${endpoint.port}/v3/identity'),
+          Uri.parse('http://${endpoint.address}:${endpoint.port}/v4/identity'),
           'GET',
           null,
           identity.deviceId,
@@ -452,9 +461,14 @@ final class PairedSyncClientSession {
       enter('manifest_exchange');
       final negotiation = await _jsonRequest(
         _client,
-        _base.resolve('/v3/sessions'),
+        _base.resolve('/v4/sessions'),
         'POST',
-        <String, Object?>{'requestId': requestId, 'deviceLabel': _identity.label, ...policy.toJson(), 'manifest': localManifest.toJson()},
+        <String, Object?>{
+          'requestId': requestId,
+          'deviceLabel': _identity.label,
+          ...policy.toJson(),
+          'manifest': localManifest.toPairedTasksJson(),
+        },
         _identity.deviceId,
         _secret,
       );
@@ -471,7 +485,7 @@ final class PairedSyncClientSession {
       final remoteApplied = _AppliedSummary.fromJson(
         await _jsonRequest(
           _client,
-          _base.resolve('/v3/sessions/$sessionId/commit'),
+          _base.resolve('/v4/sessions/$sessionId/commit'),
           'POST',
           const <String, Object?>{},
           _identity.deviceId,
@@ -484,7 +498,7 @@ final class PairedSyncClientSession {
       enter('complete');
       await _jsonRequest(
         _client,
-        _base.resolve('/v3/sessions/$sessionId/finish'),
+        _base.resolve('/v4/sessions/$sessionId/finish'),
         'POST',
         received.toJson(),
         _identity.deviceId,
@@ -504,7 +518,7 @@ final class PairedSyncClientSession {
         try {
           await _jsonRequest(
             _client,
-            _base.resolve('/v3/sessions/$activeSessionId/fail'),
+            _base.resolve('/v4/sessions/$activeSessionId/fail'),
             'POST',
             <String, Object?>{'code': _sessionFailureCode(stage, error), 'stage': stage, 'errorText': _boundedError(error)},
             _identity.deviceId,
@@ -523,35 +537,39 @@ final class PairedSyncClientSession {
   }
 
   Future<void> _upload(LanSyncGateway gateway, LanSyncManifest manifest, _Selection selection, String sessionId) async {
-    final prepared = <LanSyncHttpArtifact>[];
-    for (final offer in manifest.plugins.where((item) => selection.pluginIds.contains(item.id))) {
-      final item = await _materialize(gateway, offer);
-      if (!_sameLogical(item.descriptor, offer)) throw const LanSyncTransportException('lan_sync_plugin_descriptor_invalid');
-      prepared.add(await LanSyncHttpArtifact.materialize(item.descriptor, item.bytes));
-    }
-    if (prepared.isNotEmpty) {
+    final offers = manifest.plugins.where((item) => selection.pluginIds.contains(item.id)).toList(growable: false);
+    final prepared = List<LanSyncHttpArtifact?>.filled(offers.length, null);
+    try {
+      await _runBoundedPluginTasks(offers.length, (index) async {
+        final offer = offers[index];
+        final item = await _materialize(gateway, offer);
+        if (!_sameLogical(item.descriptor, offer)) {
+          throw const LanSyncTransportException('lan_sync_plugin_descriptor_invalid');
+        }
+        prepared[index] = await LanSyncHttpArtifact.materialize(item.descriptor, item.bytes);
+      });
+      final artifacts = prepared.cast<LanSyncHttpArtifact>();
+      if (artifacts.isEmpty) return;
       await _jsonRequest(
         _client,
-        _base.resolve('/v3/sessions/$sessionId/prepare-uploads'),
+        _base.resolve('/v4/sessions/$sessionId/prepare-uploads'),
         'POST',
-        <String, Object?>{'plugins': prepared.map((item) => item.descriptor.toJson()).toList()},
+        <String, Object?>{'plugins': artifacts.map((item) => item.descriptor.toJson()).toList()},
         _identity.deviceId,
         _secret,
         allowEmpty: true,
       );
-    }
-    for (final artifact in prepared) {
-      try {
-        await _uploadArtifact(artifact, sessionId);
-      } finally {
-        await artifact.close();
+      await _runBoundedPluginTasks(artifacts.length, (index) => _uploadArtifact(artifacts[index], sessionId));
+    } finally {
+      for (final artifact in prepared) {
+        await artifact?.close();
       }
     }
   }
 
   Future<void> _uploadArtifact(LanSyncHttpArtifact artifact, String sessionId) async {
     final plugin = artifact.descriptor;
-    final uri = _base.resolve('/v3/sessions/$sessionId/artifacts/${Uri.encodeComponent(plugin.id)}');
+    final uri = _base.resolve('/v4/sessions/$sessionId/artifacts/${Uri.encodeComponent(plugin.id)}');
     Object? lastError;
     StackTrace? lastStackTrace;
     for (var attempt = 0; attempt < 3; attempt++) {
@@ -562,13 +580,15 @@ final class PairedSyncClientSession {
         request.headers.contentType = ContentType.binary;
         await request.addStream(artifact.openRead());
         final response = await request.close();
-        await response.drain<void>();
+        final responseBytes = await response.fold<List<int>>(<int>[], (buffer, chunk) => buffer..addAll(chunk));
         if (response.statusCode == HttpStatus.noContent) return;
         if (response.statusCode < HttpStatus.internalServerError) {
-          throw LanSyncTransportException('lan_sync_http_failed', reason: 'status_${response.statusCode}');
+          throw _httpFailure(response.statusCode, responseBytes);
         }
-        lastError = LanSyncTransportException('lan_sync_http_failed', reason: 'status_${response.statusCode}');
+        lastError = _httpFailure(response.statusCode, responseBytes);
         lastStackTrace = StackTrace.current;
+      } on PairedSyncPeerFailureException {
+        rethrow;
       } on LanSyncTransportException {
         rethrow;
       } on Object catch (error, stackTrace) {
@@ -580,11 +600,13 @@ final class PairedSyncClientSession {
   }
 
   Future<_AppliedSummary> _downloadAndApply(LanSyncGateway gateway, LanSyncManifest manifest, _ImportPlan plan, String sessionId) async {
-    final plugins = <LanSyncPluginDescriptor>[];
-    for (final offered in manifest.plugins.where((item) => plan.selection.pluginIds.contains(item.id))) {
+    final offered = manifest.plugins.where((item) => plan.selection.pluginIds.contains(item.id)).toList(growable: false);
+    final plugins = List<LanSyncPluginDescriptor?>.filled(offered.length, null);
+    await _runBoundedPluginTasks(offered.length, (index) async {
+      final offer = offered[index];
       final prepared = await _jsonRequest(
         _client,
-        _base.resolve('/v3/sessions/$sessionId/artifacts/${Uri.encodeComponent(offered.id)}/prepare'),
+        _base.resolve('/v4/sessions/$sessionId/artifacts/${Uri.encodeComponent(offer.id)}/prepare'),
         'POST',
         const <String, Object?>{},
         _identity.deviceId,
@@ -593,13 +615,17 @@ final class PairedSyncClientSession {
       final raw = prepared['plugin'];
       if (raw is! Map) throw const LanSyncTransportException('lan_sync_plugin_descriptor_invalid');
       final plugin = LanSyncPluginDescriptor.fromJson(raw.map<String, Object?>((key, value) => MapEntry(key as String, value)));
-      if (!_sameLogical(plugin, offered)) throw const LanSyncTransportException('lan_sync_plugin_version_changed');
-      plugins.add(plugin);
+      if (!_sameLogical(plugin, offer)) throw const LanSyncTransportException('lan_sync_plugin_version_changed');
+      plugins[index] = plugin;
+    });
+    final preparedPlugins = plugins.cast<LanSyncPluginDescriptor>();
+    if (preparedPlugins.isNotEmpty) {
+      await gateway.preparePluginImports(preparedPlugins, forceUpgradePluginIds: plan.selection.pluginIds);
     }
-    if (plugins.isNotEmpty) await gateway.preparePluginImports(plugins, forceUpgradePluginIds: plan.selection.pluginIds);
     try {
-      for (final plugin in plugins) {
-        final uri = _base.resolve('/v3/sessions/$sessionId/artifacts/${Uri.encodeComponent(plugin.id)}');
+      await _runBoundedPluginTasks(preparedPlugins.length, (index) async {
+        final plugin = preparedPlugins[index];
+        final uri = _base.resolve('/v4/sessions/$sessionId/artifacts/${Uri.encodeComponent(plugin.id)}');
         final stream = await const LanSyncHttpArtifactClient().download(
           uri,
           plugin,
@@ -608,7 +634,7 @@ final class PairedSyncClientSession {
               LanSyncHttpAuthentication.sign(request, deviceId: _identity.deviceId, sharedSecret: _secret, contentSha256: hash),
         );
         await gateway.importPluginArchive(plugin, stream);
-      }
+      });
       return await _finishApply(gateway, manifest, plan);
     } on Object {
       try {
@@ -651,7 +677,7 @@ final class PairedSyncServerSession {
       _exchange.negotiation.complete(<String, Object?>{
         'sessionId': _exchange.id,
         ...localPolicy.toJson(),
-        'manifest': localManifest.toJson(),
+        'manifest': localManifest.toPairedTasksJson(),
         'selection': plan.selection.toJson(),
       });
       if (plan.selection.pluginIds.isNotEmpty) {

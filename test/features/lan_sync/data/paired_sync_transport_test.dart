@@ -123,6 +123,109 @@ void main() {
     expect(hostSummary.receivedPlugins, 0);
   });
 
+  test('paired sync runs selected plugin artifacts as bounded parallel tasks', () async {
+    final addresses = await eligibleLanSyncAddresses();
+    if (addresses.isEmpty) return;
+    final secret = List<int>.generate(32, (index) => index + 41);
+    const serverIdentity = LocalDeviceIdentity(deviceId: 'desktop_parallel_12345', label: '开发电脑');
+    const clientIdentity = LocalDeviceIdentity(deviceId: 'phone_parallel_1234567', label: '手机');
+    const pluginIds = <String>['org.example.one', 'org.example.two', 'org.example.three', 'org.example.four'];
+    final serverGateway = _PluginGateway(offeredIds: pluginIds, requestedId: null, taskDelay: const Duration(milliseconds: 40));
+    final clientGateway = _PluginGateway(
+      offeredIds: const <String>[],
+      requestedId: null,
+      requestedIds: pluginIds.toSet(),
+      taskDelay: const Duration(milliseconds: 40),
+    );
+    final serverResult = Completer<PairedSyncRunSummary>();
+    final host = await PairedSyncHost.start(
+      identity: serverIdentity,
+      devices: _MemoryPairedDeviceRepository(_device(clientIdentity, PairedDevicePlatform.android)),
+      identityStore: _MemoryIdentityStore(serverIdentity, <String, List<int>>{clientIdentity.deviceId: secret}),
+      onIncoming: (session) async {
+        try {
+          serverResult.complete(await session.run(gateway: serverGateway));
+        } on Object catch (error, stackTrace) {
+          serverResult.completeError(error, stackTrace);
+        }
+      },
+    );
+    addTearDown(host.close);
+    final session = await PairedSyncClientSession.connectAny(
+      endpoints: <PairedSyncEndpoint>[
+        PairedSyncEndpoint(
+          address: addresses.first,
+          deviceId: serverIdentity.deviceId,
+          expiresAtUtc: DateTime.now().toUtc().add(const Duration(minutes: 1)),
+          label: serverIdentity.label,
+          port: host.port,
+        ),
+      ],
+      identity: clientIdentity,
+      peer: _device(serverIdentity, PairedDevicePlatform.windows),
+      sharedSecret: secret,
+    );
+
+    final summary = await session.run(gateway: clientGateway, operation: PairedSyncOperation.pull);
+    await serverResult.future;
+
+    expect(summary.receivedPlugins, pluginIds.length);
+    expect(serverGateway.maximumMaterializationTasks, 3);
+    expect(clientGateway.maximumImportTasks, 3);
+  });
+
+  test('artifact upload returns the receiver import failure instead of status 400', () async {
+    final addresses = await eligibleLanSyncAddresses();
+    if (addresses.isEmpty) return;
+    final secret = List<int>.generate(32, (index) => index + 51);
+    const serverIdentity = LocalDeviceIdentity(deviceId: 'desktop_upload_error_1', label: '开发电脑');
+    const clientIdentity = LocalDeviceIdentity(deviceId: 'phone_upload_error_123', label: '手机');
+    final serverGateway = _PluginGateway(offeredIds: const <String>[], requestedId: 'org.example.selected', rejectImport: true);
+    final clientGateway = _PluginGateway(offeredIds: const <String>['org.example.selected'], requestedId: null);
+    final serverResult = Completer<Object>();
+    final host = await PairedSyncHost.start(
+      identity: serverIdentity,
+      devices: _MemoryPairedDeviceRepository(_device(clientIdentity, PairedDevicePlatform.android)),
+      identityStore: _MemoryIdentityStore(serverIdentity, <String, List<int>>{clientIdentity.deviceId: secret}),
+      onIncoming: (session) async {
+        try {
+          serverResult.complete(await session.run(gateway: serverGateway));
+        } on Object catch (error) {
+          serverResult.complete(error);
+        }
+      },
+    );
+    addTearDown(host.close);
+    final session = await PairedSyncClientSession.connectAny(
+      endpoints: <PairedSyncEndpoint>[
+        PairedSyncEndpoint(
+          address: addresses.first,
+          deviceId: serverIdentity.deviceId,
+          expiresAtUtc: DateTime.now().toUtc().add(const Duration(minutes: 1)),
+          label: serverIdentity.label,
+          port: host.port,
+        ),
+      ],
+      identity: clientIdentity,
+      peer: _device(serverIdentity, PairedDevicePlatform.windows),
+      sharedSecret: secret,
+    );
+
+    await expectLater(
+      session.run(gateway: clientGateway, operation: PairedSyncOperation.push),
+      throwsA(
+        isA<PairedSyncPeerFailureException>()
+            .having((error) => error.code, 'code', 'lan_sync_receive_payload_plugin_import_rejected')
+            .having((error) => error.stage, 'stage', 'receive_payload')
+            .having((error) => error.errorText, 'errorText', contains('plugin_import_rejected')),
+      ),
+    );
+    expect(
+      await serverResult.future,
+      isA<PairedSyncPeerFailureException>().having((error) => error.code, 'code', 'lan_sync_receive_payload_plugin_import_rejected'),
+    );
+  });
+
   for (final rejectEarly in [true, false]) {
     test('paired import failure preserves its cause and allows retry (early=$rejectEarly)', () async {
       final addresses = await eligibleLanSyncAddresses();
@@ -759,15 +862,28 @@ final class _InvalidShelfGateway extends _ShelfGateway {
 }
 
 final class _PluginGateway implements LanSyncGateway, LanSyncPairedGateway {
-  _PluginGateway({required this.offeredIds, required this.requestedId, this.rejectImport = false, this.reportFailure = false});
+  _PluginGateway({
+    required this.offeredIds,
+    required this.requestedId,
+    Set<String>? requestedIds,
+    this.rejectImport = false,
+    this.reportFailure = false,
+    this.taskDelay = Duration.zero,
+  }) : requestedIds = requestedIds ?? <String>{?requestedId};
 
   bool rejectImport;
   bool reportFailure;
 
   final List<String> offeredIds;
   final String? requestedId;
+  final Set<String> requestedIds;
+  final Duration taskDelay;
   final List<String> materializedIds = <String>[];
   final List<String> importedIds = <String>[];
+  int activeMaterializationTasks = 0;
+  int maximumMaterializationTasks = 0;
+  int activeImportTasks = 0;
+  int maximumImportTasks = 0;
 
   @override
   Future<LanSyncManifest> createManifest() => createPairedManifest();
@@ -788,19 +904,28 @@ final class _PluginGateway implements LanSyncGateway, LanSyncPairedGateway {
 
   @override
   Future<LanSyncMaterializedPlugin> materializePluginArchive(LanSyncPluginDescriptor plugin) async {
-    materializedIds.add(plugin.id);
-    final descriptor = LanSyncPluginDescriptor(
-      id: plugin.id,
-      version: plugin.version,
-      bytes: 3,
-      artifactFormat: plugin.artifactFormat,
-      developmentFingerprint: plugin.developmentFingerprint,
-      developmentRevision: plugin.developmentRevision,
-      sha256: sha256.convert(const <int>[1, 2, 3]).toString(),
-      transferable: true,
-      provenance: plugin.provenance,
-    );
-    return LanSyncMaterializedPlugin(descriptor: descriptor, bytes: Stream<List<int>>.value(const <int>[1, 2, 3]));
+    activeMaterializationTasks++;
+    maximumMaterializationTasks = maximumMaterializationTasks < activeMaterializationTasks
+        ? activeMaterializationTasks
+        : maximumMaterializationTasks;
+    try {
+      if (taskDelay > Duration.zero) await Future<void>.delayed(taskDelay);
+      materializedIds.add(plugin.id);
+      final descriptor = LanSyncPluginDescriptor(
+        id: plugin.id,
+        version: plugin.version,
+        bytes: 3,
+        artifactFormat: plugin.artifactFormat,
+        developmentFingerprint: plugin.developmentFingerprint,
+        developmentRevision: plugin.developmentRevision,
+        sha256: sha256.convert(const <int>[1, 2, 3]).toString(),
+        transferable: true,
+        provenance: plugin.provenance,
+      );
+      return LanSyncMaterializedPlugin(descriptor: descriptor, bytes: Stream<List<int>>.value(const <int>[1, 2, 3]));
+    } finally {
+      activeMaterializationTasks--;
+    }
   }
 
   @override
@@ -811,7 +936,7 @@ final class _PluginGateway implements LanSyncGateway, LanSyncPairedGateway {
       blockedItemCount: 0,
       pluginPlans: <String, LanSyncPluginPlanState>{
         for (final plugin in manifest.plugins)
-          plugin.id: plugin.id == requestedId ? LanSyncPluginPlanState.missing : LanSyncPluginPlanState.sameVersion,
+          plugin.id: requestedIds.contains(plugin.id) ? LanSyncPluginPlanState.missing : LanSyncPluginPlanState.sameVersion,
       },
     );
   }
@@ -823,13 +948,20 @@ final class _PluginGateway implements LanSyncGateway, LanSyncPairedGateway {
 
   @override
   Future<void> importPluginArchive(LanSyncPluginDescriptor plugin, Stream<List<int>> bytes) async {
-    if (rejectImport) throw const LanSyncGatewayException('plugin_import_rejected');
-    final received = <int>[];
-    await for (final chunk in bytes) {
-      received.addAll(chunk);
+    activeImportTasks++;
+    maximumImportTasks = maximumImportTasks < activeImportTasks ? activeImportTasks : maximumImportTasks;
+    try {
+      if (rejectImport) throw const LanSyncGatewayException('plugin_import_rejected');
+      final received = <int>[];
+      await for (final chunk in bytes) {
+        received.addAll(chunk);
+      }
+      if (taskDelay > Duration.zero) await Future<void>.delayed(taskDelay);
+      expect(received, const <int>[1, 2, 3]);
+      importedIds.add(plugin.id);
+    } finally {
+      activeImportTasks--;
     }
-    expect(received, const <int>[1, 2, 3]);
-    importedIds.add(plugin.id);
   }
 
   @override

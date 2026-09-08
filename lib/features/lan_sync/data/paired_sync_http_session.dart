@@ -3,6 +3,8 @@
 /// 作为 paired_sync_transport.dart 的私有实现部分，不建立新的公开边界。
 part of 'paired_sync_transport.dart';
 
+const int _parallelPluginTaskLimit = 3;
+
 extension _CompleterCompletion<T> on Completer<T> {
   void completeIfPending([FutureOr<T>? value]) {
     if (!isCompleted) complete(value);
@@ -68,7 +70,7 @@ final class _HttpExchange {
     if (plugin == null ||
         !selected.contains(pluginId) ||
         request.headers.value(LanSyncHttpAuthentication.contentHashHeader) != plugin.sha256 ||
-        request.contentLength != plugin.bytes) {
+        (request.contentLength >= 0 && request.contentLength != plugin.bytes)) {
       throw const LanSyncTransportException('lan_sync_plugin_descriptor_invalid');
     }
     final artifact = await LanSyncHttpArtifact.materialize(plugin, request);
@@ -283,7 +285,7 @@ Future<_AppliedSummary> _finishApply(LanSyncGateway gateway, LanSyncManifest man
 LanSyncManifest _manifest(Object? raw) {
   if (raw is! Map) throw const LanSyncTransportException('lan_sync_manifest_invalid');
   try {
-    return LanSyncManifest.fromJson(raw.map<String, Object?>((key, value) => MapEntry(key as String, value)));
+    return LanSyncManifest.fromPairedTasksJson(raw.map<String, Object?>((key, value) => MapEntry(key as String, value)));
   } on FormatException catch (error) {
     throw LanSyncTransportException('lan_sync_manifest_invalid', reason: error.message.toString());
   }
@@ -328,26 +330,42 @@ Future<Map<String, Object?>> _jsonRequest(
   final response = await request.close();
   final responseBytes = await response.fold<List<int>>(<int>[], (buffer, chunk) => buffer..addAll(chunk));
   if (response.statusCode < 200 || response.statusCode >= 300) {
-    Map<String, Object?>? failure;
-    try {
-      final decoded = jsonDecode(utf8.decode(responseBytes));
-      if (decoded is Map) failure = decoded.map<String, Object?>((key, value) => MapEntry(key as String, value));
-    } on Object {
-      // Invalid peer error bodies are reduced to the HTTP status.
-    }
-    if (failure?['code'] is String && failure?['stage'] is String && failure?['errorText'] is String) {
-      throw PairedSyncPeerFailureException(
-        code: failure!['code']! as String,
-        stage: failure['stage']! as String,
-        errorText: failure['errorText']! as String,
-      );
-    }
-    throw LanSyncTransportException('lan_sync_http_failed', reason: failure?['detail']?.toString() ?? 'status_${response.statusCode}');
+    throw _httpFailure(response.statusCode, responseBytes);
   }
   if (responseBytes.isEmpty && allowEmpty) return <String, Object?>{};
   final decoded = jsonDecode(utf8.decode(responseBytes));
   if (decoded is! Map) throw const LanSyncTransportException('lan_sync_control_invalid');
   return decoded.map<String, Object?>((key, value) => MapEntry(key as String, value));
+}
+
+Exception _httpFailure(int statusCode, List<int> responseBytes) {
+  Map<String, Object?>? failure;
+  try {
+    final decoded = jsonDecode(utf8.decode(responseBytes));
+    if (decoded is Map) failure = decoded.map<String, Object?>((key, value) => MapEntry(key as String, value));
+  } on Object {
+    // Invalid peer error bodies are reduced to the HTTP status.
+  }
+  if (failure?['code'] is String && failure?['stage'] is String && failure?['errorText'] is String) {
+    return PairedSyncPeerFailureException(
+      code: failure!['code']! as String,
+      stage: failure['stage']! as String,
+      errorText: failure['errorText']! as String,
+    );
+  }
+  return LanSyncTransportException('lan_sync_http_failed', reason: failure?['detail']?.toString() ?? 'status_$statusCode');
+}
+
+Future<void> _runBoundedPluginTasks(int taskCount, Future<void> Function(int index) task) async {
+  var next = 0;
+  Future<void> worker() async {
+    while (next < taskCount) {
+      final index = next++;
+      await task(index);
+    }
+  }
+
+  await Future.wait(<Future<void>>[for (var index = 0; index < min(taskCount, _parallelPluginTaskLimit); index++) worker()]);
 }
 
 Future<void> _respond(HttpResponse response, int status, Map<String, Object?>? value) async {
