@@ -208,7 +208,7 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
       LanSyncPhase.previewing when state.preview != null => <Widget>[
         _PreviewSummary(state: state),
         const SizedBox(height: AppSpacing.regular),
-        _SyncContentSelection(
+        LanSyncContentSelection(
           manifest: state.manifest!,
           preview: state.preview!,
           onSelectAll: (selected) => ref.read(lanSyncControllerProvider.notifier).chooseAllContent(selected),
@@ -475,8 +475,11 @@ class _PreviewSummary extends StatelessWidget {
   }
 }
 
-class _SyncContentSelection extends StatelessWidget {
-  const _SyncContentSelection({
+/// 临时同步预览中的内容选择器。
+///
+/// 总选择和分组选择都按当前聚合状态切换：已全选时清空，未全选时补齐全选。
+class LanSyncContentSelection extends StatelessWidget {
+  const LanSyncContentSelection({
     required this.manifest,
     required this.preview,
     required this.onSelectAll,
@@ -484,6 +487,7 @@ class _SyncContentSelection extends StatelessWidget {
     required this.onSelectAllPlugins,
     required this.onPluginChanged,
     required this.onShelfItemChanged,
+    super.key,
   });
 
   final LanSyncManifest manifest;
@@ -524,7 +528,7 @@ class _SyncContentSelection extends StatelessWidget {
                   ? false
                   : null,
               tristate: true,
-              onChanged: (value) => onSelectAll(value != true),
+              onChanged: (_) => onSelectAll(!allSelected),
               title: Text('全选同步内容（$selectedCount/$totalCount）'),
               controlAffinity: ListTileControlAffinity.leading,
             ),
@@ -591,7 +595,7 @@ class _SelectionSectionTitle extends StatelessWidget {
   Widget build(BuildContext context) => CheckboxListTile(
     value: value,
     tristate: true,
-    onChanged: (next) => onChanged(next != true),
+    onChanged: (_) => onChanged(value != true),
     title: Text('$label（$selectedCount/$totalCount）', style: Theme.of(context).textTheme.labelLarge),
     controlAffinity: ListTileControlAffinity.leading,
     contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.regular),
