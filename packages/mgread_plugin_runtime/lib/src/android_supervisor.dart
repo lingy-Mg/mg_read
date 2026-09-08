@@ -32,14 +32,26 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
     final deadline = DateTime.now()
         .add(_androidStartupTimeout)
         .millisecondsSinceEpoch;
+    final requestId =
+        'dart-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-${++_invocationSequence}';
     try {
       final encoded = await _androidRuntimeChannel
           .invokeMethod<String>('invoke', <String, Object?>{
+            'requestId': requestId,
             'method': 'runtime.pluginHttpProxy.configure.v1',
             'params': <String, Object?>{'proxyUrl': proxyUri?.toString()},
             'deadlineUnixMs': deadline,
           })
-          .timeout(_androidStartupTimeout);
+          .timeout(
+            _androidStartupTimeout,
+            onTimeout: () {
+              _cancelInvocation(requestId);
+              throw TimeoutException(
+                'The Android Runtime proxy configuration timed out.',
+                _androidStartupTimeout,
+              );
+            },
+          );
       if (encoded == null) {
         throw const PluginRuntimeException(
           'runtime_no_response',

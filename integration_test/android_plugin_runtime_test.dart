@@ -28,6 +28,16 @@ import 'package:mg_read/features/reader/data/content_library_source_text_reader.
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
+  testWidgets('Android Runtime accepts the normal app proxy warmup call', (WidgetTester tester) async {
+    await tester.pump();
+    final runtime = PluginRuntime();
+    addTearDown(runtime.debugDispose);
+
+    await runtime.configurePluginHttpProxy(null);
+    final ping = await runtime.invoke(const RuntimePingInvocation());
+    expect(ping.isHealthy, isTrue);
+  });
+
   testWidgets('Android Runtime keeps the Debug listener alive until disabled', (WidgetTester tester) async {
     await tester.pump();
     final runtime = PluginRuntime();
