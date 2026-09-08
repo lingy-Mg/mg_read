@@ -223,6 +223,18 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                     }
                 }
             }
+            "cancelPluginTransferBatch" -> {
+                val ids = call.argument<List<String>>("ids")
+                if (ids.isNullOrEmpty()) {
+                    result.error("invalid_request", "The plugin transfer batch is invalid.", null)
+                    return
+                }
+                host.cancelPluginTransferBatch(ids) { error ->
+                    mainHandler.post {
+                        if (error == null) result.success(null) else result.error(error.code, error.message, null)
+                    }
+                }
+            }
             "dispose" -> {
                 host.dispose()
                 result.success(null)

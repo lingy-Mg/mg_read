@@ -414,6 +414,25 @@ internal class AndroidRuntimeHost(
         }
     }
 
+    fun cancelPluginTransferBatch(
+        ids: List<String>,
+        callback: (AndroidRuntimeError?) -> Unit,
+    ) {
+        handler.post {
+            try {
+                artifactTransfer.cancelImports(ids)
+                callback(null)
+            } catch (_: Throwable) {
+                callback(
+                    AndroidRuntimeError(
+                        "plugin_transfer_failed",
+                        "Android Runtime could not cancel plugin transfer.",
+                    ),
+                )
+            }
+        }
+    }
+
     fun dispose() {
         if (!disposed.compareAndSet(false, true)) return
         invocationCancellations.values.forEach { it.set(true) }

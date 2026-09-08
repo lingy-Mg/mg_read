@@ -1,13 +1,13 @@
 /**
  * Runtime 私有插件 artifact v2 传输管理器。
  *
- * 职责：索引双格式原始 artifact、规划版本同步、调用开发项目构建工具并签发一次性资源。
- * - 为局域网临时同步生成 devsync 版本，为用户主动打包保留项目声明版本。
+ * 职责：索引双格式原始 artifact、规划版本同步、持久化活动开发 generation 的制品并签发一次性资源。
+ * - 局域网同步只流式读取已发布的 devsync 制品；用户主动打包仍保留项目声明版本。
  * 注意：开发构建工具在唯一 Runtime VM 内动态导入；Runtime 信任其 artifact 结果，不重复解析；wire 不暴露路径、代码或图标字节。
  */
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -83,6 +83,7 @@ interface TransferEntry {
 
 export interface DevelopmentTransferProject {
   readonly fingerprint: string;
+  readonly generationRoot: string;
   readonly id: string;
   readonly packageMode: "archive" | "single-file";
   readonly projectRoot: string;
@@ -100,6 +101,28 @@ export class PluginArtifactTransferManager {
   constructor(dataRoot: string) {
     this.#dataRoot = resolve(dataRoot);
     this.#stagingRoot = resolve(this.#dataRoot, "temporary", "plugin-transfer", randomUUID());
+  }
+
+  /** Publishes or restores the one immutable artifact matching an active generation. */
+  async prepareDevelopment(project: DevelopmentTransferProject): Promise<void> {
+    const version = developmentVersion(
+      project.version,
+      project.syncRevision,
+      project.fingerprint,
+    );
+    const artifactKey = key(project.id, version);
+    if (this.#development.has(artifactKey)) return;
+    const cached = await this.#readDevelopmentCache(project, version);
+    if (cached !== undefined) {
+      this.#development.set(artifactKey, cached);
+      await this.#pruneDevelopmentCaches(project.id);
+      return;
+    }
+    await mkdir(this.#stagingRoot, { recursive: true });
+    const built = await this.#buildDevelopment(project, version, "development");
+    const retained = await this.#retainDevelopmentCache(project, built);
+    this.#development.set(artifactKey, retained);
+    await this.#pruneDevelopmentCaches(project.id);
   }
 
   async listOffers(
@@ -122,7 +145,10 @@ export class PluginArtifactTransferManager {
       }));
     }
     for (const project of development) {
-      if (!await hasDevelopmentBuildEntry(project)) continue;
+      if (!this.#development.has(key(
+        project.id,
+        developmentVersion(project.version, project.syncRevision, project.fingerprint),
+      ))) continue;
       output.push(Object.freeze({
         developmentFingerprint: project.fingerprint,
         developmentRevision: project.syncRevision,
@@ -157,20 +183,14 @@ export class PluginArtifactTransferManager {
         version,
       }));
     }
-    await mkdir(this.#stagingRoot, { recursive: true });
     for (const project of development) {
       const version = developmentVersion(
         project.version,
         project.syncRevision,
         project.fingerprint,
       );
-      try {
-        const entry = await this.#buildDevelopment(project, version, "development");
-        this.#development.set(key(project.id, version), entry);
-        output.push(entry.artifact);
-      } catch (error) {
-        if (!(error instanceof PluginArtifactTransferError)) throw error;
-      }
+      const entry = this.#development.get(key(project.id, version));
+      if (entry !== undefined) output.push(entry.artifact);
     }
     output.sort((left, right) => left.id.localeCompare(right.id));
     return Object.freeze(output);
@@ -244,9 +264,7 @@ export class PluginArtifactTransferManager {
     let entry = this.#development.get(key(id, version));
     if (entry === undefined && development !== undefined && development.id === id &&
         developmentVersion(development.version, development.syncRevision, development.fingerprint) === version) {
-      await mkdir(this.#stagingRoot, { recursive: true });
-      entry = await this.#buildDevelopment(development, version, "development");
-      this.#development.set(key(id, version), entry);
+      throw new PluginArtifactTransferError("plugin_transfer_artifact_missing");
     }
     if (entry === undefined) {
       const retained = await findRetainedArtifact(this.#dataRoot, id, version);
@@ -322,11 +340,16 @@ export class PluginArtifactTransferManager {
     const extension = format === "singleFile" ? ".mgplugin.js" : ".mgplugin";
     const path = resolve(this.#stagingRoot, `${project.id}-${randomUUID()}${extension}`);
     try {
-      const tool = await import(pathToFileURL(resolve(project.projectRoot, "tools", "mgread.mjs")).href) as Record<string, unknown>;
-      if (typeof tool.buildPluginArtifact !== "function") {
+      const toolUrl = pathToFileURL(resolve(project.projectRoot, "tools", "mgread.mjs"));
+      toolUrl.searchParams.set("developmentBuild", project.fingerprint);
+      const tool = await import(toolUrl.href) as Record<string, unknown>;
+      if (typeof tool.buildPluginArtifactForProject !== "function") {
         throw developmentBuildError(project, version, "build_export_missing");
       }
-      const built = await (tool.buildPluginArtifact as (input: { versionOverride: string }) => unknown)({ versionOverride: version });
+      const built = await (tool.buildPluginArtifactForProject as (
+        root: string,
+        input: { versionOverride: string },
+      ) => unknown)(project.generationRoot, { versionOverride: version });
       if (!isBuildResult(built)) {
         throw developmentBuildError(project, version, "build_result_invalid");
       }
@@ -360,6 +383,84 @@ export class PluginArtifactTransferManager {
       throw developmentBuildError(project, version, buildFailureReason(error));
     }
   }
+
+  async #readDevelopmentCache(
+    project: DevelopmentTransferProject,
+    version: string,
+  ): Promise<TransferEntry | undefined> {
+    const root = developmentCacheRoot(this.#dataRoot, project);
+    try {
+      const decoded = JSON.parse(await readFile(resolve(root, "metadata.json"), "utf8")) as unknown;
+      if (!isPluginTransferArtifact(decoded) || decoded.id !== project.id ||
+          decoded.version !== version || decoded.provenance !== "development" ||
+          decoded.developmentFingerprint !== project.fingerprint ||
+          decoded.developmentRevision !== project.syncRevision) return undefined;
+      const path = resolve(root, decoded.format === "singleFile" ? "artifact.mgplugin.js" : "artifact.mgplugin");
+      const metadata = await stat(path);
+      if (!metadata.isFile() || metadata.size !== decoded.bytes ||
+          await hashFile(path) !== decoded.sha256) return undefined;
+      return Object.freeze({ artifact: Object.freeze(decoded), expiresAt: Number.MAX_SAFE_INTEGER, path });
+    } catch {
+      return undefined;
+    }
+  }
+
+  async #retainDevelopmentCache(
+    project: DevelopmentTransferProject,
+    entry: TransferEntry,
+  ): Promise<TransferEntry> {
+    const target = developmentCacheRoot(this.#dataRoot, project);
+    const temporary = `${target}.next-${randomUUID()}`;
+    const fileName = entry.artifact.format === "singleFile"
+      ? "artifact.mgplugin.js"
+      : "artifact.mgplugin";
+    await mkdir(temporary, { recursive: true });
+    try {
+      await copyFile(entry.path, resolve(temporary, fileName));
+      await writeFile(
+        resolve(temporary, "metadata.json"),
+        `${JSON.stringify(entry.artifact)}\n`,
+        { flag: "wx", mode: 0o600 },
+      );
+      await rm(target, { force: true, recursive: true });
+      await mkdir(resolve(target, ".."), { recursive: true });
+      await rename(temporary, target);
+    } finally {
+      await rm(temporary, { force: true, recursive: true }).catch(() => {});
+      await rm(entry.path, { force: true }).catch(() => {});
+    }
+    return Object.freeze({
+      artifact: entry.artifact,
+      expiresAt: Number.MAX_SAFE_INTEGER,
+      path: resolve(target, fileName),
+    });
+  }
+
+  async #pruneDevelopmentCaches(pluginId: string): Promise<void> {
+    const root = resolve(this.#dataRoot, "development-artifacts", pluginId);
+    let entries;
+    try {
+      entries = await readdir(root, { withFileTypes: true });
+    } catch (error) {
+      if (isMissing(error)) return;
+      throw error;
+    }
+    const protectedRoots = new Set<string>([
+      ...[...this.#development.values()].map((entry) => resolve(entry.path, "..")),
+      ...[...this.#resources.values()].map((entry) => resolve(entry.path, "..")),
+    ]);
+    const candidates = await Promise.all(entries
+      .filter((entry) => entry.isDirectory())
+      .map(async (entry) => {
+        const path = resolve(root, entry.name);
+        return { modifiedAt: (await stat(path)).mtimeMs, path };
+      }));
+    candidates.sort((left, right) => right.modifiedAt - left.modifiedAt);
+    const retained = new Set(candidates.slice(0, 2).map((entry) => entry.path));
+    await Promise.all(candidates
+      .filter((entry) => !retained.has(entry.path) && !protectedRoots.has(entry.path))
+      .map((entry) => rm(entry.path, { force: true, recursive: true })));
+  }
 }
 
 function developmentBuildError(
@@ -389,15 +490,16 @@ function buildFailureReason(error: unknown): string {
   return "build_exception";
 }
 
-async function hasDevelopmentBuildEntry(
+function developmentCacheRoot(
+  dataRoot: string,
   project: DevelopmentTransferProject,
-): Promise<boolean> {
-  try {
-    return (await stat(resolve(project.projectRoot, "tools", "mgread.mjs"))).isFile();
-  } catch (error) {
-    if (isMissing(error)) return false;
-    throw error;
-  }
+): string {
+  return resolve(
+    dataRoot,
+    "development-artifacts",
+    project.id,
+    project.fingerprint,
+  );
 }
 
 export function validateArtifactBatch(artifacts: readonly PluginTransferArtifact[]): void {

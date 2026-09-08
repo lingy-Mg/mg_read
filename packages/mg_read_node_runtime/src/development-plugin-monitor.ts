@@ -104,6 +104,30 @@ export class DevelopmentPluginMonitor {
     this.#states.clear();
   }
 
+  /** Runs one explicitly requested catch-up build without publishing it. */
+  async buildNow(projectRoot: string): Promise<DevelopmentBuildResult> {
+    try {
+      const result = await this.#buildRunner(resolve(projectRoot));
+      return typeof result === "boolean"
+        ? {
+            exitCode: result ? 0 : 1,
+            signal: null,
+            stderr: "",
+            stdout: "",
+            success: result,
+          }
+        : result;
+    } catch (error) {
+      return {
+        exitCode: null,
+        signal: null,
+        stderr: error instanceof Error ? `${error.message}\n` : "",
+        stdout: "",
+        success: false,
+      };
+    }
+  }
+
   #onFileEvent(filename: string | Buffer | null): void {
     if (this.#closed) return;
     if (filename === null) {
@@ -258,7 +282,9 @@ function isRelevantDevelopmentPath(path: string): boolean {
     return false;
   }
   if (root === ".mgread-runtime" || root === ".dart_tool" || root === "build") return false;
-  return root === "src" || root === "dist" || root === "assets" || root === "packages";
+  return root === "src" || root === "dist" || root === "assets" ||
+    root === "packages" || root === "tools" ||
+    /^tsconfig(?:\.[A-Za-z0-9_-]+)?\.json$/.test(path) || path === "build.mjs";
 }
 
 /** Runs the declared build through the repository-pinned npm CLI and Node. */

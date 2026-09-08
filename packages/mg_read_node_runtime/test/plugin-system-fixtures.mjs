@@ -232,13 +232,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPluginArchive } from ${JSON.stringify(new URL("../dist/index.js", import.meta.url).href)};
-export async function buildPluginArtifact({ versionOverride }) {
+const projectRoot = fileURLToPath(new URL("..", import.meta.url));
+export async function buildPluginArtifactForProject(root, { versionOverride }) {
   const temp = await mkdtemp(join(tmpdir(), "mgread-dev-tool-"));
   const path = join(temp, "plugin.mgplugin");
   try {
-    await createPluginArchive(fileURLToPath(new URL("..", import.meta.url)), path, { versionOverride });
+    await createPluginArchive(root, path, { versionOverride });
     return { bytes: await readFile(path), fileName: "plugin.mgplugin", format: "archive" };
   } finally { await rm(temp, { force: true, recursive: true }); }
+}
+export function buildPluginArtifact(options) {
+  return buildPluginArtifactForProject(projectRoot, options);
 }
 `,
     ),

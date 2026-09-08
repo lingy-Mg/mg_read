@@ -67,6 +67,7 @@ Future<void> _writeSlowDevelopmentPlugin(Directory developmentRoot) async {
       'version': version,
       'type': 'module',
       'main': 'dist/index.mjs',
+      'scripts': <String, String>{'build': 'node -e ""'},
       'engines': <String, String>{'node': '>=24 <25'},
       'mgread': <String, Object?>{
         'schemaVersion': 1,
@@ -101,7 +102,7 @@ export function getContent(request) { return { contentKind: 'novel', chapterId: 
 ''');
   await File('${tools.path}${Platform.pathSeparator}mgread.mjs').writeAsString(
     '''
-export async function buildPluginArtifact({ versionOverride } = {}) {
+export async function buildPluginArtifactForProject(_root, { versionOverride } = {}) {
   await new Promise((resolve) => setTimeout(resolve, 5500));
   const version = versionOverride ?? '0.1.0';
   return {
@@ -109,6 +110,9 @@ export async function buildPluginArtifact({ versionOverride } = {}) {
     fileName: `org.example.slow-export-\${version}.mgplugin.js`,
     format: 'singleFile',
   };
+}
+export function buildPluginArtifact(options = {}) {
+  return buildPluginArtifactForProject('.', options);
 }
 ''',
   );

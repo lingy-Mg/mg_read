@@ -199,7 +199,9 @@ export interface LoadedPlugin {
 /** A validated development project that has not entered the shared VM yet. */
 export interface DevelopmentPluginCandidate {
   readonly descriptor: PluginPackageDescriptor;
+  readonly requiresBuild: boolean;
   readonly projectRoot: string;
+  readonly sourceFingerprint: string;
 }
 
 export interface DevelopmentPlugin {

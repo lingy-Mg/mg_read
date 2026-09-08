@@ -523,7 +523,7 @@ test("Runtime calls reuse the current development snapshot without rescanning di
   );
 });
 
-test("development transfer trusts the package tool artifact without Runtime revalidation", async (t) => {
+test("development transfer prepares once from the active generation and reuses it", async (t) => {
   const root = await temporaryDirectory(t, "mgread-trusted-development-artifact-");
   const dataRoot = join(root, "runtime-data");
   const developmentRoot = join(root, "sources");
@@ -533,7 +533,7 @@ test("development transfer trusts the package tool artifact without Runtime reva
   await writeFile(
     join(projectRoot, "tools", "mgread.mjs"),
     `import { writeFile } from "node:fs/promises";
-export async function buildPluginArtifact({ versionOverride }) {
+export async function buildPluginArtifactForProject(_root, { versionOverride }) {
   await writeFile(${JSON.stringify(buildMarker)}, "built");
   return {
     bytes: Uint8Array.from([0x74, 0x72, 0x75, 0x73, 0x74, 0x65, 0x64]),
@@ -541,6 +541,9 @@ export async function buildPluginArtifact({ versionOverride }) {
     format: "archive",
     versionOverride,
   };
+}
+export function buildPluginArtifact(options) {
+  return buildPluginArtifactForProject(".", options);
 }
 `,
   );
@@ -553,7 +556,8 @@ export async function buildPluginArtifact({ versionOverride }) {
   assert.deepEqual(offers.map(({ id, format }) => ({ id, format })), [
     { id: "org.example.live-source", format: "archive" },
   ]);
-  await assert.rejects(readFile(buildMarker), (error) => error?.code === "ENOENT");
+  assert.equal(await readFile(buildMarker, "utf8"), "built");
+  const preparedAt = (await stat(buildMarker)).mtimeMs;
 
   const materialized = await manager.createPluginTransferResource(
     offers[0].id,
@@ -563,6 +567,17 @@ export async function buildPluginArtifact({ versionOverride }) {
     { id: "org.example.live-source", format: "archive", bytes: 7 },
   ]);
   assert.equal(await readFile(buildMarker, "utf8"), "built");
+  assert.equal((await stat(buildMarker)).mtimeMs, preparedAt);
+
+  await manager.close();
+  const restarted = new PluginManager(dataRoot, {
+    developmentPluginRoot: developmentRoot,
+  });
+  t.after(() => restarted.close());
+  const restartedOffers = await restarted.listPluginTransferOffers();
+  assert.equal(restartedOffers.length, 1);
+  assert.equal(restartedOffers[0].version, offers[0].version);
+  assert.equal((await stat(buildMarker)).mtimeMs, preparedAt);
 });
 
 test("development transfer omits a missing builder offer and reports a safe build reason", async (t) => {

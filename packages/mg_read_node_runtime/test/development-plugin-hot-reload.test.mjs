@@ -81,7 +81,8 @@ async function createProject(projectRoot, pluginId, prefix) {
     writeFile(join(projectRoot, "dist", "index.mjs"), source(prefix)),
     writeFile(
       join(projectRoot, "tools", "mgread.mjs"),
-      "export function buildPluginArtifact({ versionOverride }) { return { bytes: new TextEncoder().encode(versionOverride), fileName: 'fixture.mgplugin.js', format: 'singleFile' }; }\n",
+      "export function buildPluginArtifactForProject(_root, { versionOverride }) { return { bytes: new TextEncoder().encode(versionOverride), fileName: 'fixture.mgplugin.js', format: 'singleFile' }; }\n" +
+        "export function buildPluginArtifact(options) { return buildPluginArtifactForProject('.', options); }\n",
     ),
   ]);
 }
@@ -168,5 +169,37 @@ test(
     ["org.example.watched"],
   );
   assert.equal(JSON.stringify(events).includes(root), false);
+  },
+);
+
+test(
+  "cold start rebuilds only a development project edited while the App was closed",
+  { skip: process.platform !== "win32" && process.platform !== "darwin" },
+  async (t) => {
+    const root = await temporaryDirectory(t, "mgread-development-cold-catch-up-");
+    const dataRoot = join(root, "runtime-data");
+    const developmentRoot = join(root, "sources");
+    const projectRoot = join(developmentRoot, "cold-source");
+    await createProject(projectRoot, "org.example.cold-source", "第一版");
+
+    const first = new PluginManager(dataRoot, {
+      developmentPluginRoot: developmentRoot,
+      developmentNpmCli: npmCli,
+    });
+    const firstOffer = (await first.listPluginTransferOffers())[0];
+    assert.equal((await search(first, "org.example.cold-source")).items[0].title, "第一版：测试");
+    await first.close();
+
+    await writeFile(join(projectRoot, "src", "index.mjs"), source("停机修改"));
+    const restarted = new PluginManager(dataRoot, {
+      developmentPluginRoot: developmentRoot,
+      developmentNpmCli: npmCli,
+    });
+    t.after(() => restarted.close());
+    const restartedOffer = (await restarted.listPluginTransferOffers())[0];
+
+    assert.equal((await search(restarted, "org.example.cold-source")).items[0].title, "停机修改：测试");
+    assert.notEqual(restartedOffer.developmentFingerprint, firstOffer.developmentFingerprint);
+    assert.ok(restartedOffer.developmentRevision > firstOffer.developmentRevision);
   },
 );

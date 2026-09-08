@@ -55,7 +55,7 @@ import {
 import { PluginInstaller } from "./plugin-installer.js";
 import { PluginIconResources } from "./plugin-icon-resources.js";
 import { measureInstallationTree, retainedArtifactPath } from "./plugin-installation-usage.js";
-import { createDevelopmentPackageArtifactResource, listExportablePluginArtifacts, listPluginTransferOffers, toDevelopmentTransferProject } from "./plugin-manager-artifact-transfer.js";
+import { createDevelopmentPackageArtifactResource, listExportablePluginArtifacts, listPluginTransferOffers, prepareActiveDevelopmentArtifact, toDevelopmentTransferProject } from "./plugin-manager-artifact-transfer.js";
 import { PluginArtifactTransferManager, type PluginTransferArtifact, type PluginTransferOffer, type PluginTransferPlanItem, type PluginTransferResource } from "./plugin-artifact-transfer.js";
 import {
   type PluginChapterContent,
@@ -741,7 +741,7 @@ export class PluginManager {
     projectRoot: string,
     descriptor: PluginPackageDescriptor,
   ): Promise<DevelopmentPlugin> {
-    return loadDevelopmentPlugin({
+    return prepareActiveDevelopmentArtifact(this.#pluginTransfer, await loadDevelopmentPlugin({
       createContext: (candidate) => this.#createContext(candidate),
       dataRoot: this.#dataRoot,
       descriptor,
@@ -749,7 +749,7 @@ export class PluginManager {
       loadModule: (entryPath) => this.#loadModule(entryPath),
       activationTimeoutMs: this.#pluginActivationTimeoutMs,
       projectRoot,
-    });
+    }));
   }
 
   #combinedSnapshots(): readonly InstalledPluginSnapshot[] {

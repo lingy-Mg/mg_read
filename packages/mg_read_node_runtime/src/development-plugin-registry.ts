@@ -15,6 +15,10 @@ import { resolve } from "node:path";
 
 import { DevelopmentPluginMonitor, type DevelopmentBuildResult } from "./development-plugin-monitor.js";
 import {
+  commitDevelopmentSourceFingerprint,
+  inspectDevelopmentSourceState,
+} from "./development-build-state.js";
+import {
   DevelopmentGenerationLifetime,
   developmentPluginProjectIdentity,
 } from "./development-plugin-runtime.js";
@@ -134,9 +138,16 @@ export class DevelopmentPluginRegistry {
       try {
         const project = await readPluginProject(projectRoot);
         if (this.has(project.descriptor.id)) continue;
+        const sourceState = await inspectDevelopmentSourceState(
+          this.#dataRoot,
+          project.descriptor.id,
+          projectRoot,
+        );
         this.#candidates.set(project.descriptor.id, Object.freeze({
           descriptor: project.descriptor,
+          requiresBuild: this.#monitor !== undefined && sourceState.requiresBuild,
           projectRoot,
+          sourceFingerprint: sourceState.fingerprint,
         }));
       } catch {
         // One invalid development project must not block unrelated sources.
@@ -174,9 +185,38 @@ export class DevelopmentPluginRegistry {
       const candidate = this.#candidates.get(pluginId);
       if (candidate === undefined) throw new PluginManagerError("plugin_not_found");
       try {
-        const development = await this.#load(candidate.projectRoot, candidate.descriptor);
+        let descriptor = candidate.descriptor;
+        let sourceFingerprint = candidate.sourceFingerprint;
+        if (candidate.requiresBuild) {
+          const result = await this.#monitor!.buildNow(candidate.projectRoot);
+          if (!result.success) {
+            await this.#reportBuildFailure(candidate.projectRoot, result);
+            throw new PluginManagerError("plugin_load_failed");
+          }
+          descriptor = (await readPluginProject(candidate.projectRoot)).descriptor;
+          sourceFingerprint = (await inspectDevelopmentSourceState(
+            this.#dataRoot,
+            descriptor.id,
+            candidate.projectRoot,
+          )).fingerprint;
+        }
+        const development = await this.#load(candidate.projectRoot, descriptor);
+        const finalFingerprint = (await inspectDevelopmentSourceState(
+          this.#dataRoot,
+          descriptor.id,
+          candidate.projectRoot,
+        )).fingerprint;
+        if (finalFingerprint !== sourceFingerprint) {
+          this.#lifetime.retire(development);
+          throw new PluginManagerError("plugin_load_failed");
+        }
+        await commitDevelopmentSourceFingerprint(
+          this.#dataRoot,
+          descriptor.id,
+          finalFingerprint,
+        );
         this.#candidates.delete(pluginId);
-        this.#loaded.set(pluginId, development);
+        this.#loaded.set(descriptor.id, development);
         this.#rebuildSnapshots();
         return development;
       } catch (error) {
@@ -221,7 +261,26 @@ export class DevelopmentPluginRegistry {
       ) {
         throw new PluginManagerError("plugin_load_failed");
       }
+      const sourceFingerprint = (await inspectDevelopmentSourceState(
+        this.#dataRoot,
+        descriptor.id,
+        projectRoot,
+      )).fingerprint;
       const development = await this.#load(projectRoot, descriptor);
+      const finalFingerprint = (await inspectDevelopmentSourceState(
+        this.#dataRoot,
+        descriptor.id,
+        projectRoot,
+      )).fingerprint;
+      if (sourceFingerprint !== finalFingerprint) {
+        this.#lifetime.retire(development);
+        throw new PluginManagerError("plugin_load_failed");
+      }
+      await commitDevelopmentSourceFingerprint(
+        this.#dataRoot,
+        descriptor.id,
+        finalFingerprint,
+      );
       const previousId = previousLoaded?.loaded.descriptor.id ?? previousCandidate?.descriptor.id;
       if (previousLoaded !== undefined) {
         this.#loaded.delete(previousLoaded.loaded.descriptor.id);
@@ -255,6 +314,18 @@ export class DevelopmentPluginRegistry {
           : { pluginId: descriptor.id, pluginName: descriptor.displayName }),
       });
     }
+  }
+
+  async #reportBuildFailure(
+    projectRoot: string,
+    result: DevelopmentBuildResult,
+  ): Promise<void> {
+    this.#events({
+      code: "development_plugin_build_failed",
+      outcome: "error",
+      ...await developmentPluginProjectIdentity(this.#loaded, projectRoot),
+      buildOutput: formatDevelopmentBuildOutput(result),
+    });
   }
 
   #remove(projectRoot: string): void {

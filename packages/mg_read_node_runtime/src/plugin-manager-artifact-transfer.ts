@@ -4,7 +4,10 @@
  * 职责：把已加载 development 项目投影为受限 artifact 构建输入，并生成声明版本的本地发布包资源。
  * 注意：本模块不读写工作区，也不暴露路径；artifact 数据继续停留在 Runtime 私有传输管理器。
  */
+import { rm } from "node:fs/promises";
+
 import {
+  PluginArtifactTransferError,
   PluginArtifactTransferManager,
   type DevelopmentTransferProject,
   type PluginTransferArtifact,
@@ -42,12 +45,28 @@ export function toDevelopmentTransferProject(
 ): DevelopmentTransferProject {
   return {
     fingerprint: plugin.fingerprint,
+    generationRoot: plugin.generationRoot,
     id: plugin.loaded.descriptor.id,
     packageMode: plugin.loaded.descriptor.packageMode,
     projectRoot: plugin.projectRoot,
     syncRevision: plugin.syncRevision,
     version: plugin.loaded.descriptor.version,
   };
+}
+
+/** Publishes the active generation's cached artifact without blocking local use on an unsupported packer. */
+export async function prepareActiveDevelopmentArtifact(
+  transfer: PluginArtifactTransferManager,
+  development: DevelopmentPlugin,
+): Promise<DevelopmentPlugin> {
+  try {
+    await transfer.prepareDevelopment(toDevelopmentTransferProject(development));
+    return development;
+  } catch (error) {
+    if (error instanceof PluginArtifactTransferError) return development;
+    await rm(development.generationRoot, { force: true, recursive: true }).catch(() => {});
+    throw error;
+  }
 }
 
 export async function createDevelopmentPackageArtifactResource(

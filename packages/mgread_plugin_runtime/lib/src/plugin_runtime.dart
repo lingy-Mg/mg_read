@@ -230,7 +230,10 @@ final class PluginRuntime {
     PluginTransferOffer offer,
   ) => _supervisor.materializePluginArtifact(offer);
 
-  /// Accepts a byte-bounded batch and performs one Runtime cold activation.
+  /// Accepts a byte-bounded batch and performs bounded Runtime cold activations.
+  ///
+  /// Android divides large selections into native-safe sub-batches; callers
+  /// still receive one ordered result list for the complete selection.
   Future<List<PluginTransferImportResult>> importPluginArtifacts(
     List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>
     artifacts, {
