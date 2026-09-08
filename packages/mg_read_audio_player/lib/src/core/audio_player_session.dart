@@ -2,11 +2,13 @@
 ///
 /// Responsibilities:
 /// - Load, autoplay and extend a queue, restore semantic position and bind commands.
+/// - Preserve explicit play/pause intent across bounded recovery and cancellation.
 /// - Reject stale async results and serialize backend initialization and saves.
 /// - Flush progress on pause, track change, lifecycle, exit and close.
 ///
 /// Notes:
 /// - Background audio services are host-owned and are not started here.
+/// - Backend playing/buffering/completed state never replaces user intent.
 /// - Position streams are throttled before persistence; UI remains immediate.
 /// - Route teardown releases transport resources before awaiting slow storage.
 library;
@@ -18,6 +20,8 @@ import 'package:flutter/foundation.dart';
 import '../api/audio_contracts.dart';
 import '../api/audio_controller.dart';
 import '../api/audio_models.dart';
+
+part 'audio_player_session_recovery.dart';
 
 final class AudioPlayerSession extends ChangeNotifier {
   AudioPlayerSession({
@@ -32,10 +36,20 @@ final class AudioPlayerSession extends ChangeNotifier {
     this.prefetchThreshold = 1,
     this.prefetchBatchSize = 3,
     this.prefetchLeadTime,
+    this.recoveryStallTimeout = const Duration(seconds: 8),
+    this.recoveryBackoff = const <Duration>[
+      Duration(seconds: 1),
+      Duration(seconds: 3),
+      Duration(seconds: 8),
+      Duration(seconds: 20),
+    ],
     DateTime Function()? clock,
   }) : assert(prefetchThreshold >= 0),
        assert(prefetchBatchSize > 0),
+       assert(recoveryStallTimeout > Duration.zero),
+       assert(recoveryBackoff.isNotEmpty),
        _clock = clock ?? DateTime.now,
+       _playbackDesired = autoplay,
        _snapshot = AudioPlayerSnapshot.initial() {
     controller.bind(
       owner: this,
@@ -51,7 +65,7 @@ final class AudioPlayerSession extends ChangeNotifier {
       setRate: setRate,
       setVolume: setVolume,
       setSleepTimer: setSleepTimer,
-      retry: initialize,
+      retry: retry,
       recover: recover,
       requestExit: requestExit,
     );
@@ -74,6 +88,8 @@ final class AudioPlayerSession extends ChangeNotifier {
   /// When set, source URLs are resolved only shortly before the current track
   /// ends instead of merely because it is near a loaded queue boundary.
   final Duration? prefetchLeadTime;
+  final Duration recoveryStallTimeout;
+  final List<Duration> recoveryBackoff;
   final DateTime Function() _clock;
 
   AudioPlayerSnapshot _snapshot;
@@ -82,6 +98,8 @@ final class AudioPlayerSession extends ChangeNotifier {
   _backendSubscription;
   Timer? _saveTimer;
   Timer? _sleepTimer;
+  Timer? _stallTimer;
+  Timer? _recoveryTimer;
   Future<void> _backendInitializationTail = Future<void>.value();
   Future<void> _saveTail = Future<void>.value();
   Future<void>? _closeFuture;
@@ -91,6 +109,10 @@ final class AudioPlayerSession extends ChangeNotifier {
   String? _lastPrefetchTriggerTrackId;
   String? _lastBackendErrorMessage;
   bool _continuationRecoveryPending = false;
+  bool _playbackDesired;
+  int _playbackIntentRevision = 0;
+  int _continuationRequestRevision = 0;
+  int _recoveryAttempt = 0;
   int _generation = 0;
   bool _backendSnapshotsEnabled = false;
   bool _closing = false;
@@ -103,8 +125,8 @@ final class AudioPlayerSession extends ChangeNotifier {
     final generation = ++_generation;
     _backendSnapshotsEnabled = false;
     _lastBackendErrorMessage = null;
-    _lastPrefetchTriggerTrackId = null;
-    _continuationRecoveryPending = false;
+    _cancelContinuationLoad(retry: false);
+    _cancelRecoveryTimers(resetAttempts: true);
     _playlist = null;
     _emit(
       AudioPlayerSnapshot(
@@ -122,12 +144,30 @@ final class AudioPlayerSession extends ChangeNotifier {
         stateStore.loadProgress(collectionId),
       ]);
       if (!_isCurrent(generation)) return;
-      final playlist = results[0]! as AudioPlaylist;
+      var playlist = results[0]! as AudioPlaylist;
       final loadedProgress = results[1] as AudioPlaybackProgress?;
       final progress = loadedProgress?.collectionId == collectionId
           ? loadedProgress
           : null;
       _validatePlaylist(playlist);
+      if (progress != null &&
+          !playlist.tracks.any((track) => track.id == progress.trackId) &&
+          dataSource is AudioPlaylistQueueDataSource &&
+          playlist.queueEntries.any(
+            (entry) => entry.id == progress.trackId && !entry.isLocked,
+          )) {
+        final restoredTrack = await (dataSource as AudioPlaylistQueueDataSource)
+            .loadTrackById(collectionId, trackId: progress.trackId);
+        if (!_isCurrent(generation)) return;
+        playlist = AudioPlaylist(
+          collectionId: playlist.collectionId,
+          title: playlist.title,
+          creator: playlist.creator,
+          tracks: <AudioTrack>[restoredTrack],
+          queueEntries: playlist.queueEntries,
+        );
+        _validatePlaylist(playlist);
+      }
       final initialIndex = progress == null
           ? 0
           : playlist.tracks.indexWhere((track) => track.id == progress.trackId);
@@ -159,13 +199,13 @@ final class AudioPlayerSession extends ChangeNotifier {
           // A restored timestamp must be applied before playback starts.
           // Otherwise the backend can publish an early zero position and the
           // first persistence tick may overwrite the durable timestamp.
-          play: autoplay && restoredPosition == Duration.zero,
+          play: _playbackDesired && restoredPosition == Duration.zero,
         );
         if (!_isCurrent(generation)) return;
         if (restoredPosition > Duration.zero) {
           await backend.seek(restoredPosition);
           if (!_isCurrent(generation)) return;
-          if (autoplay) await backend.play();
+          if (_playbackDesired) await backend.play();
         }
       });
       _backendInitializationTail = backendInitialization.then<void>(
@@ -202,10 +242,11 @@ final class AudioPlayerSession extends ChangeNotifier {
         location: error.location,
       );
     }
-    return const AudioPlayerFailure(
+    return AudioPlayerFailure(
       code: 'audio_initialization_failed',
       location: '播放器初始化',
       message: '播放准备失败。请重试；若仍失败，请在运行日志中查看音频资源事件。',
+      debugDetail: _boundedDebugDetail(error),
     );
   }
 
@@ -255,150 +296,7 @@ final class AudioPlayerSession extends ChangeNotifier {
     _prefetchIfNeeded(value.currentIndex, snapshot: _snapshot);
     if (value.playing) _scheduleThrottledSave();
     _handleBackendError(value.errorMessage);
-  }
-
-  void _prefetchIfNeeded(
-    int currentIndex, {
-    required AudioPlayerSnapshot snapshot,
-  }) {
-    final playlist = _playlist;
-    final dataSource = this.dataSource;
-    final leadTime = prefetchLeadTime;
-    final isPrefetchWindow = switch (leadTime) {
-      null =>
-        playlist != null &&
-            currentIndex + prefetchThreshold >= playlist.tracks.length - 1,
-      final Duration lead =>
-        playlist != null &&
-            currentIndex == playlist.tracks.length - 1 &&
-            snapshot.duration > Duration.zero &&
-            snapshot.duration - snapshot.position <= lead,
-    };
-    if (playlist == null ||
-        dataSource is! AudioPlaylistContinuationDataSource ||
-        !isPrefetchWindow ||
-        _prefetchRequest != null ||
-        _closing ||
-        _closed) {
-      return;
-    }
-    final triggerTrackId = playlist.tracks[currentIndex].id;
-    if (_lastPrefetchTriggerTrackId == triggerTrackId) return;
-    _lastPrefetchTriggerTrackId = triggerTrackId;
-    final generation = _generation;
-    final afterTrackId = playlist.tracks.last.id;
-    _prefetchRequest =
-        _loadFollowingTracks(
-          dataSource,
-          generation: generation,
-          afterTrackId: afterTrackId,
-        ).whenComplete(() {
-          _prefetchRequest = null;
-        });
-  }
-
-  Future<void> _loadFollowingTracks(
-    AudioPlaylistContinuationDataSource dataSource, {
-    required int generation,
-    required String afterTrackId,
-  }) async {
-    try {
-      final loaded = await dataSource.loadFollowingTracks(
-        collectionId,
-        afterTrackId: afterTrackId,
-        limit: prefetchBatchSize,
-      );
-      if (!_isCurrent(generation)) return;
-      _continuationRecoveryPending = false;
-      if (loaded.isEmpty) return;
-      final playlist = _playlist;
-      if (playlist == null || playlist.tracks.last.id != afterTrackId) return;
-      final knownIds = playlist.tracks.map((track) => track.id).toSet();
-      final additions = loaded
-          .where(
-            (track) =>
-                track.id.trim().isNotEmpty &&
-                track.resource.hasScheme &&
-                knownIds.add(track.id),
-          )
-          .toList(growable: false);
-      if (additions.isEmpty || !_isCurrent(generation)) return;
-      await backend.append(additions);
-      if (!_isCurrent(generation)) return;
-      _playlist = AudioPlaylist(
-        collectionId: playlist.collectionId,
-        title: playlist.title,
-        creator: playlist.creator,
-        tracks: <AudioTrack>[...playlist.tracks, ...additions],
-        queueEntries: playlist.queueEntries,
-      );
-      _applyReadySnapshot(backend.snapshot);
-    } catch (_) {
-      if (_isCurrent(generation)) _continuationRecoveryPending = true;
-      // The already buffered chapter remains playable. A later track change
-      // or an explicit lifecycle recovery retries this bounded prefetch.
-    }
-  }
-
-  /// Retries a failed active-session load without disturbing healthy audio.
-  ///
-  /// Foreground and screen-on signals may arrive together, so recovery is
-  /// single-flight. A failed queue continuation is retried and, if the old
-  /// track has already ended, playback advances after the new item is ready.
-  Future<void> recover() {
-    final active = _recoveryRequest;
-    if (active != null) return active;
-    final request = _recoverInterruptedPlayback();
-    _recoveryRequest = request;
-    return request.whenComplete(() {
-      if (identical(_recoveryRequest, request)) _recoveryRequest = null;
-    });
-  }
-
-  Future<void> _recoverInterruptedPlayback() async {
-    if (_closing || _closed) return;
-    final inFlightPrefetch = _prefetchRequest;
-    if (inFlightPrefetch != null) await inFlightPrefetch;
-    if (_closing || _closed) return;
-    if (_snapshot.status == AudioPlayerStatus.error ||
-        _snapshot.failure?.code == 'audio_backend_error') {
-      await initialize();
-      return;
-    }
-    final playlist = _playlist;
-    final source = dataSource;
-    if (!_continuationRecoveryPending ||
-        playlist == null ||
-        source is! AudioPlaylistContinuationDataSource) {
-      return;
-    }
-    final generation = _generation;
-    final previousTail = playlist.tracks.last.id;
-    final shouldResume =
-        !_snapshot.playing &&
-        _snapshot.currentIndex == playlist.tracks.length - 1 &&
-        _snapshot.duration > Duration.zero &&
-        _snapshot.duration - _snapshot.position <= const Duration(seconds: 2);
-    _lastPrefetchTriggerTrackId = null;
-    await _loadFollowingTracks(
-      source,
-      generation: generation,
-      afterTrackId: previousTail,
-    );
-    if (!_isCurrent(generation) || !shouldResume) return;
-    final recoveredPlaylist = _playlist;
-    if (recoveredPlaylist == null ||
-        recoveredPlaylist.tracks.last.id == previousTail) {
-      return;
-    }
-    try {
-      if (backend.snapshot.currentIndex == playlist.tracks.length - 1) {
-        await backend.next();
-      }
-      await backend.play();
-    } on Object {
-      _handleBackendError('continuation_resume_failed');
-    }
+    _observeRecoveryState(value);
   }
 
   void _handleBackendError(String? rawMessage) {
@@ -413,10 +311,11 @@ final class AudioPlayerSession extends ChangeNotifier {
     }
     if (message == _lastBackendErrorMessage) return;
     _lastBackendErrorMessage = message;
-    const failure = AudioPlayerFailure(
+    final failure = AudioPlayerFailure(
       code: 'audio_backend_error',
       location: '播放器读取音频资源',
       message: '播放遇到错误，请稍后重试。',
+      debugDetail: _boundedDebugDetail(message),
     );
     _emit(_snapshot.copyWith(failure: failure));
     unawaited(_notify(() => observer?.onFailure(failure)));
@@ -437,6 +336,7 @@ final class AudioPlayerSession extends ChangeNotifier {
         currentIndex: index,
         playing: value.playing,
         buffering: value.buffering,
+        completed: value.completed,
         position: _clampPosition(value.position, value.duration),
         duration: value.duration,
         rate: value.rate,
@@ -454,9 +354,22 @@ final class AudioPlayerSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> play() => _runTransport(backend.play);
+  Future<void> retry() {
+    _recordPlaybackIntent(true);
+    _cancelRecoveryTimers(resetAttempts: true);
+    return initialize();
+  }
+
+  Future<void> play() {
+    _recordPlaybackIntent(true);
+    _cancelRecoveryTimers(resetAttempts: true);
+    return _runTransport(backend.play);
+  }
 
   Future<void> pause() async {
+    _recordPlaybackIntent(false);
+    _cancelContinuationLoad(retry: false);
+    _cancelRecoveryTimers(resetAttempts: true);
     await _runTransport(backend.pause);
     await flushProgress();
   }
@@ -504,12 +417,14 @@ final class AudioPlayerSession extends ChangeNotifier {
     final loadedIndex = playlist.tracks.indexWhere(
       (track) => track.id == trackId,
     );
-    if (loadedIndex >= 0) {
+    if (loadedIndex >= 0 && !_trackNeedsRefresh(playlist.tracks[loadedIndex])) {
       await jump(loadedIndex);
       return;
     }
     final source = dataSource;
     if (source is! AudioPlaylistQueueDataSource) return;
+    _recordPlaybackIntent(true);
+    _cancelContinuationLoad(retry: true);
     final generation = ++_generation;
     await flushProgress();
     try {
@@ -537,15 +452,25 @@ final class AudioPlayerSession extends ChangeNotifier {
       _applyReadySnapshot(backend.snapshot);
       _prefetchIfNeeded(0, snapshot: _snapshot);
       await _notify(() => observer?.onTrackChanged(track));
-    } on Object {
+    } on Object catch (error) {
       if (!_isCurrent(generation)) return;
-      const failure = AudioPlayerFailure(
+      _backendSnapshotsEnabled = true;
+      _playlist = playlist;
+      if (backend.snapshot.currentIndex >= 0 &&
+          backend.snapshot.currentIndex < playlist.tracks.length) {
+        _applyReadySnapshot(backend.snapshot);
+      }
+      _lastPrefetchTriggerTrackId = null;
+      _continuationRecoveryPending = true;
+      final failure = AudioPlayerFailure(
         code: 'audio_selected_resource_unavailable',
         location: '所选章节的播放地址',
         message: '当前章节暂时无法播放，请稍后重试。',
+        debugDetail: _boundedDebugDetail(error),
       );
       _emit(_snapshot.copyWith(failure: failure));
       await _notify(() => observer?.onFailure(failure));
+      _scheduleRecoveryRetry();
     }
   }
 
@@ -588,11 +513,12 @@ final class AudioPlayerSession extends ChangeNotifier {
     }
     try {
       await action();
-    } catch (_) {
-      const failure = AudioPlayerFailure(
+    } on Object catch (error) {
+      final failure = AudioPlayerFailure(
         code: 'audio_transport_failed',
         location: '播放控制',
         message: '播放操作失败，请重试。',
+        debugDetail: _boundedDebugDetail(error),
       );
       _emit(_snapshot.copyWith(failure: failure));
       await _notify(() => observer?.onFailure(failure));
@@ -690,9 +616,11 @@ final class AudioPlayerSession extends ChangeNotifier {
     if (_closed) return;
     _closing = true;
     _generation++;
+    _recordPlaybackIntent(false);
     _backendSnapshotsEnabled = false;
     _lastBackendErrorMessage = null;
-    _continuationRecoveryPending = false;
+    _cancelContinuationLoad(retry: false);
+    _cancelRecoveryTimers(resetAttempts: true);
     _sleepTimer?.cancel();
     _saveTimer?.cancel();
     _sleepTimer = null;
@@ -724,5 +652,10 @@ final class AudioPlayerSession extends ChangeNotifier {
     if (value < Duration.zero) return Duration.zero;
     if (duration > Duration.zero && value > duration) return duration;
     return value;
+  }
+
+  String _boundedDebugDetail(Object error) {
+    final value = error.toString().trim();
+    return value.length <= 512 ? value : value.substring(0, 512);
   }
 }

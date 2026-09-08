@@ -1,6 +1,8 @@
 /// Android media-session projection tests without platform or network I/O.
 library;
 
+import 'dart:async';
+
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read_audio_player/mg_read_audio_player.dart';
@@ -38,13 +40,13 @@ void main() {
     addTearDown(controller.dispose);
     final handler = MgReadAudioHandler();
     var systemStopCalls = 0;
-    var feedbackCalls = 0;
+    final feedback = <AudioSystemCommandFeedback>[];
 
     await handler.attach(
       controller,
       synchronizeFocus: (_) async {},
       onSystemStop: () async => systemStopCalls++,
-      commandFeedback: () async => feedbackCalls++,
+      commandFeedback: (value) async => feedback.add(value),
     );
 
     expect(handler.queue.value.map((item) => item.id), <String>['chapter-1', 'chapter-2', 'chapter-3']);
@@ -66,13 +68,17 @@ void main() {
     expect(controller.previousCalls, 1);
     expect(controller.nextCalls, 1);
     expect(controller.selectedTrackIds, <String>['chapter-3']);
-    expect(feedbackCalls, 3);
+    expect(feedback, <AudioSystemCommandFeedback>[
+      AudioSystemCommandFeedback.accepted,
+      AudioSystemCommandFeedback.accepted,
+      AudioSystemCommandFeedback.accepted,
+    ]);
 
     await handler.stop();
 
     expect(controller.pauseCalls, 1);
     expect(systemStopCalls, 1);
-    expect(feedbackCalls, 4);
+    expect(feedback.last, AudioSystemCommandFeedback.accepted);
     expect(handler.queue.value, isEmpty);
     expect(handler.mediaItem.value, isNull);
   });
@@ -108,6 +114,72 @@ void main() {
 
     expect(controller.recoverCalls, 1);
   });
+
+  test('error play retries while loading and queue boundaries are rejected', () async {
+    final feedback = <AudioSystemCommandFeedback>[];
+    final controller = _RecordingAudioController(
+      AudioPlayerSnapshot(
+        status: AudioPlayerStatus.error,
+        queue: <AudioTrack>[AudioTrack(id: 'only', title: '唯一章节', resource: Uri.parse('https://example.test/only.mp3'))],
+      ),
+    );
+    addTearDown(controller.dispose);
+    final handler = MgReadAudioHandler();
+    await handler.attach(
+      controller,
+      synchronizeFocus: (_) async {},
+      onSystemStop: () async {},
+      commandFeedback: (value) async => feedback.add(value),
+    );
+
+    await handler.play();
+    controller.currentSnapshot = AudioPlayerSnapshot.initial();
+    await handler.play();
+    controller.currentSnapshot = AudioPlayerSnapshot(status: AudioPlayerStatus.ready, queue: controller.currentSnapshot.queue);
+    await handler.skipToNext();
+
+    expect(controller.retryCalls, 1);
+    expect(feedback, <AudioSystemCommandFeedback>[
+      AudioSystemCommandFeedback.accepted,
+      AudioSystemCommandFeedback.unavailable,
+      AudioSystemCommandFeedback.unavailable,
+    ]);
+  });
+
+  test('duplicate next commands do not issue duplicate resource requests', () async {
+    final gate = Completer<void>();
+    final feedback = <AudioSystemCommandFeedback>[];
+    final controller = _RecordingAudioController(
+      AudioPlayerSnapshot(
+        status: AudioPlayerStatus.ready,
+        queue: <AudioTrack>[AudioTrack(id: 'a', title: 'a', resource: Uri.parse('https://example.test/a.mp3'))],
+        queueEntries: const <AudioQueueEntry>[
+          AudioQueueEntry(id: 'a', title: 'a'),
+          AudioQueueEntry(id: 'b', title: 'b'),
+        ],
+      ),
+    )..nextGate = gate;
+    addTearDown(controller.dispose);
+    final handler = MgReadAudioHandler();
+    await handler.attach(
+      controller,
+      synchronizeFocus: (_) async {},
+      onSystemStop: () async {},
+      commandFeedback: (value) async => feedback.add(value),
+    );
+
+    final first = handler.skipToNext();
+    await Future<void>.delayed(Duration.zero);
+    await handler.skipToNext();
+    gate.complete();
+    await first;
+
+    expect(controller.nextCalls, 1);
+    expect(
+      feedback,
+      containsAll(<AudioSystemCommandFeedback>[AudioSystemCommandFeedback.accepted, AudioSystemCommandFeedback.unavailable]),
+    );
+  });
 }
 
 final class _RecordingAudioController extends AudioPlayerController {
@@ -118,6 +190,8 @@ final class _RecordingAudioController extends AudioPlayerController {
   int previousCalls = 0;
   int nextCalls = 0;
   int recoverCalls = 0;
+  int retryCalls = 0;
+  Completer<void>? nextGate;
   final List<String> selectedTrackIds = <String>[];
 
   @override
@@ -136,6 +210,12 @@ final class _RecordingAudioController extends AudioPlayerController {
   @override
   Future<void> next() async {
     nextCalls++;
+    await nextGate?.future;
+  }
+
+  @override
+  Future<void> retry() async {
+    retryCalls++;
   }
 
   @override

@@ -18,6 +18,14 @@ abstract interface class AudioPlayerDataSource {
   Future<AudioPlaylist> loadPlaylist(String collectionId);
 }
 
+/// Optional cancellation owned by a data source with expensive in-flight I/O.
+///
+/// The session calls this before a newer selection/recovery supersedes an old
+/// request and during close. Implementations must keep cancellation idempotent.
+abstract interface class AudioPlayerCancellationDataSource {
+  void cancelPendingLoads();
+}
+
 /// Optional incremental queue loader for long-running spoken-audio playlists.
 ///
 /// The player calls this before it reaches the tail of the currently loaded

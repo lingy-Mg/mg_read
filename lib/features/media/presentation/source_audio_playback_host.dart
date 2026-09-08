@@ -22,6 +22,7 @@ import 'package:mg_read_audio_player/mg_read_audio_player.dart';
 import 'package:mg_read/app/app_startup.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/media/application/android_audio_background_service.dart';
@@ -33,6 +34,8 @@ import 'package:mg_read/features/media/presentation/media_entry_cover.dart';
 import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
 import 'package:mg_read/features/network_proxy/application/network_proxy_settings.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
+
+part 'source_audio_playback_host_observer.dart';
 
 /// Owns a transparent local Navigator for playback above the app router.
 ///
@@ -242,6 +245,7 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
           onPresented: _presentPlayer,
           exitRequested: _handleExitRequested,
           sessionEnded: () => _coordinator.sessionEnded(widget.sessionId),
+          diagnostics: ref.read(appStartupControllerProvider).diagnostics,
         ),
       );
       if (!mounted || generation != _generation) {
@@ -706,32 +710,6 @@ final class _AudioPlayerSetup {
   final String initialTrackId;
   final Uri? proxyUri;
   final AudioPlayerObserver? observer;
-}
-
-final class _SourceAudioSessionObserver extends AudioPlayerObserver {
-  const _SourceAudioSessionObserver({required this.onPresented, required this.exitRequested, required this.sessionEnded});
-
-  final VoidCallback onPresented;
-  final Future<void> Function() exitRequested;
-  final VoidCallback sessionEnded;
-
-  @override
-  FutureOr<void> onSessionStarted(String collectionId) {
-    onPresented();
-  }
-
-  @override
-  FutureOr<void> onFailure(AudioPlayerFailure failure) {
-    onPresented();
-  }
-
-  @override
-  FutureOr<void> onExitRequested(AudioPlaybackProgress? progress) => exitRequested();
-
-  @override
-  FutureOr<void> onSessionEnded(String collectionId, AudioPlaybackProgress? progress) {
-    sessionEnded();
-  }
 }
 
 Widget _sourceAudioArtwork(BuildContext context, AudioTrack track, SourceAudioPlaybackRequest request) {

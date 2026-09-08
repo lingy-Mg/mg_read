@@ -27,6 +27,7 @@ void main() {
       addTearDown(controller.dispose);
 
       await session.initialize();
+      await controller.play();
       backend.emit(
         const AudioPlaybackBackendSnapshot(
           playing: true,
@@ -41,6 +42,7 @@ void main() {
         const AudioPlaybackBackendSnapshot(
           position: Duration(seconds: 100),
           duration: Duration(seconds: 100),
+          completed: true,
         ),
       );
       await session.handleLifecycle(AudioPlayerLifecycleState.resumed);
@@ -48,7 +50,7 @@ void main() {
       expect(source.followingCalls, 2);
       expect(backend.appendedIds, <String>['track-2']);
       expect(backend.nextCalls, 1);
-      expect(backend.playCalls, 1);
+      expect(backend.playCalls, 2);
       expect(controller.snapshot.currentTrack?.id, 'track-2');
       expect(controller.snapshot.playing, isTrue);
 
@@ -167,7 +169,7 @@ final class _RecoveryBackend implements AudioPlaybackBackend {
   @override
   Future<void> play() async {
     playCalls++;
-    emit(_snapshot.copyWith(playing: true));
+    emit(_snapshot.copyWith(playing: true, completed: false));
   }
 
   @override
@@ -191,7 +193,13 @@ final class _RecoveryBackend implements AudioPlaybackBackend {
   @override
   Future<void> next() async {
     nextCalls++;
-    emit(_snapshot.copyWith(currentIndex: 1, position: Duration.zero));
+    emit(
+      _snapshot.copyWith(
+        currentIndex: 1,
+        position: Duration.zero,
+        completed: false,
+      ),
+    );
   }
 
   @override

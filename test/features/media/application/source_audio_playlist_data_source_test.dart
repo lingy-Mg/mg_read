@@ -81,6 +81,22 @@ void main() {
     expect(gateway.contentCalls, <String>['chapter:free-3']);
   });
 
+  test('a transient failure stops the bounded batch without skipping ahead', () async {
+    final gateway = _AudioGateway(failingChapterId: 'chapter:free-2');
+    final source = SourceAudioPlaylistDataSource(
+      gateway: gateway,
+      pluginId: _pluginId,
+      initialDetail: _detail(),
+      initialCatalog: _catalog(),
+    );
+
+    await expectLater(
+      source.loadFollowingTracks('audio:book-1', afterTrackId: 'chapter:free-1', limit: 2),
+      throwsA(isA<AudioPlayerLoadException>().having((error) => error.code, 'code', 'audio_continuation_unavailable')),
+    );
+    expect(gateway.contentCalls, <String>['chapter:free-2']);
+  });
+
   test('distinguishes an unavailable next resource from the real queue end', () async {
     final source = SourceAudioPlaylistDataSource(
       gateway: _AudioGateway(failingChapterId: 'chapter:free-3'),
@@ -126,6 +142,42 @@ void main() {
     await Future.wait<Object>(<Future<Object>>[playlist, selected]);
     expect(gateway.detailCalls, 1);
     expect(gateway.catalogCalls, 1);
+  });
+
+  test('preserves refreshable resource lifetime metadata', () async {
+    final expiresAt = DateTime.utc(2030, 1, 2);
+    final source = SourceAudioPlaylistDataSource(
+      gateway: _AudioGateway(resourcePolicy: PluginMediaResourcePolicy.refreshable, expiresAt: expiresAt),
+      pluginId: _pluginId,
+      initialTrackId: 'chapter:free-2',
+      initialDetail: _detail(),
+      initialCatalog: _catalog(),
+    );
+
+    final track = (await source.loadPlaylist('audio:book-1')).tracks.single;
+
+    expect(track.resourcePolicy, AudioResourcePolicy.refreshable);
+    expect(track.expiresAt, expiresAt);
+  });
+
+  test('cancels the Runtime resource scope when the session supersedes it', () async {
+    final contentGate = Completer<void>();
+    final gateway = _AudioGateway(contentGate: contentGate);
+    final source = SourceAudioPlaylistDataSource(
+      gateway: gateway,
+      pluginId: _pluginId,
+      initialTrackId: 'chapter:free-2',
+      initialDetail: _detail(),
+      initialCatalog: _catalog(),
+    );
+    final request = source.loadPlaylist('audio:book-1');
+    await Future<void>.delayed(Duration.zero);
+
+    source.cancelPendingLoads();
+
+    expect(gateway.lastCancellation?.isCancelled, isTrue);
+    contentGate.complete();
+    await request;
   });
 }
 
@@ -181,11 +233,21 @@ PluginChapterSummary _chapter(String id, int order, {bool isLocked = false}) => 
   attributes: const <PluginContentAttribute>[],
 );
 
-final class _AudioGateway implements SourceContentGateway {
-  _AudioGateway({this.failingChapterId, this.catalogGate});
+final class _AudioGateway implements SourceContentGateway, CancellableSourceContentGateway {
+  _AudioGateway({
+    this.failingChapterId,
+    this.catalogGate,
+    this.contentGate,
+    this.resourcePolicy = PluginMediaResourcePolicy.sessionOnly,
+    this.expiresAt,
+  });
 
   final String? failingChapterId;
   final Completer<void>? catalogGate;
+  final Completer<void>? contentGate;
+  final PluginMediaResourcePolicy resourcePolicy;
+  final DateTime? expiresAt;
+  PluginInvocationCancellation? lastCancellation;
   final List<String> contentCalls = <String>[];
   int detailCalls = 0;
   int catalogCalls = 0;
@@ -194,6 +256,7 @@ final class _AudioGateway implements SourceContentGateway {
   Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) async {
     contentCalls.add(chapterId);
     if (chapterId == failingChapterId) throw StateError('fixture unavailable');
+    await contentGate?.future;
     return PluginChapterContent(
       pluginId: pluginId,
       sourceName: '示例音频源',
@@ -206,12 +269,18 @@ final class _AudioGateway implements SourceContentGateway {
       media: PluginMediaResource(
         url: Uri.parse('http://127.0.0.1/source-resource/$chapterId'),
         resourceType: PluginMediaResourceType.audio,
-        resourcePolicy: PluginMediaResourcePolicy.sessionOnly,
-        expiresAt: null,
+        resourcePolicy: resourcePolicy,
+        expiresAt: expiresAt,
         mimeType: 'audio/mpeg',
         headers: const <String, String>{},
       ),
     );
+  }
+
+  @override
+  Future<T> runCancellable<T>(PluginInvocationCancellation cancellation, Future<T> Function() request) {
+    lastCancellation = cancellation;
+    return request();
   }
 
   @override

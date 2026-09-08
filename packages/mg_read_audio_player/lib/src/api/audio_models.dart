@@ -13,6 +13,9 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
+/// Lifetime semantics for a host-resolved media URL.
+enum AudioResourcePolicy { sessionOnly, refreshable }
+
 /// One playable audio resource supplied by the host.
 @immutable
 final class AudioTrack {
@@ -23,8 +26,13 @@ final class AudioTrack {
     this.collectionTitle,
     this.creator,
     this.artwork,
+    this.resourcePolicy = AudioResourcePolicy.sessionOnly,
+    this.expiresAt,
     Map<String, String> httpHeaders = const <String, String>{},
-  }) : httpHeaders = UnmodifiableMapView<String, String>(
+  }) : assert(
+         resourcePolicy == AudioResourcePolicy.refreshable || expiresAt == null,
+       ),
+       httpHeaders = UnmodifiableMapView<String, String>(
          Map<String, String>.of(httpHeaders),
        );
 
@@ -34,6 +42,8 @@ final class AudioTrack {
   final String? creator;
   final Uri resource;
   final Uri? artwork;
+  final AudioResourcePolicy resourcePolicy;
+  final DateTime? expiresAt;
   final Map<String, String> httpHeaders;
 }
 
@@ -118,11 +128,13 @@ final class AudioPlayerFailure {
     required this.code,
     required this.message,
     required this.location,
+    this.debugDetail,
   });
 
   final String code;
   final String message;
   final String location;
+  final String? debugDetail;
 }
 
 /// A host-supplied failure that is safe to show in the audio player.
@@ -150,6 +162,7 @@ final class AudioPlaybackBackendSnapshot {
   const AudioPlaybackBackendSnapshot({
     this.playing = false,
     this.buffering = false,
+    this.completed = false,
     this.position = Duration.zero,
     this.duration = Duration.zero,
     this.rate = 1,
@@ -160,6 +173,7 @@ final class AudioPlaybackBackendSnapshot {
 
   final bool playing;
   final bool buffering;
+  final bool completed;
   final Duration position;
   final Duration duration;
   final double rate;
@@ -170,6 +184,7 @@ final class AudioPlaybackBackendSnapshot {
   AudioPlaybackBackendSnapshot copyWith({
     bool? playing,
     bool? buffering,
+    bool? completed,
     Duration? position,
     Duration? duration,
     double? rate,
@@ -180,6 +195,7 @@ final class AudioPlaybackBackendSnapshot {
   }) => AudioPlaybackBackendSnapshot(
     playing: playing ?? this.playing,
     buffering: buffering ?? this.buffering,
+    completed: completed ?? this.completed,
     position: position ?? this.position,
     duration: duration ?? this.duration,
     rate: rate ?? this.rate,
@@ -202,6 +218,7 @@ final class AudioPlayerSnapshot {
     this.currentIndex = 0,
     this.playing = false,
     this.buffering = false,
+    this.completed = false,
     this.position = Duration.zero,
     this.duration = Duration.zero,
     this.rate = 1,
@@ -240,6 +257,7 @@ final class AudioPlayerSnapshot {
   final int currentIndex;
   final bool playing;
   final bool buffering;
+  final bool completed;
   final Duration position;
   final Duration duration;
   final double rate;
@@ -282,6 +300,7 @@ final class AudioPlayerSnapshot {
     int? currentIndex,
     bool? playing,
     bool? buffering,
+    bool? completed,
     Duration? position,
     Duration? duration,
     double? rate,
@@ -300,6 +319,7 @@ final class AudioPlayerSnapshot {
     currentIndex: currentIndex ?? this.currentIndex,
     playing: playing ?? this.playing,
     buffering: buffering ?? this.buffering,
+    completed: completed ?? this.completed,
     position: position ?? this.position,
     duration: duration ?? this.duration,
     rate: rate ?? this.rate,

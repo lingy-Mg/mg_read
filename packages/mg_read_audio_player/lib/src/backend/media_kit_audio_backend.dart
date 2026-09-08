@@ -2,7 +2,8 @@
 ///
 /// Responsibilities:
 /// - Translate typed audio queues into MediaKit playlists with HTTP headers.
-/// - Normalize MediaKit streams into one injectible backend snapshot.
+/// - Normalize MediaKit streams, including real completion, into one snapshot.
+/// - Preserve active position and errors across append/open stream races.
 ///
 /// Notes:
 /// - Native library selection remains the host application's responsibility.
@@ -32,6 +33,7 @@ final class AudioMediaKitPlaybackBackend implements AudioPlaybackBackend {
       StreamController<AudioPlaybackBackendSnapshot>.broadcast(sync: true);
   final List<StreamSubscription<dynamic>> _subscriptions =
       <StreamSubscription<dynamic>>[];
+  int _errorRevision = 0;
   bool _disposed = false;
 
   @override
@@ -74,20 +76,28 @@ final class AudioMediaKitPlaybackBackend implements AudioPlaybackBackend {
         ),
       )
       ..add(
-        _player.stream.playlist.listen(
-          (value) => _emit(
+        _player.stream.playlist.listen((value) {
+          final changedTrack = value.index != _snapshot.currentIndex;
+          _emit(
             _snapshot.copyWith(
               currentIndex: value.index,
-              position: Duration.zero,
-              duration: Duration.zero,
+              position: changedTrack ? Duration.zero : null,
+              duration: changedTrack ? Duration.zero : null,
+              completed: changedTrack ? false : null,
             ),
-          ),
+          );
+        }),
+      )
+      ..add(
+        _player.stream.completed.listen(
+          (value) => _emit(_snapshot.copyWith(completed: value)),
         ),
       )
       ..add(
-        _player.stream.error.listen(
-          (value) => _emit(_snapshot.copyWith(errorMessage: value)),
-        ),
+        _player.stream.error.listen((value) {
+          _errorRevision++;
+          _emit(_snapshot.copyWith(errorMessage: value));
+        }),
       );
   }
 
@@ -100,6 +110,7 @@ final class AudioMediaKitPlaybackBackend implements AudioPlaybackBackend {
         rate: state.rate,
         volume: (state.volume / 100).clamp(0, 1),
         currentIndex: state.playlist.index,
+        completed: state.completed,
       );
 
   void _emit(AudioPlaybackBackendSnapshot value) {
@@ -139,12 +150,19 @@ final class AudioMediaKitPlaybackBackend implements AudioPlaybackBackend {
         duration: Duration.zero,
         playing: false,
         buffering: true,
+        completed: false,
         clearError: true,
       ),
     );
+    final errorRevisionBeforeOpen = _errorRevision;
     await _applyProxy();
     await _player.open(Playlist(media, index: initialIndex), play: play);
-    _emit(_fromPlayerState(_player.state).copyWith(clearError: true));
+    final opened = _fromPlayerState(_player.state);
+    _emit(
+      _errorRevision == errorRevisionBeforeOpen
+          ? opened.copyWith(clearError: true)
+          : opened.copyWith(errorMessage: _snapshot.errorMessage),
+    );
   }
 
   Future<void> _applyProxy() async {

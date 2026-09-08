@@ -5,10 +5,12 @@
 /// - Configure spoken-audio focus and pause for interruptions/noisy output.
 /// - Keep the media foreground service alive for the active session so a
 ///   Bluetooth or lock-screen play command can resume while the app is hidden.
+/// - Serialize system commands and distinguish accepted/unavailable audio cues.
 ///
 /// Notes:
 /// - The player package continues to own the queue, HTTP resources and UI.
 /// - This bridge coordinates the active media session with Android.
+/// - Screen-on and validated-network signals request intent-safe recovery.
 library;
 
 import 'dart:async';
@@ -33,6 +35,9 @@ final class AndroidAudioBackgroundService {
   bool? _audioSessionActive;
   bool? _desiredAudioSessionActive;
   Future<void> _audioFocusTail = Future<void>.value();
+  bool? _platformPlaybackActive;
+  bool? _desiredPlatformPlaybackActive;
+  Future<void> _platformPowerTail = Future<void>.value();
 
   /// Attaches [controller] before its session begins loading.
   ///
@@ -75,16 +80,16 @@ final class AndroidAudioBackgroundService {
       ),
     );
     _platformChannel.setMethodCallHandler((call) async {
-      if (call.method == 'screenTurnedOn') {
+      if (call.method == 'screenTurnedOn' || call.method == 'networkAvailable') {
         await handler.recoverActiveController();
       }
     });
     return handler;
   }
 
-  Future<void> _playSystemCommandTone() async {
+  Future<void> _playSystemCommandTone(AudioSystemCommandFeedback feedback) async {
     try {
-      await _platformChannel.invokeMethod<void>('playCommandTone');
+      await _platformChannel.invokeMethod<void>('playCommandTone', <String, Object?>{'kind': feedback.name});
     } on PlatformException {
       // Media commands remain usable when the optional cue cannot be played.
     } on MissingPluginException {
@@ -105,9 +110,25 @@ final class AndroidAudioBackgroundService {
 
   Future<void> _synchronizeFocus(bool playing) async {
     _desiredAudioSessionActive = playing;
-    final operation = _audioFocusTail.then((_) => _applyDesiredAudioFocus());
-    _audioFocusTail = operation.then<void>((_) {}, onError: (Object _, StackTrace _) {});
-    await operation;
+    final focusOperation = _audioFocusTail.then((_) => _applyDesiredAudioFocus());
+    _audioFocusTail = focusOperation.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    _desiredPlatformPlaybackActive = playing;
+    final powerOperation = _platformPowerTail.then((_) => _applyDesiredPlatformPower());
+    _platformPowerTail = powerOperation.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    await Future.wait(<Future<void>>[focusOperation, powerOperation]);
+  }
+
+  Future<void> _applyDesiredPlatformPower() async {
+    final desired = _desiredPlatformPlaybackActive;
+    if (desired == null || desired == _platformPlaybackActive) return;
+    try {
+      final accepted = await _platformChannel.invokeMethod<bool>('setPlaybackActive', <String, Object?>{'active': desired});
+      _platformPlaybackActive = accepted == true ? desired : null;
+    } on PlatformException {
+      _platformPlaybackActive = null;
+    } on MissingPluginException {
+      _platformPlaybackActive = null;
+    }
   }
 
   Future<void> _applyDesiredAudioFocus() async {
@@ -131,6 +152,8 @@ final class AndroidAudioBackgroundService {
     await handler?.pauseActiveController();
   }
 }
+
+enum AudioSystemCommandFeedback { accepted, unavailable }
 
 final class _AndroidAudioObserver extends AudioPlayerObserver {
   const _AndroidAudioObserver({required this.handler, required this.controller, required this.delegate});
@@ -170,13 +193,15 @@ final class MgReadAudioHandler extends BaseAudioHandler {
   AudioPlayerController? _controller;
   Future<void> Function(bool playing)? _synchronizeFocus;
   Future<void> Function()? _onSystemStop;
-  Future<void> Function()? _commandFeedback;
+  Future<void> Function(AudioSystemCommandFeedback feedback)? _commandFeedback;
+  Future<void> _systemCommandTail = Future<void>.value();
+  final Set<String> _queuedSystemCommands = <String>{};
 
   Future<void> attach(
     AudioPlayerController controller, {
     required Future<void> Function(bool playing) synchronizeFocus,
     required Future<void> Function() onSystemStop,
-    Future<void> Function()? commandFeedback,
+    Future<void> Function(AudioSystemCommandFeedback feedback)? commandFeedback,
   }) async {
     if (identical(_controller, controller)) return;
     await pauseActiveController();
@@ -207,17 +232,60 @@ final class MgReadAudioHandler extends BaseAudioHandler {
   Future<void> recoverActiveController() async => _controller?.recover();
 
   Future<void> _runSystemCommand({
+    required String commandKey,
     required bool Function(AudioPlayerSnapshot snapshot) canRun,
     required Future<void> Function(AudioPlayerController controller) action,
   }) async {
     final controller = _controller;
-    if (controller == null || !canRun(controller.snapshot)) return;
-    try {
-      await _commandFeedback?.call();
-    } on Object {
-      // A cue is acknowledgement only and never blocks the media command.
+    if (controller == null) return;
+    if (!_queuedSystemCommands.add(commandKey)) {
+      await _sendCommandFeedback(AudioSystemCommandFeedback.unavailable);
+      return;
     }
-    await action(controller);
+    final operation = _systemCommandTail.then<void>((_) async {
+      if (!identical(_controller, controller) || !canRun(controller.snapshot)) {
+        await _sendCommandFeedback(AudioSystemCommandFeedback.unavailable);
+        return;
+      }
+      await _sendCommandFeedback(AudioSystemCommandFeedback.accepted);
+      if (!identical(_controller, controller) || !canRun(controller.snapshot)) {
+        await _sendCommandFeedback(AudioSystemCommandFeedback.unavailable);
+        return;
+      }
+      final failureBefore = controller.snapshot.failure;
+      try {
+        await action(controller);
+      } on Object {
+        await _sendCommandFeedback(AudioSystemCommandFeedback.unavailable);
+        return;
+      }
+      final failureAfter = controller.snapshot.failure;
+      if (!_sameFailure(failureBefore, failureAfter) && failureAfter != null) {
+        await _sendCommandFeedback(AudioSystemCommandFeedback.unavailable);
+      }
+    });
+    _systemCommandTail = operation.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    try {
+      await operation;
+    } finally {
+      _queuedSystemCommands.remove(commandKey);
+    }
+  }
+
+  Future<void> _sendCommandFeedback(AudioSystemCommandFeedback feedback) async {
+    try {
+      await _commandFeedback?.call(feedback);
+    } on Object {
+      // Optional audio cues never block or fail a media command.
+    }
+  }
+
+  bool _sameFailure(AudioPlayerFailure? left, AudioPlayerFailure? right) {
+    if (identical(left, right)) return true;
+    return left?.code == right?.code &&
+        left?.location == right?.location &&
+        left?.message == right?.message &&
+        left?.debugDetail == right?.debugDetail;
   }
 
   void _publish() {
@@ -230,22 +298,25 @@ final class MgReadAudioHandler extends BaseAudioHandler {
     mediaItem.add(track == null ? null : _mediaItemForTrack(track, duration: snapshot.duration));
     final queueIndex = track == null ? -1 : systemQueueEntries.indexWhere((item) => item.id == track.id);
     final controls = <MediaControl>[
-      if (snapshot.canGoPrevious) MediaControl.skipToPrevious,
-      snapshot.playing ? MediaControl.pause : MediaControl.play,
-      if (snapshot.canGoNext) MediaControl.skipToNext,
+      if (snapshot.status == AudioPlayerStatus.ready && snapshot.canGoPrevious) MediaControl.skipToPrevious,
+      if (snapshot.status != AudioPlayerStatus.loading) snapshot.playing ? MediaControl.pause : MediaControl.play,
+      if (snapshot.status == AudioPlayerStatus.ready && snapshot.canGoNext) MediaControl.skipToNext,
       MediaControl.stop,
     ];
     final compactControlCount = (controls.length - 1).clamp(1, 3);
     final processingState = switch (snapshot.status) {
       AudioPlayerStatus.loading => AudioProcessingState.loading,
       AudioPlayerStatus.ready when snapshot.buffering => AudioProcessingState.buffering,
+      AudioPlayerStatus.ready when snapshot.completed => AudioProcessingState.completed,
       AudioPlayerStatus.ready => AudioProcessingState.ready,
       AudioPlayerStatus.error => AudioProcessingState.error,
     };
     playbackState.add(
       PlaybackState(
         controls: controls,
-        systemActions: const <MediaAction>{MediaAction.seek, MediaAction.seekBackward, MediaAction.seekForward},
+        systemActions: snapshot.status == AudioPlayerStatus.ready
+            ? const <MediaAction>{MediaAction.seek, MediaAction.seekBackward, MediaAction.seekForward}
+            : const <MediaAction>{},
         androidCompactActionIndices: List<int>.generate(compactControlCount, (index) => index, growable: false),
         processingState: processingState,
         playing: snapshot.playing,
@@ -272,12 +343,14 @@ final class MgReadAudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> play() => _runSystemCommand(
-    canRun: (snapshot) => snapshot.status == AudioPlayerStatus.ready && !snapshot.playing,
-    action: (controller) => controller.play(),
+    commandKey: 'play',
+    canRun: (snapshot) => snapshot.status != AudioPlayerStatus.loading && !snapshot.playing,
+    action: (controller) => controller.snapshot.status == AudioPlayerStatus.error ? controller.retry() : controller.play(),
   );
 
   @override
   Future<void> pause() => _runSystemCommand(
+    commandKey: 'pause',
     canRun: (snapshot) => snapshot.status == AudioPlayerStatus.ready && snapshot.playing,
     action: (controller) => controller.pause(),
   );
@@ -286,7 +359,11 @@ final class MgReadAudioHandler extends BaseAudioHandler {
   Future<void> stop() async {
     final controller = _controller;
     if (controller == null) return;
-    await _runSystemCommand(canRun: (_) => identical(_controller, controller), action: (activeController) => activeController.pause());
+    await _runSystemCommand(
+      commandKey: 'stop',
+      canRun: (_) => identical(_controller, controller),
+      action: (activeController) => activeController.pause(),
+    );
     final onSystemStop = _onSystemStop;
     if (onSystemStop != null) await onSystemStop();
     if (identical(_controller, controller)) {
@@ -295,26 +372,39 @@ final class MgReadAudioHandler extends BaseAudioHandler {
   }
 
   @override
-  Future<void> seek(Duration position) => _controller?.seek(position) ?? Future<void>.value();
+  Future<void> seek(Duration position) => _runSystemCommand(
+    commandKey: 'seek',
+    canRun: (snapshot) => snapshot.status == AudioPlayerStatus.ready,
+    action: (controller) => controller.seek(position),
+  );
 
   @override
   Future<void> rewind() => _runSystemCommand(
+    commandKey: 'rewind',
     canRun: (snapshot) => snapshot.status == AudioPlayerStatus.ready,
     action: (controller) => controller.seekBy(const Duration(seconds: -15)),
   );
 
   @override
   Future<void> fastForward() => _runSystemCommand(
+    commandKey: 'fastForward',
     canRun: (snapshot) => snapshot.status == AudioPlayerStatus.ready,
     action: (controller) => controller.seekBy(const Duration(seconds: 15)),
   );
 
   @override
-  Future<void> skipToNext() => _runSystemCommand(canRun: (snapshot) => snapshot.canGoNext, action: (controller) => controller.next());
+  Future<void> skipToNext() => _runSystemCommand(
+    commandKey: 'next',
+    canRun: (snapshot) => snapshot.status == AudioPlayerStatus.ready && snapshot.canGoNext,
+    action: (controller) => controller.next(),
+  );
 
   @override
-  Future<void> skipToPrevious() =>
-      _runSystemCommand(canRun: (snapshot) => snapshot.canGoPrevious, action: (controller) => controller.previous());
+  Future<void> skipToPrevious() => _runSystemCommand(
+    commandKey: 'previous',
+    canRun: (snapshot) => snapshot.status == AudioPlayerStatus.ready && snapshot.canGoPrevious,
+    action: (controller) => controller.previous(),
+  );
 
   @override
   Future<void> skipToQueueItem(int index) => _selectQueueItem(index);
@@ -327,7 +417,8 @@ final class MgReadAudioHandler extends BaseAudioHandler {
     }
     final trackId = entries[index].id;
     return _runSystemCommand(
-      canRun: (snapshot) => snapshot.currentTrack?.id != trackId,
+      commandKey: 'queue:$trackId',
+      canRun: (snapshot) => snapshot.status == AudioPlayerStatus.ready && snapshot.currentTrack?.id != trackId,
       action: (activeController) => activeController.selectQueueEntry(trackId),
     );
   }

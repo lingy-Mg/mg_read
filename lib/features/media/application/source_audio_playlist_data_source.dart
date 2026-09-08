@@ -4,11 +4,14 @@
 /// - Expose the complete safe chapter catalog while resolving URLs on demand.
 /// - Preserve proxy URLs, request headers and refresh policy as opaque data.
 /// - Single-flight detail and catalog reads for the active collection.
+/// - Cancel superseded Runtime resource calls and bound continuation attempts.
 ///
 /// Notes:
 /// - This is audio-only; it never creates a video group or shares player state.
 /// - Locked or failed neighbouring entries never prevent a selected free track
 ///   from opening. Resource resolution remains part of the active session.
+/// - Temporary failures stop a batch; only a structurally missing resource is
+///   skipped, so recovery cannot silently jump over unheard chapters.
 library;
 
 import 'package:mg_read_audio_player/mg_read_audio_player.dart';
@@ -17,7 +20,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 
 /// Converts one audio source collection into the audio player's host port.
-final class SourceAudioPlaylistDataSource implements AudioPlaylistQueueDataSource {
+final class SourceAudioPlaylistDataSource implements AudioPlaylistQueueDataSource, AudioPlayerCancellationDataSource {
   SourceAudioPlaylistDataSource({
     required this.gateway,
     required this.pluginId,
@@ -34,6 +37,15 @@ final class SourceAudioPlaylistDataSource implements AudioPlaylistQueueDataSourc
   String? _cachedCollectionId;
   Future<PluginContentDetail>? _detailFuture;
   Future<PluginChaptersResult>? _catalogFuture;
+  PluginInvocationCancellation? _resourceCancellation;
+  int _resourceRequestId = 0;
+
+  @override
+  void cancelPendingLoads() {
+    _resourceRequestId++;
+    _resourceCancellation?.cancel();
+    _resourceCancellation = null;
+  }
 
   @override
   Future<AudioPlaylist> loadPlaylist(String collectionId) async {
@@ -52,7 +64,11 @@ final class SourceAudioPlaylistDataSource implements AudioPlaylistQueueDataSourc
     }
     final tracks = <AudioTrack>[];
     try {
-      tracks.add(await _loadTrack(detail: detail, collectionId: collectionId, chapter: candidates.first));
+      tracks.add(
+        await _runResourceRequest(
+          (cancellation) => _loadTrack(detail: detail, collectionId: collectionId, chapter: candidates.first, cancellation: cancellation),
+        ),
+      );
     } on AudioPlayerLoadException {
       rethrow;
     } on Object {
@@ -107,7 +123,9 @@ final class SourceAudioPlaylistDataSource implements AudioPlaylistQueueDataSourc
     if (detail.summary.id != collectionId || detail.summary.contentKind != PluginContentKind.audio || chapter == null) {
       throw const AudioPlayerLoadException(code: 'audio_selected_chapter_unavailable', location: '所选章节', message: '所选章节已下架、锁定或不在当前目录中。');
     }
-    return _loadTrack(detail: detail, collectionId: collectionId, chapter: chapter);
+    return _runResourceRequest(
+      (cancellation) => _loadTrack(detail: detail, collectionId: collectionId, chapter: chapter!, cancellation: cancellation),
+    );
   }
 
   @override
@@ -121,21 +139,49 @@ final class SourceAudioPlaylistDataSource implements AudioPlaylistQueueDataSourc
     final available = _availableChapters(catalog.items);
     final currentIndex = available.indexWhere((chapter) => chapter.id == afterTrackId);
     if (currentIndex < 0) return const <AudioTrack>[];
-    final tracks = <AudioTrack>[];
-    final following = available.skip(currentIndex + 1).toList(growable: false);
-    for (final chapter in following) {
-      if (tracks.length >= limit) break;
-      try {
-        tracks.add(await _loadTrack(detail: detail, collectionId: collectionId, chapter: chapter));
-      } on Object {
-        // Skip expired or locked-in-practice resources. The next available
-        // chapter is still useful for uninterrupted sequential listening.
+    final following = available.skip(currentIndex + 1).take(limit).toList(growable: false);
+    if (following.isEmpty) return const <AudioTrack>[];
+    return _runResourceRequest((cancellation) async {
+      final tracks = <AudioTrack>[];
+      for (final chapter in following) {
+        try {
+          tracks.add(await _loadTrack(detail: detail, collectionId: collectionId, chapter: chapter, cancellation: cancellation));
+        } on AudioPlayerLoadException catch (error) {
+          if (error.code != 'audio_resource_missing') rethrow;
+          // A structurally missing resource is the only safe reason to skip a
+          // chapter. Network/Runtime failures must stop this bounded batch so
+          // a later retry cannot silently jump over unheard content.
+        } on Object {
+          throw const AudioPlayerLoadException(
+            code: 'audio_continuation_unavailable',
+            location: '下一章节的播放地址',
+            message: '下一章节暂时无法加载，请检查网络后重试。',
+          );
+        }
+      }
+      if (tracks.isEmpty) {
+        throw const AudioPlayerLoadException(
+          code: 'audio_continuation_unavailable',
+          location: '下一章节的播放地址',
+          message: '下一章节暂时无法加载，请检查网络后重试。',
+        );
+      }
+      return tracks;
+    });
+  }
+
+  Future<T> _runResourceRequest<T>(Future<T> Function(PluginInvocationCancellation cancellation) operation) async {
+    _resourceCancellation?.cancel();
+    final cancellation = PluginInvocationCancellation();
+    final requestId = ++_resourceRequestId;
+    _resourceCancellation = cancellation;
+    try {
+      return await operation(cancellation);
+    } finally {
+      if (_resourceRequestId == requestId && identical(_resourceCancellation, cancellation)) {
+        _resourceCancellation = null;
       }
     }
-    if (following.isNotEmpty && tracks.isEmpty) {
-      throw const AudioPlayerLoadException(code: 'audio_continuation_unavailable', location: '下一章节的播放地址', message: '下一章节暂时无法加载，请检查网络后重试。');
-    }
-    return tracks;
   }
 
   Future<PluginContentDetail> _loadDetail(String collectionId) async {
@@ -181,8 +227,13 @@ final class SourceAudioPlaylistDataSource implements AudioPlaylistQueueDataSourc
     required PluginContentDetail detail,
     required String collectionId,
     required PluginChapterSummary chapter,
+    required PluginInvocationCancellation cancellation,
   }) async {
-    final content = await gateway.getContent(pluginId: pluginId, id: collectionId, chapterId: chapter.id);
+    final content = await runCancellableSourceRequest(
+      gateway,
+      cancellation,
+      () => gateway.getContent(pluginId: pluginId, id: collectionId, chapterId: chapter.id),
+    );
     final media = content.media;
     if (content.contentKind != PluginContentKind.audio || media == null) {
       throw const AudioPlayerLoadException(code: 'audio_resource_missing', location: '播放地址', message: '数据源没有返回该章节的可播放地址。');
@@ -194,6 +245,10 @@ final class SourceAudioPlaylistDataSource implements AudioPlaylistQueueDataSourc
       creator: detail.summary.author,
       resource: media.url,
       artwork: detail.summary.coverUrl,
+      resourcePolicy: media.resourcePolicy == PluginMediaResourcePolicy.refreshable
+          ? AudioResourcePolicy.refreshable
+          : AudioResourcePolicy.sessionOnly,
+      expiresAt: media.expiresAt,
       httpHeaders: media.headers,
     );
   }
