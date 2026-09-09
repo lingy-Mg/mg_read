@@ -305,7 +305,8 @@ class TextReaderPreferences {
   /// normalized to null.
   final String? customFontId;
 
-  /// Body font size in logical pixels; normalized to supported presets.
+  /// Body font size in logical pixels, constrained to the supported range
+  /// from 16 to 32 without snapping to discrete presets.
   final double fontSize;
 
   /// Body text weight. Values are normalized to 400, 500, or 600.
@@ -380,7 +381,7 @@ class TextReaderPreferences {
   /// Returns a copy constrained to the reader's supported numeric presets.
   ///
   /// Non-finite persisted values fall back to the matching default instead of
-  /// participating in nearest-preset comparisons.
+  /// participating in numeric range normalization.
   TextReaderPreferences normalized() {
     const TextReaderPreferences fallback = TextReaderPreferences.defaults;
     return copyWith(
@@ -391,13 +392,9 @@ class TextReaderPreferences {
           : theme,
       customFontId: customFontId?.trim(),
       clearCustomFontId: customFontId?.trim().isEmpty ?? false,
-      fontSize: _nearest(fontSize, const <double>[
-        16,
-        19,
-        22,
-        26,
-        32,
-      ], fallback: fallback.fontSize),
+      fontSize: fontSize.isFinite
+          ? fontSize.clamp(16, 32).toDouble()
+          : fallback.fontSize,
       fontWeight: _nearest(fontWeight.toDouble(), const <double>[
         400,
         500,

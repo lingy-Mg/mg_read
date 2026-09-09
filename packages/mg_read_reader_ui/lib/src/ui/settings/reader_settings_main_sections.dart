@@ -109,7 +109,6 @@ extension _ReaderSettingsMainSections on _ReaderSettingsSheetState {
   }
 
   Widget _buildFontSizeRow(ReaderPalette palette) {
-    final int sizeIndex = _fontSizes.indexOf(_preferences.fontSize);
     final String fontLabel = switch (_preferences.font) {
       ReaderFontPreset.system => ReaderStrings.miSans,
       ReaderFontPreset.sansSerif => ReaderStrings.sansSerif,
@@ -117,48 +116,7 @@ extension _ReaderSettingsMainSections on _ReaderSettingsSheetState {
     };
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        final Widget sizeControl = ReaderSettingsCapsule(
-          palette: palette,
-          padding: EdgeInsets.zero,
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                child: IconButton(
-                  tooltip: ReaderStrings.decreaseFontSize,
-                  onPressed: sizeIndex > 0
-                      ? () => _commit(
-                          _preferences.copyWith(
-                            fontSize: _fontSizes[sizeIndex - 1],
-                          ),
-                        )
-                      : null,
-                  icon: const Icon(Icons.text_decrease_rounded),
-                ),
-              ),
-              SizedBox(
-                width: 32,
-                child: Text(
-                  _preferences.fontSize.round().toString(),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-              Expanded(
-                child: IconButton(
-                  tooltip: ReaderStrings.increaseFontSize,
-                  onPressed: sizeIndex < _fontSizes.length - 1
-                      ? () => _commit(
-                          _preferences.copyWith(
-                            fontSize: _fontSizes[sizeIndex + 1],
-                          ),
-                        )
-                      : null,
-                  icon: const Icon(Icons.text_increase_rounded),
-                ),
-              ),
-            ],
-          ),
-        );
+        final Widget sizeControl = _buildFontSizeSlider(palette);
         final Widget fontControl = ReaderSettingsCapsule(
           palette: palette,
           padding: const EdgeInsets.symmetric(horizontal: 8),

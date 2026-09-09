@@ -23,6 +23,15 @@ void main() {
     },
   );
 
+  test('keeps arbitrary font sizes within the supported continuous range', () {
+    expect(
+      const TextReaderPreferences(fontSize: 23.5).normalized().fontSize,
+      23.5,
+    );
+    expect(const TextReaderPreferences(fontSize: 12).normalized().fontSize, 16);
+    expect(const TextReaderPreferences(fontSize: 40).normalized().fontSize, 32);
+  });
+
   testWidgets(
     'places default text content eight dp after the Android safe area',
     (WidgetTester tester) async {

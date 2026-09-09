@@ -24,14 +24,7 @@ extension _ReaderSettingsSubpageSections on _ReaderSettingsSheetState {
           ),
           palette,
         ),
-        _labeledChoice<double>(
-          ReaderStrings.fontSize,
-          _fontSizes,
-          _preferences.fontSize,
-          (double value) => value.round().toString(),
-          (double value) => _commit(_preferences.copyWith(fontSize: value)),
-          palette,
-        ),
+        _buildFontSizeSlider(palette),
         _labeledChoice<int>(
           ReaderStrings.fontWeight,
           const <int>[400, 500, 600],
@@ -317,6 +310,58 @@ extension _ReaderSettingsSubpageSections on _ReaderSettingsSheetState {
             labelFor: labelFor,
             onSelected: onSelected,
             palette: palette,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFontSizeSlider(ReaderPalette palette) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 0, 6, 4),
+            child: Text(
+              ReaderStrings.fontSize,
+              style: TextStyle(
+                color: palette.secondaryText,
+                fontSize: ReaderSettingsTokens.controlTextSize,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          ReaderSettingsCapsule(
+            palette: palette,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Slider(
+                    value: _preferences.fontSize,
+                    min: _fontSizeMin,
+                    max: _fontSizeMax,
+                    label: _preferences.fontSize.round().toString(),
+                    semanticFormatterCallback: (double value) =>
+                        '${ReaderStrings.fontSize} ${value.round()}',
+                    onChanged: (double value) =>
+                        _preview(_preferences.copyWith(fontSize: value)),
+                    onChangeEnd: (double value) =>
+                        _commit(_preferences.copyWith(fontSize: value)),
+                  ),
+                ),
+                SizedBox(
+                  width: 30,
+                  child: Text(
+                    _preferences.fontSize.round().toString(),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

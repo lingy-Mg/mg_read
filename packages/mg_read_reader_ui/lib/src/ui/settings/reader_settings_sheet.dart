@@ -29,7 +29,8 @@ part 'reader_settings_entry.dart';
 part 'reader_settings_main_sections.dart';
 part 'reader_settings_subpage_sections.dart';
 
-const List<double> _fontSizes = <double>[16, 19, 22, 26, 32];
+const double _fontSizeMin = 16;
+const double _fontSizeMax = 32;
 const List<ReaderThemePreset> _themeOrder = <ReaderThemePreset>[
   ReaderThemePreset.day,
   ReaderThemePreset.parchment,
