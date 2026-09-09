@@ -49,6 +49,81 @@ void main() {
     expect(pausedPlay, findsNothing);
   });
 
+  testWidgets(
+    'keeps one progress control below and moves episodes and settings to the top',
+    (tester) async {
+      final backend = _Backend();
+      await tester.pumpWidget(_playerApp(backend: backend));
+      await tester.pumpAndSettle();
+
+      final top = find.byKey(const Key('video-player-top-band'));
+      final bottom = find.byKey(const Key('video-player-bottom-band'));
+      expect(find.byKey(const Key('video-player-slider')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: top,
+          matching: find.byKey(const Key('video-player-episodes')),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: top,
+          matching: find.byKey(const Key('video-player-settings')),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: bottom,
+          matching: find.byKey(const Key('video-player-episodes')),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: bottom,
+          matching: find.byKey(const Key('video-player-settings')),
+        ),
+        findsNothing,
+      );
+
+      await tester.tap(find.byKey(const Key('video-player-settings')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('video-player-settings-sheet')),
+        findsOneWidget,
+      );
+      expect(find.text('播放设置'), findsOneWidget);
+      expect(find.byKey(const Key('video-player-rate-1-5')), findsOneWidget);
+
+      final rate = find.byKey(const Key('video-player-rate-1-5'));
+      await tester.ensureVisible(rate);
+      await tester.tap(rate);
+      await tester.pump();
+      expect(backend.rates.last, 1.5);
+    },
+  );
+
+  testWidgets(
+    'fullscreen keeps the same single progress control and top actions',
+    (tester) async {
+      final controller = VideoPlayerController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        _playerApp(backend: _Backend(), controller: controller),
+      );
+      await tester.pumpAndSettle();
+
+      await controller.requestFullscreen(true);
+      await tester.pump();
+
+      expect(find.byKey(const Key('video-player-slider')), findsOneWidget);
+      expect(find.byKey(const Key('video-player-episodes')), findsOneWidget);
+      expect(find.byKey(const Key('video-player-settings')), findsOneWidget);
+    },
+  );
+
   testWidgets('landscape selector uses flat compact two-column rows', (
     tester,
   ) async {
@@ -211,17 +286,21 @@ ClipRRect _clip(WidgetTester tester, Finder panel) => tester.widget<ClipRRect>(
   find.descendant(of: panel, matching: find.byType(ClipRRect)).first,
 );
 
-Widget _playerApp({required _Backend backend, VideoPlayerObserver? observer}) =>
-    MaterialApp(
-      home: VideoPlayerView(
-        contentId: 'show',
-        dataSource: const _Source(),
-        stateStore: const _Store(),
-        observer: observer,
-        backendFactory: () => backend,
-        controlsAutoHideDelay: const Duration(hours: 1),
-      ),
-    );
+Widget _playerApp({
+  required _Backend backend,
+  VideoPlayerObserver? observer,
+  VideoPlayerController? controller,
+}) => MaterialApp(
+  home: VideoPlayerView(
+    contentId: 'show',
+    dataSource: const _Source(),
+    stateStore: const _Store(),
+    controller: controller,
+    observer: observer,
+    backendFactory: () => backend,
+    controlsAutoHideDelay: const Duration(hours: 1),
+  ),
+);
 
 final class _Source implements VideoDataSource {
   const _Source();
