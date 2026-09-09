@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:collection';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_router.dart';
@@ -44,6 +45,10 @@ void main() {
 
     await tester.pump();
     expect(find.bySemanticsLabel('正在加载书架'), findsOneWidget);
+    final systemChrome = tester.widget<AnnotatedRegion<SystemUiOverlayStyle>>(find.byType(AnnotatedRegion<SystemUiOverlayStyle>).first);
+    expect(systemChrome.value.statusBarColor, Colors.transparent);
+    expect(systemChrome.value.statusBarIconBrightness, Brightness.dark);
+    expect(systemChrome.value.systemNavigationBarColor, const Color(0xFFFDFBFA));
 
     loader.completeNext(_overview('本地测试书籍'));
     await tester.pump();

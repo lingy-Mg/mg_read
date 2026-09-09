@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches the light-only Flutter shell before its first frame exists. -->
+    <color name="mgread_launch_background">#FDFBFA</color>
+</resources>

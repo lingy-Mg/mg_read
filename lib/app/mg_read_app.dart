@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
@@ -163,30 +164,41 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
       themeMode: ThemeMode.light,
       routerConfig: router,
       builder: (BuildContext context, Widget? child) {
-        return Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            _AppStartupGate(
-              child: DataSourceSystemErrorDialogHost(
-                reporter: ref.watch(dataSourceSystemErrorReporterProvider),
-                child: AppFatalErrorDialogHost(
-                  reporter: ref.watch(fatalErrorReporterProvider),
-                  child: AppBottomNavigationMotionScope(
-                    child: AppBackNavigationScope(
-                      onBackRequested: popApplicationRoute,
-                      child: AppThemeModeScope(
-                        themeMode: ThemeMode.light,
-                        onToggleTheme: _toggleTheme,
-                        child: child ?? const SizedBox.shrink(),
+        final pageBackground = AppThemeTokens.of(context).pageBackground;
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: SystemUiOverlayStyle.dark.copyWith(
+            // Android 15 draws the status bar edge-to-edge. Declare its
+            // contrast here so a platform default color cannot flash above a
+            // loading destination before that page supplies its own chrome.
+            statusBarColor: Colors.transparent,
+            systemNavigationBarColor: pageBackground,
+            systemNavigationBarDividerColor: pageBackground,
+          ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              _AppStartupGate(
+                child: DataSourceSystemErrorDialogHost(
+                  reporter: ref.watch(dataSourceSystemErrorReporterProvider),
+                  child: AppFatalErrorDialogHost(
+                    reporter: ref.watch(fatalErrorReporterProvider),
+                    child: AppBottomNavigationMotionScope(
+                      child: AppBackNavigationScope(
+                        onBackRequested: popApplicationRoute,
+                        child: AppThemeModeScope(
+                          themeMode: ThemeMode.light,
+                          onToggleTheme: _toggleTheme,
+                          child: child ?? const SizedBox.shrink(),
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-            const ChapterCacheTaskBar(),
-            SourceAudioPlaybackNavigator(backButtonDispatcher: router.backButtonDispatcher),
-          ],
+              const ChapterCacheTaskBar(),
+              SourceAudioPlaybackNavigator(backButtonDispatcher: router.backButtonDispatcher),
+            ],
+          ),
         );
       },
     );
