@@ -140,6 +140,10 @@ final class AndroidAudioBackgroundService {
 
 enum AudioSystemCommandFeedback { accepted, failed, boundary }
 
+// Android 13+ projects STOP as a PlaybackState custom action. Keep its icon in
+// the application namespace so release builds always resolve a non-zero ID.
+const MediaControl _mgReadStopControl = MediaControl(androidIcon: 'drawable/mgread_audio_stop', label: '停止', action: MediaAction.stop);
+
 final class _AndroidAudioObserver extends AudioPlayerObserver {
   const _AndroidAudioObserver({required this.handler, required this.controller, required this.delegate});
 
@@ -316,7 +320,7 @@ final class MgReadAudioHandler extends BaseAudioHandler {
       if (snapshot.status == AudioPlayerStatus.ready && snapshot.canGoPrevious) MediaControl.skipToPrevious,
       snapshot.playbackDesired ? MediaControl.pause : MediaControl.play,
       if (snapshot.status == AudioPlayerStatus.ready && snapshot.canGoNext) MediaControl.skipToNext,
-      MediaControl.stop,
+      _mgReadStopControl,
     ];
     final compactControlCount = (controls.length - 1).clamp(1, 3);
     final processingState = switch (snapshot.status) {

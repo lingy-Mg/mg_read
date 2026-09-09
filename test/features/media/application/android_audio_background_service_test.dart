@@ -60,6 +60,7 @@ void main() {
       MediaAction.skipToNext,
       MediaAction.stop,
     ]);
+    expect(handler.playbackState.value.controls.last.androidIcon, 'drawable/mgread_audio_stop');
 
     await handler.skipToPrevious();
     await handler.skipToNext();
