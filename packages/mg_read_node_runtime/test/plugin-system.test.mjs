@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
+import { runInNewContext } from "node:vm";
 import test from "node:test";
 
 import {
@@ -36,6 +37,10 @@ import {
   validateDiscoverResult,
   validateSearchResult,
 } from "../dist/plugin-content.js";
+import {
+  isPluginManagerError,
+  pluginManagerErrorDetail,
+} from "../dist/plugin-manager-contract.js";
 
 import {
   createDelayedPlugin,
@@ -68,6 +73,23 @@ async function waitFor(predicate, timeoutMs = 500) {
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
 }
+
+test("cross-realm plugin manager errors retain their diagnostic detail", () => {
+  const error = runInNewContext(`
+    Object.assign(new Error("source connection refused"), {
+      name: "PluginManagerError",
+      code: "plugin_execution_failed",
+      detail: "pluginId=org.example.source; operation=getDetail; cause=FetchError [code=ECONNREFUSED]: connect ECONNREFUSED"
+    })
+  `);
+
+  assert.equal(error instanceof Error, false);
+  assert.equal(isPluginManagerError(error), true);
+  assert.equal(
+    pluginManagerErrorDetail(error),
+    "pluginId=org.example.source; operation=getDetail; cause=FetchError [code=ECONNREFUSED]: connect ECONNREFUSED",
+  );
+});
 
 
 test("content v1 requires explicit null keys and preserves zero and empty arrays", () => {

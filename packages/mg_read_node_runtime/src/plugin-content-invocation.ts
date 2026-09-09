@@ -16,6 +16,7 @@ import {
   isPluginManagerError,
   type InstalledPluginSnapshot,
   type LoadedPlugin,
+  pluginManagerErrorDetail,
   type PluginInvocationScope,
   PluginManagerError,
   type PluginManagerEventSink,
@@ -97,7 +98,7 @@ export async function invokeLoadedPluginContent<TResult extends JsonObject>(opti
       );
     }
     if (isPluginManagerError(error)) {
-      const detail = error instanceof Error ? error.message : undefined;
+      const detail = pluginManagerErrorDetail(error);
       throw new PluginManagerError(
         error.code,
         error.code === "plugin_execution_failed"
@@ -141,6 +142,27 @@ function errorText(error: unknown): string {
     return message === "" ? `${name}${code}` : `${name}${code}: ${message}`;
   }
   if (typeof error === "string") return error.replaceAll("\u0000", " ").trim();
+  if (error !== null && typeof error === "object") {
+    const value = error as {
+      readonly code?: unknown;
+      readonly detail?: unknown;
+      readonly message?: unknown;
+      readonly name?: unknown;
+    };
+    const name = typeof value.name === "string" && value.name.trim() !== ""
+      ? value.name.trim()
+      : "Error";
+    const message = typeof value.detail === "string" && value.detail.trim() !== ""
+      ? value.detail
+      : typeof value.message === "string"
+        ? value.message
+        : undefined;
+    const code = typeof value.code === "string" ? ` [code=${value.code}]` : "";
+    if (message !== undefined) {
+      const normalizedMessage = message.replaceAll("\u0000", " ").trim();
+      return normalizedMessage === "" ? `${name}${code}` : `${name}${code}: ${normalizedMessage}`;
+    }
+  }
   try {
     return String(error).replaceAll("\u0000", " ").trim();
   } catch {

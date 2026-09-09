@@ -81,6 +81,10 @@
     },
     {
       "label": "构建：APK（Release）",
+      "dependsOn": [
+        "准备：Android Runtime 资源"
+      ],
+      "dependsOrder": "sequence",
       "type": "process",
       "command": "flutter",
       "args": [
@@ -95,6 +99,25 @@
         "panel": "dedicated",
         "showReuseMessage": false,
         "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "准备：Android Runtime 资源",
+      "type": "process",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "$ErrorActionPreference = 'Stop'; $runtimeRoot = Join-Path '${workspaceFolder}' 'packages/mg_read_node_runtime'; $nodeBin = Join-Path $runtimeRoot 'tools/node-v24.16.0-win-x64'; $env:PATH = $nodeBin + ';' + $env:PATH; Push-Location $runtimeRoot; try { & (Join-Path $nodeBin 'npm.cmd') run build; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } } finally { Pop-Location }"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": false
       },
       "problemMatcher": []
     },

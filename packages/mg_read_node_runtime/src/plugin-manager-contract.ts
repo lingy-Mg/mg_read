@@ -109,6 +109,20 @@ export function isPluginManagerError(error: unknown): error is { readonly code: 
   return typeof code === "string" && pluginManagerErrorCodes.has(code as PluginManagerError["code"]);
 }
 
+/**
+ * Reads the optional safe detail without relying on `instanceof`.
+ *
+ * Android Javet and dynamically loaded modules may carry the Runtime error
+ * across a realm boundary, where its `name` and fields survive but its
+ * prototype does not.  Keep the capability diagnostic available to the
+ * dispatch owner in that case.
+ */
+export function pluginManagerErrorDetail(error: unknown): string | undefined {
+  if (error === null || typeof error !== "object") return undefined;
+  const detail = (error as { readonly detail?: unknown }).detail;
+  return typeof detail === "string" && detail.trim() !== "" ? detail : undefined;
+}
+
 export interface InstalledPluginSnapshot extends JsonObject {
   readonly activeVersion: string | null;
   readonly contentKinds: readonly string[];

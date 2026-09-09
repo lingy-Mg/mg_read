@@ -118,6 +118,7 @@ const DEFAULT_CACHE_CLEAR_TIMEOUT_MS = 5_000;
 
 export {
   PluginManagerError,
+  pluginManagerErrorDetail,
   isPluginManagerError,
   type InstalledPluginSnapshot,
   type PluginCacheClearItem,

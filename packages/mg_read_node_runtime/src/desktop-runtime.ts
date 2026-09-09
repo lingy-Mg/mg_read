@@ -63,7 +63,13 @@ import type {
   RuntimeStatusResponse,
 } from "./desktop-runtime-types.js";
 import { servePluginIconResource, servePluginTransferResource, serveSourceResource } from "./loopback-resources.js";
-import { isPluginManagerError, PluginManager, PluginManagerError, type PluginManagerEvent } from "./plugin-manager.js";
+import {
+  isPluginManagerError,
+  PluginManager,
+  PluginManagerError,
+  pluginManagerErrorDetail,
+  type PluginManagerEvent,
+} from "./plugin-manager.js";
 import { pluginManagerErrorMessage } from "./plugin-manager-error-message.js";
 import type { DesktopRuntimeOptions, DesktopRuntimeProgressSink } from "./desktop-runtime-options.js";
 export type {
@@ -1306,7 +1312,7 @@ export class DesktopRuntime {
           error: this.#requestError(
             request,
             error.code,
-            pluginManagerErrorMessage(error.code, error instanceof PluginManagerError ? error.detail : undefined),
+            pluginManagerErrorMessage(error.code, pluginManagerErrorDetail(error)),
           ),
         };
       }
