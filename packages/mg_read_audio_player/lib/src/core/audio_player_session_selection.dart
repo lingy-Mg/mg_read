@@ -38,9 +38,15 @@ extension _AudioPlayerSessionSelection on AudioPlayerSession {
         failureLocation = '下一章节自动播放';
         failureMessage = '章节已经切换，但自动播放失败，请重试。';
         if (_playbackDesired && intentRevision == _playbackIntentRevision) {
-          _recordOperation('trackPlayStarted', targetTrackId: trackId);
-          await backend.play();
-          _recordOperation('trackPlayReturned', targetTrackId: trackId);
+          final started = await _playBackendAndConfirm(
+            generation: generation,
+            intentRevision: intentRevision,
+            targetTrackId: trackId,
+            failureCode: failureCode,
+            failureLocation: failureLocation,
+            failureMessage: failureMessage,
+          );
+          if (!started) return;
         }
         if (!_isCurrent(generation)) return;
         if (!_playbackDesired || intentRevision != _playbackIntentRevision) {
@@ -57,7 +63,7 @@ extension _AudioPlayerSessionSelection on AudioPlayerSession {
           location: failureLocation,
           message: failureMessage,
         );
-        _emit(_snapshot.copyWith(failure: failure));
+        _emit(_snapshot.copyWith(resourceLoading: false, failure: failure));
         _recordOperation('trackSelectionFailed', targetTrackId: trackId);
         await _notify(() => observer?.onFailure(failure));
       }
@@ -111,16 +117,21 @@ extension _AudioPlayerSessionSelection on AudioPlayerSession {
       _backendSnapshotsEnabled = true;
       _applyReadySnapshot(backend.snapshot);
       if (_playbackDesired && intentRevision == _playbackIntentRevision) {
-        _recordOperation('trackPlayStarted', targetTrackId: trackId);
-        await backend.play();
-        _recordOperation('trackPlayReturned', targetTrackId: trackId);
+        final started = await _playBackendAndConfirm(
+          generation: generation,
+          intentRevision: intentRevision,
+          targetTrackId: trackId,
+          failureCode: failureCode,
+          failureLocation: failureLocation,
+          failureMessage: failureMessage,
+        );
+        if (!started) return;
       }
       if (!_isCurrent(generation)) return;
       if (!_playbackDesired || intentRevision != _playbackIntentRevision) {
         await backend.pause();
         return;
       }
-      _applyReadySnapshot(backend.snapshot, resourceLoading: false);
       _handleBackendError(backend.snapshot.errorMessage);
       _prefetchIfNeeded(0, snapshot: _snapshot);
       await _notify(() => observer?.onTrackChanged(track));

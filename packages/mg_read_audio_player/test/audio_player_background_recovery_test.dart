@@ -203,6 +203,52 @@ void main() {
     },
   );
 
+  test(
+    'a silently ignored next autoplay becomes a visible timeout failure',
+    () async {
+      final harness = _Harness(
+        recoveryStallTimeout: const Duration(milliseconds: 20),
+      );
+      addTearDown(harness.close);
+      await harness.session.initialize();
+      harness.backend.ignoreNextPlay = true;
+
+      await harness.controller.next();
+
+      final failure = harness.controller.snapshot.failure;
+      expect(harness.controller.snapshot.currentTrack?.id, 'b');
+      expect(harness.controller.snapshot.playing, isFalse);
+      expect(harness.controller.snapshot.resourceLoading, isFalse);
+      expect(failure?.code, 'audio_selected_autoplay_failed');
+      expect(failure?.location, '下一章节自动播放');
+      expect(failure?.debugDetail, contains('未收到 playing=true'));
+      expect(harness.observer.failures, contains(failure));
+    },
+  );
+
+  test(
+    'release-like delayed playing event keeps focus eligibility until start',
+    () async {
+      final harness = _Harness(
+        recoveryStallTimeout: const Duration(milliseconds: 200),
+      );
+      addTearDown(harness.close);
+      await harness.session.initialize();
+      harness.backend.playingEventDelay = const Duration(milliseconds: 20);
+
+      final switching = harness.controller.next();
+      await settle();
+
+      expect(harness.controller.snapshot.playing, isFalse);
+      expect(harness.controller.snapshot.resourceLoading, isTrue);
+      await switching;
+      expect(harness.controller.snapshot.currentTrack?.id, 'b');
+      expect(harness.controller.snapshot.playing, isTrue);
+      expect(harness.controller.snapshot.resourceLoading, isFalse);
+      expect(harness.controller.snapshot.failure, isNull);
+    },
+  );
+
   test('pause during recovery cancels a later automatic resume', () async {
     final harness = _Harness()..source.failFollowing = true;
     addTearDown(harness.close);
@@ -380,6 +426,7 @@ AudioTrack _track(String id) => AudioTrack(
 final class _Harness {
   _Harness({
     this.duration = const Duration(seconds: 100),
+    this.recoveryStallTimeout = const Duration(seconds: 8),
     List<AudioTrack>? initialTracks,
   }) {
     source.initialTracks = initialTracks ?? <AudioTrack>[_track('a')];
@@ -393,11 +440,13 @@ final class _Harness {
       observer: observer,
       prefetchBatchSize: 1,
       prefetchLeadTime: const Duration(seconds: 30),
+      recoveryStallTimeout: recoveryStallTimeout,
       recoveryBackoff: const <Duration>[Duration(milliseconds: 50)],
     );
   }
 
   final Duration duration;
+  final Duration recoveryStallTimeout;
   final AudioPlayerController controller = AudioPlayerController();
   final _Source source = _Source();
   final _Backend backend = _Backend();
@@ -507,6 +556,8 @@ final class _Backend implements AudioPlaybackBackend {
   int nextCalls = 0;
   bool failNextOpen = false;
   bool failNextPlay = false;
+  bool ignoreNextPlay = false;
+  Duration? playingEventDelay;
 
   @override
   AudioPlaybackBackendSnapshot get snapshot => _snapshot;
@@ -553,6 +604,21 @@ final class _Backend implements AudioPlaybackBackend {
     if (failNextPlay) {
       failNextPlay = false;
       throw StateError('play failed');
+    }
+    if (ignoreNextPlay) {
+      ignoreNextPlay = false;
+      return;
+    }
+    final delayed = playingEventDelay;
+    if (delayed != null) {
+      playingEventDelay = null;
+      unawaited(
+        Future<void>.delayed(
+          delayed,
+          () => emit(_snapshot.copyWith(playing: true, completed: false)),
+        ),
+      );
+      return;
     }
     emit(_snapshot.copyWith(playing: true, completed: false));
   }

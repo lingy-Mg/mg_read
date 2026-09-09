@@ -299,6 +299,13 @@ class _AudioViewState extends State<AudioPlayerView>
                               controller: _controller,
                             ),
                           ),
+                          if (snapshot.failure != null) ...<Widget>[
+                            const SizedBox(height: 10),
+                            AudioInlineFailure(
+                              failure: snapshot.failure!,
+                              onRetry: _controller.recover,
+                            ),
+                          ],
                           SizedBox(height: compactHeight ? 8 : 14),
                           Center(
                             child: AudioPlayerCover(
@@ -405,13 +412,6 @@ class _AudioViewState extends State<AudioPlayerView>
                                   widget.onKeepScreenOnChanged,
                             ),
                           ),
-                          if (snapshot.failure != null) ...<Widget>[
-                            const SizedBox(height: 12),
-                            AudioInlineFailure(
-                              failure: snapshot.failure!,
-                              onRetry: _controller.retry,
-                            ),
-                          ],
                         ],
                       ),
                     ),

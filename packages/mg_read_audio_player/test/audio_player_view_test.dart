@@ -340,6 +340,12 @@ void main() {
     backend.emitPosition(const Duration(seconds: 2));
     await tester.pump();
     expect(observer.failureCalls, 1);
+    expect(find.byKey(const Key('audio-inline-failure')), findsOneWidget);
+    expect(find.textContaining('技术原因：decoder failed'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(const Key('audio-inline-failure'))).dy,
+      lessThan(200),
+    );
 
     backend.clearError();
     backend.emitError('decoder failed');

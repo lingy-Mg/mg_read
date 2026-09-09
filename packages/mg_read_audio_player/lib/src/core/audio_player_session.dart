@@ -22,6 +22,7 @@ import '../api/audio_controller.dart';
 import '../api/audio_models.dart';
 
 part 'audio_player_session_recovery.dart';
+part 'audio_player_session_playback.dart';
 part 'audio_player_session_selection.dart';
 
 final class AudioPlayerSession extends ChangeNotifier {
@@ -424,9 +425,41 @@ final class AudioPlayerSession extends ChangeNotifier {
   Future<void> play() async {
     _recordPlaybackIntent(true);
     _cancelRecoveryTimers(resetAttempts: true);
+    if (_closing || _closed || _snapshot.status != AudioPlayerStatus.ready) {
+      return;
+    }
     _recordOperation('playRequested');
-    await _runTransport(backend.play);
-    _recordOperation('playReturned');
+    final generation = _generation;
+    final intentRevision = _playbackIntentRevision;
+    final track = _snapshot.currentTrack;
+    try {
+      final started = await _playBackendAndConfirm(
+        generation: generation,
+        intentRevision: intentRevision,
+        targetTrackId: track?.id,
+        failureCode: 'audio_playback_start_failed',
+        failureLocation: '当前章节开始播放',
+        failureMessage: '播放器已收到播放请求，但当前章节没有开始播放。',
+      );
+      if (!started) return;
+      _recordOperation('playReturned');
+    } on Object catch (error) {
+      if (!_isCurrent(generation) ||
+          !_playbackDesired ||
+          intentRevision != _playbackIntentRevision) {
+        return;
+      }
+      final failure = _failureFrom(
+        error,
+        code: 'audio_playback_start_failed',
+        location: '当前章节开始播放',
+        message: '播放器已收到播放请求，但当前章节没有开始播放。',
+      );
+      _emit(_snapshot.copyWith(resourceLoading: false, failure: failure));
+      _recordOperation('playFailed', targetTrackId: track?.id);
+      await _notify(() => observer?.onFailure(failure));
+      _scheduleRecoveryRetry();
+    }
   }
 
   Future<void> pause() async {

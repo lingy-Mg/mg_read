@@ -155,19 +155,21 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
           );
         }
         if (_playbackDesired && intentRevision == _playbackIntentRevision) {
-          _recordOperation(
-            'trackPlayStarted',
+          final started = await _playBackendAndConfirm(
+            generation: generation,
+            intentRevision: intentRevision,
             targetTrackId: additions.first.id,
+            failureCode: 'audio_continuation_failed',
+            failureLocation: '下一章节开始播放',
+            failureMessage: '下一章节已经载入，但播放器没有开始播放。',
           );
-          await backend.play();
-          _recordOperation(
-            'trackPlayReturned',
-            targetTrackId: additions.first.id,
-          );
+          if (!started) return;
         }
       }
       if (!_isContinuationCurrent(generation, requestRevision)) return;
-      _applyReadySnapshot(backend.snapshot, resourceLoading: false);
+      if (_snapshot.resourceLoading) {
+        _applyReadySnapshot(backend.snapshot, resourceLoading: false);
+      }
       _cancelRecoveryTimers(resetAttempts: true);
     } on Object catch (error) {
       if (!_isContinuationCurrent(generation, requestRevision)) return;
@@ -312,11 +314,16 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
         await backend.pause();
         return;
       }
-      _recordOperation('trackPlayStarted', targetTrackId: track.id);
-      await backend.play();
-      _recordOperation('trackPlayReturned', targetTrackId: track.id);
+      final started = await _playBackendAndConfirm(
+        generation: generation,
+        intentRevision: intentRevision,
+        targetTrackId: track.id,
+        failureCode: 'audio_recovery_failed',
+        failureLocation: '当前章节恢复播放',
+        failureMessage: '当前章节已经重新载入，但播放器没有恢复播放。',
+      );
+      if (!started) return;
       if (!_isCurrent(generation)) return;
-      _applyReadySnapshot(backend.snapshot, resourceLoading: false);
       _handleBackendError(backend.snapshot.errorMessage);
       _prefetchIfNeeded(0, snapshot: _snapshot);
     } on Object catch (error) {
