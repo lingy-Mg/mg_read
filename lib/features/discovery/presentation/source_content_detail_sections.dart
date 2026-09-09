@@ -357,8 +357,12 @@ class _ShelfActionBarState extends State<_ShelfActionBar> {
       } else if (action != SourceShelfAction.refresh) {
         Navigator.of(context).pop();
       }
-    } on Object {
+    } on Object catch (error) {
       if (!mounted) return;
+      if (action == SourceShelfAction.refresh) {
+        await showAppOperationErrorDialog(context, operation: '刷新书籍', error: error, guidance: '书架已保留刷新前的数据。请稍后重试。');
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('操作未能完成，请稍后重试。')));
     } finally {
       if (mounted) setState(() => _runningAction = null);

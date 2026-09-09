@@ -30,6 +30,7 @@ import 'package:mg_read/features/library/presentation/widgets/library_home_top_b
 import 'package:mg_read/features/library/presentation/widgets/library_home_top_visual.dart';
 import 'package:mg_read/features/library/presentation/widgets/private_library_reveal.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
+import 'package:mg_read/shared/presentation/widgets/app_operation_error_dialog.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_backdrop.dart';
 
@@ -515,9 +516,9 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
       final messenger = ScaffoldMessenger.of(context);
       messenger.hideCurrentSnackBar();
       messenger.showSnackBar(SnackBar(behavior: SnackBarBehavior.floating, content: Text('《${book.title}》已刷新')));
-    } on Object {
+    } on Object catch (error) {
       if (!mounted) return;
-      setState(() => _actionFeedback = '刷新书籍失败，请稍后重试。');
+      await showAppOperationErrorDialog(context, operation: '刷新书籍', error: error, guidance: '书架已保留刷新前的数据。请稍后重试。');
     } finally {
       if (mounted) {
         setState(() {

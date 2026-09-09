@@ -194,6 +194,27 @@ void main() {
     expect(find.text('刷新中'), findsNothing);
   });
 
+  testWidgets('shelf detail uses the global copyable error dialog when refresh fails', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: _ActionShelfDetailHost(
+          onStartReading: () async {},
+          onShelfAction: (SourceShelfAction action) => Future<void>.error(StateError('catalog request timed out')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('source-detail-refresh-action')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(find.text('刷新书籍失败'), findsOneWidget);
+    expect(find.text('Bad state: catalog request timed out'), findsOneWidget);
+    expect(find.byKey(const Key('app-operation-error-copy')), findsOneWidget);
+  });
+
   testWidgets('manga detail starts the comic reader callback instead of a URL list', (tester) async {
     var comicChapterCount = 0;
     List<int>? forwardedCoverBytes;

@@ -32,6 +32,7 @@ import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
 import 'package:mg_read/features/library/presentation/widgets/bookshelf_removal_confirmation.dart';
+import 'package:mg_read/shared/presentation/widgets/app_operation_error_dialog.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
 part 'source_content_detail_sections.dart';

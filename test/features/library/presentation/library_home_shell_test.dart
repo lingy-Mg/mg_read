@@ -395,6 +395,30 @@ void main() {
     expect(find.text('《诡秘之主》已刷新'), findsOneWidget);
   });
 
+  testWidgets('shows a copyable modal with the original reason when bookshelf refresh fails', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      _host(
+        callbacks: LibraryHomeCallbacks(
+          onRefreshBook: (LibraryBookListItemViewData book) => Future<void>.error(StateError('source returned HTTP 503')),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('书架'));
+    await tester.pumpAndSettle();
+    await _openHomeBookMenu(tester);
+    await tester.tap(find.text('刷新'));
+    await tester.pump();
+    await tester.pump(AppMotion.destinationTransition);
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.text('刷新书籍失败'), findsOneWidget);
+    expect(find.text('Bad state: source returned HTTP 503'), findsOneWidget);
+    expect(find.byKey(const Key('app-operation-error-copy')), findsOneWidget);
+    expect(find.text('刷新书籍失败，请稍后重试。'), findsNothing);
+  });
+
   testWidgets('offers cover blur from the bookshelf more menu', (WidgetTester tester) async {
     LibraryBookListItemViewData? toggledBook;
     await tester.pumpWidget(
