@@ -96,6 +96,10 @@ void main() {
       );
       expect(find.text('播放设置'), findsOneWidget);
       expect(find.byKey(const Key('video-player-rate-1-5')), findsOneWidget);
+      expect(
+        find.byKey(const Key('video-player-fit-default-hint')),
+        findsOneWidget,
+      );
 
       final rate = find.byKey(const Key('video-player-rate-1-5'));
       await tester.ensureVisible(rate);
@@ -113,6 +117,10 @@ void main() {
       await tester.tap(fit);
       await tester.pump();
       expect(find.text('填充'), findsOneWidget);
+      expect(
+        find.byKey(const Key('video-player-fit-default-hint')),
+        findsNothing,
+      );
     },
   );
 

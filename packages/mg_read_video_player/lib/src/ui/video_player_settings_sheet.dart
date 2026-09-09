@@ -190,6 +190,7 @@ final class _VideoPlayerSettingsSheetState
                 icon: Icons.aspect_ratio_rounded,
                 label: '画面比例',
                 detail: _fitLabel(_fitMode),
+                detailHint: _fitMode == VideoFitMode.contain ? '默认' : null,
                 trailing: TextButton(
                   key: const Key('video-player-fit'),
                   onPressed: _cycleFitMode,
@@ -285,12 +286,14 @@ final class _SettingsRow extends StatelessWidget {
     required this.label,
     required this.detail,
     required this.trailing,
+    this.detailHint,
   });
 
   final IconData icon;
   final String label;
   final String detail;
   final Widget trailing;
+  final String? detailHint;
 
   @override
   Widget build(BuildContext context) => DecoratedBox(
@@ -318,8 +321,24 @@ final class _SettingsRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  detail,
+                Text.rich(
+                  key: detailHint == null
+                      ? null
+                      : const Key('video-player-fit-default-hint'),
+                  TextSpan(
+                    children: <InlineSpan>[
+                      TextSpan(text: detail),
+                      if (detailHint case final hint?)
+                        TextSpan(
+                          text: '  $hint',
+                          style: TextStyle(
+                            color: videoPlayerSecondary.withValues(alpha: .68),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                    ],
+                  ),
                   style: const TextStyle(
                     color: videoPlayerSecondary,
                     fontSize: 12,
