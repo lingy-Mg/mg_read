@@ -25,25 +25,27 @@ abstract interface class SourceMediaSystemUiPlatform {
 }
 
 /// Applies media presentation through Flutter's system UI APIs.
-///
-/// The app deliberately never requests a device orientation. A media route may
-/// hide system chrome, but the user's system auto-rotate lock remains the
-/// authority for whether the Activity can rotate.
 final class SystemSourceMediaSystemUiPlatform implements SourceMediaSystemUiPlatform {
   const SystemSourceMediaSystemUiPlatform();
 
   @override
   Future<void> enterPortrait() async {
+    await SystemChrome.setPreferredOrientations(const <DeviceOrientation>[DeviceOrientation.portraitUp]);
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   }
 
   @override
   Future<void> enterLandscape() async {
+    await SystemChrome.setPreferredOrientations(const <DeviceOrientation>[
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   }
 
   @override
   Future<void> restore() async {
+    await SystemChrome.setPreferredOrientations(const <DeviceOrientation>[]);
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
 }

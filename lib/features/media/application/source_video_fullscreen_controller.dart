@@ -1,8 +1,8 @@
 /// Host-owned fullscreen lifetime for transient source-video routes.
 ///
-/// Mobile playback uses route-scoped system bars while retaining the user's
-/// system rotation preference. Windows playback instead makes the current
-/// native window fullscreen on its current display.
+/// Mobile playback uses route-scoped orientation and system bars. Windows
+/// playback instead makes the current native window fullscreen on its current
+/// display, without imposing a mobile orientation.
 library;
 
 import 'dart:io';
@@ -25,7 +25,7 @@ abstract interface class SourceVideoFullscreenPlatform implements SourceMediaSys
   Future<void> setDesktopWindowFullscreen(bool fullscreen);
 }
 
-/// Applies fullscreen through Flutter's system UI APIs.
+/// Applies fullscreen through Flutter's system UI and orientation APIs.
 final class SystemSourceVideoFullscreenPlatform implements SourceVideoFullscreenPlatform {
   const SystemSourceVideoFullscreenPlatform();
 
@@ -62,7 +62,7 @@ final class SourceVideoFullscreenController {
   bool _desktopRestoreNeeded = false;
   bool _closed = false;
 
-  /// Enters the route-scoped immersive player mode without forcing rotation.
+  /// Enters the route-scoped portrait immersive player mode.
   Future<void> activate() {
     if (_closed) return Future<void>.value();
     if (_platform.usesDesktopWindowFullscreen) return Future<void>.value();

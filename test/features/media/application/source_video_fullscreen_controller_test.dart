@@ -10,7 +10,7 @@ import 'package:mg_read/features/media/application/source_video_fullscreen_contr
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('system platform changes only system chrome and preserves system rotation control', () async {
+  test('system platform uses portrait, landscape, then restores app UI', () async {
     final calls = <MethodCall>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
       calls.add(call);
@@ -26,13 +26,19 @@ void main() {
     await platform.restore();
 
     expect(calls.map((call) => call.method), <String>[
+      'SystemChrome.setPreferredOrientations',
       'SystemChrome.setEnabledSystemUIMode',
+      'SystemChrome.setPreferredOrientations',
       'SystemChrome.setEnabledSystemUIMode',
+      'SystemChrome.setPreferredOrientations',
       'SystemChrome.setEnabledSystemUIMode',
     ]);
-    expect(calls[0].arguments, 'SystemUiMode.immersiveSticky');
+    expect(calls[0].arguments, <String>['DeviceOrientation.portraitUp']);
     expect(calls[1].arguments, 'SystemUiMode.immersiveSticky');
-    expect(calls[2].arguments, 'SystemUiMode.edgeToEdge');
+    expect(calls[2].arguments, <String>['DeviceOrientation.landscapeLeft', 'DeviceOrientation.landscapeRight']);
+    expect(calls[3].arguments, 'SystemUiMode.immersiveSticky');
+    expect(calls[4].arguments, isEmpty);
+    expect(calls[5].arguments, 'SystemUiMode.edgeToEdge');
   });
 
   test('activates portrait and enters and exits fullscreen in request order', () async {
