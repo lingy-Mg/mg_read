@@ -9,8 +9,10 @@ list(APPEND FLUTTER_PLUGIN_LIST
   mgread_plugin_runtime
   novel_reader_ui
   screen_brightness_windows
+  screen_retriever_windows
   share_plus
   url_launcher_windows
+  window_manager
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

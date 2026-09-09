@@ -90,13 +90,37 @@ void main() {
 
     expect(platform.calls, <String>['landscape', 'restore']);
   });
+
+  test('desktop fullscreen changes only the current window and never requests mobile orientation', () async {
+    final platform = _FakeFullscreenPlatform(usesDesktopWindowFullscreen: true);
+    final controller = SourceVideoFullscreenController.withPlatform(platform);
+
+    await controller.activate();
+    await controller.setFullscreen(true);
+    await controller.setFullscreen(false);
+    await controller.restoreAndClose();
+
+    expect(platform.calls, <String>['desktop:true', 'desktop:false']);
+  });
+
+  test('desktop route cleanup exits the current window fullscreen after a pending enter', () async {
+    final platform = _FakeFullscreenPlatform(usesDesktopWindowFullscreen: true);
+    final controller = SourceVideoFullscreenController.withPlatform(platform);
+
+    await controller.setFullscreen(true);
+    await controller.restoreAndClose();
+
+    expect(platform.calls, <String>['desktop:true', 'desktop:false']);
+  });
 }
 
 final class _FakeFullscreenPlatform implements SourceVideoFullscreenPlatform {
-  _FakeFullscreenPlatform({this.landscapeGate, this.failLandscape = false});
+  _FakeFullscreenPlatform({this.landscapeGate, this.failLandscape = false, this.usesDesktopWindowFullscreen = false});
 
   final Completer<void>? landscapeGate;
   final bool failLandscape;
+  @override
+  final bool usesDesktopWindowFullscreen;
   final List<String> calls = <String>[];
 
   @override
@@ -114,5 +138,10 @@ final class _FakeFullscreenPlatform implements SourceVideoFullscreenPlatform {
   @override
   Future<void> restore() async {
     calls.add('restore');
+  }
+
+  @override
+  Future<void> setDesktopWindowFullscreen(bool fullscreen) async {
+    calls.add('desktop:$fullscreen');
   }
 }

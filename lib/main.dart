@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'package:mg_read/app/bootstrap.dart';
 import 'package:mg_read/app/source_verification_command.dart';
@@ -11,6 +12,7 @@ import 'package:mg_read/features/plugins/application/source_verification.dart';
 Future<void> main(List<String> arguments) async {
   // debugRepaintRainbowEnabled = true;
   WidgetsFlutterBinding.ensureInitialized();
+  if (Platform.isWindows) await windowManager.ensureInitialized();
   SourceVerificationCommand? verificationCommand;
   try {
     verificationCommand = parseSourceVerificationCommand(arguments);
