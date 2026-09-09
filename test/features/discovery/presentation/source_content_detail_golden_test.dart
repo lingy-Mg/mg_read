@@ -162,6 +162,7 @@ void main() {
     expect(find.text('详情加载失败'), findsOneWidget);
     expect(find.textContaining('错误码：invalid_format'), findsOneWidget);
     expect(find.textContaining('失败阶段：source.getDetail.v1'), findsOneWidget);
+    expect(find.text('原始原因：Source detail response had an unexpected shape.'), findsOneWidget);
     expect(find.text('已保留列表预览；实时详情和可播放选集尚未加载。'), findsOneWidget);
     expect(find.byKey(const Key('source-detail-start-reading')), findsOneWidget);
     expect(tester.widget<FilledButton>(find.byKey(const Key('source-detail-start-reading'))).onPressed, isNull);
@@ -336,7 +337,7 @@ final class _RetryingDetailGateway extends _GoldenDetailGateway {
   Future<PluginContentDetail> getDetail({required String pluginId, required String id}) async {
     detailRequests += 1;
     if (detailRequests == 1) {
-      throw AppError.fromCode(AppErrorCode.invalidFormat);
+      throw AppError.fromCode(AppErrorCode.invalidFormat, detail: 'Source detail response had an unexpected shape.');
     }
     return detail;
   }

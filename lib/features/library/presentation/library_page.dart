@@ -294,9 +294,9 @@ class LibraryPage extends ConsumerWidget {
         final seed = await detailLauncher.load(book.id);
         final entry = persistedLibraryMediaEntry(detail: seed.initialDetail, catalog: seed.initialCatalog, book: book);
         await callback(detail: entry.detail, firstCatalogPage: entry.catalog, chapter: entry.chapter, libraryItemId: book.id);
-      } on Object {
+      } on Object catch (error) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无法打开上次的听书进度，请检查网络后重试。')));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_shelfMediaFailureMessage('无法打开上次的听书进度，请检查网络后重试。', error))));
         }
       }
     }
@@ -325,9 +325,9 @@ class LibraryPage extends ConsumerWidget {
         final seed = await detailLauncher.load(book.id);
         final entry = persistedLibraryMediaEntry(detail: seed.initialDetail, catalog: seed.initialCatalog, book: book);
         await callback(detail: entry.detail, firstCatalogPage: entry.catalog, chapter: entry.chapter, libraryItemId: book.id);
-      } on Object {
+      } on Object catch (error) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无法打开上次的视频进度，请检查网络后重试。')));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_shelfMediaFailureMessage('无法打开上次的视频进度，请检查网络后重试。', error))));
         }
       }
     }
@@ -465,6 +465,16 @@ class LibraryPage extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Preserves an actual source/runtime reason at the shelf media entry point.
+/// The fallback is retained only when the producing layer supplied no detail.
+String _shelfMediaFailureMessage(String fallback, Object error) {
+  final AppError normalized = AppError.fromUnknown(error);
+  final String? detail = normalized.detail?.trim();
+  if (detail != null && detail.isNotEmpty) return detail;
+  final String? location = normalized.location?.trim();
+  return <String>[fallback, '错误码：${normalized.code.wireValue}', if (location != null && location.isNotEmpty) '失败位置：$location'].join('\n');
 }
 
 final class _LibraryTerminalFrameSignal extends StatefulWidget {

@@ -853,7 +853,10 @@ test("plugin execution failures stay distinct from invalid plugin responses", as
       new AbortController().signal,
       String(Date.now() + 5_000),
     ),
-    (error) => error?.code === "plugin_execution_failed",
+    (error) =>
+      error?.code === "plugin_execution_failed" &&
+      error?.detail ===
+        "pluginId=org.example.delayed; operation=getDetail; cause=Error: Source detail request failed. <- Error [code=ECONNREFUSED]: connect ECONNREFUSED 203.0.113.8:443",
   );
   assert.equal(
     events.filter((event) => event.code === "plugin_invocation_failed").length,

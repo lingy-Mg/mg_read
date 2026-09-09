@@ -84,12 +84,71 @@ export async function invokeLoadedPluginContent<TResult extends JsonObject>(opti
   } catch (error) {
     events({ code: "plugin_invocation_failed", durationMs: performance.now() - startedAt, operation, outcome: "error", pluginId });
     if (debugLogEnabled()) events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.invocation", logLevel: "error", logMessage: `能力调用出错：操作=${operation}，耗时毫秒=${Math.round(performance.now() - startedAt)}，错误=${error instanceof PluginContentValidationError ? error.message : error instanceof PluginManagerError ? error.code : error instanceof Error ? error.name : "unknown"}`, outcome: "error", pluginId });
-    if (error instanceof PluginManagerError) throw new PluginManagerError(error.code, error.detail);
-    if (isPluginManagerError(error)) throw new PluginManagerError(error.code, error instanceof Error ? error.message : undefined);
+    // Content invocations are initiated by a visible shelf/discovery action.
+    // Keep the exact capability, source and causal Error chain on the wire so
+    // the Flutter host never reduces a source failure to a generic message.
+    // Source-authored public errors retain their separately reviewed detail.
+    if (error instanceof PluginManagerError) {
+      throw new PluginManagerError(
+        error.code,
+        error.code === "plugin_execution_failed"
+          ? invocationFailureDetail(pluginId, operation, error)
+          : error.detail,
+      );
+    }
+    if (isPluginManagerError(error)) {
+      const detail = error instanceof Error ? error.message : undefined;
+      throw new PluginManagerError(
+        error.code,
+        error.code === "plugin_execution_failed"
+          ? invocationFailureDetail(pluginId, operation, error)
+          : detail,
+      );
+    }
     throwIfPluginOperationUnavailable(signal, deadlineUnixMs);
     if (error instanceof PluginContentValidationError) {
       throw new PluginManagerError("plugin_invalid_response", error.message);
     }
-    throw new PluginManagerError("plugin_execution_failed", error instanceof Error ? error.message : String(error));
+    throw new PluginManagerError("plugin_execution_failed", invocationFailureDetail(pluginId, operation, error));
   }
+}
+
+/**
+ * Makes an ordinary source exception actionable without serializing a stack or
+ * arbitrary object graph.  Fetch and WebView errors commonly put the useful
+ * network errno in `cause`, so retain a short bounded causal chain as well.
+ */
+function invocationFailureDetail(pluginId: string, operation: PluginContentOperation, error: unknown): string {
+  const causes: string[] = [];
+  let current: unknown = error;
+  for (let index = 0; index < 4 && current !== undefined && current !== null; index += 1) {
+    const text = errorText(current);
+    if (text !== "") causes.push(text);
+    current = current instanceof Error ? current.cause : undefined;
+  }
+  const cause = causes.length === 0 ? "No Error message or cause was supplied by the source." : causes.join(" <- ");
+  return boundFailureDetail(`pluginId=${pluginId}; operation=${operation}; cause=${cause}`);
+}
+
+function errorText(error: unknown): string {
+  if (error instanceof Error) {
+    const name = error.name.trim() || "Error";
+    const message = error.message.replaceAll("\u0000", " ").trim();
+    const errorWithCode = error as Error & { readonly code?: unknown };
+    const code = typeof errorWithCode.code === "string"
+      ? ` [code=${errorWithCode.code}]`
+      : "";
+    return message === "" ? `${name}${code}` : `${name}${code}: ${message}`;
+  }
+  if (typeof error === "string") return error.replaceAll("\u0000", " ").trim();
+  try {
+    return String(error).replaceAll("\u0000", " ").trim();
+  } catch {
+    return "Unstringifiable source failure.";
+  }
+}
+
+function boundFailureDetail(value: string): string {
+  const maximumCharacters = 2048;
+  return value.length <= maximumCharacters ? value : `${value.slice(0, maximumCharacters - 1)}…`;
 }

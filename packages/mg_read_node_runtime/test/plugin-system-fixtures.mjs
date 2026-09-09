@@ -154,7 +154,7 @@ export function getDetail(request) {
     message: "访问异常，请稍后再试。",
     annotation: "当前 IP 可能异常，请更换 IP 后重试。",
   });
-  throw new Error("unused");
+  throw new Error("Source detail request failed.", { cause: Object.assign(new Error("connect ECONNREFUSED 203.0.113.8:443"), { code: "ECONNREFUSED" }) });
 }
 export function getChapters() { throw new Error("unused"); }
 export function getContent() { throw new Error("unused"); }
