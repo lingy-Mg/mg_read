@@ -102,6 +102,17 @@ void main() {
       await tester.tap(rate);
       await tester.pump();
       expect(backend.rates.last, 1.5);
+      expect(
+        tester.widget<ChoiceChip>(rate).selected,
+        isTrue,
+        reason: '倍速选择需要在设置面板中立即回显',
+      );
+
+      final fit = find.byKey(const Key('video-player-fit'));
+      await tester.ensureVisible(fit);
+      await tester.tap(fit);
+      await tester.pump();
+      expect(find.text('填充'), findsOneWidget);
     },
   );
 

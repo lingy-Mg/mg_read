@@ -48,13 +48,13 @@ final class VideoPlayerChrome extends StatefulWidget {
   final ValueChanged<Duration> onSeekPreviewChanged;
   final ValueChanged<Duration> onSeekPreviewEnded;
   final VoidCallback onSeekPreviewCanceled;
-  final ValueChanged<double> onRate;
-  final VoidCallback onFit;
+  final Future<void> Function(double) onRate;
+  final Future<void> Function() onFit;
   final VoidCallback onEpisodes;
   final ValueChanged<bool> onFullscreen;
-  final VoidCallback onPreviousEpisode;
-  final VoidCallback onNextEpisode;
-  final ValueChanged<bool> onAutoAdvance;
+  final Future<void> Function() onPreviousEpisode;
+  final Future<void> Function() onNextEpisode;
+  final Future<void> Function(bool) onAutoAdvance;
   final VoidCallback onInteractionStart;
   final VoidCallback onInteractionEnd;
 

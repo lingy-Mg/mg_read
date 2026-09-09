@@ -20,11 +20,11 @@ import 'video_player_visuals.dart';
 Future<void> showVideoPlayerSettingsSheet({
   required BuildContext context,
   required VideoPlayerSnapshot snapshot,
-  required ValueChanged<double> onRate,
-  required VoidCallback onFit,
-  required VoidCallback onPreviousEpisode,
-  required VoidCallback onNextEpisode,
-  required ValueChanged<bool> onAutoAdvance,
+  required Future<void> Function(double) onRate,
+  required Future<void> Function() onFit,
+  required Future<void> Function() onPreviousEpisode,
+  required Future<void> Function() onNextEpisode,
+  required Future<void> Function(bool) onAutoAdvance,
 }) => showModalBottomSheet<void>(
   context: context,
   backgroundColor: Colors.transparent,
@@ -46,7 +46,7 @@ Future<void> showVideoPlayerSettingsSheet({
   ),
 );
 
-final class _VideoPlayerSettingsSheet extends StatelessWidget {
+final class _VideoPlayerSettingsSheet extends StatefulWidget {
   const _VideoPlayerSettingsSheet({
     required this.snapshot,
     required this.onRate,
@@ -57,11 +57,42 @@ final class _VideoPlayerSettingsSheet extends StatelessWidget {
   });
 
   final VideoPlayerSnapshot snapshot;
-  final ValueChanged<double> onRate;
-  final VoidCallback onFit;
-  final VoidCallback onPreviousEpisode;
-  final VoidCallback onNextEpisode;
-  final ValueChanged<bool> onAutoAdvance;
+  final Future<void> Function(double) onRate;
+  final Future<void> Function() onFit;
+  final Future<void> Function() onPreviousEpisode;
+  final Future<void> Function() onNextEpisode;
+  final Future<void> Function(bool) onAutoAdvance;
+
+  @override
+  State<_VideoPlayerSettingsSheet> createState() =>
+      _VideoPlayerSettingsSheetState();
+}
+
+final class _VideoPlayerSettingsSheetState
+    extends State<_VideoPlayerSettingsSheet> {
+  late double _rate = widget.snapshot.rate;
+  late VideoFitMode _fitMode = widget.snapshot.fitMode;
+  late bool _autoAdvance = widget.snapshot.autoAdvance;
+
+  Future<void> _setRate(double rate) async {
+    await widget.onRate(rate);
+    if (mounted) setState(() => _rate = rate);
+  }
+
+  Future<void> _cycleFitMode() async {
+    await widget.onFit();
+    if (mounted) {
+      setState(() {
+        _fitMode = VideoFitMode
+            .values[(_fitMode.index + 1) % VideoFitMode.values.length];
+      });
+    }
+  }
+
+  Future<void> _setAutoAdvance(bool enabled) async {
+    await widget.onAutoAdvance(enabled);
+    if (mounted) setState(() => _autoAdvance = enabled);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -122,9 +153,10 @@ final class _VideoPlayerSettingsSheet extends StatelessWidget {
                       icon: Icons.skip_previous_rounded,
                       label: '上一集',
                       enabled:
-                          snapshot.hasPreviousEpisode ||
-                          snapshot.position >= const Duration(seconds: 5),
-                      onPressed: onPreviousEpisode,
+                          widget.snapshot.hasPreviousEpisode ||
+                          widget.snapshot.position >=
+                              const Duration(seconds: 5),
+                      onPressed: widget.onPreviousEpisode,
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -133,8 +165,8 @@ final class _VideoPlayerSettingsSheet extends StatelessWidget {
                       key: const Key('video-player-next-episode'),
                       icon: Icons.skip_next_rounded,
                       label: '下一集',
-                      enabled: snapshot.hasNextEpisode,
-                      onPressed: onNextEpisode,
+                      enabled: widget.snapshot.hasNextEpisode,
+                      onPressed: widget.onNextEpisode,
                     ),
                   ),
                 ],
@@ -145,22 +177,22 @@ final class _VideoPlayerSettingsSheet extends StatelessWidget {
               _SettingsRow(
                 icon: Icons.repeat_rounded,
                 label: '自动连播',
-                detail: snapshot.autoAdvance ? '当前开启' : '当前关闭',
+                detail: _autoAdvance ? '当前开启' : '当前关闭',
                 trailing: Switch.adaptive(
                   key: const Key('video-player-auto-advance'),
-                  value: snapshot.autoAdvance,
+                  value: _autoAdvance,
                   activeTrackColor: videoPlayerAccent,
-                  onChanged: onAutoAdvance,
+                  onChanged: _setAutoAdvance,
                 ),
               ),
               const SizedBox(height: 12),
               _SettingsRow(
                 icon: Icons.aspect_ratio_rounded,
                 label: '画面比例',
-                detail: _fitLabel(snapshot.fitMode),
+                detail: _fitLabel(_fitMode),
                 trailing: TextButton(
                   key: const Key('video-player-fit'),
-                  onPressed: onFit,
+                  onPressed: _cycleFitMode,
                   style: TextButton.styleFrom(
                     foregroundColor: videoPlayerAccent,
                   ),
@@ -178,18 +210,18 @@ final class _VideoPlayerSettingsSheet extends StatelessWidget {
                     ChoiceChip(
                       key: Key('video-player-rate-${_rateKey(rate)}'),
                       label: Text('${_trimRate(rate)}×'),
-                      selected: snapshot.rate == rate,
+                      selected: _rate == rate,
                       showCheckmark: false,
                       selectedColor: videoPlayerAccent,
                       backgroundColor: const Color(0x1AFFFFFF),
                       side: BorderSide.none,
                       labelStyle: TextStyle(
-                        color: snapshot.rate == rate
+                        color: _rate == rate
                             ? const Color(0xFF111214)
                             : videoPlayerForeground,
                         fontWeight: FontWeight.w600,
                       ),
-                      onSelected: (_) => onRate(rate),
+                      onSelected: (_) => _setRate(rate),
                     ),
                 ],
               ),
