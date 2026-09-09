@@ -1,5 +1,6 @@
 package com.mgread.mg_read
 
+import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
@@ -123,16 +124,19 @@ class MainActivity : AudioServiceActivity() {
                 .apply {
                     clipData = ClipData.newRawUri("mgread-app-update", apkUri)
                 }
-            if (installer.resolveActivity(packageManager) == null) {
-                throw AppUpdateException("app_update_installer_unavailable")
-            }
             startActivity(installer)
             result.success(null)
         } catch (error: AppUpdateException) {
             result.error(error.code, null, null)
-        } catch (_: Exception) {
-            // Do not return a local path or platform exception detail to Flutter diagnostics.
-            result.error("app_update_installer_unavailable", null, null)
+        } catch (error: ActivityNotFoundException) {
+            result.error("app_update_installer_unavailable", error.javaClass.simpleName, null)
+        } catch (error: SecurityException) {
+            result.error("app_update_installer_permission_denied", error.javaClass.simpleName, null)
+        } catch (error: IllegalArgumentException) {
+            result.error("app_update_file_provider_failed", error.javaClass.simpleName, null)
+        } catch (error: Exception) {
+            // Preserve only the failure class; never expose the local APK path.
+            result.error("app_update_installer_failed", error.javaClass.simpleName, null)
         }
     }
 

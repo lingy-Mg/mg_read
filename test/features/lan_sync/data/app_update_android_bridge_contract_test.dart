@@ -37,6 +37,8 @@ void main() {
     expect(source, contains('FileProvider.getUriForFile'));
     expect(source, contains('Intent.ACTION_VIEW'));
     expect(source, contains('Intent.FLAG_GRANT_READ_URI_PERMISSION'));
+    expect(source, isNot(contains('installer.resolveActivity(packageManager)')));
+    expect(source, contains('catch (error: ActivityNotFoundException)'));
     expect(source, contains('packageManager.canRequestPackageInstalls()'));
     expect(source, contains('Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES'));
     expect(source, isNot(contains('PackageInstaller.Session')));

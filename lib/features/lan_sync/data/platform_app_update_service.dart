@@ -114,7 +114,7 @@ final class PlatformAppUpdateService implements AppUpdateService {
         await _appUpdateChannel.invokeMethod<void>('installApk', <String, Object?>{'path': package.path});
         return;
       } on PlatformException catch (error) {
-        throw StateError(error.code);
+        throw StateError('${error.code}:${error.message ?? 'AndroidException'}');
       }
     }
     if (descriptor.version.platform == AppUpdatePlatform.windows && _dependencies.isWindows) {

@@ -696,6 +696,10 @@ String _appUpdateFailureMessage(String label, String code) => switch (code) {
   'app_update_not_newer' => '$label 的 App 版本不高于本机；如确实需要，请选择强制安装',
   'app_update_platform_mismatch' => '$label 没有适用于当前设备平台的 App 安装包',
   'app_update_install_permission_required' => '请在系统设置中允许安装未知来源应用，返回后再次升级',
+  'app_update_installer_unavailable' => '系统中没有可用的 APK 安装程序',
+  'app_update_installer_permission_denied' => '系统拒绝向安装程序授予 APK 读取权限',
+  'app_update_file_provider_failed' => '安装包临时文件无法提供给系统安装程序',
+  'app_update_installer_failed' => '系统安装程序启动失败',
   'lan_sync_peer_offline' => '$label 已离线，无法获取 App',
   _ => '从 $label 获取 App 失败（$code）',
 };
