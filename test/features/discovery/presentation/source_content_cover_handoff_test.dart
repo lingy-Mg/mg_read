@@ -2,10 +2,10 @@
 ///
 /// 职责：
 /// - 验证入口摘要的封面不会被无本地字节的 Runtime 详情覆盖。
-/// - 覆盖小说、漫画、音频和视频四种出口回调。
+/// - 覆盖小说、漫画、音频和视频四种出口回调及其返回详情的路由栈。
 ///
 /// 注意：
-/// - 本测试只验证主应用路由数据，不启动真实阅读器或播放器。
+/// - 以占位内容页模拟宿主启动，验证退出后仍回到原详情而非搜索/发现页。
 library;
 
 import 'dart:async';
@@ -22,7 +22,7 @@ import 'package:mg_read/features/discovery/presentation/source_content_detail_sh
 
 void main() {
   for (final kind in PluginContentKind.values) {
-    testWidgets('${kind.code} receives the cover supplied by its search or discovery entry', (tester) async {
+    testWidgets('${kind.code} returns to its source detail after its content surface closes', (tester) async {
       List<int>? receivedCoverBytes;
       await tester.pumpWidget(
         ProviderScope(
@@ -38,6 +38,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(receivedCoverBytes, _onePixelPng);
+      expect(find.byKey(const Key('source-content-playback-placeholder')), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('source-content-detail-sheet')), findsOneWidget);
     });
   }
 
@@ -71,6 +77,16 @@ class _DetailEntryHost extends StatefulWidget {
 }
 
 class _DetailEntryHostState extends State<_DetailEntryHost> {
+  Future<void> _openContent(List<int>? coverBytes) async {
+    widget.onCoverReceived(coverBytes);
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(key: Key('source-content-playback-placeholder'), body: SizedBox.shrink()),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -87,22 +103,22 @@ class _DetailEntryHostState extends State<_DetailEntryHost> {
           onTextChapterRequested: widget.kind != PluginContentKind.novel
               ? null
               : ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) async {
-                  widget.onCoverReceived(entryCoverBytes);
+                  await _openContent(entryCoverBytes);
                 },
           onComicChapterRequested: widget.kind != PluginContentKind.manga
               ? null
               : ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) async {
-                  widget.onCoverReceived(entryCoverBytes);
+                  await _openContent(entryCoverBytes);
                 },
           onAudioChapterRequested: widget.kind != PluginContentKind.audio
               ? null
               : ({required detail, required firstCatalogPage, required chapter}) async {
-                  widget.onCoverReceived(detail.summary.coverBytes);
+                  await _openContent(detail.summary.coverBytes);
                 },
           onVideoEpisodeRequested: widget.kind != PluginContentKind.video
               ? null
               : ({required detail, required firstCatalogPage, required chapter}) async {
-                  widget.onCoverReceived(detail.summary.coverBytes);
+                  await _openContent(detail.summary.coverBytes);
                 },
         ),
       );

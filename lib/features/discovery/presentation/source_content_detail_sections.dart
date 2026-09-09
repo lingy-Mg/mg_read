@@ -660,15 +660,18 @@ Future<void> _openTextChapter(
   required SourceAudioChapterRequested? onAudioChapterRequested,
   required SourceVideoEpisodeRequested? onVideoEpisodeRequested,
 }) async {
+  // The detail route is the stable return destination for all four content
+  // types. The app host pushes a reader/player above this route, so do not
+  // dismiss the detail before invoking its callback. Doing so skips the detail
+  // on exit and can also desynchronise discovery's retained category routes.
   if (detail.summary.contentKind == PluginContentKind.audio) {
     final callback = onAudioChapterRequested;
     if (callback == null) {
       throw StateError('An audio-player host has not been registered.');
     }
     // Audio and video entry covers live on detail.summary. Both branches must
-    // attach the resolved bytes before popping the detail route.
+    // attach the resolved bytes before entering their host-owned surface.
     final playbackDetail = _withResolvedEntryCover(detail, context);
-    Navigator.of(context).pop();
     await callback(detail: playbackDetail, firstCatalogPage: firstCatalogPage, chapter: chapter);
     return;
   }
@@ -678,10 +681,10 @@ Future<void> _openTextChapter(
       throw StateError('A video-player host has not been registered.');
     }
     // The detail cover is commonly resolved by DiscoveryBookCover and kept in
-    // the route-to-route memory cache. Carry it across the detail pop so the
-    // player can show the real artwork immediately instead of its fallback.
+    // the route-to-route memory cache. Carry it across the detail-to-player
+    // handoff so the player can show the real artwork immediately instead of
+    // its fallback.
     final playbackDetail = _withResolvedEntryCover(detail, context);
-    Navigator.of(context).pop();
     await callback(detail: playbackDetail, firstCatalogPage: firstCatalogPage, chapter: chapter);
     return;
   }
@@ -692,7 +695,6 @@ Future<void> _openTextChapter(
       return;
     }
     final entryCoverBytes = _resolvedEntryCoverBytes(context, detail.summary);
-    Navigator.of(context).pop();
     await callback(detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter, entryCoverBytes: entryCoverBytes);
     return;
   }
@@ -702,7 +704,6 @@ Future<void> _openTextChapter(
     return;
   }
   final entryCoverBytes = _resolvedEntryCoverBytes(context, detail.summary);
-  Navigator.of(context).pop();
   await callback(detail: detail, firstCatalogPage: firstCatalogPage, chapter: chapter, entryCoverBytes: entryCoverBytes);
 }
 
