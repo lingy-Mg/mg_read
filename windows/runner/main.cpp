@@ -5,13 +5,12 @@
 #include "flutter_window.h"
 #include "utils.h"
 
-int main() {
-  std::vector<std::string> command_line_arguments =
-      GetCommandLineArguments();
+int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
+                      _In_ wchar_t *command_line, _In_ int show_command) {
+  std::vector<std::string> command_line_arguments = GetCommandLineArguments();
   bool source_check_command = false;
   for (const auto &argument : command_line_arguments) {
-    if (argument == "--source-check-all" ||
-        argument == "--source-check" ||
+    if (argument == "--source-check-all" || argument == "--source-check" ||
         argument.rfind("--source-check=", 0) == 0) {
       source_check_command = true;
       break;
@@ -24,13 +23,6 @@ int main() {
   if (source_check_command) {
     ::AttachConsole(ATTACH_PARENT_PROCESS);
     CreateAndAttachConsole();
-  } else {
-    // The console subsystem gives the normal GUI app a temporary console
-    // when it is launched outside a terminal. Do not leave that console
-    // visible to ordinary users; keep it during debugger sessions.
-    if (!::IsDebuggerPresent()) {
-      ::FreeConsole();
-    }
   }
 
   // Initialize COM, so that it is available for use in the library and/or

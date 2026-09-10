@@ -6,10 +6,11 @@ project(runner LANGUAGES CXX)
 # work.
 #
 # Any new source files that you add to the application should be added here.
-# Use the console subsystem so a direct `mg_read.exe --source-check=...`
-# invocation remains attached to the caller and blocks until Dart exits.
-# The runner releases the console again for ordinary GUI launches.
-add_executable(${BINARY_NAME}
+# Use the Windows GUI subsystem so shell/shortcut launches never receive the
+# transient console that the console subsystem creates before `main` runs.
+# `main.cpp` explicitly attaches (or creates) a console for --source-check,
+# retaining the app's diagnostic CLI mode without affecting normal launches.
+add_executable(${BINARY_NAME} WIN32
   "flutter_window.cpp"
   "main.cpp"
   "utils.cpp"
@@ -19,9 +20,18 @@ add_executable(${BINARY_NAME}
   "runner.exe.manifest"
 )
 
+# The production app remains a GUI executable. Keep the explicit source-check
+# workflow in a small console companion, so terminal callers still wait for
+# the verification exit code without making ordinary app launches flash a
+# console window.
+add_executable(${BINARY_NAME}_cli
+  "cli_main.cpp"
+)
+
 # Apply the standard set of build settings. This can be removed for applications
 # that need different build settings.
 apply_standard_settings(${BINARY_NAME})
+apply_standard_settings(${BINARY_NAME}_cli)
 
 # Add preprocessor definitions for the build version.
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION=\"${FLUTTER_VERSION}\"")

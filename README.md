@@ -30,11 +30,11 @@ flutter run
 安装后的 Windows App 可在“我的 → 管理数据源”检测全部已启用来源，也可进入单个数据源详情执行检测。内置
 引擎会经正式 Runtime 验证发现、搜索、详情、完整目录、首/中/末内容和资源代理，不依赖 Flutter 测试框架。
 
-自动化工具也可直接启动正式可执行文件，测试过程和完整结果会直接输出到当前控制台：
+自动化工具可通过发布 bundle 中的 CLI 入口启动正式可执行文件。它会把测试过程和完整结果输出到当前控制台，并等待检测结束：
 
 ```text
-.\mg_read.exe --source-check=org.mgread.aisishuwu
-.\mg_read.exe --source-check-all
+.\mg_read_cli.exe --source-check=org.mgread.aisishuwu
+.\mg_read_cli.exe --source-check-all
 ```
 
 CLI 会阻塞到完整链路测试结束后才退出；stdout 输出普通文本测试过程、完整解码结果和日志，stderr 输出错误。
