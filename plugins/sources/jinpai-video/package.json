@@ -1,0 +1,32 @@
+{
+  "name": "@mgread-plugin/jinpai-video",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MgRead WebView source for 金牌影院.",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "packageManager": "npm@11.13.0",
+  "engines": { "node": ">=24 <25", "npm": "11.13.0" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/contract.test.mjs test/source.test.mjs",
+    "pack:plugin": "npm run build && node tools/mgread.mjs pack",
+    "verify": "npm run typecheck && npm test && npm run pack:plugin"
+  },
+  "devDependencies": {
+    "@mgread/source-api": "file:../../../packages/mg_read_source_api",
+    "@types/node": "24.13.3",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  },
+  "mgread": {
+    "schemaVersion": 1,
+    "id": "org.mgread.jinpai-video",
+    "displayName": "金牌影院",
+    "description": "金牌影院 WebView 数据源；首次需在可见页面完成网站安全验证，Cookie 在同一页面会话中复用。",
+    "pluginApi": 1,
+    "packageMode": "single-file",
+    "contentKinds": ["video"]
+  }
+}
