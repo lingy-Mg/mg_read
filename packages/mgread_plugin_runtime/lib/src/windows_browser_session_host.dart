@@ -295,7 +295,13 @@ final class WindowsBrowserSessionHost {
           );
         }
       }
-      await _loadPage(job, session);
+      // HTTP session requests deliberately reuse the already-validated
+      // WebView profile without navigating its page. The host reads that
+      // profile's Cookie store and navigator UA in _httpFetch, so Node source
+      // code can fetch protected HTML directly without receiving credentials.
+      if (request.operation == 'interaction' || request.transport != 'http') {
+        await _loadPage(job, session);
+      }
       if (request.operation == 'interaction') {
         return await _interact(job, session);
       }
@@ -661,7 +667,7 @@ final class WindowsBrowserSessionHost {
           redirect < 5) {
         final location = response.headers.value(HttpHeaders.locationHeader);
         if (location == null) {
-          return _finishHttpResponse(job, response, url);
+          return _finishHttpResponse(job, response, url, decodedUserAgent);
         }
         final next = url.resolve(location);
         if (_origin(next.toString()) != request.origin) {
@@ -677,7 +683,7 @@ final class WindowsBrowserSessionHost {
         await response.drain<void>();
         continue;
       }
-      return _finishHttpResponse(job, response, url);
+      return _finishHttpResponse(job, response, url, decodedUserAgent);
     }
     throw const WindowsBrowserSessionException('plugin_execution_failed');
   }
@@ -709,8 +715,14 @@ final class WindowsBrowserSessionHost {
     _WindowsBrowserJob job,
     HttpClientResponse response,
     Uri finalUrl,
+    String sessionUserAgent,
   ) async {
-    final result = await _httpResponse(job, response, finalUrl);
+    final result = await _httpResponse(
+      job,
+      response,
+      finalUrl,
+      sessionUserAgent,
+    );
     return result;
   }
 
@@ -718,6 +730,7 @@ final class WindowsBrowserSessionHost {
     _WindowsBrowserJob job,
     HttpClientResponse response,
     Uri finalUrl,
+    String sessionUserAgent,
   ) async {
     final bytes = <int>[];
     await for (final chunk in response) {
@@ -748,6 +761,10 @@ final class WindowsBrowserSessionHost {
       'finalUrl': finalUrl.toString(),
       'headers': headers,
       'body': body,
+      // This is intentionally the only session identity value made available
+      // to a source. It lets a resource proxy retain the exact WebView UA;
+      // cookies and verification credentials never leave this host.
+      'sessionUserAgent': sessionUserAgent,
     };
   }
 

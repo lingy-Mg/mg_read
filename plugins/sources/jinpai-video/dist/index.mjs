@@ -1,13 +1,16 @@
 const base = 'https://www.vv3nwjk.com';
-const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36';
 const categories = Object.freeze([
     ['movie', '电影', '1'], ['series', '连续剧', '2'], ['variety', '综艺', '3'], ['anime', '动漫', '4'],
 ]);
 let context;
 let pageQueue = Promise.resolve();
+let sessionBootstrap;
+let sessionUserAgent = '';
 export async function activate(next) {
     context = next;
     pageQueue = Promise.resolve();
+    sessionBootstrap = undefined;
+    sessionUserAgent = '';
     next.log.info('source_activated');
 }
 export async function search(request) {
@@ -15,10 +18,7 @@ export async function search(request) {
     if (query === '')
         return frozen({ items: [], nextCursor: null, totalCount: 0 });
     const pageNumber = cursorPage(request.cursor, 'search');
-    const listings = await withPage(async (page) => {
-        await requireAccessible(page, `${base}/vodsearch/${encodeURIComponent(query)}----------${pageNumber}---.html`);
-        return readListings(page);
-    });
+    const listings = readListingsHtml(await fetchSessionHtml(searchUrl(query, pageNumber)));
     const items = listings.slice(0, clamp(request.pageSize)).map(summary);
     return frozen({ items, nextCursor: listings.length >= items.length && pageNumber < 50 ? `search:${pageNumber + 1}` : null, totalCount: null });
 }
@@ -29,22 +29,17 @@ export async function discover(request) {
     if (request.target === null) {
         if (request.cursor !== null || request.collectionId !== null)
             throw new Error('Initial discovery request is invalid.');
-        return frozen({
-            kind: 'document',
-            document: { components: [{
+        return frozen({ kind: 'document', document: { components: [{
                         type: 'section', id: 'jinpai-categories', title: '影视分类', subtitle: '金牌影院', icon: 'video',
                         children: [{ type: 'categoryCollection', id: 'jinpai-category-list', layout: 'chips', categories: categories.map(([id, title]) => ({ id, title, target: `category:${id}`, count: null, url: null, icon: 'video' })) }],
-                    }] },
-        });
+                    }] } });
     }
     const category = categories.find(([id]) => request.target === `category:${id}`);
     if (category === undefined)
         throw new Error('Discovery target is invalid.');
     const pageNumber = cursorPage(request.cursor, request.target);
-    const listings = await withPage(async (page) => {
-        await requireAccessible(page, `${base}/vod/show/id/${category[2]}${pageNumber === 1 ? '' : `/page/${pageNumber}`}`);
-        return readListings(page);
-    });
+    const path = `${base}/vod/show/id/${category[2]}${pageNumber === 1 ? '' : `/page/${pageNumber}`}`;
+    const listings = readListingsHtml(await fetchSessionHtml(path));
     const contents = listings.slice(0, clamp(request.pageSize)).map(summary);
     const collectionId = `jinpai:${category[0]}`;
     const items = contents.map((content) => frozen({ content, rank: null, metric: null, recommendation: null }));
@@ -54,26 +49,17 @@ export async function discover(request) {
             throw new Error('Discovery collection is invalid.');
         return frozen({ kind: 'append', collectionId, items, continuation });
     }
-    return frozen({
-        kind: 'document',
-        document: { components: [{ type: 'section', id: `${collectionId}:section`, title: category[1], subtitle: null, icon: 'video', children: [{ type: 'contentCollection', id: collectionId, layout: 'coverGrid', items, continuation }] }], },
-    });
+    return frozen({ kind: 'document', document: { components: [{ type: 'section', id: `${collectionId}:section`, title: category[1], subtitle: null, icon: 'video', children: [{ type: 'contentCollection', id: collectionId, layout: 'coverGrid', items, continuation }] }] } });
 }
 export async function getDetail(request) {
     const id = contentId(request.id);
-    const detail = await withPage(async (page) => {
-        await requireAccessible(page, detailUrl(id));
-        return readDetail(page, id);
-    });
+    const detail = readDetailHtml(await fetchSessionHtml(detailUrl(id)), id);
     const item = summary(detail);
     return frozen({ ...item, author: detail.author || null, description: detail.description || null, updatedAt: detail.updatedAt || null, aliases: [], catalogUrl: detailUrl(id) });
 }
 export async function getChapters(request) {
     const id = contentId(request.id);
-    const episodes = await withPage(async (page) => {
-        await requireAccessible(page, detailUrl(id));
-        return readEpisodes(page, id);
-    });
+    const episodes = readEpisodesHtml(await fetchSessionHtml(detailUrl(id)), id);
     if (episodes.length === 0)
         throw new Error('No playable episodes found.');
     const rows = episodes.map((episode, order) => frozen({ id: `jinpai:${id}:${episode.line}:${episode.episode}`, title: episode.title, order, url: playUrl(id, episode.line, episode.episode), volumeTitle: episode.group || null, wordCount: null, updatedAt: null, isLocked: null, attributes: [] }));
@@ -87,117 +73,125 @@ export async function getContent(request) {
     const id = contentId(request.id);
     const chapter = parseChapterId(request.chapterId, id);
     const url = playUrl(id, chapter.line, chapter.episode);
-    const upstream = await withPage(async (page) => {
-        await requireAccessible(page, url);
-        const value = await page.executeJavaScript(`return (async()=>{
-      for(let attempt=0;attempt<40;attempt+=1){
-        const timed=performance.getEntriesByType('resource').map(entry=>entry.name).filter(url=>/^https?:/i.test(url)&&/\\.m3u8(?:[?#]|$)/i.test(url));
-        const media=Array.from(document.querySelectorAll('video,audio')).map(node=>node.currentSrc||node.src||'').find(url=>/^https?:/i.test(url)&&/\\.m3u8(?:[?#]|$)/i.test(url));
-        const html=String(document.documentElement?.innerHTML||'');
-        const embedded=html.match(/https?:[^"'\\\\\s]+?\\.m3u8(?:[^"'\\\\\s]*)/i)?.[0]||'';
-        if(timed.length)return timed[timed.length-1]||'';
-        if(media)return media;
-        if(embedded)return embedded.replaceAll('\\\\/','/');
-        await new Promise(resolve=>setTimeout(resolve,500));
-      }
-      return '';
-    })()`, { timeoutMs: 25_000 });
-        return typeof value === 'string' ? safeUrl(value) : '';
-    });
+    const pageHtml = await fetchSessionHtml(url);
+    const upstream = readM3u8Html(pageHtml);
     if (upstream === '')
-        throw new Error('Playback address is unavailable.');
-    const headers = { Referer: url, 'User-Agent': userAgent };
-    return frozen({
-        chapterId: request.chapterId, contentKind: 'video', title: null, updatedAt: null, text: null, pages: [],
-        media: { url: requireContext().resource.proxy({ kind: 'hls', url: upstream, headers }), resourceType: 'hls', resourcePolicy: 'sessionOnly', expiresAt: null, mimeType: 'application/vnd.apple.mpegurl', headers },
-    });
+        throw new Error('播放页未返回可直接读取的 HLS 地址；请稍后重试。');
+    const headers = { Referer: url, 'User-Agent': sessionUserAgent };
+    return frozen({ chapterId: request.chapterId, contentKind: 'video', title: null, updatedAt: null, text: null, pages: [], media: { url: requireContext().resource.proxy({ kind: 'hls', url: upstream, headers }), resourceType: 'hls', resourcePolicy: 'sessionOnly', expiresAt: null, mimeType: 'application/vnd.apple.mpegurl', headers } });
+}
+async function fetchSessionHtml(url) {
+    await ensureBrowserSession();
+    const raw = await requireContext().browser.sessionV1.request({ version: 1, sessionKey: 'jinpai-webview', url, method: 'GET', headers: { Accept: 'text/html,application/xhtml+xml' }, body: null, interaction: 'silent', presentation: 'hidden', transport: 'http', timeoutMs: 30_000, maxResponseBytes: 2 * 1024 * 1024 });
+    if (!isRecord(raw))
+        throw new Error('金牌影院会话 HTTP 返回格式无效。');
+    const status = raw.status;
+    const body = text(raw.body);
+    const userAgent = text(raw.sessionUserAgent);
+    if (typeof status !== 'number' || !Number.isInteger(status) || status < 200 || status >= 400 || body === '') {
+        throw new Error(`金牌影院会话 HTTP 请求失败（${typeof status === 'number' ? status : '未知状态'}，${new URL(url).pathname}）。`);
+    }
+    if (userAgent === '')
+        throw new Error('金牌影院会话未返回 WebView User-Agent。');
+    sessionUserAgent = userAgent;
+    if (isVerificationText(body)) {
+        sessionBootstrap = undefined;
+        requireContext().errors.raise({ code: 'source_access_blocked', message: '金牌影院正在刷新无感安全验证，请稍后重试。' });
+    }
+    return body;
+}
+function ensureBrowserSession() {
+    if (sessionBootstrap !== undefined)
+        return sessionBootstrap;
+    const candidate = withPage(async (page) => requireAccessible(page, `${base}/`));
+    sessionBootstrap = candidate.catch((error) => { sessionBootstrap = undefined; throw error; });
+    return sessionBootstrap;
 }
 async function requireAccessible(page, url) {
     await page.navigate(url, { timeoutMs: 35_000 });
     const state = await page.executeJavaScript(`return (async()=>{
-    let state={title:'',text:'',captcha:false,path:'blank'};
+    let state={title:'',text:'',captcha:false};
     for(let attempt=0;attempt<24;attempt+=1){
-      state={title:document.title||'',text:(document.body?.innerText||'').slice(0,4000),captcha:!!document.querySelector('#grecaptcha,[name="g-recaptcha-response"],iframe[src*="recaptcha"]'),path:location.pathname||'blank'};
-      const verification=/安全验证|浏览器安全检查|recaptcha/iu.test(state.title+' '+state.text);
-      if(location.protocol.startsWith('http')&&!state.captcha&&!verification&&(state.text!==''||state.title!==''))return state;
+      state={title:document.title||'',text:(document.body?.innerText||'').slice(0,4000),captcha:!!document.querySelector('#grecaptcha,[name="g-recaptcha-response"],iframe[src*="recaptcha"]')};
+      if(location.protocol.startsWith('http')&&!state.captcha&&!/安全验证|浏览器安全检查|recaptcha/iu.test(state.title+' '+state.text)&&(state.text!==''||state.title!==''))return state;
       await new Promise(resolve=>setTimeout(resolve,250));
     }
     return state;
   })()`, { timeoutMs: 15_000 });
-    if (isRecord(state) && (state.captcha === true || /安全验证|浏览器安全检查|recaptcha/iu.test(`${text(state.title)} ${text(state.text)}`))) {
+    if (isRecord(state) && (state.captcha === true || isVerificationText(`${text(state.title)} ${text(state.text)}`))) {
         await page.show({ timeoutMs: 10_000 });
-        requireContext().errors.raise({
-            code: 'source_access_blocked',
-            message: '金牌影院的 WebView 无感安全验证尚未完成。验证会话会保留，请稍后重试。',
-        });
+        requireContext().errors.raise({ code: 'source_access_blocked', message: '金牌影院正在进行无感安全验证；验证会话会保留，请稍后重试。' });
     }
-    // The page is opened invisible. On Windows, hide() resets this host page to
-    // about:blank, so calling it here would discard the verified document before
-    // the caller can parse it.
 }
-async function readListings(page) {
-    const raw = await page.executeJavaScript(`return (async()=>{
-    const read=()=>{
-    const clean=value=>String(value||'').replace(/\\s+/g,' ').trim();const seen=new Set();
-    return Array.from(document.querySelectorAll('a[href*="voddetail"],a[href*="/vod/detail/id/"],a[href*="/detail/"]')).map(anchor=>{
-      const href=anchor.href||'';const match=href.match(/\\/voddetail\\/([^/.?#]+)(?:\\.html)?/i)||href.match(/\\/vod\\/detail\\/id\\/([^/?#.]+)/i)||href.match(/\\/detail\\/([^/?#.]+)/i);if(!match||seen.has(match[1]))return null;seen.add(match[1]);
-      const card=anchor.closest('.module-item,.module-item-content,.vodlist,.stui-vodlist__box,.public-list-box,.hl-list-item,.myui-vodlist__box,li,article');
-      const titleNode=anchor.matches('.title,.vodlist_title,.module-item-title,.public-list-prb,.hl-item-title,.v-tit')?anchor:card?.querySelector('.title,.vodlist_title,.module-item-title,.public-list-prb,.hl-item-title,.v-tit,a[href*="voddetail"],a[href*="/vod/detail/id/"],a[href*="/detail/"]');
-      const image=anchor.querySelector('img')||card?.querySelector('img');
-      const title=clean(anchor.getAttribute('title')||titleNode?.textContent||anchor.textContent||image?.getAttribute('alt'));
-      const cover=image?(image.getAttribute('data-original')||image.getAttribute('data-src')||image.getAttribute('data-lazy-src')||image.currentSrc||image.src||''):'';
-      const latest=clean(card?.querySelector('.remarks,.note,.pic-text,.module-item-note,.public-list-prb,.hl-pic-text')?.textContent||anchor.querySelector('.remarks,.note,.pic-text,.module-item-note')?.textContent);
-      return title?{id:match[1],title,cover,latest}:null;
-    }).filter(Boolean);
-    };
-    for(let attempt=0;attempt<16;attempt+=1){const results=read();if(results.length)return results;await new Promise(resolve=>setTimeout(resolve,250));}
-    return read();
-  })()`, { timeoutMs: 15_000 });
-    const listings = array(raw).flatMap(projectListing);
-    if (listings.length !== 0)
-        return listings;
-    const diagnostic = await page.executeJavaScript(`return (()=>{
-    const path=value=>{try{return new URL(value,location.href).pathname}catch{return''}};
-    return {title:String(document.title||'').slice(0,120),path:location.pathname||'/',links:Array.from(document.querySelectorAll('a[href]')).filter(anchor=>/vod|detail|play|show/i.test(anchor.getAttribute('href')||'')).slice(0,8).map(anchor=>({path:path(anchor.href),className:String(anchor.className||'').slice(0,80),text:String(anchor.textContent||'').replace(/\\s+/g,' ').trim().slice(0,80)}))};
-  })()`, { timeoutMs: 10_000 });
-    throw new Error(`No video listings found: ${JSON.stringify(diagnostic)}`);
+function readListingsHtml(html) {
+    const results = [];
+    const seen = new Set();
+    for (const match of html.matchAll(/<a\b([^>]*?)href\s*=\s*(["'])([^"']*\/detail\/([^\/?#"']+)[^"']*)\2([^>]*)>([\s\S]*?)<\/a>/giu)) {
+        const id = clean(match[4] ?? '');
+        const attributes = `${match[1] ?? ''} ${match[5] ?? ''}`;
+        const inner = match[6] ?? '';
+        const title = listingTitle(attributes, inner);
+        if (id === '' || title === '' || seen.has(id))
+            continue;
+        seen.add(id);
+        const image = /<img\b([^>]*)>/iu.exec(inner)?.[1] ?? '';
+        results.push({ id, title, cover: safeUrl(htmlAttribute(image, 'data-original') || htmlAttribute(image, 'data-src') || htmlAttribute(image, 'data-lazy-src') || htmlAttribute(image, 'src')), latest: '' });
+    }
+    if (results.length === 0)
+        throw new Error('金牌影院会话 HTTP 未解析到影视条目。');
+    return results;
 }
-async function readDetail(page, id) {
-    const raw = await page.executeJavaScript(`return (()=>{
-    const field=(labels)=>{for(const node of document.querySelectorAll('.data,.vod_content,.module-info-item,.module-info-item-content')){const value=(node.textContent||'').replace(/\\s+/g,' ').trim();if(labels.some(label=>value.includes(label)))return value.replace(new RegExp('^.*?(?:'+labels.join('|')+')[：:]?\\\\s*'),'').trim()}return''};
-    const image=document.querySelector('.vod_thumb img,.module-item-pic img,.detail-pic img,.poster img');
-    return {title:(document.querySelector('h1,.vod-title,.page-title')?.textContent||document.querySelector('meta[property="og:title"]')?.content||'').replace(/\\s+/g,' ').trim(),cover:image?(image.getAttribute('data-original')||image.getAttribute('data-src')||image.currentSrc||image.src||''):'',latest:field(['更新','备注']),author:field(['主演','导演']),updatedAt:field(['年份','上映','更新']),description:(document.querySelector('.vod_content,.module-info-introduction-content,.detail-content,.intro')?.textContent||'').replace(/\\s+/g,' ').trim()};
-  })()`, { timeoutMs: 15_000 });
-    if (!isRecord(raw))
-        throw new Error('Video detail is unavailable.');
-    const title = clean(text(raw.title));
+function readDetailHtml(html, id) {
+    const title = clean(htmlText(/<h1\b[^>]*>([\s\S]*?)<\/h1>/iu.exec(html)?.[1] ?? '') || htmlAttribute(/<meta\b[^>]*property\s*=\s*["']og:title["'][^>]*>/iu.exec(html)?.[0] ?? '', 'content'));
     if (title === '')
-        throw new Error('Video detail is unavailable.');
-    return { id, title, cover: safeUrl(text(raw.cover)), latest: clean(text(raw.latest)), author: clean(text(raw.author)), updatedAt: clean(text(raw.updatedAt)), description: clean(text(raw.description)) };
+        throw new Error('金牌影院会话 HTTP 未解析到影视详情。');
+    const image = /<img\b([^>]*)>/iu.exec(html)?.[1] ?? '';
+    const description = clean(htmlText(/<(?:div|p)\b[^>]*class\s*=\s*["'][^"']*(?:intro|description|vod_content|detail-content)[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|p)>/iu.exec(html)?.[1] ?? ''));
+    return { id, title, cover: safeUrl(htmlAttribute(image, 'data-original') || htmlAttribute(image, 'data-src') || htmlAttribute(image, 'src')), latest: '', author: '', updatedAt: '', description };
 }
-async function readEpisodes(page, id) {
-    const raw = await page.executeJavaScript(`return (()=>Array.from(document.querySelectorAll('a[href*="vodplay"],a[href*="/vod/play/"]')).map(anchor=>{
-    const href=anchor.href||'';const match=href.match(/\\/vodplay\\/([^/.?#]+?)---(\\d+)---(\\d+)(?:\\.html)?/i);const modern=href.match(/\\/vod\\/play\\/([^/?#]+)\\/sid\\/([^/?#]+)/i);const contentId=match?.[1]||modern?.[1]||'';if(contentId!==${JSON.stringify(id)})return null;
-    const list=anchor.closest('.play-list,.module-play-list,.anthology-list,.stui-content__playlist');
-    const group=(list?.previousElementSibling?.textContent||list?.parentElement?.querySelector('.title,.module-tab-item.active')?.textContent||'').replace(/\\s+/g,' ').trim();
-    const title=(anchor.textContent||anchor.getAttribute('title')||'').replace(/\\s+/g,' ').trim();const line=match?.[2]||'1';const episode=match?.[3]||modern?.[2]||'';return title&&episode?{line,episode,title,group}:null;
-  }).filter(Boolean))()`, { timeoutMs: 15_000 });
-    const episodes = array(raw).flatMap((value) => {
-        if (!isRecord(value))
-            return [];
-        const line = text(value.line);
-        const episode = text(value.episode);
-        const title = clean(text(value.title));
-        return /^\d+$/u.test(line) && /^\d+$/u.test(episode) && title !== '' ? [{ line, episode, title, group: clean(text(value.group)) }] : [];
-    });
-    if (episodes.length !== 0)
-        return episodes;
-    const diagnostic = await page.executeJavaScript(`return (()=>({path:location.pathname||'/',links:Array.from(document.querySelectorAll('a[href]')).filter(anchor=>/play|episode|video/i.test(anchor.getAttribute('href')||'')).slice(0,12).map(anchor=>({path:(()=>{try{return new URL(anchor.href,location.href).pathname}catch{return''}})(),text:String(anchor.textContent||'').replace(/\\s+/g,' ').trim().slice(0,80)}))}))()`, { timeoutMs: 10_000 });
-    throw new Error(`No playable episodes found: ${JSON.stringify(diagnostic)}`);
+function readEpisodesHtml(html, id) {
+    const results = [];
+    const seen = new Set();
+    for (const match of html.matchAll(/<a\b([^>]*?)href\s*=\s*(["'])([^"']*\/vod\/play\/([^\/?#"']+)\/sid\/([^\/?#"']+)[^"']*)\2[^>]*>([\s\S]*?)<\/a>/giu)) {
+        if (match[4] !== id)
+            continue;
+        const episode = clean(match[5] ?? '');
+        const title = clean(htmlText(match[6] ?? '') || htmlAttribute(match[1] ?? '', 'title'));
+        if (!/^\d+$/u.test(episode) || title === '' || seen.has(episode))
+            continue;
+        seen.add(episode);
+        results.push({ line: '1', episode, title, group: '默认线路' });
+    }
+    return results;
+}
+function readM3u8Html(html) {
+    const normalized = html
+        .replaceAll('\\/', '/')
+        .replaceAll('\\u002F', '/')
+        .replaceAll('&amp;', '&');
+    for (const match of normalized.matchAll(/(?:https?:\/\/|\/)[^"'\\\s<>]*?\.m3u8(?:\?[^"'\\\s<>]*)?/giu)) {
+        const candidate = safeUrl(match[0]);
+        if (/\.m3u8(?:$|\?)/iu.test(candidate))
+            return candidate;
+    }
+    return '';
+}
+function listingTitle(attributes, inner) {
+    const explicit = clean(htmlAttribute(attributes, 'title'));
+    if (explicit !== '')
+        return explicit;
+    const classTitle = /<(?:a|span|h[1-6])\b[^>]*class\s*=\s*["'][^"']*(?:title|name)[^"']*["'][^>]*>([\s\S]*?)<\/(?:a|span|h[1-6])>/iu.exec(inner)?.[1] ?? '';
+    const textValue = clean(htmlText(classTitle || inner) || htmlAttribute(inner, 'alt'));
+    const addedTitle = clean(textValue.split('添加影片').at(-1) ?? '');
+    return clean((addedTitle === '' ? textValue : addedTitle).replace(/\s+\d+(?:\.\d+)?$/u, ''));
+}
+function searchUrl(query, pageNumber) {
+    const url = new URL(`/vod/search/${encodeURIComponent(query)}`, base);
+    if (pageNumber > 1)
+        url.searchParams.set('page', String(pageNumber));
+    return url.toString();
 }
 function withPage(action) {
-    // 金牌的 v3 风险校验只会在可见的 WebView2 页面中完成；没有任何脚本
-    // 交互，宿主仍然隔离 Cookie，验证完成后由同一会话继续读取内容。
     const run = pageQueue.then(async () => action(await requireContext().webview.open({ visible: true, timeoutMs: 30_000 })));
     pageQueue = run.then(() => undefined, () => undefined);
     return run;
@@ -224,11 +218,11 @@ catch {
     return '';
 } }
 function clean(value) { return value.replace(/[\s\u3000\u00a0]+/gu, ' ').trim(); }
+function htmlText(value) { return clean(value.replace(/<script\b[\s\S]*?<\/script>|<style\b[\s\S]*?<\/style>|<[^>]+>/giu, ' ').replace(/&(nbsp|amp|quot|#39);/giu, (_all, entity) => ({ nbsp: ' ', amp: '&', quot: '"', '#39': "'" })[entity.toLowerCase()] ?? ' ')); }
+function htmlAttribute(value, name) { return clean(new RegExp(`\\b${escapeRegex(name)}\\s*=\\s*(["'])(.*?)\\1`, 'isu').exec(value)?.[2] ?? ''); }
 function text(value) { return typeof value === 'string' || typeof value === 'number' ? String(value) : ''; }
-function array(value) { return Array.isArray(value) ? value : []; }
 function isRecord(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
-function projectListing(value) { if (!isRecord(value))
-    return []; const id = clean(text(value.id)); const title = clean(text(value.title)); return id !== '' && title !== '' && !/[/?#]/u.test(id) ? [{ id, title, cover: safeUrl(text(value.cover)), latest: clean(text(value.latest)) }] : []; }
+function isVerificationText(value) { return /安全验证|浏览器安全检查|recaptcha/iu.test(value); }
 function clamp(value) { return Math.max(1, Math.min(50, Math.floor(value))); }
 function frozen(value) { return Object.freeze(value); }
 function requireContext() { if (context === undefined)

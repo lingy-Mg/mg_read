@@ -42,6 +42,11 @@ description: Develop, debug, or test MgRead real data-source plugins, the public
   和交互。不得伪造来源缺失字段、热门词或线上证据。
 - 每个数据源只有一个宿主持有的 WebView 页面；`page.cdp` 只能通过共享声明调用；当前 Windows WebView2
   支持，Android 返回 `unsupported`。页面状态和响应判断由数据源自行处理。
+- 对需要浏览器无感校验的网站，WebView 只负责建立同一宿主 Profile 的验证会话；后续页面请求优先使用
+  `ctx.browser.sessionV1.request` 的 `transport: 'http'`。该通道由宿主从对应 WebView Profile 读取 Cookie 和
+  `navigator.userAgent` 后发起 HTTP，来源 Node 不得读取、记录、导出、手写或重放 Cookie/验证令牌，也不得自行
+  伪造 UA。若媒体资源代理必须传 UA，只能原样转发该 HTTP 响应的 `sessionUserAgent`；它不得用于 Cookie、日志
+  或任意其他身份头。仅当页面必须渲染或执行脚本才能取得数据时，才保留最小范围的 WebView 页面调用。
 - `single-file` 与 `archive` 是独立发布模式，不互相回退，也不能把 `.mgplugin` 当成 `.mgplugin.js`。
 - 音频与视频分别建模；媒体主体、HLS 分片和 Range 只经 Runtime 数据面流转，插件 JS 返回资源描述。
 

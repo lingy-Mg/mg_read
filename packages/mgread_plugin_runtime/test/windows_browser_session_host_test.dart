@@ -103,6 +103,7 @@ void main() {
       );
 
       expect(result['body'], 'fixture-http-body');
+      expect(result['sessionUserAgent'], 'fixture-agent');
       expect(
         request.headers.value(HttpHeaders.cookieHeader),
         'cf_clearance=fixture',
@@ -113,6 +114,7 @@ void main() {
       );
       expect(platform.writtenCookies.single['name'], 'session');
       expect(platform.showCalls, 0);
+      expect(platform.loadedUrls, isEmpty);
     },
   );
 

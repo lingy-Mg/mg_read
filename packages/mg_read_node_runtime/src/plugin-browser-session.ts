@@ -53,6 +53,8 @@ export interface PluginBrowserSessionResponse {
   readonly body: string;
   readonly finalUrl: string;
   readonly headers: Readonly<Record<string, string>>;
+  /** Exact host WebView UA, available only for forwarding to a media proxy. */
+  readonly sessionUserAgent?: string;
   readonly status: number;
   readonly version: 1;
 }
@@ -322,10 +324,15 @@ function validateResponse(
   try { finalUrl = secureUrl(value.finalUrl); } catch { invalidResponse(); }
   if (finalUrl.origin !== requestUrl.origin) invalidResponse();
   const headers = validateResponseHeaders(value.headers);
+  const sessionUserAgent = value.sessionUserAgent;
+  if (sessionUserAgent !== undefined && (typeof sessionUserAgent !== "string" || sessionUserAgent.length === 0 || sessionUserAgent.length > 1024)) {
+    invalidResponse();
+  }
   return Object.freeze({
     body: value.body,
     finalUrl: finalUrl.toString(),
     headers,
+    ...(sessionUserAgent === undefined ? {} : { sessionUserAgent }),
     status: value.status as number,
     version: 1,
   });

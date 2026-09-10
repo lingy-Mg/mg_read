@@ -36,7 +36,7 @@ test("v1 forwards all host transports and both presentation modes", async () => 
         finalUrl: value.url,
         headers: { "content-type": "text/html" },
         body: "ok",
-        userAgent: "must-not-cross-the-runtime-boundary",
+        sessionUserAgent: "fixture-webview-agent",
       };
     },
   };
@@ -68,8 +68,8 @@ test("v1 forwards all host transports and both presentation modes", async () => 
     { presentation: "visible", transport: "html" },
   ]);
   assert.equal(webview.userAgent, undefined);
-  assert.equal(http.userAgent, undefined);
-  assert.equal(html.userAgent, undefined);
+  assert.equal(http.sessionUserAgent, "fixture-webview-agent");
+  assert.equal(html.sessionUserAgent, "fixture-webview-agent");
 });
 
 test("v1 rejects omitted mode fields and plugin-owned credentials", async () => {
