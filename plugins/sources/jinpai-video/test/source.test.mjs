@@ -16,12 +16,12 @@ test('uses one WebView session for search, detail, episodes and HLS', async () =
       scripts.push(code);
       if (code.includes('captcha:')) return { title: '金牌影院', text: '影视首页', captcha: false };
       if (code.includes('performance.getEntriesByType')) return 'https://media.example/fixture.m3u8';
-      if (current.includes('/voddetail/') && code.includes('vodplay')) return [
+      if (current.includes('/detail/') && (code.includes('vodplay') || code.includes('/vod/play/'))) return [
         { line: '1', episode: '1', title: '第 1 集', group: '高清线路' },
         { line: '1', episode: '2', title: '第 2 集', group: '高清线路' },
       ];
-      if (current.includes('/voddetail/')) return { title: 'Fixture 金牌', cover: 'https://img.example/cover.jpg', latest: '更新至第 2 集', author: 'Fixture 演员', updatedAt: '2026', description: 'Fixture 简介' };
-      if (code.includes('voddetail')) return [{ id: 'fixture-100', title: 'Fixture 金牌', cover: 'https://img.example/cover.jpg', latest: '更新至第 2 集' }];
+      if (current.includes('/detail/')) return { title: 'Fixture 金牌', cover: 'https://img.example/cover.jpg', latest: '更新至第 2 集', author: 'Fixture 演员', updatedAt: '2026', description: 'Fixture 简介' };
+      if (code.includes('voddetail') || code.includes('/vod/detail/id/') || code.includes('/detail/')) return [{ id: 'fixture-100', title: 'Fixture 金牌', cover: 'https://img.example/cover.jpg', latest: '更新至第 2 集' }];
       return [];
     },
   };

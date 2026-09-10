@@ -29,5 +29,27 @@ void main() {
 
     expect(command!.pluginId, 'org.mgread.diyibanzhu-me');
     expect(command.all, isFalse);
+    expect(command.reportPath, isNull);
+  });
+
+  test('parses an optional local report path with the source command', () {
+    final command = parseSourceVerificationCommand(const <String>[
+      '--source-check=org.mgread.fixture',
+      '--source-check-report',
+      r'C:\Temp\source-report.json',
+    ]);
+
+    expect(command!.pluginId, 'org.mgread.fixture');
+    expect(command.reportPath, r'C:\Temp\source-report.json');
+    expect(command.traceReportPath, isNull);
+  });
+
+  test('parses an optional trace path for an explicitly requested CLI diagnostic', () {
+    final command = parseSourceVerificationCommand(const <String>[
+      '--source-check=org.mgread.fixture',
+      '--source-check-trace-report=C:\\Temp\\source-trace.json',
+    ]);
+
+    expect(command!.traceReportPath, r'C:\Temp\source-trace.json');
   });
 }

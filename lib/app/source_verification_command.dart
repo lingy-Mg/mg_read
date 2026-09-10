@@ -2,9 +2,10 @@
 ///
 /// 职责：解析生产参数、在真实 ProviderScope 中调用内置自检引擎、把完整结果写到控制台并返回稳定退出码。
 /// 注意：这不是 Flutter 测试入口；CLI 与可见页面复用同一个生产 SourceVerificationEngine。
-/// CLI 测试模式不生成报告文件，阶段结果写到当前控制台。
+/// CLI 阶段结果写到当前控制台；指定报告路径时，同时写入稳定 JSON 报告。
 library;
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -17,9 +18,11 @@ import 'package:mg_read/features/plugins/application/source_verification.dart';
 typedef SourceVerificationProcessTerminator = void Function(int exitCode);
 
 final class SourceVerificationCommand {
-  const SourceVerificationCommand({required this.pluginId});
+  const SourceVerificationCommand({required this.pluginId, this.reportPath, this.traceReportPath});
 
   final String? pluginId;
+  final String? reportPath;
+  final String? traceReportPath;
 
   bool get all => pluginId == null;
 }
@@ -30,6 +33,8 @@ SourceVerificationCommand? parseSourceVerificationCommand(List<String> arguments
   );
   if (!active) return null;
   String? pluginId;
+  String? reportPath;
+  String? traceReportPath;
   var all = false;
   for (var index = 0; index < arguments.length; index += 1) {
     final argument = arguments[index];
@@ -39,12 +44,20 @@ SourceVerificationCommand? parseSourceVerificationCommand(List<String> arguments
       pluginId = _commandValue(arguments, ++index, '--source-check');
     } else if (argument.startsWith('--source-check=')) {
       pluginId = _inlineCommandValue(argument, '--source-check');
+    } else if (argument == '--source-check-report') {
+      reportPath = _commandValue(arguments, ++index, '--source-check-report');
+    } else if (argument.startsWith('--source-check-report=')) {
+      reportPath = _inlineCommandValue(argument, '--source-check-report');
+    } else if (argument == '--source-check-trace-report') {
+      traceReportPath = _commandValue(arguments, ++index, '--source-check-trace-report');
+    } else if (argument.startsWith('--source-check-trace-report=')) {
+      traceReportPath = _inlineCommandValue(argument, '--source-check-trace-report');
     } else {
       throw const SourceVerificationRunException('command_argument_invalid');
     }
   }
   if (all == (pluginId != null)) throw const SourceVerificationRunException('command_selection_invalid');
-  return SourceVerificationCommand(pluginId: pluginId);
+  return SourceVerificationCommand(pluginId: pluginId, reportPath: reportPath, traceReportPath: traceReportPath);
 }
 
 class SourceVerificationCommandApp extends StatelessWidget {
@@ -86,6 +99,7 @@ class _SourceVerificationCommandScreenState extends ConsumerState<_SourceVerific
     final stopwatch = Stopwatch()..start();
     var exitCode = 2;
     SourceVerificationReport report;
+    final trace = <Map<String, Object?>>[];
     _writeCliRecord(<String, Object?>{
       'event': 'started',
       'mode': widget.command.all ? 'all' : 'single',
@@ -99,7 +113,10 @@ class _SourceVerificationCommandScreenState extends ConsumerState<_SourceVerific
           .read(sourceVerificationEngineProvider)
           .run(
             pluginId: widget.command.pluginId,
-            onDebug: _writeCliDebug,
+            onDebug: (record) {
+              trace.add(_traceRecord(record));
+              _writeCliDebug(record);
+            },
             onProgress: (progress) {
               _writeCliRecord(<String, Object?>{
                 'event': 'stage',
@@ -141,6 +158,31 @@ class _SourceVerificationCommandScreenState extends ConsumerState<_SourceVerific
       );
     }
     _writeCliResults(report);
+    final reportPath = widget.command.reportPath;
+    if (reportPath != null) {
+      try {
+        await const SourceVerificationReportWriter().write(reportPath, report);
+        _writeCliRecord(<String, Object?>{'event': 'report', 'path': reportPath});
+      } on Object {
+        _writeCliError('report_write_failed');
+        exitCode = 2;
+      }
+    }
+    final traceReportPath = widget.command.traceReportPath;
+    if (traceReportPath != null) {
+      try {
+        final target = File(traceReportPath);
+        await target.parent.create(recursive: true);
+        await target.writeAsString(
+          '${const JsonEncoder.withIndent('  ').convert(<String, Object?>{'schemaVersion': 1, 'mode': widget.command.all ? 'all' : 'single', 'records': trace})}\n',
+          flush: true,
+        );
+        _writeCliRecord(<String, Object?>{'event': 'traceReport', 'path': traceReportPath});
+      } on Object {
+        _writeCliError('trace_report_write_failed');
+        exitCode = 2;
+      }
+    }
     if (mounted) {
       setState(() => _message = report.isSuccessful ? '检测通过' : '检测完成，包含异常');
     }
@@ -227,10 +269,25 @@ void _writeCliRecord(Map<String, Object?> record) {
         '需交互=${record['interactionRequired']} 已取消=${record['cancelled']}',
       );
       if (record['code'] != null) stdout.writeln('错误码: ${record['code']}');
+    case 'report':
+      stdout.writeln('报告: ${record['path']}');
+    case 'traceReport':
+      stdout.writeln('诊断追踪: ${record['path']}');
     default:
       stdout.writeln('[CLI] $record');
   }
 }
+
+Map<String, Object?> _traceRecord(SourceVerificationDebugRecord record) => <String, Object?>{
+  'event': record.event,
+  'pluginId': record.pluginId,
+  'stage': record.stage,
+  if (record.data != null) 'data': record.data,
+  if (record.error != null) 'error': _boundedTraceText(record.error.toString()),
+  if (record.stackTrace != null) 'stackTrace': _boundedTraceText(record.stackTrace.toString()),
+};
+
+String _boundedTraceText(String value) => value.length <= 4000 ? value : '${value.substring(0, 4000)}…';
 
 void _writeCliError(String code) {
   stderr.writeln('[错误] source-check code=$code');

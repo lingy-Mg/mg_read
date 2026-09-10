@@ -42,7 +42,7 @@ export async function discover(request) {
         throw new Error('Discovery target is invalid.');
     const pageNumber = cursorPage(request.cursor, request.target);
     const listings = await withPage(async (page) => {
-        await requireAccessible(page, `${base}/vodshow/${category[2]}--------${pageNumber}---.html`);
+        await requireAccessible(page, `${base}/vod/show/id/${category[2]}${pageNumber === 1 ? '' : `/page/${pageNumber}`}`);
         return readListings(page);
     });
     const contents = listings.slice(0, clamp(request.pageSize)).map(summary);
@@ -114,25 +114,53 @@ export async function getContent(request) {
 }
 async function requireAccessible(page, url) {
     await page.navigate(url, { timeoutMs: 35_000 });
-    const state = await page.executeJavaScript(`return (()=>({title:document.title||'',text:(document.body?.innerText||'').slice(0,4000),captcha:!!document.querySelector('#grecaptcha,[name="g-recaptcha-response"],iframe[src*="recaptcha"]')}))()`, { timeoutMs: 10_000 });
+    const state = await page.executeJavaScript(`return (async()=>{
+    let state={title:'',text:'',captcha:false,path:'blank'};
+    for(let attempt=0;attempt<24;attempt+=1){
+      state={title:document.title||'',text:(document.body?.innerText||'').slice(0,4000),captcha:!!document.querySelector('#grecaptcha,[name="g-recaptcha-response"],iframe[src*="recaptcha"]'),path:location.pathname||'blank'};
+      const verification=/安全验证|浏览器安全检查|recaptcha/iu.test(state.title+' '+state.text);
+      if(location.protocol.startsWith('http')&&!state.captcha&&!verification&&(state.text!==''||state.title!==''))return state;
+      await new Promise(resolve=>setTimeout(resolve,250));
+    }
+    return state;
+  })()`, { timeoutMs: 15_000 });
     if (isRecord(state) && (state.captcha === true || /安全验证|浏览器安全检查|recaptcha/iu.test(`${text(state.title)} ${text(state.text)}`))) {
         await page.show({ timeoutMs: 10_000 });
         requireContext().errors.raise({
             code: 'source_access_blocked',
-            message: '金牌影院需要安全验证。已打开验证页面，请手动完成验证后返回并重试；验证 Cookie 会保留在此数据源的 WebView 会话中。',
+            message: '金牌影院的 WebView 无感安全验证尚未完成。验证会话会保留，请稍后重试。',
         });
     }
-    await page.hide({ timeoutMs: 10_000 });
+    // The page is opened invisible. On Windows, hide() resets this host page to
+    // about:blank, so calling it here would discard the verified document before
+    // the caller can parse it.
 }
 async function readListings(page) {
-    const raw = await page.executeJavaScript(`return (()=>Array.from(document.querySelectorAll('a[href*="voddetail"]')).map(anchor=>{
-    const href=anchor.href||'';const match=href.match(/\\/voddetail\\/([^/.?#]+)(?:\\.html)?/i);if(!match)return null;
-    const image=anchor.querySelector('img');const title=(anchor.getAttribute('title')||anchor.querySelector('.title,.vodlist_title,.module-item-title')?.textContent||image?.getAttribute('alt')||'').replace(/\\s+/g,' ').trim();
-    const cover=image?(image.getAttribute('data-original')||image.getAttribute('data-src')||image.currentSrc||image.src||''):'';
-    const latest=(anchor.querySelector('.remarks,.note,.pic-text,.module-item-note')?.textContent||'').replace(/\\s+/g,' ').trim();
-    return title?{id:match[1],title,cover,latest}:null;
-  }).filter(Boolean))()`, { timeoutMs: 15_000 });
-    return array(raw).flatMap(projectListing);
+    const raw = await page.executeJavaScript(`return (async()=>{
+    const read=()=>{
+    const clean=value=>String(value||'').replace(/\\s+/g,' ').trim();const seen=new Set();
+    return Array.from(document.querySelectorAll('a[href*="voddetail"],a[href*="/vod/detail/id/"],a[href*="/detail/"]')).map(anchor=>{
+      const href=anchor.href||'';const match=href.match(/\\/voddetail\\/([^/.?#]+)(?:\\.html)?/i)||href.match(/\\/vod\\/detail\\/id\\/([^/?#.]+)/i)||href.match(/\\/detail\\/([^/?#.]+)/i);if(!match||seen.has(match[1]))return null;seen.add(match[1]);
+      const card=anchor.closest('.module-item,.module-item-content,.vodlist,.stui-vodlist__box,.public-list-box,.hl-list-item,.myui-vodlist__box,li,article');
+      const titleNode=anchor.matches('.title,.vodlist_title,.module-item-title,.public-list-prb,.hl-item-title,.v-tit')?anchor:card?.querySelector('.title,.vodlist_title,.module-item-title,.public-list-prb,.hl-item-title,.v-tit,a[href*="voddetail"],a[href*="/vod/detail/id/"],a[href*="/detail/"]');
+      const image=anchor.querySelector('img')||card?.querySelector('img');
+      const title=clean(anchor.getAttribute('title')||titleNode?.textContent||anchor.textContent||image?.getAttribute('alt'));
+      const cover=image?(image.getAttribute('data-original')||image.getAttribute('data-src')||image.getAttribute('data-lazy-src')||image.currentSrc||image.src||''):'';
+      const latest=clean(card?.querySelector('.remarks,.note,.pic-text,.module-item-note,.public-list-prb,.hl-pic-text')?.textContent||anchor.querySelector('.remarks,.note,.pic-text,.module-item-note')?.textContent);
+      return title?{id:match[1],title,cover,latest}:null;
+    }).filter(Boolean);
+    };
+    for(let attempt=0;attempt<16;attempt+=1){const results=read();if(results.length)return results;await new Promise(resolve=>setTimeout(resolve,250));}
+    return read();
+  })()`, { timeoutMs: 15_000 });
+    const listings = array(raw).flatMap(projectListing);
+    if (listings.length !== 0)
+        return listings;
+    const diagnostic = await page.executeJavaScript(`return (()=>{
+    const path=value=>{try{return new URL(value,location.href).pathname}catch{return''}};
+    return {title:String(document.title||'').slice(0,120),path:location.pathname||'/',links:Array.from(document.querySelectorAll('a[href]')).filter(anchor=>/vod|detail|play|show/i.test(anchor.getAttribute('href')||'')).slice(0,8).map(anchor=>({path:path(anchor.href),className:String(anchor.className||'').slice(0,80),text:String(anchor.textContent||'').replace(/\\s+/g,' ').trim().slice(0,80)}))};
+  })()`, { timeoutMs: 10_000 });
+    throw new Error(`No video listings found: ${JSON.stringify(diagnostic)}`);
 }
 async function readDetail(page, id) {
     const raw = await page.executeJavaScript(`return (()=>{
@@ -148,13 +176,13 @@ async function readDetail(page, id) {
     return { id, title, cover: safeUrl(text(raw.cover)), latest: clean(text(raw.latest)), author: clean(text(raw.author)), updatedAt: clean(text(raw.updatedAt)), description: clean(text(raw.description)) };
 }
 async function readEpisodes(page, id) {
-    const raw = await page.executeJavaScript(`return (()=>Array.from(document.querySelectorAll('a[href*="vodplay"]')).map(anchor=>{
-    const href=anchor.href||'';const match=href.match(/\\/vodplay\\/([^/.?#]+?)---(\\d+)---(\\d+)(?:\\.html)?/i);if(!match||match[1]!==${JSON.stringify(id)})return null;
+    const raw = await page.executeJavaScript(`return (()=>Array.from(document.querySelectorAll('a[href*="vodplay"],a[href*="/vod/play/"]')).map(anchor=>{
+    const href=anchor.href||'';const match=href.match(/\\/vodplay\\/([^/.?#]+?)---(\\d+)---(\\d+)(?:\\.html)?/i);const modern=href.match(/\\/vod\\/play\\/([^/?#]+)\\/sid\\/([^/?#]+)/i);const contentId=match?.[1]||modern?.[1]||'';if(contentId!==${JSON.stringify(id)})return null;
     const list=anchor.closest('.play-list,.module-play-list,.anthology-list,.stui-content__playlist');
     const group=(list?.previousElementSibling?.textContent||list?.parentElement?.querySelector('.title,.module-tab-item.active')?.textContent||'').replace(/\\s+/g,' ').trim();
-    const title=(anchor.textContent||anchor.getAttribute('title')||'').replace(/\\s+/g,' ').trim();return title?{line:match[2],episode:match[3],title,group}:null;
+    const title=(anchor.textContent||anchor.getAttribute('title')||'').replace(/\\s+/g,' ').trim();const line=match?.[2]||'1';const episode=match?.[3]||modern?.[2]||'';return title&&episode?{line,episode,title,group}:null;
   }).filter(Boolean))()`, { timeoutMs: 15_000 });
-    return array(raw).flatMap((value) => {
+    const episodes = array(raw).flatMap((value) => {
         if (!isRecord(value))
             return [];
         const line = text(value.line);
@@ -162,16 +190,22 @@ async function readEpisodes(page, id) {
         const title = clean(text(value.title));
         return /^\d+$/u.test(line) && /^\d+$/u.test(episode) && title !== '' ? [{ line, episode, title, group: clean(text(value.group)) }] : [];
     });
+    if (episodes.length !== 0)
+        return episodes;
+    const diagnostic = await page.executeJavaScript(`return (()=>({path:location.pathname||'/',links:Array.from(document.querySelectorAll('a[href]')).filter(anchor=>/play|episode|video/i.test(anchor.getAttribute('href')||'')).slice(0,12).map(anchor=>({path:(()=>{try{return new URL(anchor.href,location.href).pathname}catch{return''}})(),text:String(anchor.textContent||'').replace(/\\s+/g,' ').trim().slice(0,80)}))}))()`, { timeoutMs: 10_000 });
+    throw new Error(`No playable episodes found: ${JSON.stringify(diagnostic)}`);
 }
 function withPage(action) {
-    const run = pageQueue.then(async () => action(await requireContext().webview.open({ visible: false, timeoutMs: 30_000 })));
+    // 金牌的 v3 风险校验只会在可见的 WebView2 页面中完成；没有任何脚本
+    // 交互，宿主仍然隔离 Cookie，验证完成后由同一会话继续读取内容。
+    const run = pageQueue.then(async () => action(await requireContext().webview.open({ visible: true, timeoutMs: 30_000 })));
     pageQueue = run.then(() => undefined, () => undefined);
     return run;
 }
 function summary(value) { return frozen({ id: `video:${encode(value.id)}`, title: value.title, contentKind: 'video', coverOrientation: 'portrait', author: null, url: detailUrl(value.id), coverUrl: proxyImage(value.cover), description: null, language: 'zh-CN', status: 'unknown', access: 'unknown', wordCount: null, chapterCount: null, publishedAt: null, updatedAt: null, latestChapter: value.latest === '' ? null : { id: null, title: value.latest, url: null, updatedAt: null }, categories: [], tags: [], attributes: [] }); }
 function proxyImage(value) { const url = safeUrl(value); return url === '' ? null : requireContext().resource.proxy({ kind: 'image', url, headers: { Referer: `${base}/` } }); }
-function detailUrl(id) { return `${base}/voddetail/${encodeURIComponent(id)}.html`; }
-function playUrl(id, line, episode) { return `${base}/vodplay/${encodeURIComponent(id)}---${line}---${episode}.html`; }
+function detailUrl(id) { return `${base}/detail/${encodeURIComponent(id)}`; }
+function playUrl(id, _line, episode) { return `${base}/vod/play/${encodeURIComponent(id)}/sid/${encodeURIComponent(episode)}`; }
 function contentId(value) { const encoded = /^video:([A-Za-z0-9_-]+)$/u.exec(value)?.[1]; const id = encoded === undefined ? '' : decode(encoded); if (!/^[^/?#]+$/u.test(id))
     throw new Error('Content ID is invalid.'); return id; }
 function parseChapterId(value, id) { const match = new RegExp(`^jinpai:${escapeRegex(id)}:(\\d+):(\\d+)$`, 'u').exec(value); if (match?.[1] === undefined || match[2] === undefined)

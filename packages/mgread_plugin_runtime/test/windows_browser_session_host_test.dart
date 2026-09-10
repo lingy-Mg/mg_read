@@ -538,6 +538,15 @@ final class _FakeBrowserPlatform implements WindowsBrowserPlatform {
   @override
   Future<String> executeScript(String sessionId, String script) async {
     if (script == 'document.readyState') return jsonEncode('complete');
+    if (script.startsWith('window.__mgreadNavigationNonce=')) {
+      return jsonEncode(true);
+    }
+    if (script.contains('readyState:document.readyState') &&
+        script.contains('__mgreadNavigationNonce')) {
+      return jsonEncode(
+        jsonEncode(<String, Object?>{'readyState': 'complete', 'nonce': null}),
+      );
+    }
     if (script == 'location.href')
       return jsonEncode('https://example.com/page');
     if (script == 'window.devicePixelRatio||1') return jsonEncode(1);

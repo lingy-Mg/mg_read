@@ -65,17 +65,29 @@ extension on WindowsBrowserSessionHost {
       );
       switch (request.operation) {
         case 'page.navigate':
+          // Navigate() only enqueues a WebView2 navigation. A blank or prior
+          // document can already be `complete`, so readyState alone may let a
+          // caller parse stale content before the requested document exists.
+          final navigationNonce = '${jobId}:${_clock().microsecondsSinceEpoch}';
+          await _platform.executeScript(
+            session.sessionId,
+            'window.__mgreadNavigationNonce=${jsonEncode(navigationNonce)};true',
+          );
           await _platform.load(session.sessionId, request.url!);
           while (true) {
             _check(job);
-            final state = jsonDecode(
+            final state = _decodeScriptObject(
               await _platform.executeScript(
                 session.sessionId,
-                'document.readyState',
+                'JSON.stringify({readyState:document.readyState,nonce:window.__mgreadNavigationNonce??null})',
               ),
             );
-            if (state == 'interactive' || state == 'complete')
+            if (state != null &&
+                state['nonce'] != navigationNonce &&
+                (state['readyState'] == 'interactive' ||
+                    state['readyState'] == 'complete')) {
               return <String, Object?>{};
+            }
             await Future<void>.delayed(_pollDelay);
           }
         case 'page.evaluate':
