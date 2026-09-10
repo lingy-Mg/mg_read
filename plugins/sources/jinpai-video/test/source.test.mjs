@@ -6,12 +6,14 @@ import * as plugin from '../dist/index.mjs';
 test('uses one WebView session for search, detail, episodes and HLS', async () => {
   const navigations = [];
   const resources = [];
+  const scripts = [];
   let current = '';
   let opened = 0;
   const page = {
     async navigate(url) { current = url; navigations.push(url); },
     async hide() {},
     async executeJavaScript(code) {
+      scripts.push(code);
       if (code.includes('captcha:')) return { title: '金牌影院', text: '影视首页', captcha: false };
       if (code.includes('performance.getEntriesByType')) return 'https://media.example/fixture.m3u8';
       if (current.includes('/voddetail/') && code.includes('vodplay')) return [
@@ -43,13 +45,14 @@ test('uses one WebView session for search, detail, episodes and HLS', async () =
   assert.equal(resources.at(-1).url, 'https://media.example/fixture.m3u8');
   assert.equal(opened, 4);
   assert.ok(navigations.some((url) => url.includes('/vodsearch/Fixture')));
+  assert.ok(scripts.every((code) => code.startsWith('return ')), 'Windows AsyncFunction requires an explicit return value.');
 });
 
 test('shows the same WebView and surfaces an actionable error for human verification', async () => {
   let shown = false;
   const page = {
     async navigate() {}, async hide() {}, async show() { shown = true; },
-    async executeJavaScript(code) { if (code.includes('captcha:')) return { title: '请进行安全验证', text: '正在进行浏览器安全检查', captcha: true }; return []; },
+    async executeJavaScript(code) { assert.ok(code.startsWith('return ')); if (code.includes('captcha:')) return { title: '请进行安全验证', text: '正在进行浏览器安全检查', captcha: true }; return []; },
   };
   await plugin.activate({
     dataDir: 'fixture-data', cacheDir: 'fixture-cache', app: { runtimeVersion: 'fixture', nodeVersion: process.versions.node, pluginApi: 1 }, plugin: { id: 'org.mgread.jinpai-video', version: '1.0.0' },

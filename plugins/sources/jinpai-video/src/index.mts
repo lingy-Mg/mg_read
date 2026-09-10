@@ -107,7 +107,7 @@ export async function getContent(request: { readonly id: string; readonly chapte
   const url = playUrl(id, chapter.line, chapter.episode);
   const upstream = await withPage(async (page) => {
     await requireAccessible(page, url);
-    const value = await page.executeJavaScript<PluginJsonValue>(`(async()=>{
+    const value = await page.executeJavaScript<PluginJsonValue>(`return (async()=>{
       for(let attempt=0;attempt<40;attempt+=1){
         const timed=performance.getEntriesByType('resource').map(entry=>entry.name).filter(url=>/^https?:/i.test(url)&&/\\.m3u8(?:[?#]|$)/i.test(url));
         const media=Array.from(document.querySelectorAll('video,audio')).map(node=>node.currentSrc||node.src||'').find(url=>/^https?:/i.test(url)&&/\\.m3u8(?:[?#]|$)/i.test(url));
@@ -132,7 +132,7 @@ export async function getContent(request: { readonly id: string; readonly chapte
 
 async function requireAccessible(page: PluginWebViewPage, url: string): Promise<void> {
   await page.navigate(url, { timeoutMs: 35_000 });
-  const state = await page.executeJavaScript<PluginJsonValue>(`(()=>({title:document.title||'',text:(document.body?.innerText||'').slice(0,4000),captcha:!!document.querySelector('#grecaptcha,[name="g-recaptcha-response"],iframe[src*="recaptcha"]')}))()`, { timeoutMs: 10_000 });
+  const state = await page.executeJavaScript<PluginJsonValue>(`return (()=>({title:document.title||'',text:(document.body?.innerText||'').slice(0,4000),captcha:!!document.querySelector('#grecaptcha,[name="g-recaptcha-response"],iframe[src*="recaptcha"]')}))()`, { timeoutMs: 10_000 });
   if (isRecord(state) && (state.captcha === true || /安全验证|浏览器安全检查|recaptcha/iu.test(`${text(state.title)} ${text(state.text)}`))) {
     await page.show({ timeoutMs: 10_000 });
     requireContext().errors.raise({
@@ -144,7 +144,7 @@ async function requireAccessible(page: PluginWebViewPage, url: string): Promise<
 }
 
 async function readListings(page: PluginWebViewPage): Promise<Listing[]> {
-  const raw = await page.executeJavaScript<PluginJsonValue>(`(()=>Array.from(document.querySelectorAll('a[href*="voddetail"]')).map(anchor=>{
+  const raw = await page.executeJavaScript<PluginJsonValue>(`return (()=>Array.from(document.querySelectorAll('a[href*="voddetail"]')).map(anchor=>{
     const href=anchor.href||'';const match=href.match(/\\/voddetail\\/([^/.?#]+)(?:\\.html)?/i);if(!match)return null;
     const image=anchor.querySelector('img');const title=(anchor.getAttribute('title')||anchor.querySelector('.title,.vodlist_title,.module-item-title')?.textContent||image?.getAttribute('alt')||'').replace(/\\s+/g,' ').trim();
     const cover=image?(image.getAttribute('data-original')||image.getAttribute('data-src')||image.currentSrc||image.src||''):'';
@@ -155,7 +155,7 @@ async function readListings(page: PluginWebViewPage): Promise<Listing[]> {
 }
 
 async function readDetail(page: PluginWebViewPage, id: string): Promise<Detail> {
-  const raw = await page.executeJavaScript<PluginJsonValue>(`(()=>{
+  const raw = await page.executeJavaScript<PluginJsonValue>(`return (()=>{
     const field=(labels)=>{for(const node of document.querySelectorAll('.data,.vod_content,.module-info-item,.module-info-item-content')){const value=(node.textContent||'').replace(/\\s+/g,' ').trim();if(labels.some(label=>value.includes(label)))return value.replace(new RegExp('^.*?(?:'+labels.join('|')+')[：:]?\\\\s*'),'').trim()}return''};
     const image=document.querySelector('.vod_thumb img,.module-item-pic img,.detail-pic img,.poster img');
     return {title:(document.querySelector('h1,.vod-title,.page-title')?.textContent||document.querySelector('meta[property="og:title"]')?.content||'').replace(/\\s+/g,' ').trim(),cover:image?(image.getAttribute('data-original')||image.getAttribute('data-src')||image.currentSrc||image.src||''):'',latest:field(['更新','备注']),author:field(['主演','导演']),updatedAt:field(['年份','上映','更新']),description:(document.querySelector('.vod_content,.module-info-introduction-content,.detail-content,.intro')?.textContent||'').replace(/\\s+/g,' ').trim()};
@@ -167,7 +167,7 @@ async function readDetail(page: PluginWebViewPage, id: string): Promise<Detail> 
 }
 
 async function readEpisodes(page: PluginWebViewPage, id: string): Promise<Episode[]> {
-  const raw = await page.executeJavaScript<PluginJsonValue>(`(()=>Array.from(document.querySelectorAll('a[href*="vodplay"]')).map(anchor=>{
+  const raw = await page.executeJavaScript<PluginJsonValue>(`return (()=>Array.from(document.querySelectorAll('a[href*="vodplay"]')).map(anchor=>{
     const href=anchor.href||'';const match=href.match(/\\/vodplay\\/([^/.?#]+?)---(\\d+)---(\\d+)(?:\\.html)?/i);if(!match||match[1]!==${JSON.stringify(id)})return null;
     const list=anchor.closest('.play-list,.module-play-list,.anthology-list,.stui-content__playlist');
     const group=(list?.previousElementSibling?.textContent||list?.parentElement?.querySelector('.title,.module-tab-item.active')?.textContent||'').replace(/\\s+/g,' ').trim();
