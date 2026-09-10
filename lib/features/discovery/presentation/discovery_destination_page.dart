@@ -446,21 +446,40 @@ String _sourceErrorTitle(AppError error) => switch (error.category) {
   AppErrorCategory.runtimeUnavailable => '插件运行环境不可用',
   AppErrorCategory.pluginUnavailable => '当前插件不可用',
   AppErrorCategory.incompatible => '插件或 Runtime 版本不兼容',
+  AppErrorCategory.cancelled => '已取消本次发现加载',
+  AppErrorCategory.interactionRequired => '需要完成网站交互',
   AppErrorCategory.retryableTemporary => '暂时无法加载发现内容',
   _ => '无法安全加载发现内容',
 };
 
 String _sourceErrorDetail(AppError error) => <String>[
+  '调用阶段：发现内容加载（source.discover.v1）',
   '原因：${_sourceErrorReason(error)}',
-  if (error.detail case final detail?) '详细信息：$detail',
-  if (error.location case final location?) '位置：$location',
+  '建议：${_sourceErrorNextStep(error)}',
+  if (error.detail case final detail?) '技术详情：$detail',
+  if (error.location case final location?) '诊断位置：$location',
 ].join('\n');
 
 String _sourceErrorReason(AppError error) => switch (error.code) {
   AppErrorCode.invalidFormat => '数据源返回内容未通过 Runtime 格式或大小校验。',
   AppErrorCode.pluginExecutionFailed => '数据源执行发现请求时发生错误。',
+  AppErrorCode.sourceAccessBlocked => '网站拒绝了当前访问，通常需要先完成安全验证。',
+  AppErrorCode.interactionRequired => '当前请求需要在数据源的内置 WebView 中完成交互。',
   AppErrorCode.timeout => '数据源请求在限时内未完成。',
+  AppErrorCode.cancelled => '请求在获得内容前被新的页面操作中止。',
   AppErrorCode.runtimeUnavailable || AppErrorCode.runtimeStartFailed || AppErrorCode.runtimeNotReady => 'Runtime 尚未就绪或已中断。',
   AppErrorCode.pluginNotFound || AppErrorCode.pluginDisabled || AppErrorCode.pluginDamaged => '当前数据源不可用。',
   _ => '请求未能安全完成。',
+};
+
+String _sourceErrorNextStep(AppError error) => switch (error.code) {
+  AppErrorCode.sourceAccessBlocked || AppErrorCode.interactionRequired => '如已打开内置 WebView，请完成网站要求的验证或交互，返回此页后点“刷新”。',
+  AppErrorCode.cancelled => '若刚切换了分类、数据源或返回页面，此中止是预期行为；停留在当前页后点“刷新”。',
+  AppErrorCode.timeout || AppErrorCode.rateLimited || AppErrorCode.overloaded => '稍等片刻后点“刷新”；若持续出现，请查看下方诊断位置并更新数据源。',
+  AppErrorCode.runtimeUnavailable ||
+  AppErrorCode.runtimeStartFailed ||
+  AppErrorCode.runtimeNotReady ||
+  AppErrorCode.transportDisconnected => '重启应用后重试；若仍失败，请在数据源管理中检查 Runtime 状态。',
+  AppErrorCode.pluginNotFound || AppErrorCode.pluginDisabled || AppErrorCode.pluginDamaged => '前往数据源管理确认插件已安装、启用且版本正确。',
+  _ => '点“刷新”重试；若仍失败，请保留稳定错误码、技术详情和诊断位置以便定位。',
 };
