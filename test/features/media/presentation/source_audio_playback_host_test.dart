@@ -3,6 +3,7 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
@@ -154,9 +155,9 @@ void main() {
     expect(systemUiModes.last, 'SystemUiMode.immersiveSticky');
     expect(find.text('技术原因：lock-screen next decoder failed'), findsOneWidget);
 
-    final Future<bool> backHandled = backButtonDispatcher.invokeCallback(Future<bool>.value(false));
+    final TestPointer pointer = TestPointer(1, PointerDeviceKind.mouse);
+    tester.binding.handlePointerEvent(pointer.down(const Offset(20, 20), buttons: kBackMouseButton));
     await tester.pump();
-    expect(await backHandled, isTrue);
     await _pumpUntil(tester, () => find.byKey(const Key('source-audio-mini-player')).evaluate().isNotEmpty);
     expect(find.byKey(const Key('audio-background-exit-dialog')), findsNothing);
 

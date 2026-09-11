@@ -13,7 +13,7 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/gestures.dart' show DragStartBehavior;
+import 'package:flutter/gestures.dart' show DragStartBehavior, PointerDeviceKind, PointerDownEvent, kBackMouseButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
@@ -175,6 +175,14 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
     return true;
   }
 
+  /// The app-wide side-back listener is below this root playback overlay.
+  /// Keep pointer back aligned with Android back and Escape while the player
+  /// owns the foreground, including when one of its local sheets is open.
+  void _handlePointerDown(PointerDownEvent event) {
+    if (event.kind != PointerDeviceKind.mouse || event.buttons & kBackMouseButton == 0) return;
+    unawaited(_handlePlatformBack());
+  }
+
   Future<void> _requestBack() async {
     final controller = widget.playback.controller;
     if (controller == null || !controller.isAttached) {
@@ -189,9 +197,13 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
     if (widget.playback.presentation == SourceAudioPresentation.minimized) {
       return const SizedBox.shrink();
     }
-    return Stack(
-      fit: StackFit.expand,
-      children: <Widget>[_buildExpandedPlayer(context), if (widget.playback.exitDecisionRequested) _buildExitPrompt(context)],
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: _handlePointerDown,
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[_buildExpandedPlayer(context), if (widget.playback.exitDecisionRequested) _buildExitPrompt(context)],
+      ),
     ).withSourceMediaImmersion(active: true);
   }
 
