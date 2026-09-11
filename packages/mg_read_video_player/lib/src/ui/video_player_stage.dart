@@ -368,11 +368,10 @@ final class _SeekPreviewOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) => IgnorePointer(
     child: Center(
-      child: VideoPlayerGlassPanel(
+      child: VideoPlayerTransientFeedbackPanel(
         key: const Key('video-player-seek-preview'),
         borderRadius: BorderRadius.circular(8),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-        showShadow: false,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
@@ -380,17 +379,17 @@ final class _SeekPreviewOverlay extends StatelessWidget {
               '拖动进度',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 14,
+                fontSize: 12,
                 fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 3),
             Text(
               '${_formatStageDuration(position)} / ${_formatStageDuration(duration)}',
               key: const Key('video-player-seek-preview-time'),
               style: const TextStyle(
                 color: videoPlayerForeground,
-                fontSize: 13,
+                fontSize: 11,
                 fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
               ),
             ),

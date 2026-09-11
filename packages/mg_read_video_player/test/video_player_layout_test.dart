@@ -3,11 +3,14 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read_video_player/mg_read_video_player.dart';
 
 void main() {
-  testWidgets('chrome bands are full-bleed, flat, and compact', (tester) async {
+  testWidgets('chrome bands are full-bleed, flat, and safely padded', (
+    tester,
+  ) async {
     await tester.pumpWidget(_playerApp(backend: _Backend()));
     await tester.pumpAndSettle();
 
@@ -23,6 +26,12 @@ void main() {
     expect(tester.getBottomRight(bottom), Offset(logicalWidth, logicalHeight));
     expect(_clip(tester, top).borderRadius, BorderRadius.zero);
     expect(_clip(tester, bottom).borderRadius, BorderRadius.zero);
+    final slider = find.byKey(const Key('video-player-slider'));
+    expect(tester.getSize(slider).height, 52);
+    expect(
+      tester.getBottomRight(bottom).dy - tester.getBottomRight(slider).dy,
+      greaterThanOrEqualTo(18),
+    );
     expect(find.byKey(const Key('video-player-transport')), findsNothing);
     expect(find.byKey(const Key('video-player-paused-play')), findsNothing);
   });
@@ -289,6 +298,18 @@ void main() {
 
   testWidgets('long press uses 2x only while held', (tester) async {
     final backend = _Backend();
+    final hapticArguments = <dynamic>[];
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'HapticFeedback.vibrate') {
+        hapticArguments.add(call.arguments);
+      }
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
     await tester.pumpWidget(_playerApp(backend: backend));
     await tester.pumpAndSettle();
 
@@ -298,6 +319,32 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
     expect(backend.rates.last, 1);
+    expect(hapticArguments, <String>[
+      'HapticFeedbackType.selectionClick',
+      'HapticFeedbackType.selectionClick',
+    ]);
+  });
+
+  testWidgets('transient seek and long-press feedback stays compact', (
+    tester,
+  ) async {
+    final backend = _Backend();
+    await tester.pumpWidget(_playerApp(backend: backend));
+    await tester.pumpAndSettle();
+
+    final drag = await tester.startGesture(const Offset(180, 260));
+    await drag.moveBy(const Offset(180, 0));
+    await tester.pump();
+    final seekFeedback = find.byKey(const Key('video-player-seek-preview'));
+    expect(tester.getSize(seekFeedback).width, lessThanOrEqualTo(180));
+    await drag.up();
+    await tester.pumpAndSettle();
+
+    final hold = await tester.startGesture(const Offset(650, 240));
+    await tester.pump(kLongPressTimeout + const Duration(milliseconds: 20));
+    final rateFeedback = find.byKey(const Key('video-player-gesture-hud'));
+    expect(tester.getSize(rateFeedback).width, lessThanOrEqualTo(180));
+    await hold.up();
   });
 }
 

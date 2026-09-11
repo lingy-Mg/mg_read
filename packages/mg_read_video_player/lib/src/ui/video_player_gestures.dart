@@ -83,10 +83,7 @@ final class _VideoPlayerGestureLayerState
     }
     if (_longPressActive &&
         (!widget.snapshot.playing || (!oldWidget.locked && widget.locked))) {
-      _longPressActive = false;
-      widget.onRate(_rateBeforeLongPress);
-      _finishHudSoon();
-      widget.onInteractionEnd();
+      _finishLongPress();
     }
   }
 
@@ -238,7 +235,7 @@ final class _VideoPlayerGestureLayerState
     widget.onInteractionStart();
     _rateBeforeLongPress = widget.snapshot.rate;
     widget.onRate(2);
-    unawaited(HapticFeedback.mediumImpact());
+    unawaited(HapticFeedback.selectionClick());
     _showHud(
       const _GestureHud(
         icon: Icons.fast_forward_rounded,
@@ -253,6 +250,7 @@ final class _VideoPlayerGestureLayerState
     if (!_longPressActive) return;
     _longPressActive = false;
     widget.onRate(_rateBeforeLongPress);
+    unawaited(HapticFeedback.selectionClick());
     _finishHudSoon();
     widget.onInteractionEnd();
   }
@@ -332,13 +330,12 @@ final class _GestureHudView extends StatelessWidget {
   final _GestureHud hud;
 
   @override
-  Widget build(BuildContext context) => VideoPlayerGlassPanel(
+  Widget build(BuildContext context) => VideoPlayerTransientFeedbackPanel(
     key: const Key('video-player-gesture-hud'),
     borderRadius: BorderRadius.circular(8),
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-    showShadow: false,
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
     child: ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 112, maxWidth: 220),
+      constraints: const BoxConstraints(minWidth: 96, maxWidth: 180),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
@@ -346,8 +343,8 @@ final class _GestureHudView extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               if (hud.icon case final icon?) ...<Widget>[
-                Icon(icon, size: 20, color: videoPlayerForeground),
-                const SizedBox(width: 7),
+                Icon(icon, size: 16, color: videoPlayerForeground),
+                const SizedBox(width: 5),
               ],
               Flexible(
                 child: Text(
@@ -357,20 +354,21 @@ final class _GestureHudView extends StatelessWidget {
                   style: const TextStyle(
                     color: videoPlayerForeground,
                     fontWeight: FontWeight.w600,
+                    fontSize: 12,
                   ),
                 ),
               ),
             ],
           ),
           if (hud.detail case final detail?) ...<Widget>[
-            const SizedBox(height: 4),
+            const SizedBox(height: 3),
             Text(
               detail,
-              style: const TextStyle(color: videoPlayerSecondary, fontSize: 12),
+              style: const TextStyle(color: videoPlayerSecondary, fontSize: 10),
             ),
           ],
           if (hud.progress case final progress?) ...<Widget>[
-            const SizedBox(height: 7),
+            const SizedBox(height: 5),
             LinearProgressIndicator(
               minHeight: 2,
               value: progress.clamp(0, 1),

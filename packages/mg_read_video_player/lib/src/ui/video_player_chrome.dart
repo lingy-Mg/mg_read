@@ -164,28 +164,31 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
                   inactiveTrackColor: Colors.white24,
                   thumbColor: videoPlayerAccent,
                   overlayColor: videoPlayerAccent.withValues(alpha: .16),
-                  trackHeight: 2.5,
+                  trackHeight: 4,
                   thumbShape: const RoundSliderThumbShape(
-                    enabledThumbRadius: 6,
+                    enabledThumbRadius: 8,
                   ),
                   overlayShape: const RoundSliderOverlayShape(
-                    overlayRadius: 12,
+                    overlayRadius: 24,
                   ),
                 ),
-                child: Slider(
-                  key: const Key('video-player-slider'),
-                  value: value,
-                  max: max,
-                  secondaryTrackValue: buffered < value ? value : buffered,
-                  onChangeStart: (_) => widget.onInteractionStart(),
-                  onChanged: (double next) => widget.onSeekPreviewChanged(
-                    Duration(milliseconds: next.round()),
+                child: SizedBox(
+                  height: 52,
+                  child: Slider(
+                    key: const Key('video-player-slider'),
+                    value: value,
+                    max: max,
+                    secondaryTrackValue: buffered < value ? value : buffered,
+                    onChangeStart: (_) => widget.onInteractionStart(),
+                    onChanged: (double next) => widget.onSeekPreviewChanged(
+                      Duration(milliseconds: next.round()),
+                    ),
+                    onChangeEnd: (double next) {
+                      final position = Duration(milliseconds: next.round());
+                      widget.onSeekPreviewEnded(position);
+                      widget.onInteractionEnd();
+                    },
                   ),
-                  onChangeEnd: (double next) {
-                    final position = Duration(milliseconds: next.round());
-                    widget.onSeekPreviewEnded(position);
-                    widget.onInteractionEnd();
-                  },
                 ),
               ),
             ),
@@ -204,9 +207,9 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
           borderRadius: BorderRadius.zero,
           padding: EdgeInsets.fromLTRB(
             8,
-            3,
             8,
-            4 + MediaQuery.paddingOf(context).bottom,
+            8,
+            18 + MediaQuery.paddingOf(context).bottom,
           ),
           showBorder: false,
           showShadow: false,

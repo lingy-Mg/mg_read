@@ -109,3 +109,30 @@ final class VideoPlayerGlassPanel extends StatelessWidget {
     ),
   );
 }
+
+/// A small, deliberately low-obstruction surface for transient gestures.
+///
+/// Unlike [VideoPlayerGlassPanel], this avoids the dark blur treatment so
+/// seek and rate feedback leaves the video image clearly visible.
+final class VideoPlayerTransientFeedbackPanel extends StatelessWidget {
+  const VideoPlayerTransientFeedbackPanel({
+    required this.child,
+    this.borderRadius = const BorderRadius.all(Radius.circular(8)),
+    this.padding,
+    super.key,
+  });
+
+  final Widget child;
+  final BorderRadius borderRadius;
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: const Color(0x26030609),
+      borderRadius: borderRadius,
+      border: Border.all(color: const Color(0x1FFFFFFF)),
+    ),
+    child: padding == null ? child : Padding(padding: padding!, child: child),
+  );
+}
