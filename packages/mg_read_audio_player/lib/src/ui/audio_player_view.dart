@@ -13,6 +13,7 @@ library;
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -122,6 +123,7 @@ class _AudioViewState extends State<AudioPlayerView>
     with WidgetsBindingObserver {
   late final AudioPlayerController _controller;
   late final bool _ownsController;
+  late AudioPlayerSnapshot _surfaceSnapshot;
   AudioPlayerEngine? _engine;
   final FocusNode _focusNode = FocusNode(debugLabel: 'AudioPlayerView');
   double? _dragPositionMilliseconds;
@@ -135,6 +137,7 @@ class _AudioViewState extends State<AudioPlayerView>
     WidgetsBinding.instance.addObserver(this);
     _ownsController = !widget.controlled && widget.controller == null;
     _controller = widget.controller ?? AudioPlayerController();
+    _surfaceSnapshot = _controller.snapshot;
     _controller.addListener(_onSessionChanged);
     if (!widget.controlled) {
       _engine = AudioPlayerEngine(
@@ -159,8 +162,33 @@ class _AudioViewState extends State<AudioPlayerView>
   }
 
   void _onSessionChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    final next = _controller.snapshot;
+    if (!_requiresSurfaceRebuild(_surfaceSnapshot, next)) return;
+    setState(() => _surfaceSnapshot = next);
   }
+
+  bool _requiresSurfaceRebuild(
+    AudioPlayerSnapshot previous,
+    AudioPlayerSnapshot next,
+  ) =>
+      previous.status != next.status ||
+      previous.collectionId != next.collectionId ||
+      previous.collectionTitle != next.collectionTitle ||
+      previous.creator != next.creator ||
+      previous.currentIndex != next.currentIndex ||
+      previous.playbackDesired != next.playbackDesired ||
+      previous.playing != next.playing ||
+      previous.buffering != next.buffering ||
+      previous.resourceLoading != next.resourceLoading ||
+      previous.completed != next.completed ||
+      previous.duration != next.duration ||
+      previous.rate != next.rate ||
+      previous.volume != next.volume ||
+      previous.sleepTimerDuration != next.sleepTimerDuration ||
+      previous.failure != next.failure ||
+      !listEquals(previous.queue, next.queue) ||
+      !listEquals(previous.queueEntries, next.queueEntries);
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -192,7 +220,7 @@ class _AudioViewState extends State<AudioPlayerView>
 
   @override
   Widget build(BuildContext context) {
-    final snapshot = _controller.snapshot;
+    final snapshot = _surfaceSnapshot;
     return Theme(
       data: audioPlayerTheme(Theme.of(context)),
       child: AnnotatedRegion<SystemUiOverlayStyle>(
@@ -248,14 +276,12 @@ class _AudioViewState extends State<AudioPlayerView>
     final disableAnimations =
         (MediaQuery.maybeOf(context)?.disableAnimations ?? false) ||
         !_motionVisible;
-    final playbackActive = snapshot.playing && !snapshot.buffering;
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
         AudioPlayerArtworkBackdrop(
           track: track,
           artworkBuilder: widget.artworkBuilder,
-          playing: playbackActive,
           disableAnimations: disableAnimations,
         ),
         SafeArea(
@@ -269,19 +295,12 @@ class _AudioViewState extends State<AudioPlayerView>
               final availableWidth =
                   constraints.maxWidth - horizontalPadding * 2 - 12;
               final coverSize = math.min(
-                availableWidth,
+                math.min(availableWidth, constraints.maxWidth * 0.62),
                 veryCompactHeight
                     ? 198.0
                     : compactHeight
                     ? 232.0
                     : 268.0,
-              );
-              final displayedPosition = Duration(
-                milliseconds:
-                    (_dragPositionMilliseconds ??
-                            snapshot.position.inMilliseconds.toDouble())
-                        .clamp(0, math.max(0, snapshot.duration.inMilliseconds))
-                        .round(),
               );
               return ScrollConfiguration(
                 behavior: ScrollConfiguration.of(
@@ -331,8 +350,6 @@ class _AudioViewState extends State<AudioPlayerView>
                               artworkBuilder: widget.artworkBuilder,
                               size: coverSize,
                               currentIndex: snapshot.currentIndex,
-                              playing: snapshot.playing,
-                              buffering: snapshot.buffering,
                               disableAnimations: disableAnimations,
                             ),
                           ),
@@ -362,25 +379,52 @@ class _AudioViewState extends State<AudioPlayerView>
                             tone: AudioGlassTone.strong,
                             child: Column(
                               children: <Widget>[
-                                AudioProgressControl(
-                                  position: displayedPosition,
-                                  duration: snapshot.duration,
-                                  enabled: snapshot.duration > Duration.zero,
-                                  playing: snapshot.playing,
-                                  buffering: snapshot.buffering,
-                                  dragging: _dragPositionMilliseconds != null,
-                                  disableAnimations: disableAnimations,
-                                  onChanged: (value) => setState(() {
-                                    _dragPositionMilliseconds = value;
-                                  }),
-                                  onChangeEnd: (value) {
-                                    setState(() {
-                                      _dragPositionMilliseconds = null;
-                                    });
-                                    unawaited(
-                                      _controller.seek(
-                                        Duration(milliseconds: value.round()),
-                                      ),
+                                AnimatedBuilder(
+                                  animation: _controller,
+                                  builder: (context, child) {
+                                    final progressSnapshot =
+                                        _controller.snapshot;
+                                    final displayedPosition = Duration(
+                                      milliseconds:
+                                          (_dragPositionMilliseconds ??
+                                                  progressSnapshot
+                                                      .position
+                                                      .inMilliseconds
+                                                      .toDouble())
+                                              .clamp(
+                                                0,
+                                                math.max(
+                                                  0,
+                                                  progressSnapshot
+                                                      .duration
+                                                      .inMilliseconds,
+                                                ),
+                                              )
+                                              .round(),
+                                    );
+                                    return AudioProgressControl(
+                                      position: displayedPosition,
+                                      duration: progressSnapshot.duration,
+                                      enabled:
+                                          progressSnapshot.duration >
+                                          Duration.zero,
+                                      dragging:
+                                          _dragPositionMilliseconds != null,
+                                      onChanged: (value) => setState(() {
+                                        _dragPositionMilliseconds = value;
+                                      }),
+                                      onChangeEnd: (value) {
+                                        setState(() {
+                                          _dragPositionMilliseconds = null;
+                                        });
+                                        unawaited(
+                                          _controller.seek(
+                                            Duration(
+                                              milliseconds: value.round(),
+                                            ),
+                                          ),
+                                        );
+                                      },
                                     );
                                   },
                                 ),

@@ -350,6 +350,31 @@ void main() {
     expect(find.byKey(const Key('presentation-artwork')), findsNWidgets(2));
   });
 
+  testWidgets('position ticks rebuild progress without repainting artwork', (
+    tester,
+  ) async {
+    final backend = _PresentationBackend();
+    var artworkBuilds = 0;
+    await tester.pumpWidget(
+      _host(
+        backend: backend,
+        artworkBuilder: (_, _) {
+          artworkBuilds += 1;
+          return const ColoredBox(color: Color(0xFF8A4B36));
+        },
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    final buildsBeforeTick = artworkBuilds;
+    await backend.seek(const Duration(seconds: 10));
+    await tester.pump();
+
+    expect(find.text('0:10'), findsOneWidget);
+    expect(artworkBuilds, buildsBeforeTick);
+  });
+
   testWidgets('ready surface keeps glass treatment to controls and launchers', (
     tester,
   ) async {

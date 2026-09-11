@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read_audio_player/mg_read_audio_player.dart';
 
 void main() {
-  testWidgets('active playback drives indicator cover and glass controls', (
+  testWidgets('active playback keeps backdrop and cover static', (
     tester,
   ) async {
     final backend = _MotionBackend();
@@ -23,11 +23,11 @@ void main() {
     final pausedCoverY = tester
         .getTopLeft(find.byKey(const Key('audio-cover')))
         .dy;
-    final backdropMotion = find.byKey(
-      const Key('audio-artwork-backdrop-motion'),
+    final staticBackdrop = find.byKey(
+      const Key('audio-artwork-backdrop-static'),
     );
     final pausedBackdropTransform = List<double>.of(
-      tester.widget<Transform>(backdropMotion).transform.storage,
+      tester.widget<Transform>(staticBackdrop).transform.storage,
     );
     expect(
       find.ancestor(
@@ -40,21 +40,22 @@ void main() {
     await tester.tap(find.byKey(const Key('audio-play-pause')));
     await tester.pump(const Duration(milliseconds: 160));
     expect(tester.getSize(indicatorBar).height, isNot(pausedBarHeight));
-    final backdropTint = tester.widget<AnimatedContainer>(
+    final backdropTint = tester.widget<ColoredBox>(
       find.byKey(const Key('audio-artwork-backdrop-tint')),
     );
-    expect(
-      (backdropTint.decoration! as BoxDecoration).color,
-      const Color(0x48000000),
-    );
+    expect(backdropTint.color, const Color(0x4A000000));
     await tester.pump(const Duration(milliseconds: 1540));
     expect(
       tester.getTopLeft(find.byKey(const Key('audio-cover'))).dy,
-      isNot(closeTo(pausedCoverY, 0.01)),
+      closeTo(pausedCoverY, 0.01),
     );
     expect(
-      tester.widget<Transform>(backdropMotion).transform.storage,
-      isNot(orderedEquals(pausedBackdropTransform)),
+      tester.widget<Transform>(staticBackdrop).transform.storage,
+      orderedEquals(pausedBackdropTransform),
+    );
+    expect(
+      find.byKey(const Key('audio-artwork-backdrop-motion')),
+      findsNothing,
     );
   });
 
@@ -73,11 +74,11 @@ void main() {
     final initialCoverY = tester
         .getTopLeft(find.byKey(const Key('audio-cover')))
         .dy;
-    final backdropMotion = find.byKey(
-      const Key('audio-artwork-backdrop-motion'),
+    final staticBackdrop = find.byKey(
+      const Key('audio-artwork-backdrop-static'),
     );
     final initialBackdropTransform = List<double>.of(
-      tester.widget<Transform>(backdropMotion).transform.storage,
+      tester.widget<Transform>(staticBackdrop).transform.storage,
     );
     await tester.pump(const Duration(seconds: 2));
     expect(tester.getSize(indicatorBar).height, initialBarHeight);
@@ -86,7 +87,7 @@ void main() {
       closeTo(initialCoverY, 0.01),
     );
     expect(
-      tester.widget<Transform>(backdropMotion).transform.storage,
+      tester.widget<Transform>(staticBackdrop).transform.storage,
       orderedEquals(initialBackdropTransform),
     );
     expect(find.byKey(const Key('audio-buffering')), findsNothing);
