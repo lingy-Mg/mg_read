@@ -435,7 +435,7 @@ final class AudioSettingsLauncher extends StatelessWidget {
       key: const Key('audio-settings-glass'),
       borderRadius: radius,
       tone: AudioGlassTone.strong,
-      blur: 24,
+      blur: 28,
       child: Semantics(
         button: true,
         label: '快捷播放控制',

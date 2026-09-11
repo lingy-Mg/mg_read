@@ -24,7 +24,7 @@ Future<void> showAudioQueueSheet(
   context: context,
   isScrollControlled: true,
   backgroundColor: Colors.transparent,
-  barrierColor: const Color(0x33000000),
+  barrierColor: const Color(0x24000000),
   builder: (sheetContext) =>
       _AudioQueueSheet(snapshot: snapshot, controller: controller),
 );
@@ -83,7 +83,7 @@ class _AudioQueueSheetState extends State<_AudioQueueSheet> {
           key: const Key('audio-queue-glass'),
           borderRadius: BorderRadius.zero,
           tone: AudioGlassTone.soft,
-          blur: 34,
+          blur: 36,
           child: Material(
             color: Colors.transparent,
             child: Column(
@@ -199,8 +199,8 @@ class _AudioQueueTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Material(
         color: selected
-            ? Colors.white.withValues(alpha: 0.16)
-            : Colors.white.withValues(alpha: 0.07),
+            ? Colors.white.withValues(alpha: 0.13)
+            : Colors.white.withValues(alpha: 0.05),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
           side: BorderSide(

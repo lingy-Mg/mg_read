@@ -557,20 +557,47 @@ void main() {
 }
 
 Widget _goldenArtworkBuilder(BuildContext context, AudioTrack track) {
-  return const DecoratedBox(
-    decoration: BoxDecoration(
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: <Color>[
-          Color(0xFFB9683D),
-          Color(0xFF59697C),
-          Color(0xFF241B19),
-        ],
-        stops: <double>[0, 0.52, 1],
+  return const CustomPaint(painter: _GoldenArtworkPainter());
+}
+
+class _GoldenArtworkPainter extends CustomPainter {
+  const _GoldenArtworkPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bounds = Offset.zero & size;
+    canvas.drawRect(
+      bounds,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[Color(0xFF7A3F2A), Color(0xFF17212E)],
+        ).createShader(bounds),
+    );
+    canvas.drawCircle(
+      Offset(size.width * 0.14, size.height * 0.18),
+      size.shortestSide * 0.27,
+      Paint()..color = const Color(0xFFE99B61),
+    );
+    canvas.drawCircle(
+      Offset(size.width * 0.82, size.height * 0.42),
+      size.shortestSide * 0.32,
+      Paint()..color = const Color(0xFF6687A7),
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(
+        size.width * 0.22,
+        size.height * 0.68,
+        size.width * 0.62,
+        size.height * 0.18,
       ),
-    ),
-  );
+      Paint()..color = const Color(0xFFA95838),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_GoldenArtworkPainter oldDelegate) => false;
 }
 
 void _setPortraitView(WidgetTester tester) {
