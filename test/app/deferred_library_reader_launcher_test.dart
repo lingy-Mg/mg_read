@@ -12,6 +12,13 @@ import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 
 void main() {
   test('deferred launcher keeps novel and manga sessions typed and supplies the manga cover', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    server.listen((request) async {
+      request.response.headers.contentType = ContentType('image', 'png');
+      request.response.add(<int>[9, 8, 7]);
+      await request.response.close();
+    });
+    addTearDown(() => server.close(force: true));
     final root = await Directory.systemTemp.createTemp('mg-read-launcher-');
     final library = await ContentLibrary.open(dataRoot: root);
     final diagnostics = DiagnosticsManager(
@@ -52,7 +59,7 @@ void main() {
       bytes: mangaCoverBytes,
       mimeType: 'image/png',
     );
-    const gateway = _Gateway();
+    final gateway = _Gateway(Uri.parse('http://${server.address.address}:${server.port}/first.png'));
     final launcher = DeferredLibraryReaderLauncher(() async => library, gateway, AppContentLibrarySourcePrefetcherCoordinator(diagnostics));
 
     final novelRequest = await launcher.launch(novel.id.value);
@@ -62,12 +69,14 @@ void main() {
     expect(mangaRequest, isA<ComicReaderLaunchRequest>());
     expect(mangaRequest.entryCoverBytes, mangaCoverBytes);
     expect(await launcher.warmLocal(novel.id.value), isA<NovelReaderLaunchRequest>());
-    expect(await launcher.warmLocal(manga.id.value), isNull);
+    expect(await launcher.warmLocal(manga.id.value), isA<ComicReaderLaunchRequest>());
   });
 }
 
 final class _Gateway implements SourceContentGateway {
-  const _Gateway();
+  const _Gateway(this.imageUri);
+
+  final Uri imageUri;
 
   @override
   Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async => PluginChaptersResult(
@@ -89,17 +98,38 @@ final class _Gateway implements SourceContentGateway {
   );
 
   @override
-  Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) async =>
-      PluginChapterContent(
-        pluginId: pluginId,
-        sourceName: 'fixture',
-        contentKind: PluginContentKind.novel,
-        chapterId: chapterId,
-        title: '第一章',
-        updatedAt: null,
-        text: '测试正文',
-        pages: const <PluginMangaPage>[],
-      );
+  Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) async => id == 'manga'
+      ? PluginChapterContent(
+          pluginId: pluginId,
+          sourceName: 'fixture',
+          contentKind: PluginContentKind.manga,
+          chapterId: chapterId,
+          title: '第一话',
+          updatedAt: DateTime.utc(2026),
+          text: null,
+          pages: <PluginMangaPage>[
+            PluginMangaPage(
+              id: 'image-1',
+              index: 0,
+              url: imageUri,
+              mimeType: 'image/png',
+              width: 100,
+              height: 200,
+              resourcePolicy: PluginMangaPageResourcePolicy.durable,
+              expiresAt: null,
+            ),
+          ],
+        )
+      : PluginChapterContent(
+          pluginId: pluginId,
+          sourceName: 'fixture',
+          contentKind: PluginContentKind.novel,
+          chapterId: chapterId,
+          title: '第一章',
+          updatedAt: null,
+          text: '测试正文',
+          pages: const <PluginMangaPage>[],
+        );
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

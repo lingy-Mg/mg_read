@@ -50,6 +50,7 @@ import 'package:mg_read/features/reader/application/chapter_cache_task_controlle
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 import 'package:mg_read/features/reader/application/shelf_reader_launch_coordinator.dart';
 import 'package:mg_read/features/reader/data/content_library_source_comic_reader.dart';
+import 'package:mg_read/features/reader/data/content_library_source_comic_reader_launcher.dart';
 import 'package:mg_read/features/reader/data/content_library_source_text_reader.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
@@ -671,17 +672,7 @@ final class DeferredLibraryReaderLauncher implements LibraryReaderLauncher, Loca
     }
     return switch (item.kind) {
       ContentKind.novel => _textReader(library).launch(libraryItemId),
-      ContentKind.manga => ComicReaderLaunchRequest(
-        bookId: item.id.value,
-        entryCoverBytes: await _readCachedCover(library, item),
-        dataSource: ContentLibraryComicReaderDataSource(
-          library: library,
-          gateway: _gateway,
-          item: item,
-          httpClientFactory: _proxyManager == null ? null : createProxyAwareComicHttpClientFactory(_proxyManager),
-        ),
-        stateStore: ContentLibraryComicReaderStateStore(library, itemId: item.id, settings: _settings),
-      ),
+      ContentKind.manga => _comicReader(library).launch(libraryItemId),
       ContentKind.audio || ContentKind.video => throw StateError('Media shelf items must be opened through their player host.'),
     };
   }
@@ -690,27 +681,22 @@ final class DeferredLibraryReaderLauncher implements LibraryReaderLauncher, Loca
   Future<ReaderLaunchRequest?> warmLocal(String libraryItemId) async {
     final library = await _get();
     final item = await library.getLibraryItem(LibraryItemId(libraryItemId));
-    if (item == null || item.kind != ContentKind.novel) return null;
-    return _textReader(library).warmLocal(libraryItemId);
+    if (item == null) return null;
+    return switch (item.kind) {
+      ContentKind.novel => _textReader(library).warmLocal(libraryItemId),
+      ContentKind.manga => _comicReader(library).warmLocal(libraryItemId),
+      ContentKind.audio || ContentKind.video => null,
+    };
   }
 
   ContentLibrarySourceTextReader _textReader(ContentLibrary library) =>
       ContentLibrarySourceTextReader(library, _gateway, _prefetchers.resolve(library, _gateway), _settings, _chapterCacheTasks);
 
-  Future<List<int>?> _readCachedCover(ContentLibrary library, LibraryItem item) async {
-    try {
-      final source = item.source;
-      final url = item.coverUrl;
-      if (url != null) {
-        final cached = await library.readCover(
-          CoverKey(pluginId: source.pluginId, pluginVersion: source.pluginVersion, remoteContentId: source.remoteContentId, coverUrl: url),
-        );
-        if (cached != null && cached.isNotEmpty) return cached;
-      }
-      return null;
-    } on Object {
-      // A cover-cache failure must not prevent the comic reader from opening.
-      return null;
-    }
-  }
+  ContentLibrarySourceComicReader _comicReader(ContentLibrary library) => ContentLibrarySourceComicReader(
+    library,
+    _gateway,
+    prefetcher: _prefetchers.resolve(library, _gateway),
+    settings: _settings,
+    httpClientFactory: _proxyManager == null ? null : createProxyAwareComicHttpClientFactory(_proxyManager),
+  );
 }

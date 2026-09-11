@@ -56,6 +56,68 @@ void main() {
     expect(gateway.contentChapterIds, <String>['chapter:1']);
   });
 
+  test('manga shares the detail, complete catalog, and first chapter prefetch pipeline', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-manga-prefetch-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    addTearDown(() async {
+      await library.close();
+      await root.delete(recursive: true);
+    });
+    final item = await library.addLibraryItem(
+      const BookshelfAddRequest(
+        title: '漫画预取',
+        author: null,
+        kind: ContentKind.manga,
+        pluginId: 'org.example.manga',
+        pluginVersion: '1.0.0',
+        remoteContentId: 'manga-prefetch',
+      ),
+    );
+    final gateway = _MangaPrefetchGateway();
+    final prefetcher = ContentLibrarySourcePrefetcher(library, gateway);
+
+    prefetcher.start(item);
+    await prefetcher.waitFor(item.id.value);
+
+    final catalog = await library.listAllCatalog(item.id);
+    expect(catalog.map((entry) => entry.remoteIdentity), <String>['manga:1', 'manga:2']);
+    expect(catalog.first.contentStatus, 'ready');
+    expect(await library.openContent(catalog.first.id), isA<MangaChapterContent>());
+    expect((await library.getLibraryItem(item.id))?.description, '漫画简介');
+    expect(gateway.detailCalls, 1);
+    expect(gateway.catalogCalls, 1);
+    expect(gateway.contentChapterIds, <String>['manga:1']);
+  });
+
+  test('audio and video stay outside the reader prefetch pipeline', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-media-no-prefetch-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    addTearDown(() async {
+      await library.close();
+      await root.delete(recursive: true);
+    });
+    final gateway = _PrefetchGateway();
+    final prefetcher = ContentLibrarySourcePrefetcher(library, gateway);
+    for (final kind in <ContentKind>[ContentKind.audio, ContentKind.video]) {
+      final item = await library.addLibraryItem(
+        BookshelfAddRequest(
+          title: kind.code,
+          author: null,
+          kind: kind,
+          pluginId: 'org.example.${kind.code}',
+          pluginVersion: '1.0.0',
+          remoteContentId: kind.code,
+        ),
+      );
+      prefetcher.start(item);
+      await prefetcher.waitFor(item.id.value);
+      expect(await library.listAllCatalog(item.id), isEmpty);
+    }
+    expect(gateway.detailCalls, 0);
+    expect(gateway.catalogCalls, 0);
+    expect(gateway.contentChapterIds, isEmpty);
+  });
+
   test('deduplicates concurrent prefetch and never exposes a half catalog', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-prefetch-dedupe-');
     final library = await ContentLibrary.open(dataRoot: root);
@@ -295,6 +357,75 @@ final class _PrefetchGateway implements SourceContentGateway {
     String? collectionId,
     int pageSize = 20,
   }) => throw UnsupportedError('Not used.');
+}
+
+final class _MangaPrefetchGateway extends _PrefetchGateway {
+  @override
+  Future<PluginContentDetail> getDetail({required String pluginId, required String id}) async {
+    detailCalls += 1;
+    return PluginContentDetail(
+      pluginId: pluginId,
+      sourceName: '漫画源',
+      aliases: const <String>[],
+      catalogUrl: null,
+      summary: PluginContentSummary(
+        id: id,
+        title: '远程漫画',
+        contentKind: PluginContentKind.manga,
+        author: null,
+        url: null,
+        coverUrl: null,
+        description: '漫画简介',
+        language: 'zh-CN',
+        status: PluginContentStatus.ongoing,
+        access: PluginAccessKind.free,
+        wordCount: null,
+        chapterCount: 2,
+        publishedAt: null,
+        updatedAt: null,
+        latestChapter: null,
+        categories: const <String>[],
+        tags: const <String>[],
+        attributes: const <PluginContentAttribute>[],
+      ),
+    );
+  }
+
+  @override
+  Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async {
+    catalogCalls += 1;
+    return PluginChaptersResult(
+      pluginId: pluginId,
+      sourceName: '漫画源',
+      items: <PluginChapterSummary>[_chapter('manga:1', '第一话', 0), _chapter('manga:2', '第二话', 1)],
+    );
+  }
+
+  @override
+  Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) async {
+    contentChapterIds.add(chapterId);
+    return PluginChapterContent(
+      pluginId: pluginId,
+      sourceName: '漫画源',
+      contentKind: PluginContentKind.manga,
+      chapterId: chapterId,
+      title: '第一话',
+      updatedAt: DateTime.utc(2026),
+      text: null,
+      pages: <PluginMangaPage>[
+        PluginMangaPage(
+          id: 'image-1',
+          index: 0,
+          url: Uri.parse('https://source.example/manga-1.png'),
+          mimeType: 'image/png',
+          width: 100,
+          height: 200,
+          resourcePolicy: PluginMangaPageResourcePolicy.durable,
+          expiresAt: null,
+        ),
+      ],
+    );
+  }
 }
 
 final class _GatedPrefetchGateway extends _PrefetchGateway {

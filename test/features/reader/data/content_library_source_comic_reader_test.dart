@@ -135,7 +135,7 @@ void main() {
     expect(persistedPage.contentVersion, 1700000000000);
   });
 
-  test('keeps image bytes memory-only and refreshes session-only URLs in a new adapter', () async {
+  test('persists image bytes and refreshes a session-only URL only for an uncached page', () async {
     final fixture = await _LibraryFixture.open();
     addTearDown(fixture.close);
     final gateway = _Gateway(
@@ -158,13 +158,13 @@ void main() {
 
     final rebuilt = ContentLibraryComicReaderDataSource(library: fixture.library, gateway: gateway, item: fixture.manga, fetcher: fetch);
     expect(await rebuilt.loadImageBytes(fixture.manga.id.value, 'chapter-1', 'image-1'), <int>[1, 2, 3]);
-    expect(gateway.contentCalls, 2, reason: 'a new adapter must refresh the session-only URL');
+    expect(gateway.contentCalls, 1, reason: 'the persisted first image must not refresh its session-only URL');
     await rebuilt.loadImageBytes(fixture.manga.id.value, 'chapter-1', 'image-2');
     expect(gateway.contentCalls, 2);
-    expect(fetched.map((uri) => uri.queryParameters['generation']), <String?>['1', '2', '2']);
+    expect(fetched.map((uri) => uri.queryParameters['generation']), <String?>['1', '2']);
   });
 
-  test('opens persisted catalog and manifest offline but does not persist image bytes', () async {
+  test('opens persisted catalog, manifest, and image bytes offline', () async {
     final fixture = await _LibraryFixture.open();
     addTearDown(fixture.close);
     final online = _Gateway(pages: <PluginMangaPage>[_page()]);
@@ -187,12 +187,12 @@ void main() {
     );
     expect((await rebuilt.loadChapterCatalog(fixture.manga.id.value)).items.single.id, 'chapter-1');
     expect((await rebuilt.loadChapterContent(fixture.manga.id.value, 'chapter-1')).images.single.id, 'image-1');
-    await expectLater(rebuilt.loadImageBytes(fixture.manga.id.value, 'chapter-1', 'image-1'), throwsA(isA<ReaderFailure>()));
+    expect(await rebuilt.loadImageBytes(fixture.manga.id.value, 'chapter-1', 'image-1'), <int>[7, 8, 9]);
     expect(offline.chapterCalls, 0);
     expect(offline.contentCalls, 0, reason: 'a valid durable manifest should open without probing the offline source');
   });
 
-  test('keeps only three recently used runtime manifests', () async {
+  test('reopens an evicted runtime manifest from persistent metadata', () async {
     final fixture = await _LibraryFixture.open();
     addTearDown(fixture.close);
     final gateway = _Gateway(
@@ -213,7 +213,7 @@ void main() {
     await adapter.loadChapterContent(fixture.manga.id.value, 'chapter-4');
     await adapter.loadChapterContent(fixture.manga.id.value, 'chapter-2');
 
-    expect(gateway.contentCalls, 5, reason: 'touching chapter-1 makes chapter-2 the least recently used manifest');
+    expect(gateway.contentCalls, 4, reason: 'the evicted chapter-2 manifest is still available from Content Library');
   });
 
   test('keeps a validated runtime manifest readable when its cache write fails', () async {

@@ -1,10 +1,8 @@
 /// Content Library-backed comic reader adapters.
 ///
 /// Runtime supplies catalogs and regenerable manifests; Content Library owns
-/// the fixed catalog view, URL-safe manifest, progress, and bookmarks.
-/// Encoded image bytes stay in the reader's bounded memory cache; this adapter
-/// does not read or write a persistent image cache. Session resource state and
-/// request single-flights stay in this file. Live manifests use a three-entry
+/// the catalog, URL-safe manifest, progress, bookmarks, and persistent images.
+/// Session resource state and request single-flights stay in this file. Live manifests use a three-entry
 /// LRU so visiting chapters cannot grow session memory without bound. Unless
 /// a caller-owned fetcher is injected, this adapter lazily owns one bounded
 /// HttpClient and closes it when the reader route disposes the data source.
@@ -16,12 +14,12 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/discovery/application/source_manga_projection.dart';
 import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
 import 'package:mg_read/features/network_proxy/application/network_proxy_settings.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
@@ -64,7 +62,60 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
   final BoundedReaderSessionCache<String, _ChapterManifest> _manifests = BoundedReaderSessionCache<String, _ChapterManifest>(maxEntries: 3);
   final Map<String, Future<_ChapterManifest>> _runtimeManifestLoads = <String, Future<_ChapterManifest>>{};
   final Map<String, Future<Uint8List>> _imageLoads = <String, Future<Uint8List>>{};
+  final Map<String, Uint8List> _preparedImages = <String, Uint8List>{};
+  bool _usedNetwork = false;
   bool _disposed = false;
+
+  /// Resolves the target manifest and first image before shelf navigation.
+  Future<({int estimatedBytes, ReaderLaunchPreparationKind kind, Duration networkElapsed})> prepareFirstContent() async {
+    _ensureActive();
+    _usedNetwork = false;
+    final stopwatch = Stopwatch()..start();
+    final session = (await _ensureCatalog()).session;
+    if (session == null) {
+      stopwatch.stop();
+      return (
+        estimatedBytes: 0,
+        kind: _usedNetwork ? ReaderLaunchPreparationKind.network : ReaderLaunchPreparationKind.persistent,
+        networkElapsed: _usedNetwork ? stopwatch.elapsed : Duration.zero,
+      );
+    }
+    final entry = session.initialChapter;
+    final content = await loadChapterContent(item.id.value, entry.remoteIdentity);
+    if (content.images.isEmpty) throw StateError('Source manga manifest is empty.');
+    final first = content.images.first;
+    final bytes = await loadImageBytes(item.id.value, entry.remoteIdentity, first.id);
+    _preparedImages['${entry.remoteIdentity}\u0000${first.id}'] = bytes;
+    stopwatch.stop();
+    return (
+      estimatedBytes: bytes.lengthInBytes,
+      kind: _usedNetwork ? ReaderLaunchPreparationKind.network : ReaderLaunchPreparationKind.persistent,
+      networkElapsed: _usedNetwork ? stopwatch.elapsed : Duration.zero,
+    );
+  }
+
+  /// Warms only a fully local target manifest and first image.
+  Future<int?> warmLocalFirstContent() async {
+    _ensureActive();
+    final session = await library.openMangaReaderSession(item.id);
+    if (session == null) return null;
+    _catalog = _CatalogSnapshot(session, synchronized: false);
+    final entry = session.initialChapter;
+    final stored = await session.readContent(entry);
+    if (stored is! MangaChapterContent || stored.pages.isEmpty) return null;
+    final manifest = _ChapterManifest(
+      chapterId: entry.remoteIdentity,
+      title: entry.title,
+      pages: stored.pages,
+      sessionOnlyUrls: const <String, Uri>{},
+    );
+    _manifests[entry.remoteIdentity] = manifest;
+    final first = manifest.pages.first;
+    final bytes = await _readCachedImage(entry.remoteIdentity, first);
+    if (bytes == null) return null;
+    _preparedImages['${entry.remoteIdentity}\u0000${first.pageId}'] = bytes;
+    return bytes.lengthInBytes;
+  }
 
   @override
   Future<ComicBookInfo> loadBookInfo(String bookId) async {
@@ -111,18 +162,8 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
   Future<ComicChapterContent> loadChapterContent(String bookId, String chapterId) async {
     _checkBook(bookId);
     final persisted = await _persistedManifest(chapterId);
-    if (persisted?.isReusableWithoutRuntime ?? false) {
-      return _readerContent(persisted!);
-    }
-    try {
-      return _readerContent(await _runtimeManifest(chapterId, forceRefresh: persisted != null));
-    } on Object catch (error, stackTrace) {
-      // A previously committed manifest remains a usable offline snapshot.
-      // Preserve the live error when no such snapshot exists.
-      _ensureActive();
-      if (persisted == null) Error.throwWithStackTrace(error, stackTrace);
-      return _readerContent(persisted);
-    }
+    if (persisted != null) return _readerContent(persisted);
+    return _readerContent(await _runtimeManifest(chapterId));
   }
 
   @override
@@ -147,6 +188,7 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
     _manifests.clear();
     _runtimeManifestLoads.clear();
     _imageLoads.clear();
+    _preparedImages.clear();
     await _httpClientOwner?.dispose();
   }
 
@@ -173,6 +215,7 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
   }
 
   Future<_CatalogSnapshot> _syncCatalog() async {
+    _usedNetwork = true;
     final source = _requireSource();
     final remote = await gateway.getChapters(pluginId: source.pluginId, id: source.remoteContentId);
     await library.syncMangaCatalog(
@@ -213,17 +256,14 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
     final entry = await session.itemByRemoteIdentity(chapterId);
     if (entry == null) throw ArgumentError.value(chapterId, 'chapterId', 'Unknown chapter.');
     final source = _requireSource();
+    _usedNetwork = true;
     final remote = await gateway.getContent(pluginId: source.pluginId, id: source.remoteContentId, chapterId: chapterId);
     _ensureActive();
-    final descriptors = _validatedPages(remote, chapterId);
-    final sessionOnlyUrls = <String, Uri>{
-      for (final page in remote.pages)
-        if (page.resourcePolicy == PluginMangaPageResourcePolicy.sessionOnly) page.id: page.url,
-    };
-    var pages = _runtimePages(descriptors);
+    final projection = projectSourceMangaChapter(remote, chapterId);
+    var pages = _runtimePages(projection.descriptors);
     CatalogEntry? refreshedEntry;
     try {
-      await library.cacheMangaChapter(entryId: entry.id, pages: descriptors);
+      await library.cacheMangaChapter(entryId: entry.id, pages: projection.descriptors);
       refreshedEntry = await session.itemByRemoteIdentity(chapterId);
       final persisted = refreshedEntry == null ? null : await session.readContent(refreshedEntry);
       if (persisted is MangaChapterContent && persisted.pages.isNotEmpty) {
@@ -237,53 +277,10 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
       chapterId: chapterId,
       title: remote.title ?? refreshedEntry?.title ?? entry.title,
       pages: pages,
-      sessionOnlyUrls: sessionOnlyUrls,
+      sessionOnlyUrls: projection.sessionOnlyUrls,
     );
     _manifests[chapterId] = manifest;
     return manifest;
-  }
-
-  List<MangaPageDescriptor> _validatedPages(PluginChapterContent content, String chapterId) {
-    if (content.contentKind != PluginContentKind.manga) throw StateError('Source chapter is not manga.');
-    if (content.chapterId != chapterId) throw StateError('Source returned a different manga chapter.');
-    if (content.pages.isEmpty) throw StateError('Source manga manifest is empty.');
-    final ids = <String>{};
-    final indexes = <int>{};
-    final updatedVersion = content.updatedAt?.toUtc().millisecondsSinceEpoch ?? 1;
-    final version = updatedVersion > 0 ? updatedVersion : 1;
-    final sorted = content.pages.toList(growable: false)..sort((left, right) => left.index.compareTo(right.index));
-    return [
-      for (final page in sorted)
-        _pageDescriptor(page, version: version, duplicateId: !ids.add(page.id), duplicateIndex: !indexes.add(page.index)),
-    ];
-  }
-
-  MangaPageDescriptor _pageDescriptor(
-    PluginMangaPage page, {
-    required int version,
-    required bool duplicateId,
-    required bool duplicateIndex,
-  }) {
-    if (page.id.isEmpty || page.index < 0 || duplicateId || duplicateIndex) {
-      throw StateError('Source manga manifest contains duplicate or invalid pages.');
-    }
-    final resource = switch (page.resourcePolicy) {
-      PluginMangaPageResourcePolicy.sessionOnly => SourceResource.sessionOnly(),
-      PluginMangaPageResourcePolicy.refreshable => SourceResource.refreshable(
-        page.url,
-        page.expiresAt ?? (throw StateError('Refreshable manga page is missing expiresAt.')),
-      ),
-      PluginMangaPageResourcePolicy.durable => SourceResource.durable(page.url),
-    };
-    return MangaPageDescriptor(
-      pageId: page.id,
-      order: page.index,
-      resource: resource,
-      mimeType: page.mimeType ?? 'image/unknown',
-      width: page.width,
-      height: page.height,
-      contentVersion: version,
-    );
   }
 
   List<MangaPage> _runtimePages(Iterable<MangaPageDescriptor> descriptors) => [
@@ -326,6 +323,12 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
     var page = manifest.page(imageId);
     if (page == null) throw StateError('Comic image is not in the chapter manifest.');
 
+    final key = '$chapterId\u0000$imageId';
+    final prepared = _preparedImages.remove(key);
+    if (prepared != null) return prepared;
+    final cached = await _readCachedImage(chapterId, page);
+    if (cached != null) return cached;
+
     var uri = manifest.downloadUri(page);
     var refreshed = false;
     if (uri == null || manifest.needsRefresh(page)) {
@@ -338,6 +341,7 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
     if (uri == null) throw StateError('Comic image URL is unavailable.');
     Uint8List bytes;
     try {
+      _usedNetwork = true;
       bytes = await _fetchImage(uri);
     } on Object catch (error) {
       if (!refreshed && _isAuthorizationFailure(error)) {
@@ -347,6 +351,7 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
         uri = manifest.downloadUri(page);
         if (uri == null) throw StateError('Comic image URL is unavailable after refresh.');
         try {
+          _usedNetwork = true;
           bytes = await _fetchImage(uri);
         } on Object catch (retryError) {
           throw _imageFailure(retryError);
@@ -357,7 +362,35 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
     }
     if (bytes.isEmpty) throw StateError('Comic image is empty.');
     if (bytes.length > _maximumImageBytes) throw StateError('Comic image exceeds 8 MiB.');
+    try {
+      await library.saveMangaImage(
+        itemId: item.id,
+        chapterId: chapterId,
+        pageId: page.pageId,
+        contentVersion: page.contentVersion,
+        bytes: bytes,
+        mimeType: page.mimeType ?? 'image/unknown',
+      );
+    } on Object {
+      // Validated network bytes remain readable when durable cache IO fails.
+    }
     return bytes;
+  }
+
+  Future<Uint8List?> _readCachedImage(String chapterId, MangaPage page) async {
+    try {
+      final cached = await library.readMangaImage(
+        itemId: item.id,
+        chapterId: chapterId,
+        pageId: page.pageId,
+        contentVersion: page.contentVersion,
+      );
+      if (cached == null || cached.isEmpty || cached.length > _maximumImageBytes) return null;
+      return Uint8List.fromList(cached);
+    } on Object {
+      // A corrupt or unavailable cache is a miss; the source remains usable.
+      return null;
+    }
   }
 
   Future<_ChapterManifest> _refreshRuntimeManifest(String chapterId, _ChapterManifest stale) {
@@ -439,8 +472,6 @@ final class _ChapterManifest {
 
   bool needsRefresh(MangaPage page) =>
       page.resource.persistencePolicy == PersistencePolicy.refreshable && !page.resource.expiresAtUtc!.isAfter(DateTime.now().toUtc());
-
-  bool get isReusableWithoutRuntime => pages.every((page) => downloadUri(page) != null && !needsRefresh(page));
 }
 
 /// Comic reader state adapter backed by Content Library and app settings.

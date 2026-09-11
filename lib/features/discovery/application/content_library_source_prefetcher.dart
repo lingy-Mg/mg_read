@@ -6,13 +6,15 @@ import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/discovery/application/persisted_source_detail.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/discovery/application/source_manga_projection.dart';
 
 /// Warms the app-owned source data immediately after a book is added.
 ///
-/// Catalog commit and the first chapter request overlap. A validated first
-/// body is exposed to a waiting reader immediately while its immutable object
-/// write continues in the background. Detail-page seeds bypass duplicate
-/// detail/catalog Runtime calls while preserving the same persistence path.
+/// Novel and manga share catalog, first-chapter and detail work. A validated
+/// first body or manga manifest is committed before a waiting reader continues.
+/// Detail-page seeds bypass duplicate detail/catalog Runtime calls while
+/// preserving the same persistence path. Audio and video are intentionally
+/// outside this reader-owned pipeline.
 final class ContentLibrarySourcePrefetcher {
   ContentLibrarySourcePrefetcher(this._library, this._gateway, {this._diagnostics});
 
@@ -26,7 +28,7 @@ final class ContentLibrarySourcePrefetcher {
   /// Starts one deduplicated warm-up without blocking the add-to-shelf UI.
   void start(LibraryItem item, {PluginContentDetail? initialDetail, PluginChaptersResult? initialCatalog}) {
     final source = item.source;
-    if (item.kind != ContentKind.novel) return;
+    if (item.kind != ContentKind.novel && item.kind != ContentKind.manga) return;
     final key = item.id.value;
     if (_active.containsKey(key)) return;
     final readable = Completer<void>();
@@ -73,7 +75,7 @@ final class ContentLibrarySourcePrefetcher {
     final span = diagnostics?.startSpan(
       AppDiagnosticEvents.readerPrefetch,
       attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
-        'contentKind': DiagnosticValue.string(ContentKind.novel.code),
+        'contentKind': DiagnosticValue.string(item.kind.code),
         'resultState': DiagnosticValue.string('started'),
       }),
     );
@@ -90,7 +92,9 @@ final class ContentLibrarySourcePrefetcher {
         if (!readable.isCompleted) {
           readable.completeError(StateError('Source catalog is empty.'));
         }
-        span?.complete(attributes: _attributes(catalogCount: 0, cachedChapterCount: 0, resultState: 'empty'));
+        span?.complete(
+          attributes: _attributes(contentKind: item.kind, catalogCount: 0, cachedChapterCount: 0, resultState: 'empty'),
+        );
         return;
       }
 
@@ -99,25 +103,40 @@ final class ContentLibrarySourcePrefetcher {
         id: source.remoteContentId,
         chapterId: catalogResult.items.first.id,
       );
-      final results = await Future.wait<Object>(<Future<Object>>[
-        _library.syncNovelCatalog(itemId: item.id, chapters: _toCatalog(catalogResult.items)),
-        firstContent,
-      ]);
+      final catalogWrite = switch (item.kind) {
+        ContentKind.novel => _library.syncNovelCatalog(itemId: item.id, chapters: _toNovelCatalog(catalogResult.items)),
+        ContentKind.manga => _library.syncMangaCatalog(itemId: item.id, chapters: _toMangaCatalog(catalogResult.items)),
+        ContentKind.audio || ContentKind.video => throw StateError('Media does not use reader prefetch.'),
+      };
+      final results = await Future.wait<Object>(<Future<Object>>[catalogWrite, firstContent]);
       catalogCount = results[0] as int;
       final content = results[1] as PluginChapterContent;
-      if (content.contentKind == PluginContentKind.novel && content.text != null && content.text!.isNotEmpty) {
-        final chapterId = catalogResult.items.first.id;
-        final persistence = _library
-            .cacheNovelChapter(itemId: item.id, remoteChapterId: chapterId, text: content.text!)
-            .then<void>((_) {}, onError: (Object _, StackTrace stack) {});
-        final prepared = ContentLibraryPrefetchedNovelChapter(chapterId: chapterId, text: content.text!, persistence: persistence);
-        _prepared[item.id.value] = prepared;
-        unawaited(
-          persistence.whenComplete(() {
-            if (identical(_prepared[item.id.value], prepared)) _prepared.remove(item.id.value);
-          }),
-        );
-        cachedChapterCount = 1;
+      final chapterId = catalogResult.items.first.id;
+      switch (item.kind) {
+        case ContentKind.novel:
+          if (content.contentKind != PluginContentKind.novel || content.text == null || content.text!.isEmpty) {
+            throw StateError('Source first chapter is not readable novel content.');
+          }
+          final persistence = _library
+              .cacheNovelChapter(itemId: item.id, remoteChapterId: chapterId, text: content.text!)
+              .then<void>((_) {}, onError: (Object _, StackTrace stack) {});
+          final prepared = ContentLibraryPrefetchedNovelChapter(chapterId: chapterId, text: content.text!, persistence: persistence);
+          _prepared[item.id.value] = prepared;
+          unawaited(
+            persistence.whenComplete(() {
+              if (identical(_prepared[item.id.value], prepared)) _prepared.remove(item.id.value);
+            }),
+          );
+          cachedChapterCount = 1;
+        case ContentKind.manga:
+          final projection = projectSourceMangaChapter(content, chapterId);
+          final session = await _library.openMangaReaderSession(item.id);
+          final entry = await session?.itemByRemoteIdentity(chapterId);
+          if (entry == null) throw StateError('Synchronized manga chapter is unavailable.');
+          await _library.cacheMangaChapter(entryId: entry.id, pages: projection.descriptors);
+          cachedChapterCount = 1;
+        case ContentKind.audio || ContentKind.video:
+          throw StateError('Media does not use reader prefetch.');
       }
 
       // Catalog and first body are the reading readiness boundary.  Detail is
@@ -131,7 +150,7 @@ final class ContentLibrarySourcePrefetcher {
           BookshelfAddRequest(
             title: detail.summary.title.isEmpty ? item.title : detail.summary.title,
             author: detail.summary.author ?? item.author,
-            kind: ContentKind.novel,
+            kind: item.kind,
             pluginId: source.pluginId,
             pluginVersion: source.pluginVersion,
             remoteContentId: source.remoteContentId,
@@ -166,7 +185,12 @@ final class ContentLibrarySourcePrefetcher {
         );
       }
       span?.complete(
-        attributes: _attributes(catalogCount: catalogCount, cachedChapterCount: cachedChapterCount, resultState: 'complete'),
+        attributes: _attributes(
+          contentKind: item.kind,
+          catalogCount: catalogCount,
+          cachedChapterCount: cachedChapterCount,
+          resultState: 'complete',
+        ),
       );
     } on Object {
       if (!readable.isCompleted) {
@@ -174,6 +198,7 @@ final class ContentLibrarySourcePrefetcher {
       }
       span?.fail(
         attributes: _attributes(
+          contentKind: item.kind,
           catalogCount: catalogCount,
           cachedChapterCount: cachedChapterCount,
           resultState: catalogCount == 0 ? 'failed' : 'partial',
@@ -195,7 +220,7 @@ final class ContentLibrarySourcePrefetcher {
     }
   }
 
-  List<SourceNovelCatalogChapter> _toCatalog(Iterable<PluginChapterSummary> chapters) => [
+  List<SourceNovelCatalogChapter> _toNovelCatalog(Iterable<PluginChapterSummary> chapters) => [
     for (var index = 0; index < chapters.length; index += 1)
       SourceNovelCatalogChapter(
         remoteIdentity: chapters.elementAt(index).id,
@@ -206,6 +231,11 @@ final class ContentLibrarySourcePrefetcher {
       ),
   ];
 
+  List<MangaChapterDescriptor> _toMangaCatalog(Iterable<PluginChapterSummary> chapters) => [
+    for (final chapter in chapters)
+      MangaChapterDescriptor(remoteIdentity: chapter.id, title: chapter.title, index: chapter.order, pages: const <MangaPageDescriptor>[]),
+  ];
+
   String? _statusLabel(PluginContentStatus status) => switch (status) {
     PluginContentStatus.ongoing => '连载',
     PluginContentStatus.completed => '已完结',
@@ -214,12 +244,13 @@ final class ContentLibrarySourcePrefetcher {
   };
 
   DiagnosticObjectValue _attributes({
+    required ContentKind contentKind,
     required int catalogCount,
     required int cachedChapterCount,
     required String resultState,
     String? errorCode,
   }) => DiagnosticObjectValue(<String, DiagnosticValue>{
-    'contentKind': DiagnosticValue.string(ContentKind.novel.code),
+    'contentKind': DiagnosticValue.string(contentKind.code),
     'chapterCount': DiagnosticValue.int64(catalogCount),
     'cachedChapterCount': DiagnosticValue.int64(cachedChapterCount),
     'resultState': DiagnosticValue.string(resultState),
