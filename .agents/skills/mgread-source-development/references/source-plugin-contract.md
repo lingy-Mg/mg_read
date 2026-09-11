@@ -1,59 +1,56 @@
-# 数据源项目与内容契约
+# 单来源开发与项目契约
 
-## 事实入口
+## 适用范围
 
-- 数据源唯一宿主上下文声明：`packages/mg_read_source_api/index.d.ts`
-- 数据源引用示例：`packages/mg_read_source_api/README.md`
-- Runtime 上下文与内容校验：`packages/mg_read_node_runtime/src/plugin-manager-contract.ts`、
+用于新建来源、修改单个来源能力，或处理项目结构、缓存、资源代理、artifact、安装和开发加载。先读取
+`plugins/sources/AGENTS.md`、目标来源的 `package.json`、入口、直接测试和一个最接近的真实来源；仓库不维护
+空白官方模板。
+
+事实入口：
+
+- 唯一宿主 Context 声明：`packages/mg_read_source_api/index.d.ts`
+- Runtime Context 与内容校验：`packages/mg_read_node_runtime/src/plugin-manager-contract.ts`、
   `plugin-content-types.ts`、`plugin-content-validation.ts`
 - 项目与 artifact：`plugin-package.ts`、`plugin-single-file.ts`、`plugin-archive.ts`
-- 真实数据源增量：`plugins/sources/AGENTS.md`、目标入口文件头和直接测试
 
-不要从本参考推断当前字段或版本；以共享公开类型、package metadata 和测试为准。来源内容结果类型可以
-按媒介在来源内声明，但宿主上下文不得复制。
+不要从本参考推断当前字段或版本；共享类型、Runtime 校验和测试是事实来源。
 
-## 项目与生命周期
+## 实现边界
 
-- 数据源是 Node.js 24 ESM 项目，`package.json.mgread` 是唯一 MgRead 元数据。
-- 模块导入阶段不得访问尚未注入的上下文；`activate(ctx)` 只保存公开上下文，不创建 Worker、子进程、
-  native addon、第二 VM 或自定义 loader。
-- Runtime 冷启动只激活并提交或回滚 installed pending；已确认的 current 与 development 项目先进入元数据
-  快照，首次能力调用或传输时单飞加载。懒加载失败必须保持稳定错误并隔离损坏的 installed current。
-- Runtime 依次调用 `discover/search/getDetail/getChapters/getContent`；可选 capability 只有公开类型声明的集合。
-- ID、cursor、target 和 chapterId 必须稳定、不透明、可回传。URL、标题、索引和页码不能替代稳定身份。
-- 必填值必须存在；未知可空值显式为 `null`，零值不能当未知，集合始终为数组。
+- 来源是 Node.js 24 ESM 项目，`package.json.mgread` 是唯一 MgRead 元数据。
+- 在 `.ts`/`.mts` 中从 `@mgread/source-api` 使用 `import type`；来源可以声明自己的内容结果类型，但不能复制
+  `MgReadPluginContext`、`PluginWebViewPage`、`PluginWebViewApi` 或其字段子集。
+- 模块导入不得访问未注入 Context；`activate(ctx)` 只保存公开上下文，不创建 Worker、子进程、native addon、
+  第二 VM 或自定义 loader。
+- 标准链路是 `discover/search/getDetail/getChapters/getContent`。必填值存在，未知值显式 `null`，零值不是未知，
+  集合始终为数组；稳定 ID 不能用标题、索引或页码代替。
+- 私有缓存按项目声明区分发现/搜索与详情/目录；stale 可读、刷新单飞、失败按 miss。日志记录能力阶段和结果。
 
 ## 内容与资源
 
-- 来源返回内容语义；Flutter 拥有组件、主题、断点、尺寸、导航和交互。
-- 小说使用 `text`，漫画使用有序 `pages`，封面与音视频使用 Runtime proxy。
-- `ctx.resource.proxy` 只登记数据源已校验的 `kind + url + headers` 请求；Runtime 以明文可逆 Base64URL
-  JSON 把完整描述放进 loopback URL，不依赖进程内 token 映射；此编码不提供加密或认证。Runtime 持有上游
-  fetch、取消与流式响应。数据源不得导出 `resource` 字节能力或调用 `arrayBuffer()` 缓冲媒体。
-- 私有缓存使用发现/搜索、详情/目录分别声明的项目策略；stale 可读、刷新单飞，失败按 miss。
-- capability 日志记录来源运行阶段和结果。
+小说返回 `text`，漫画返回有序 `pages`，音频/视频返回资源描述。封面和内容资源先校验协议、origin、路径和
+必要 headers，再交给 `ctx.resource.proxy`；loopback URL 中的描述是可逆编码，不提供加密或认证。
 
-## Artifact
+若当前来源涉及发现组合、媒体或 WebView，只增加入口中对应的一个条件参考。实现后按
+[content-validation-matrix.md](content-validation-matrix.md)选择该 `contentKind` 的验证，不把“返回非空对象”
+当成内容可用。
 
-- `single-file` 构建为 Node 24 ESM `.mgplugin.js`，内联实际使用的可打包依赖；不要求 archive 的依赖恢复。
-- `archive` 构建为 `.mgplugin`，保留 lock 和本地 package 恢复语义。两种模式不互相回退。
-- 产物不得包含源码或 `node_modules`；descriptor、图标、大小和 SHA-256 必须可复核。
-- 构建库返回内存 bytes/fileName/format，只有 CLI 写入 artifact 目录。
+## Artifact 与开发生命周期
 
-## Windows 桌面开发生命周期
+- `single-file` 生成 Node 24 ESM `.mgplugin.js` 并内联实际使用的可打包依赖。
+- `archive` 生成 `.mgplugin`，保留 lock 和本地依赖恢复语义。两种模式独立，不互相回退。
+- 产物不得包含源码或 `node_modules`；descriptor、图标、大小、SHA-256 和包内容必须可复核。
+- Windows 开发根只在静默窗口后执行来源声明的 `npm run build`，不加载 TypeScript、不启动 watch、也不自动
+  安装依赖。候选 build 与 activate 都成功后才替换 generation；失败保留旧版本。
+- Runtime 启动优先建立已校验元数据快照，来源代码在首次能力调用或传输时单飞加载。诊断来源数量与启动性能时
+  测量实际扫描、快照、加载事件和首次调用，不根据目录数猜测。
 
-- Windows Debug/Release Node Runtime 都会监听用户选择的开发根下的项目变更；每个项目静默 1.5 秒后，通过随发布包携带的固定 Node/npm 执行该项目
-  声明的 `npm run build`，不直接加载 TypeScript、不启动 `tsc -w`、不自动安装依赖。
-- 初始目录扫描只校验开发项目元数据与入口存在性；不复制 generation、不计算发布指纹，也不执行插件模块。
-- 开发构建成功后，Runtime 从唯一私有 generation 路径加载新的 `dist` 并完成候选激活；只有激活成功才
-  替换当前 generation。构建或激活失败保留旧版本。
-- 此处的构建不是 artifact 打包，不生成 `.mgplugin`/`.mgplugin.js`，也不进入安装流程。Flutter 只消费
-  路径无关的变更事件并刷新来源快照；Android 不接入目录监听或构建链路。
+通用 Source API 或生命周期变化先修改 `packages/mg_read_source_api` 的公开声明，再同步 Runtime 实现与校验、
+wire/Facade/Flutter 宿主中真实受影响的边界、直接测试和一个参考来源。不要为单一站点把来源专用字段扩展成
+公共协议；稳定的跨模块约束才更新对应核心章节。
 
-## 最小验证
+## 完成条件
 
-在目标数据源目录使用仓库固定 Node/npm，运行实际声明的 typecheck、离线测试和 `verify`。请求、选择器、
-分页或解析变化才增加 `test:live`；live 只做网络 smoke。
-
-构建声明的 artifact 模式，验证 descriptor、大小、SHA-256 和包内容；安装语义变化时再用临时 Runtime 数据根
-执行冷安装与激活。Fixture 由来源测试自行定义。
+使用固定 Node/npm 运行来源声明的 typecheck、fixture/离线测试和 `verify`；请求、选择器、分页或解析变化才加
+`test:live`。构建声明的 artifact 并验证确定性和包内容；安装语义变化时使用临时 Runtime 数据根做冷安装与
+激活。最后按 [source-testing-workflow.md](source-testing-workflow.md)执行适用的 Node/App CLI 验收。

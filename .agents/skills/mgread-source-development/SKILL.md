@@ -1,64 +1,57 @@
 ---
 name: mgread-source-development
-description: Develop, debug, or test MgRead real data-source plugins, the public Source API across Runtime and Flutter, source-owned discovery composition, or ctx.webview providers. Do not use for bookshelf/home/recent-reading state, long-press details, ordinary discovery UI, reader UI, or player-host work unless the public Source contract also changes.
+description: Develop, migrate, repair, retire, audit, or batch-test MgRead real data-source plugins, or evolve their public Source API, discovery, resource, and WebView contracts. Do not use for bookshelf, reader, player UI, or generic plugin management unless a public Source boundary also changes.
 ---
 
 # MgRead 数据源开发
 
-处理真实数据源、公开 Source 契约、源拥有的发现组合和 `ctx.webview` 宿主。先按仓库 `AGENTS.md` 读取目标
-文件头、最近规则、公开类型和直接测试；本技能只补充来源特有的非显然边界。
+处理真实来源及其公开 Source 边界。先按仓库 `AGENTS.md` 定位目标文件、最近规则、公开类型和直接测试；
+本技能只补充来源特有且会改变决策的约束。
 
-## 选择一个首选参考
+## 先选择一个主场景
 
-- Node 项目结构、生命周期、缓存、资源代理或 artifact：读
-  [source-plugin-contract.md](references/source-plugin-contract.md)，再从当前同类真实数据源读取最近
-  `AGENTS.md`、`package.json`、公开类型、入口和直接测试；仓库不维护空白官方模板。
-- 开发期轻量验证、单源/全源回归或正式 Windows App CLI 验收：读
-  [source-testing-workflow.md](references/source-testing-workflow.md)。Node 阶段不得改用 `.ps1`/`pwsh` 包装；
-  App CLI 阶段不得用 Flutter 测试代替正式可执行文件。
-- 现有来源失效、同类来源批量排障、资源链路修复或来源简介整顿：读
-  [source-repair-workflow.md](references/source-repair-workflow.md)，先区分环境、站点、解析、资源代理四类失败，
-  再只修有当前证据支持的层级。
-- 当前网页结构、选择器、JS DOM、跳转或分页取证：加载 `browser:control-in-app-browser` 并读
+| 当前任务 | 只读这个主参考 |
+| --- | --- |
+| 新建或修改单个来源、项目结构、缓存、资源代理、artifact、开发加载 | [source-plugin-contract.md](references/source-plugin-contract.md) |
+| 修复失效来源、搜索/分页/解析或资源链路 | [source-repair-workflow.md](references/source-repair-workflow.md) |
+| 批量健康检查、同类来源整顿、全源回归、简介审计 | [source-batch-audit.md](references/source-batch-audit.md) |
+| 从旧格式或第三方仓库迁移来源 | [source-migration-workflow.md](references/source-migration-workflow.md) |
+| 删除、退役或停止发布来源 | [source-retirement-workflow.md](references/source-retirement-workflow.md) |
+| 只设计或执行自动化、Node/App CLI 验收 | [source-testing-workflow.md](references/source-testing-workflow.md) |
+| 修改通用 Source API、资源契约、安装/开发加载或 Runtime 来源生命周期 | [source-plugin-contract.md](references/source-plugin-contract.md) |
+| 修改发现公开类型、Runtime/Facade 解码或 Flutter 宿主渲染 | [discovery-contract.md](references/discovery-contract.md) |
+| 修改 `ctx.webview` 公开 API | [webview-api.md](references/webview-api.md) |
+| 修改 Windows/Android WebView provider 或平台状态机 | [webview-host-development.md](references/webview-host-development.md) |
+
+## 只在命中条件时增加一个参考
+
+- 需要确认当前网页路由、DOM、选择器、脚本渲染或验证页：
   [real-page-browser-probing.md](references/real-page-browser-probing.md)
-- 公开发现组件类型、Runtime/Facade 解码或宿主渲染：
-  [discovery-contract.md](references/discovery-contract.md)
-- 真实来源的发现区块、小说/漫画/音频/视频组件选型、简单首页补全与响应式组合：
+- 需要验证封面、小说正文、漫画页图、音频、视频或 HLS：
+  [content-validation-matrix.md](references/content-validation-matrix.md)
+- 只调整来源首页区块、组件或封面方向：
   [discovery-composition.md](references/discovery-composition.md)
-- 数据源调用 `ctx.webview`：读 [webview-api.md](references/webview-api.md)，再核对 Runtime 当前公开类型、
-  直接测试和一个真实 WebView 来源。
-- Android/Windows browser provider、宿主状态机或原生输入：读
-  [webview-host-development.md](references/webview-host-development.md)及对应平台实现和直接测试。
-- 音频或视频来源：读 [media-source-contract.md](references/media-source-contract.md)，再选择一个同媒体类型来源。
-- 漫画来源只选择 `baozimh-com` 或 `manhuagui-com` 中与目标最接近的一个。
+- 实现音频/视频目录、分组、播放资源或刷新语义：
+  [media-source-contract.md](references/media-source-contract.md)
 
-只有公共边界确实跨域时才增加第二个参考；不要默认加载所有参考或无关平台实现。
+只有公开边界真实跨域时才继续增加参考。找到所有者、契约和验证入口后停止扩读，不默认加载全部参考、
+同类来源或平台实现。
 
-## 不可违反的边界
+## 共同边界
 
-- 数据源只依赖公开 `MgReadPluginContext`，不依赖 Runtime 端口、wire envelope、PID、原生 WebView 对象、
-  主应用数据库或宿主路径。上下文和 WebView 类型的唯一声明包是
-  `packages/mg_read_source_api`，数据源必须从 `@mgread/source-api` 使用 `import type` 引用；禁止在来源
-  内复制 `MgReadPluginContext`、`PluginWebViewPage`、`PluginWebViewApi` 或其字段子集。修改公共接口时先同步
-  该包，再同步 Runtime 实现、直接测试和本技能参考。
-- 来源拥有真实数据和稳定不透明 ID/target/cursor；Runtime 校验，Flutter 拥有组件实现、主题、尺寸、导航
-  和交互。不得伪造来源缺失字段、热门词或线上证据。
-- 每个数据源只有一个宿主持有的 WebView 页面；`page.cdp` 只能通过共享声明调用；当前 Windows WebView2
-  支持，Android 返回 `unsupported`。页面状态和响应判断由数据源自行处理。
-- 对需要浏览器无感校验的网站，WebView 只负责建立同一宿主 Profile 的验证会话；后续页面请求优先使用
-  `ctx.browser.sessionV1.request` 的 `transport: 'http'`。该通道由宿主从对应 WebView Profile 读取 Cookie 和
-  `navigator.userAgent` 后发起 HTTP，来源 Node 不得读取、记录、导出、手写或重放 Cookie/验证令牌，也不得自行
-  伪造 UA。若媒体资源代理必须传 UA，只能原样转发该 HTTP 响应的 `sessionUserAgent`；它不得用于 Cookie、日志
-  或任意其他身份头。仅当页面必须渲染或执行脚本才能取得数据时，才保留最小范围的 WebView 页面调用。
-- `single-file` 与 `archive` 是独立发布模式，不互相回退，也不能把 `.mgplugin` 当成 `.mgplugin.js`。
-- 音频与视频分别建模；媒体主体、HLS 分片和 Range 只经 Runtime 数据面流转，插件 JS 返回资源描述。
+- 来源只依赖 `@mgread/source-api` 的公开 `MgReadPluginContext`；不得复制 Context/WebView 类型，也不得依赖
+  Runtime 私有端口、wire、PID、主应用数据库、宿主路径或原生对象。
+- 来源拥有真实数据和稳定不透明的 `id/target/cursor/chapterId`；Runtime 负责校验，Flutter 负责组件实现、
+  主题、尺寸、导航和交互。不得伪造缺失字段、热门词、简介或线上证据。
+- 封面、漫画页图和音视频只登记经来源校验的资源描述；媒体主体、HLS、Range 和取消由 Runtime 数据面处理，
+  插件不得整体缓冲或导出字节。
+- 浏览器会话不得让来源读取、记录、导出或手写 Cookie、验证令牌和伪造 UA；需要同 Profile HTTP 时使用
+  当前公开 session API，页面必须执行脚本时才保留最小 WebView 操作。
+- Node 命令使用仓库固定 Node/npm。离线、live、Node CLI、artifact、Windows App CLI 和平台实机是不同证据，
+  任何一层都不能替代另一层。
 
-## 完成与报告
+## 收尾
 
-公开 Source 边界变化按受影响范围同步 Runtime 类型/校验、Facade/解码、宿主、受影响参考来源、直接测试和
-唯一相关核心章节。交付时分开报告静态检查、自动化、fixture/live、artifact/冷安装、Windows、Android、
-真实运行和未执行项；任何一层都不能替代另一层。
-
-数据源开发循环使用纯 Node 单源检查；开发完成后必须再用 Windows 正式 App CLI 对目标来源执行完整链路。
-测试库、Runtime 公共边界或跨来源共用逻辑变化时，两阶段都追加全源模式。不得因 Node 通过而省略 App CLI，
-也不得用 App 的一次线上通过替代来源自身的离线测试和契约检查。
+按主参考定义的范围运行直接测试；公开契约、testkit 或跨来源共用逻辑变化时扩大到受影响来源和全源模式。
+交付时分开报告静态/离线、live、资源类型、artifact、Node CLI、Windows App CLI、Android/Windows 实机、
+外部阻塞和未执行项。只提交本次拥有的明确文件。

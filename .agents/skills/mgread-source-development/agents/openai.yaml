@@ -1,4 +1,4 @@
 interface:
   display_name: "MgRead 数据源开发"
-  short_description: "统一开发数据源插件、发现组合、WebView、平台宿主与跨层契约"
-  default_prompt: "Use $mgread-source-development to implement, review, or debug this MgRead source change with only the relevant contracts and verification loaded."
+  short_description: "开发、修复、迁移、批量检测并验证 MgRead 数据源"
+  default_prompt: "Use $mgread-source-development to choose the relevant source scenario, load only its required contracts, implement the change, and verify each affected content type."
