@@ -16,6 +16,9 @@ description: Develop, debug, or test MgRead real data-source plugins, the public
 - 开发期轻量验证、单源/全源回归或正式 Windows App CLI 验收：读
   [source-testing-workflow.md](references/source-testing-workflow.md)。Node 阶段不得改用 `.ps1`/`pwsh` 包装；
   App CLI 阶段不得用 Flutter 测试代替正式可执行文件。
+- 现有来源失效、同类来源批量排障、资源链路修复或来源简介整顿：读
+  [source-repair-workflow.md](references/source-repair-workflow.md)，先区分环境、站点、解析、资源代理四类失败，
+  再只修有当前证据支持的层级。
 - 当前网页结构、选择器、JS DOM、跳转或分页取证：加载 `browser:control-in-app-browser` 并读
   [real-page-browser-probing.md](references/real-page-browser-probing.md)
 - 公开发现组件类型、Runtime/Facade 解码或宿主渲染：
