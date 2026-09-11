@@ -100,6 +100,33 @@ void main() {
     expect(backend.state.value.playing, isFalse);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
+    await tester.pump();
+
+    expect(
+      backend.events,
+      containsAllInOrder(<String>['open:end', 'pause', 'play']),
+    );
+    expect(backend.state.value.playing, isTrue);
+  });
+
+  testWidgets('foreground does not resume a user-paused video', (
+    WidgetTester tester,
+  ) async {
+    final backend = _OrderedBackend();
+    final controller = VideoPlayerController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(_app(backend: backend, controller: controller));
+    await tester.pumpAndSettle();
+
+    await controller.pause();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump();
+
+    expect(backend.events.where((event) => event == 'play'), isEmpty);
+    expect(backend.state.value.playing, isFalse);
   });
 
   testWidgets('route disposal starts cleanup while open is still blocked', (

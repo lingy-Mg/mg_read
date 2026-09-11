@@ -47,11 +47,17 @@ extension _VideoPlayerViewActions on _VideoPlayerViewState {
   }
 
   Future<void> _actionPlay() async {
+    _playbackDesired = true;
+    if (!_lifecycleAllowsPlayback) return;
     if (_backendState.completed) await _actionSeek(Duration.zero);
-    await _runPlaybackCommand((backend) => backend.play(), code: 'play_failed');
+    await _runPlaybackCommand((backend) async {
+      if (!_playbackDesired || !_lifecycleAllowsPlayback) return;
+      await backend.play();
+    }, code: 'play_failed');
   }
 
   Future<void> _actionPause() async {
+    _playbackDesired = false;
     await _pauseBackend(code: 'pause_failed');
     await _flushProgress(force: true);
   }
@@ -121,6 +127,7 @@ extension _VideoPlayerViewActions on _VideoPlayerViewState {
     if (content == null) return;
     final selection = videoSelectionById(content.groups, groupId, episodeId);
     if (selection == null) return;
+    _playbackDesired = true;
     _startupSession = VideoStartupSession.create();
     await _openEpisode(
       selection.group,
@@ -158,6 +165,7 @@ extension _VideoPlayerViewActions on _VideoPlayerViewState {
       await _actionSelectEpisode(next.group.id, next.episode.id);
       return;
     }
+    _playbackDesired = false;
     await _flushProgress(force: true);
     if (_disposed || generation != _episodeGeneration) return;
     _showControls();
@@ -198,6 +206,7 @@ extension _VideoPlayerViewActions on _VideoPlayerViewState {
     }
     if (_exitRequested) return;
     _exitRequested = true;
+    _playbackDesired = false;
     await _pauseBackend(code: 'exit_pause_failed', reportFailure: false);
     await _flushProgress(force: true);
     if (_disposed) return;
@@ -311,6 +320,32 @@ extension _VideoPlayerViewActions on _VideoPlayerViewState {
   Future<void> _actionPauseForBackground() async {
     await _pauseBackend(code: 'background_pause_failed', reportFailure: false);
     await _flushProgress(force: true);
+  }
+
+  void _actionLifecycle(AppLifecycleState state) {
+    _lifecycleState = state;
+    if (pausesVideoForLifecycle(state)) {
+      unawaited(_actionPauseForBackground());
+      return;
+    }
+    if (state == AppLifecycleState.resumed &&
+        _playbackDesired &&
+        _episode != null &&
+        _status != VideoPlayerStatus.failure &&
+        !_backendState.playing) {
+      unawaited(_actionResumeForForeground());
+    }
+  }
+
+  bool get _lifecycleAllowsPlayback =>
+      _lifecycleState == null || _lifecycleState == AppLifecycleState.resumed;
+
+  Future<void> _actionResumeForForeground() async {
+    if (!_playbackDesired || !_lifecycleAllowsPlayback) return;
+    await _runPlaybackCommand((backend) async {
+      if (!_playbackDesired || !_lifecycleAllowsPlayback) return;
+      await backend.play();
+    }, code: 'foreground_resume_failed');
   }
 
   void _actionShowControls() {

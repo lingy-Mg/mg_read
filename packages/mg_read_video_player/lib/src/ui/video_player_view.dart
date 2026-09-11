@@ -110,6 +110,8 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   bool _fullscreenRequested = false;
   bool _controlsLocked = false;
   late bool _autoAdvance;
+  late bool _playbackDesired;
+  AppLifecycleState? _lifecycleState;
   bool _exitAuthorized = false;
   bool _exitRequested = false;
   bool _disposed = false;
@@ -135,6 +137,8 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     _controller.attach(this, this);
     _startupSession = widget.startupSession ?? VideoStartupSession.create();
     _autoAdvance = widget.autoAdvance;
+    _playbackDesired = widget.autoPlay;
+    _lifecycleState = WidgetsBinding.instance.lifecycleState;
     _hostBridge = VideoPlayerHostBridge(widget.observer);
     _createBackend();
     _lifecycleListener = AppLifecycleListener(onStateChange: _handleLifecycle);
@@ -189,6 +193,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     _saveTimer?.cancel();
     _saveTimer = null;
     _progressDirty = false;
+    _playbackDesired = widget.autoPlay;
     _reportedFirstFrameSelection = null;
     _update(() {
       _status = VideoPlayerStatus.loading;
@@ -365,7 +370,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
           initialPosition,
           playableEpisode.durationHint,
         ),
-        play: play,
+        play: play && _playbackDesired && _lifecycleAllowsPlayback,
       );
       if (_isCurrentEpisode(generation) && identical(backend, _backend)) {
         _notifyStartup(
@@ -603,11 +608,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
 
   VideoPlaybackProgress? get _currentProgress => _actionCurrentProgress;
 
-  void _handleLifecycle(AppLifecycleState state) {
-    if (pausesVideoForLifecycle(state)) {
-      unawaited(_actionPauseForBackground());
-    }
-  }
+  void _handleLifecycle(AppLifecycleState state) => _actionLifecycle(state);
 
   void _showControls() => _actionShowControls();
 
@@ -625,6 +626,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
 
   void _setFailure(VideoPlayerFailure failure) {
     if (_disposed) return;
+    _playbackDesired = false;
     _hostBridge.reportPlaybackActive(false);
     _cancelFirstFrameTimeout();
     unawaited(_pauseBackend(reportFailure: false));
