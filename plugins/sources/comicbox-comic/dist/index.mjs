@@ -25,7 +25,7 @@ export async function getDetail(request) { const path = contentPath(request.id),
 export async function getChapters(request) { const path = contentPath(request.id), $ = load(await text(new URL(path, base).toString())), chapters = chapterNodes($, path), items = chapters.map((chapter, index) => frozen({ id: chapterId(path, chapter.path), title: chapter.title, order: index, url: null, volumeTitle: null, wordCount: null, updatedAt: null, isLocked: false, attributes: [] })); return frozen({ items, groups: [] }); }
 export async function getContent(request) { const book = contentPath(request.id), path = chapterPath(request.chapterId, book), url = new URL(path, base).toString(), page = await requireContext().webview.open({ visible: false, timeoutMs: 30000 }); let raw; try {
     await page.navigate(url, { timeoutMs: 30000 });
-    raw = await page.executeJavaScript(`Array.from(document.querySelectorAll('img')).map(i=>i.currentSrc||i.src||i.dataset.src||i.dataset.original||'').filter(u=>u&&!u.includes('/static/'))`, { timeoutMs: 30000 });
+    raw = await page.executeJavaScript(`Array.from(document.querySelectorAll('img, div[data-bmi-manifest][data-src]')).map(i=>i.currentSrc||i.src||i.dataset.src||i.dataset.original||'').filter(u=>u&&!(u.startsWith('/static/')||u.startsWith('${base}/static/')))`, { timeoutMs: 30000 });
 }
 finally {
     await page.close();
@@ -65,11 +65,13 @@ function chapterPath(id, book) { const value = new RegExp(`^manga:${encode(book)
 function encode(value) { return Buffer.from(value).toString('base64url'); }
 function decode(value) { return Buffer.from(value, 'base64url').toString('utf8'); }
 function proxyImage(value) { let url; try {
-    url = new URL(value, base).toString();
+    url = new URL(value, base);
+    if (url.hostname === 'bmigmi-global-wuwu.ccavbox.com' && url.pathname.endsWith('/cover_pc.jpg'))
+        url.pathname = url.pathname.replace(/\/cover_pc\.jpg$/u, '/cover.jpg');
 }
 catch {
     return null;
-} return requireContext().resource.proxy({ kind: 'image', url, headers: { Referer: `${base}/` } }); }
+} return requireContext().resource.proxy({ kind: 'image', url: url.toString(), headers: { Referer: `${base}/` } }); }
 function safeUrl(value) { try {
     return ['http:', 'https:'].includes(new URL(value).protocol);
 }

@@ -21,7 +21,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.66manhua-cc",
     "displayName": "66漫画",
-    "description": "公开页面漫画数据源，支持首页发现、搜索、详情、章节与图片阅读。",
+    "description": "66漫画公开网页数据源，支持首页发现、分类、搜索、详情、章节与图片阅读。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

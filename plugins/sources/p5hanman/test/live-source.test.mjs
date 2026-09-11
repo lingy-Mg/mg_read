@@ -46,9 +46,14 @@ test('live source completes search discovery detail catalog pages and Referer im
   assert.ok(content.pages.every((page) => page.resourcePolicy === 'sessionOnly'));
   const pageRequest = proxied.find((request) => request.purpose === 'page');
   assert.ok(pageRequest);
+  const coverRequest = proxied.find((request) => request.purpose === 'cover');
+  assert.ok(coverRequest);
+  const cover = await fetch(coverRequest.url, { headers: coverRequest.headers });
+  assert.equal(cover.ok, true);
+  assert.match(cover.headers.get('content-type') ?? '', /^image\//u);
+  assert.ok((await cover.arrayBuffer()).byteLength > 0);
   const image = await fetch(pageRequest.url, { headers: pageRequest.headers });
   assert.equal(image.ok, true);
   assert.match(image.headers.get('content-type') ?? '', /^image\//u);
-  await image.body?.cancel();
-  assert.ok(image.body.byteLength > 0);
+  assert.ok((await image.arrayBuffer()).byteLength > 0);
 });

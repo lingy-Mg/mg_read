@@ -146,8 +146,11 @@ export class ManhuaguiSource {
         if (!allowedPage(url))
             throw new Error('Source page URL is invalid.');
         const response = await this.context.http.fetch(url, { headers: { accept: 'text/html,application/xhtml+xml', referer: `${refererOrigin}/` } });
-        if (!response.ok)
+        if (!response.ok) {
+            if (response.status === 403 || response.status === 429)
+                this.context.errors.raise({ code: 'source_access_blocked', message: '访问异常，请稍后再试。', annotation: `HTTP ${response.status}` });
             throw new Error('Source page request failed.');
+        }
         const html = await response.text();
         if (/cf-challenge|cf-turnstile|正在检查您的浏览器|人机验证/iu.test(html))
             throw new Error('Source interaction is required.');

@@ -25,7 +25,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.rehanman",
     "displayName": "Rehanman",
-    "description": "Rehanman 公开 webtoon，支持最新目录、详情、章节与图片阅读。",
+    "description": "Rehanman webtoon 数据源，支持最新列表、搜索、详情、章节与图片阅读。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

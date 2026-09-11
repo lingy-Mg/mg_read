@@ -129,7 +129,7 @@ export class BaozimhSource {
     const body = await response.text(); if (!response.ok || isChallenge(body)) throw new Error('Source page is unavailable.');
     return Object.freeze({ body, url: new URL(response.url || url.toString()) });
   }
-  #proxyImage(url: URL, referer: URL): string { return this.context.resource.proxy({ kind: 'image', url: url.toString(), headers: { Accept: 'image/avif,image/webp,image/*,*/*;q=0.8', Referer: referer.toString() } }); }
+  #proxyImage(url: URL, referer: URL): string { return this.context.resource.proxy({ kind: 'image', url: imageOrigin(url).toString(), headers: { Accept: 'image/avif,image/webp,image/*,*/*;q=0.8', Referer: referer.toString() } }); }
 }
 
 function summary(input: { readonly id: string; readonly url: URL; readonly title: string; readonly author: string | null; readonly coverUrl: string | null;
@@ -151,6 +151,7 @@ function isBookUrl(url: URL): boolean { return /^\/comic\/[A-Za-z0-9_-]+\/?$/u.t
 function isChapterUrl(url: URL): boolean { return /^\/comic\/chapter\/[A-Za-z0-9_-]+\/\d+_\d+\.html$/u.test(url.pathname); }
 function directChapterUrl(url: URL): URL | null { if (url.pathname !== '/user/page_direct') return isChapterUrl(url) ? url : null; const comicId = url.searchParams.get('comic_id'); const section = url.searchParams.get('section_slot'); const chapter = url.searchParams.get('chapter_slot'); if (comicId === null || !/^[A-Za-z0-9_-]+$/u.test(comicId) || !/^\d+$/u.test(section ?? '') || !/^\d+$/u.test(chapter ?? '')) return null; return new URL(`/comic/chapter/${comicId}/${section}_${chapter}.html`, url.origin); }
 function imageMime(url: URL): string | null { const ext = /\.([A-Za-z0-9]+)$/u.exec(url.pathname)?.[1]?.toLowerCase(); return ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : null; }
+function imageOrigin(url: URL): URL { return url.hostname === 'static-tw.baozimh.com' ? new URL(`${url.pathname}${url.search}`, 'https://s1.bzcdn.net') : url; }
 function dimension(value: string | undefined): number | null { const number = Number(value); return Number.isSafeInteger(number) && number > 0 ? number : null; }
 function splitTags(value: string | null): readonly string[] { return value === null ? Object.freeze([]) : unique(value.split(/[,，]/u)); }
 function unique(values: readonly string[]): readonly string[] { return Object.freeze([...new Set(values.map((value) => value.replace(/\s+/gu, ' ').trim()).filter(Boolean))]); }

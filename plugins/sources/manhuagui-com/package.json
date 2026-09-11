@@ -27,7 +27,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.manhuagui-com",
     "displayName": "漫画柜",
-    "description": "漫画柜公开网页数据源，支持分类、搜索、详情、章节和图片阅读。",
+    "description": "漫画柜公开网页数据源，支持分类、搜索、漫画详情、章节与图片阅读。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

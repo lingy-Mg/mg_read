@@ -21,7 +21,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.baozimh-com",
     "displayName": "包子漫画",
-    "description": "包子漫画综合漫画数据源，支持分类、搜索、章节和代理图片阅读。",
+    "description": "包子漫画数据源，支持分类、搜索、详情、章节目录与代理图片阅读。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

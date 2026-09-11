@@ -31,7 +31,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.p5hanman",
     "displayName": "P5韩漫",
-    "description": "P5 韩漫公开漫画源，支持搜索、更新、排行、完结目录和图片阅读。",
+    "description": "P5韩漫数据源，支持搜索、更新、排行、完结列表、章节目录与图片阅读。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

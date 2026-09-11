@@ -147,7 +147,7 @@ export class BaozimhSource {
             throw new Error('Source page is unavailable.');
         return Object.freeze({ body, url: new URL(response.url || url.toString()) });
     }
-    #proxyImage(url, referer) { return this.context.resource.proxy({ kind: 'image', url: url.toString(), headers: { Accept: 'image/avif,image/webp,image/*,*/*;q=0.8', Referer: referer.toString() } }); }
+    #proxyImage(url, referer) { return this.context.resource.proxy({ kind: 'image', url: imageOrigin(url).toString(), headers: { Accept: 'image/avif,image/webp,image/*,*/*;q=0.8', Referer: referer.toString() } }); }
 }
 function summary(input) {
     return Object.freeze({ id: input.id, title: input.title, contentKind: 'manga', author: input.author, url: input.url.toString(), coverUrl: input.coverUrl,
@@ -172,6 +172,7 @@ function directChapterUrl(url) { if (url.pathname !== '/user/page_direct')
     return isChapterUrl(url) ? url : null; const comicId = url.searchParams.get('comic_id'); const section = url.searchParams.get('section_slot'); const chapter = url.searchParams.get('chapter_slot'); if (comicId === null || !/^[A-Za-z0-9_-]+$/u.test(comicId) || !/^\d+$/u.test(section ?? '') || !/^\d+$/u.test(chapter ?? ''))
     return null; return new URL(`/comic/chapter/${comicId}/${section}_${chapter}.html`, url.origin); }
 function imageMime(url) { const ext = /\.([A-Za-z0-9]+)$/u.exec(url.pathname)?.[1]?.toLowerCase(); return ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : null; }
+function imageOrigin(url) { return url.hostname === 'static-tw.baozimh.com' ? new URL(`${url.pathname}${url.search}`, 'https://s1.bzcdn.net') : url; }
 function dimension(value) { const number = Number(value); return Number.isSafeInteger(number) && number > 0 ? number : null; }
 function splitTags(value) { return value === null ? Object.freeze([]) : unique(value.split(/[,，]/u)); }
 function unique(values) { return Object.freeze([...new Set(values.map((value) => value.replace(/\s+/gu, ' ').trim()).filter(Boolean))]); }

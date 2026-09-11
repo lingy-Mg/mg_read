@@ -6,8 +6,8 @@ import * as plugin from '../dist/index.mjs';
 const encode = (prefix, path) => `${prefix}:${Buffer.from(path, 'utf8').toString('base64url')}`;
 
 test('public home keeps varied discovery sections and a target chapter yields proxy-only pages', { timeout: 30_000 }, async () => {
-  let proxied; const homeImages = [];
-  await plugin.activate({ dataDir: '.', cacheDir: '.', app: {}, plugin: {}, log: { debug(){}, info(){}, warn(){}, error(){} }, resource: { proxy(request) { proxied = request; homeImages.push(request.url); return `http://127.0.0.1/resource/${homeImages.length}`; } }, http: { fetch: globalThis.fetch } });
+  let proxied; const homeImages = []; const resources = [];
+  await plugin.activate({ dataDir: '.', cacheDir: '.', app: {}, plugin: {}, log: { debug(){}, info(){}, warn(){}, error(){} }, resource: { proxy(request) { resources.push(request); proxied = request; homeImages.push(request.url); return `http://127.0.0.1/resource/${homeImages.length}`; } }, http: { fetch: globalThis.fetch } });
   const discovery = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 20 });
   assert.equal(discovery.kind, 'document');
   assert.deepEqual(discovery.document.components.map((component) => component.type === 'group' ? `${component.type}:${component.layout}` : component.children[0].layout), ['carousel', 'coverGrid', 'group:vertical', 'shelf', 'group:vertical']);
@@ -18,7 +18,11 @@ test('public home keeps varied discovery sections and a target chapter yields pr
   assert.ok(new Set(homeImages).size >= 20);
   const detailItems = [...new Map(sections.map((section) => section.children[0].items[0].content).map((content) => [content.id, content])).values()];
   for (const item of detailItems) { const detail = await plugin.getDetail({ id: item.id }); assert.equal(detail.id, item.id); assert.ok(detail.title.length > 0); }
+  const coverRequest = resources.find((request) => /fengmian|cover/iu.test(request.url));
+  assert.ok(coverRequest);
+  const cover = await fetch(coverRequest.url, { headers: coverRequest.headers });
+  assert.equal(cover.ok, true); assert.match(cover.headers.get('content-type') ?? '', /^image\//u); assert.ok((await cover.arrayBuffer()).byteLength > 0);
   const content = await plugin.getContent({ id: encode('comic', '/index.php/comic/meinuzishangshideyejianzhenliaoshi'), chapterId: encode('chapter', '/index.php/chapter/101382') });
   assert.equal(content.text, null); assert.ok(content.pages.length > 0); assert.ok(content.pages.every((page) => /^http:\/\/127\.0\.0\.1\/resource\/\d+$/u.test(page.url)));
-  const image = await fetch(proxied.url, { headers: proxied.headers }); assert.equal(image.ok, true); assert.ok(image.body); await image.body.cancel();
+  const image = await fetch(proxied.url, { headers: proxied.headers }); assert.equal(image.ok, true); assert.match(image.headers.get('content-type') ?? '', /^image\//u); assert.ok((await image.arrayBuffer()).byteLength > 0);
 });

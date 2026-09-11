@@ -161,7 +161,11 @@ function createTestWebView(runtimeFetch) {
         body,
       });
     },
-    async executeJavaScript() {
+    async executeJavaScript(script) {
+      if (typeof script === 'string' && /Array\.from\(document\.querySelectorAll\(['"]img, div\[data-bmi-manifest\]\[data-src\]['"]\)\)/u.test(script)
+        && /currentSrc\|\|i\.src\|\|i\.dataset\.src\|\|i\.dataset\.original/u.test(script)) {
+        return extractImageSources(currentHtml);
+      }
       throw new SourceTestFailure('source_webview_script_unsupported', 'webview.evaluate', {});
     },
     async click() {
@@ -184,4 +188,22 @@ function createTestWebView(runtimeFetch) {
       return page;
     },
   });
+}
+
+function extractImageSources(html) {
+  const values = [];
+  for (const match of html.matchAll(/<(?:img\b[^>]*|div\b[^>]*data-bmi-manifest[^>]*)>/giu)) {
+    const tag = match[0];
+    const attributes = new Map();
+    for (const attribute of tag.matchAll(/([:\w-]+)\s*=\s*(["'])(.*?)\2/giu)) {
+      attributes.set(attribute[1].toLowerCase(), decodeHtmlEntities(attribute[3]));
+    }
+    const value = attributes.get('src') ?? attributes.get('data-src') ?? attributes.get('data-original') ?? '';
+    if (value !== '' && !value.startsWith('/static/') && !value.startsWith('https://www.comicbox.xyz/static/')) values.push(value);
+  }
+  return values;
+}
+
+function decodeHtmlEntities(value) {
+  return value.replaceAll('&amp;', '&').replaceAll('&quot;', '"').replaceAll('&#39;', "'");
 }

@@ -21,7 +21,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.uaa-comic",
     "displayName": "UAA 漫画",
-    "description": "UAA 漫画原生数据源，直接读取分类、详情、目录和漫画图片。",
+    "description": "UAA 漫画数据源，支持分类、搜索、详情、章节目录与漫画图片阅读。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["manga"]

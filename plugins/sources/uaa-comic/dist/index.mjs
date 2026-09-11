@@ -47,8 +47,12 @@ finally {
 } }
 function summaries(values) { const result = new Map(); for (const value of values) {
     const id = sourceId(first(value.id, value.comicId));
-    if (id !== null && text(value.title) !== '')
-        result.set(id, summary(value, id));
+    if (id === null || text(value.title) === '')
+        continue;
+    const item = summary(value, id);
+    if (item.chapterCount === 0)
+        continue;
+    result.set(id, item);
 } return [...result.values()]; }
 function summary(value, id) { const native = sourceId(id); if (native === null)
     throw new Error('Comic ID is invalid.'); const title = text(value.title) || id, author = nullable(first(value.authors, value.author, value.uploader)), finished = number(value.finished) === 1, latestId = sourceId(value.latestReadChapterId); return frozen({ id: `manga:${native}`, title, contentKind: 'manga', coverOrientation: 'portrait', author, url: `${root}intro?id=${encodeURIComponent(id)}`, coverUrl: proxyImage(text(value.coverUrl)), description: nullable(first(value.brief, value.description)), language: 'zh-CN', status: finished ? 'completed' : 'ongoing', access: number(value.vip) === 1 ? 'paid' : 'unknown', wordCount: null, chapterCount: nonNegative(value.chapterCount), publishedAt: timestamp(value.onlineTime), updatedAt: timestamp(first(value.updateTime, value.updateTimeFormat)), latestChapter: latestId === null ? null : { id: `manga:${id}:${latestId}`, title: text(first(value.latestUpdate, value.latestReadChapter)) || '最新章节', url: null, updatedAt: null }, categories: stringList(first(value.categories, value.category)), tags: stringList(value.tags), attributes: [] }); }

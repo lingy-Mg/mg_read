@@ -5,7 +5,7 @@
  */
 import { spawn } from 'node:child_process';
 import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { assertStandardSourceContract, loadSourcePackage } from './contract.js';
@@ -217,10 +217,7 @@ async function runBuild(project) {
   if (typeof project.packageJson?.scripts?.build !== 'string') {
     throw new SourceTestFailure('source_build_script_missing', 'build', {});
   }
-  const npmCli = resolve(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
-  await access(npmCli).catch((error) => {
-    throw failureFromCause('source_npm_cli_missing', 'build', error);
-  });
+  const npmCli = await findBundledNpmCli();
   const result = await spawnBounded(process.execPath, [npmCli, 'run', 'build'], project.root);
   if (result.exitCode !== 0) {
     throw new SourceTestFailure('source_build_failed', 'build', {
@@ -228,6 +225,25 @@ async function runBuild(project) {
       outputCharacters: result.output.length,
     });
   }
+}
+
+async function findBundledNpmCli() {
+  const executableDirectory = dirname(process.execPath);
+  const candidates = [
+    resolve(executableDirectory, 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    resolve(executableDirectory, '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+  ];
+  for (const candidate of candidates) {
+    try {
+      await access(candidate);
+      return candidate;
+    } catch (_) {
+      // Try the next bundled Node layout.
+    }
+  }
+  throw new SourceTestFailure('source_npm_cli_missing', 'build', {
+    executable: process.execPath,
+  });
 }
 
 async function readAcceptance(projectRoot) {
@@ -289,7 +305,14 @@ async function runProjectStage(stage, action) {
 
 function spawnBounded(command, arguments_, cwd) {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn(command, arguments_, { cwd, env: process.env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    const executableDirectory = dirname(process.execPath);
+    const path = [executableDirectory, process.env.PATH].filter(Boolean).join(delimiter);
+    const child = spawn(command, arguments_, {
+      cwd,
+      env: { ...process.env, PATH: path },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
     let output = '';
     const append = (chunk) => {
       if (output.length >= maximumBuildOutputCharacters) return;

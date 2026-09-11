@@ -19,12 +19,11 @@ test('fixture chain emits Runtime-proxied session manga manifests and restricts 
   const discovery = await plugin.discover({ target: null, collectionId: null, cursor: null, pageSize: 1 });
   const item = discovery.document.components[0].children[0].items[0].content;
   assert.deepEqual(discovery.document.components[0].children[0].continuation, { target: 'latest', cursor: 'latest:2' });
-  assert.equal(item.id, 'webtoon:1234567'); assert.equal(item.contentKind, 'manga');
-  assert.equal(item.coverUrl, 'https://img.rehanman.com/uploads/data/china18sky/1234567/thumbnail.jpg');
+  assert.equal(item.id, 'webtoon:1234567'); assert.equal(item.contentKind, 'manga'); assert.equal(item.coverUrl, 'http://127.0.0.1/resource/1');
   const search = await plugin.search({ query: 'Fixture', cursor: null, pageSize: 20 }); assert.deepEqual(search.items.map((value) => value.id), ['webtoon:1234567']);
-  const detail = await plugin.getDetail({ id: item.id }); assert.equal(detail.author, 'Fixture Author');
+  const detail = await plugin.getDetail({ id: item.id }); assert.equal(detail.author, 'Fixture Author'); assert.equal(detail.coverUrl, 'http://127.0.0.1/resource/3');
   const chapters = await plugin.getChapters({ id: item.id }); assert.deepEqual(chapters.items.map((chapter) => chapter.id), ['chapter:1234567:0', 'chapter:1234567:1']);
-  const content = await plugin.getContent({ id: item.id, chapterId: chapters.items[0].id }); assert.equal(content.text, null); assert.equal(content.pages.length, 2); assert.deepEqual(proxied, [{ kind: 'rehanman-image', url: 'https://img.rehanman.com/uploads/data/china18sky/1234567/token/0001.jpg', headers: { Accept: 'image/*', Referer: 'https://rehanman.com/' } }, { kind: 'rehanman-image', url: 'https://img.rehanman.com/uploads/data/china18sky/1234567/token/0002.webp', headers: { Accept: 'image/*', Referer: 'https://rehanman.com/' } }]); assert.equal(content.pages[0].url, 'http://127.0.0.1/resource/1'); assert.equal(content.pages[0].resourcePolicy, undefined);
+  const content = await plugin.getContent({ id: item.id, chapterId: chapters.items[0].id }); assert.equal(content.text, null); assert.equal(content.pages.length, 2); assert.deepEqual(proxied.slice(-2), [{ kind: 'rehanman-image', url: 'https://img.rehanman.com/uploads/data/china18sky/1234567/token/0001.jpg', headers: { Accept: 'image/*', Referer: 'https://rehanman.com/' } }, { kind: 'rehanman-image', url: 'https://img.rehanman.com/uploads/data/china18sky/1234567/token/0002.webp', headers: { Accept: 'image/*', Referer: 'https://rehanman.com/' } }]); assert.equal(content.pages[0].url, 'http://127.0.0.1/resource/4'); assert.equal(content.pages[0].resourcePolicy, undefined);
   assert.equal(requests.some((url) => url.origin === 'https://img.rehanman.com'), false);
 });
 
