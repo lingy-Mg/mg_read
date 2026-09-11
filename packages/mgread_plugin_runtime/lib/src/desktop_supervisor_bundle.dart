@@ -130,11 +130,13 @@ final class _DesktopRuntimeBundle {
     );
     final nodeExecutable = developmentRuntimeRoot == null
         ? File(
-            _joinPath(<String>[
-              runtimeRoot.path,
-              'node',
-              Platform.isWindows ? 'MgReadNode.exe' : 'MgReadNode',
-            ]),
+            Platform.isWindows
+                ? _joinPath(<String>[
+                    runtimeRoot.path,
+                    'node',
+                    'MgReadNode.exe',
+                  ])
+                : _joinPath(<String>[executableDirectory.path, 'MgReadNode']),
           )
         : File(
             _joinPath(<String>[

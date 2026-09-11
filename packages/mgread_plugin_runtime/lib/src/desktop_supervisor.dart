@@ -554,10 +554,14 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
         error.code,
         'The desktop Runtime could not be started with required process ownership.',
       );
-    } on ProcessException {
+    } on ProcessException catch (error) {
+      final osErrorCode = error.errorCode;
       _recordFatal(
         'runtime_process_launch_failed',
-        'The packaged desktop Runtime process could not be launched.',
+        osErrorCode == null
+            ? 'The packaged desktop Runtime process could not be launched.'
+            : 'The packaged desktop Runtime process could not be launched '
+                  '(OS error $osErrorCode).',
       );
       await _stopFailedStart();
       _startup = null;
