@@ -24,7 +24,7 @@ Future<void> showAudioQueueSheet(
   context: context,
   isScrollControlled: true,
   backgroundColor: Colors.transparent,
-  barrierColor: AudioPlayerColors.scrim,
+  barrierColor: const Color(0x66000000),
   builder: (sheetContext) =>
       _AudioQueueSheet(snapshot: snapshot, controller: controller),
 );

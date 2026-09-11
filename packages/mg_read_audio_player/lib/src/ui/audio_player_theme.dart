@@ -13,8 +13,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 abstract final class AudioPlayerColors {
-  static const backgroundTop = Color(0xFF30333A);
-  static const backgroundBottom = Color(0xFF16171B);
+  static const backgroundTop = Color(0xFF322F2D);
+  static const backgroundBottom = Color(0xFF181614);
   static const surface = Color(0x26FFFFFF);
   static const surfaceStrong = Color(0x33FFFFFF);
   static const ink = Color(0xEBFFFFFF);

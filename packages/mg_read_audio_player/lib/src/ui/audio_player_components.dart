@@ -166,30 +166,6 @@ final class AudioPlayerMetadata extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(14, 4, 14, 5),
           child: Column(
             children: <Widget>[
-              DecoratedBox(
-                key: const Key('audio-track-position'),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.07),
-                  borderRadius: BorderRadius.circular(99),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.12),
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 13,
-                    vertical: 5,
-                  ),
-                  child: Text(
-                    '第 ${displayedIndex + 1} 集  ·  共 ${snapshot.queueEntries.length} 集',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: AudioPlayerColors.muted,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 13),
               Text(
                 track.collectionTitle ?? snapshot.collectionTitle ?? '音频播放',
                 key: const Key('audio-track-title'),
@@ -214,6 +190,30 @@ final class AudioPlayerMetadata extends StatelessWidget {
                 style: theme.textTheme.bodyLarge?.copyWith(
                   color: AudioPlayerColors.muted,
                   height: 1.32,
+                ),
+              ),
+              const SizedBox(height: 13),
+              DecoratedBox(
+                key: const Key('audio-track-position'),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(99),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.28),
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 13,
+                    vertical: 5,
+                  ),
+                  child: Text(
+                    '第 ${displayedIndex + 1} 集  ·  共 ${snapshot.queueEntries.length} 集',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: AudioPlayerColors.muted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ),
               if (creator?.trim().isNotEmpty == true) ...<Widget>[
@@ -489,7 +489,8 @@ final class AudioSettingsLauncher extends StatelessWidget {
     return AudioGlassPanel(
       key: const Key('audio-settings-glass'),
       borderRadius: radius,
-      blur: 16,
+      tone: AudioGlassTone.strong,
+      blur: 24,
       child: Semantics(
         button: true,
         label: '快捷播放控制',
