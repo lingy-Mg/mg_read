@@ -15,6 +15,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'package:mg_read/features/lan_sync/application/app_update_service.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_http_client.dart';
@@ -397,7 +398,11 @@ Future<File> downloadAppPackage(
 }) async {
   final ownedClient = client == null;
   final http = client ?? createLanSyncHttpClient();
-  final directory = await Directory.systemTemp.createTemp('mgread-app-download-');
+  // Android's FileProvider only grants the Package Installer files below the
+  // app cache directory. Directory.systemTemp is not guaranteed to resolve
+  // there, so an otherwise verified APK could not be exposed for installation.
+  final temporaryRoot = Platform.isAndroid ? await getTemporaryDirectory() : Directory.systemTemp;
+  final directory = await temporaryRoot.createTemp('mgread-app-download-');
   final file = File('${directory.path}${Platform.pathSeparator}${descriptor.fileName}');
   var offset = 0;
   String? etag;

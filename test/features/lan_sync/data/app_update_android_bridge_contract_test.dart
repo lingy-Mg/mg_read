@@ -20,6 +20,9 @@ void main() {
   final paths = File(
     '$root${Platform.pathSeparator}android${Platform.pathSeparator}app${Platform.pathSeparator}src${Platform.pathSeparator}main${Platform.pathSeparator}res${Platform.pathSeparator}xml${Platform.pathSeparator}app_update_file_paths.xml',
   );
+  final transfer = File(
+    '$root${Platform.pathSeparator}lib${Platform.pathSeparator}features${Platform.pathSeparator}lan_sync${Platform.pathSeparator}data${Platform.pathSeparator}app_transfer_transport.dart',
+  );
 
   test('Android bridge exposes App-package and install-permission operations', () async {
     final source = await activity.readAsString();
@@ -37,6 +40,9 @@ void main() {
     expect(source, contains('FileProvider.getUriForFile'));
     expect(source, contains('Intent.ACTION_VIEW'));
     expect(source, contains('Intent.FLAG_GRANT_READ_URI_PERMISSION'));
+    expect(source, contains('packageInstallerFile(apk)'));
+    expect(source, contains('File(cacheDir, APP_UPDATE_CACHE_DIRECTORY)'));
+    expect(source, contains('File.createTempFile("mgread-update-", ".apk", cacheRoot)'));
     expect(source, isNot(contains('installer.resolveActivity(packageManager)')));
     expect(source, contains('catch (error: ActivityNotFoundException)'));
     expect(source, contains('packageManager.canRequestPackageInstalls()'));
@@ -55,5 +61,13 @@ void main() {
     expect(source, contains('android:grantUriPermissions="true"'));
     expect(filePaths, contains('<cache-path'));
     expect(filePaths, contains('path="."'));
+  });
+
+  test('received Android APK is written below the FileProvider cache root', () async {
+    final source = await transfer.readAsString();
+
+    expect(source, contains("import 'package:path_provider/path_provider.dart';"));
+    expect(source, contains('Platform.isAndroid ? await getTemporaryDirectory() : Directory.systemTemp'));
+    expect(source, contains("temporaryRoot.createTemp('mgread-app-download-')"));
   });
 }

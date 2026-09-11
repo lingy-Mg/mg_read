@@ -116,7 +116,11 @@ class MainActivity : AudioServiceActivity() {
                 throw AppUpdateException("app_update_install_permission_required")
             }
 
-            val apkUri = FileProvider.getUriForFile(this, "$packageName.app_update_provider", apk)
+            val apkUri = FileProvider.getUriForFile(
+                this,
+                "$packageName.app_update_provider",
+                packageInstallerFile(apk),
+            )
             val installer = Intent(Intent.ACTION_VIEW)
                 .setDataAndType(apkUri, APK_MIME_TYPE)
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -140,11 +144,39 @@ class MainActivity : AudioServiceActivity() {
         }
     }
 
+    /**
+     * FileProvider only exposes files below its configured cache root. The
+     * Dart receiver normally downloads there, but stage an older or alternate
+     * temporary path here as a final host-side guarantee before installation.
+     */
+    private fun packageInstallerFile(apk: File): File {
+        val directory = File(cacheDir, APP_UPDATE_CACHE_DIRECTORY)
+        if (!directory.exists() && !directory.mkdirs()) {
+            throw IllegalStateException("Cannot create the App-update cache directory.")
+        }
+        val cacheRoot = directory.canonicalFile
+        if (!cacheRoot.isDirectory) {
+            throw IllegalStateException("The App-update cache path is not a directory.")
+        }
+        val cachePrefix = "${cacheRoot.path}${File.separator}"
+        if (apk.path.startsWith(cachePrefix)) return apk
+
+        val staged = File.createTempFile("mgread-update-", ".apk", cacheRoot)
+        try {
+            apk.copyTo(staged, overwrite = true)
+            return staged.canonicalFile
+        } catch (error: Exception) {
+            staged.delete()
+            throw error
+        }
+    }
+
     private companion object {
         const val DEVICE_IDENTITY_CHANNEL = "mgread/device_identity"
         const val NETWORK_ENVIRONMENT_CHANNEL = "mgread/network_environment"
         const val APP_UPDATE_CHANNEL = "mgread/app_update"
         const val APK_MIME_TYPE = "application/vnd.android.package-archive"
+        const val APP_UPDATE_CACHE_DIRECTORY = "app_updates"
     }
 }
 
