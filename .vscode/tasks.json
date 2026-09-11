@@ -105,14 +105,32 @@
     {
       "label": "准备：Android Runtime 资源",
       "type": "process",
-      "command": "powershell",
+      "command": "zsh",
       "args": [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        "$ErrorActionPreference = 'Stop'; $runtimeRoot = Join-Path '${workspaceFolder}' 'packages/mg_read_node_runtime'; $nodeBin = Join-Path $runtimeRoot 'tools/node-v24.16.0-win-x64'; $env:PATH = $nodeBin + ';' + $env:PATH; Push-Location $runtimeRoot; try { & (Join-Path $nodeBin 'npm.cmd') run build; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } } finally { Pop-Location }"
+        "${workspaceFolder}/tools/run_macos_apk_task.zsh",
+        "prepare-runtime"
       ],
+      "windows": {
+        "command": "${workspaceFolder}/packages/mg_read_node_runtime/tools/node-v24.16.0-win-x64/node.exe",
+        "args": [
+          "${workspaceFolder}/packages/mg_read_node_runtime/tools/node-v24.16.0-win-x64/node_modules/npm/bin/npm-cli.js",
+          "run",
+          "build"
+        ],
+        "options": {
+          "cwd": "${workspaceFolder}/packages/mg_read_node_runtime",
+          "env": {
+            "PATH": "${workspaceFolder}/packages/mg_read_node_runtime/tools/node-v24.16.0-win-x64;${env:PATH}"
+          }
+        }
+      },
+      "linux": {
+        "command": "sh",
+        "args": [
+          "-c",
+          "printf '%s\\n' '当前仓库未提供 Linux 的固定 Node Runtime 工具链，无法打包 APK。' >&2; exit 1"
+        ]
+      },
       "presentation": {
         "reveal": "always",
         "panel": "dedicated",
@@ -124,14 +142,24 @@
     {
       "label": "整理：APK 到根目录 build",
       "type": "process",
-      "command": "powershell",
+      "command": "zsh",
       "args": [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        "$ErrorActionPreference = 'Stop'; $source = Join-Path '${workspaceFolder}' 'build/app/outputs/flutter-apk/app-release.apk'; $destination = Join-Path '${workspaceFolder}' 'build/mg_read-release.apk'; if (-not (Test-Path -LiteralPath $source)) { throw \"找不到 APK：$source\" }; New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null; Copy-Item -LiteralPath $source -Destination $destination -Force; Write-Host \"APK 已复制到：$destination\"; Start-Process -FilePath 'explorer.exe' -ArgumentList ('/select,\"' + $destination + '\"')"
+        "${workspaceFolder}/tools/run_macos_apk_task.zsh",
+        "collect-apk"
       ],
+      "windows": {
+        "command": "${workspaceFolder}/packages/mg_read_node_runtime/tools/node-v24.16.0-win-x64/node.exe",
+        "args": [
+          "${workspaceFolder}/tools/collect_release_apk.mjs"
+        ]
+      },
+      "linux": {
+        "command": "sh",
+        "args": [
+          "-c",
+          "printf '%s\\n' '当前仓库未提供 Linux 的固定 Node Runtime 工具链，无法整理 APK。' >&2; exit 1"
+        ]
+      },
       "presentation": {
         "reveal": "always",
         "panel": "dedicated",
