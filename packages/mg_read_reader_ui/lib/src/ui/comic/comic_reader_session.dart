@@ -45,8 +45,8 @@ extension _ComicReaderSession on _ComicReaderViewState {
     _preferencesAuthoritative = false;
     _bookmarks = const <ComicReaderBookmark>[];
     _firstContentPresented = false;
-    _prefetchForward = true;
-    _lastObservedScrollOffset = null;
+    _preloader?.cancel();
+    _layoutCorrection = 0;
     _failure = null;
     _loading = true;
     if (mounted) setState(() {});
@@ -256,6 +256,8 @@ extension _ComicReaderSession on _ComicReaderViewState {
       );
     }
     _saveTimer?.cancel();
+    _preloader?.cancel();
+    _layoutCorrection = 0;
     final int navigation = ++_navigationGeneration;
     if (mounted) {
       setState(() {
@@ -282,6 +284,7 @@ extension _ComicReaderSession on _ComicReaderViewState {
         ..sort((a, b) => a.info.index.compareTo(b.info.index));
       _trimWindow(aroundIndex: info.index);
       _currentChapter = info;
+      _startChapterPreload();
       final ComicReaderProgress? resolvedRestore = _progressForContent(
         info,
         content,
@@ -305,7 +308,9 @@ extension _ComicReaderSession on _ComicReaderViewState {
         if (!_isNavigation(navigation)) return;
         _restorePosition(resolvedRestore);
         _restoring = false;
-        unawaited(_loadNextAdjacent(info.index + 1));
+        if (content.images.isEmpty) {
+          unawaited(_loadNextAdjacent(info.index + 1));
+        }
       });
     } catch (error) {
       if (!_isNavigation(navigation)) return;
@@ -518,6 +523,10 @@ extension _ComicReaderSession on _ComicReaderViewState {
       }
     }
     final Set<String> retained = _window.map((e) => e.info.id).toSet();
+    _imageCache.retainGeometry(retained);
+    _imageKeys.removeWhere(
+      (key, _) => !retained.contains(key.split('\u0000').first),
+    );
     for (final String id in _contentCache.keys.toList()) {
       if (!retained.contains(id)) _contentCache.remove(id);
     }
@@ -595,12 +604,6 @@ extension _ComicReaderSession on _ComicReaderViewState {
 
   void _handleScroll() {
     if (_disposed || _restoring || !_scrollController.hasClients) return;
-    final double offset = _scrollController.offset;
-    final double? previousOffset = _lastObservedScrollOffset;
-    if (previousOffset != null && offset != previousOffset) {
-      _prefetchForward = offset > previousOffset;
-    }
-    _lastObservedScrollOffset = offset;
     _updateProgressFromScroll();
     final ScrollPosition position = _scrollController.position;
     final double trigger = position.viewportDimension * 1.5;
@@ -673,38 +676,41 @@ extension _ComicReaderSession on _ComicReaderViewState {
     }
     if (chapterChanged) _scheduleProgressSave();
     _scheduleSnapshotPublish();
-    _prefetchAround(selected);
+    _startChapterPreload();
   }
 
-  void _prefetchAround(_ComicImageEntry selected) {
-    if (!_firstContentPresented) return;
-    final List<_ComicListEntry> entries = _entries();
-    final int index =
-        _imageEntryIndexes['${selected.chapter.info.id}\u0000${selected.image.id}'] ??
-        -1;
-    if (index < 0) return;
-    final int aheadStep = _prefetchForward ? 1 : -1;
-    _prefetchImages(entries, startIndex: index, step: aheadStep, limit: 6);
-    _prefetchImages(entries, startIndex: index, step: -aheadStep, limit: 2);
+  void _startChapterPreload() {
+    if (_disposed || !_foreground || _currentChapter == null) return;
+    final chapters = _window.where((c) => c.info.id == _currentChapter!.id);
+    if (chapters.isEmpty) return;
+    final chapter = chapters.first;
+    final int navigation = _navigationGeneration;
+    (_preloader ??= ComicChapterPreloader(_imageCache)).start(
+      chapter.content,
+      nextChapter: () async {
+        final int index = chapter.info.index + 1;
+        await _loadNextAdjacent(index);
+        if (!_isNavigation(navigation)) return null;
+        final next = _window.where((c) => c.info.index == index);
+        return next.isEmpty ? null : next.first.content;
+      },
+    );
   }
 
-  void _prefetchImages(
-    List<_ComicListEntry> entries, {
-    required int startIndex,
-    required int step,
-    required int limit,
-  }) {
-    int loaded = 0;
-    for (
-      int candidate = startIndex + step;
-      candidate >= 0 && candidate < entries.length && loaded < limit;
-      candidate += step
-    ) {
-      final _ComicListEntry entry = entries[candidate];
-      if (entry is! _ComicImageEntry) continue;
-      _imageCache.prefetch(entry.chapter.info.id, entry.image);
-      loaded++;
-    }
+  double _takeLayoutCorrection() {
+    final correction = _layoutCorrection;
+    _layoutCorrection = 0;
+    return correction;
+  }
+
+  void _scheduleDimensionsUpdate() {
+    if (_disposed || _dimensionsUpdateScheduled) return;
+    _dimensionsUpdateScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _dimensionsUpdateScheduled = false;
+      if (mounted && !_disposed) setState(() {});
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   ({_ComicImageEntry entry, double fraction})? _imageAtViewportProbe() {

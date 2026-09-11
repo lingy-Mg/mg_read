@@ -93,8 +93,10 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
     _lifecycleState = normalized;
     _foreground = normalized == ReaderLifecycleState.foreground;
     if (_foreground) {
+      _startChapterPreload();
       unawaited(_syncAwake());
     } else {
+      _preloader?.cancel();
       unawaited(_releaseAwake());
       unawaited(_flushProgress());
       if (_preferencesDirty) unawaited(_commitPreferences());
@@ -482,6 +484,7 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
   List<_ComicListEntry> _entries() {
     final int signature = Object.hash(
       _viewportWidth,
+      _imageCache.dimensionsRevision,
       Object.hashAll(
         _window.map(
           (item) => Object.hash(item.info.id, identityHashCode(item.content)),
@@ -505,7 +508,7 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
           _ComicImageEntry(
             chapter,
             image,
-            placeholderExtent: _placeholderExtent(image),
+            placeholderExtent: _placeholderExtent(chapter.info.id, image),
           ),
         );
       }
@@ -534,10 +537,34 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
       }
       cursor += entry.extent;
     }
+    if (_layoutDimensionsRevision != _imageCache.dimensionsRevision &&
+        _scrollController.hasClients &&
+        !_restoring &&
+        _scrollController.offset > _topPadding &&
+        _entryCache.isNotEmpty) {
+      final oldOffset = _scrollController.offset - _topPadding;
+      final oldIndex = _entryIndexAt(oldOffset);
+      final oldEntry = _entryCache[oldIndex];
+      if (oldEntry is _ComicImageEntry) {
+        final key = '${oldEntry.chapter.info.id}\u0000${oldEntry.image.id}';
+        final nextIndex = indexes[key];
+        if (nextIndex != null) {
+          final fraction =
+              ((oldOffset - _entryStarts[oldIndex]) / oldEntry.extent).clamp(
+                0,
+                1,
+              );
+          _layoutCorrection +=
+              starts[nextIndex] +
+              result[nextIndex].extent * fraction -
+              oldOffset;
+        }
+      }
+    }
+    _layoutDimensionsRevision = _imageCache.dimensionsRevision;
     _entryCacheSignature = signature;
     _entryCache = List<_ComicListEntry>.unmodifiable(result);
     _entryStarts = List<double>.unmodifiable(starts);
-    _imageEntryIndexes = Map<String, int>.unmodifiable(indexes);
     return _entryCache;
   }
 
@@ -564,10 +591,12 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
     );
   }
 
-  double _placeholderExtent(ComicImageInfo image) {
-    final double ratio = image.width != null && image.height != null
-        ? (image.width! / image.height!).clamp(.02, 20).toDouble()
-        : _ComicReaderViewState._defaultAspectRatio;
+  double _placeholderExtent(String chapterId, ComicImageInfo image) {
+    final double ratio =
+        _imageCache.aspectRatio(chapterId, image) ??
+        (image.width != null && image.height != null
+            ? (image.width! / image.height!).clamp(.02, 20).toDouble()
+            : _ComicReaderViewState._defaultAspectRatio);
     return _viewportWidth <= 0 ? 600 : _viewportWidth / ratio;
   }
 
@@ -575,6 +604,6 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
       _ComicReaderViewState._chapterHeaderExtent +
       content.images.fold<double>(
         0,
-        (sum, image) => sum + _placeholderExtent(image),
+        (sum, image) => sum + _placeholderExtent(content.chapterId, image),
       );
 }

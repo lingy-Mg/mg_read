@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import '../../api/comic_contracts.dart';
 import '../../api/comic_models.dart';
+import 'comic_image_dimensions.dart';
 
 /// Session-local, encoded-byte cache for progressively loaded comic images.
 ///
@@ -21,6 +22,7 @@ class ComicImageByteCache {
     this.maxSingleImageBytes = 8 * 1024 * 1024,
     this.maxConcurrentLoads = 4,
     this.maxQueuedLoads = 32,
+    this.onDimensionsChanged,
   });
 
   final String bookId;
@@ -30,6 +32,19 @@ class ComicImageByteCache {
   final int maxSingleImageBytes;
   final int maxConcurrentLoads;
   final int maxQueuedLoads;
+  final void Function()? onDimensionsChanged;
+  final Map<String, double> _aspectRatios = <String, double>{};
+  int dimensionsRevision = 0;
+
+  double? aspectRatio(String chapterId, ComicImageInfo image) =>
+      _aspectRatios[_key(chapterId, image)];
+
+  /// Geometry survives byte eviction and is bounded by the chapter window.
+  void retainGeometry(Set<String> chapterIds) {
+    _aspectRatios.removeWhere(
+      (key, _) => !chapterIds.contains(key.split('\u0000').first),
+    );
+  }
 
   final LinkedHashMap<String, Uint8List> _entries =
       LinkedHashMap<String, Uint8List>();
@@ -69,10 +84,12 @@ class ComicImageByteCache {
     }
     final _ImageRequest? existing = _requests[key];
     if (existing != null) {
-      if (visiblePriority && !existing.started && !existing.visiblePriority) {
-        _prefetchQueue.remove(existing);
+      if (visiblePriority && !existing.visiblePriority) {
         existing.visiblePriority = true;
-        _visibleQueue.addFirst(existing);
+        if (!existing.started) {
+          _prefetchQueue.remove(existing);
+          _visibleQueue.add(existing);
+        }
       }
       return existing.completer.future;
     }
@@ -128,6 +145,10 @@ class ComicImageByteCache {
     if (_disposed) return;
     _entries.clear();
     _bytes = 0;
+    cancelPrefetch();
+  }
+
+  void cancelPrefetch() {
     for (final _ImageRequest request in _requests.values.toList()) {
       if (request.visiblePriority) continue;
       if (!request.started) _prefetchQueue.remove(request);
@@ -223,7 +244,15 @@ class ComicImageByteCache {
           request.generation == _generation &&
           request.keyEpoch == (_keyEpochs[request.key] ?? 0) &&
           identical(_requests[request.key], request);
-      if (current) _insert(request.key, ownedBytes);
+      if (current) {
+        final double? ratio = comicEncodedAspectRatio(ownedBytes);
+        if (ratio != null && _aspectRatios[request.key] != ratio) {
+          _aspectRatios[request.key] = ratio;
+          dimensionsRevision++;
+          onDimensionsChanged?.call();
+        }
+        _insert(request.key, ownedBytes);
+      }
       if (!request.completer.isCompleted) {
         if (!current) {
           request.completer.completeError(
@@ -267,6 +296,7 @@ class ComicImageByteCache {
     if (_disposed) return;
     _disposed = true;
     _generation++;
+    _aspectRatios.clear();
     _entries.clear();
     _bytes = 0;
     // Futures cannot be cancelled. Complete both queued and active callers now;

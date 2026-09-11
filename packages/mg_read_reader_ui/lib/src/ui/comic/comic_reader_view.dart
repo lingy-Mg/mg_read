@@ -31,8 +31,10 @@ import '../comments/reader_comment_strings.dart';
 import '../comments/reader_comment_widgets.dart';
 import '../reader_theme.dart';
 import 'comic_image_cache.dart';
+import 'comic_chapter_preloader.dart';
 import 'comic_image_tile.dart';
 import 'comic_reader_strings.dart';
+import 'comic_scroll_physics.dart';
 
 part 'comic_reader_session.dart';
 part 'comic_reader_preferences.dart';
@@ -141,8 +143,8 @@ class _ComicReaderViewState extends State<ComicReaderView>
   bool _preferencesDirty = false;
   bool _preferencesAuthoritative = false;
   bool _firstContentPresented = false;
-  bool _prefetchForward = true;
-  double? _lastObservedScrollOffset;
+  ComicChapterPreloader? _preloader;
+  bool _dimensionsUpdateScheduled = false;
   double _viewportWidth = 0;
   double _viewportHeight = 0;
   double _topPadding = 0;
@@ -164,12 +166,13 @@ class _ComicReaderViewState extends State<ComicReaderView>
   Future<void> _awakeWrite = Future<void>.value();
   List<_ComicListEntry> _entryCache = const <_ComicListEntry>[];
   List<double> _entryStarts = const <double>[];
-  Map<String, int> _imageEntryIndexes = const <String, int>{};
   final GlobalKey _readingSurfaceKey = GlobalKey(
     debugLabel: 'ComicReaderContentSurface',
   );
   final Map<String, GlobalKey> _imageKeys = <String, GlobalKey>{};
   int _entryCacheSignature = 0;
+  int _layoutDimensionsRevision = 0;
+  double _layoutCorrection = 0;
   int _sheetGeneration = 0;
   BuildContext? _activeSheetContext;
 
@@ -182,6 +185,7 @@ class _ComicReaderViewState extends State<ComicReaderView>
       bookId: widget.bookId,
       dataSource: widget.dataSource,
       maxSingleImageBytes: _maxSingleImageBytes,
+      onDimensionsChanged: _scheduleDimensionsUpdate,
     );
     _bindController();
     _scrollController.addListener(_handleScroll);
@@ -236,11 +240,14 @@ class _ComicReaderViewState extends State<ComicReaderView>
         ),
       );
       unawaited(_releaseAwake());
+      _preloader?.cancel();
+      _preloader = null;
       _imageCache.dispose();
       _imageCache = ComicImageByteCache(
         bookId: widget.bookId,
         dataSource: widget.dataSource,
         maxSingleImageBytes: _maxSingleImageBytes,
+        onDimensionsChanged: _scheduleDimensionsUpdate,
       );
       unawaited(_restart(preferenceOverride: preferenceOverride));
     }
@@ -248,11 +255,13 @@ class _ComicReaderViewState extends State<ComicReaderView>
 
   @override
   void didHaveMemoryPressure() {
+    _preloader?.cancel();
     _imageCache.handleMemoryPressure();
   }
 
   @override
   void dispose() {
+    _preloader?.cancel();
     _disposed = true;
     _sessionGeneration++;
     _navigationGeneration++;

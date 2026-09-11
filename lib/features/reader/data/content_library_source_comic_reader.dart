@@ -550,7 +550,30 @@ final class ContentLibraryComicReaderStateStore implements ComicReaderStateStore
   }
 }
 
-Future<Uint8List> fetchComicImage(Uri uri, {HttpClient? client}) async {
+/// Retries only transient transport/status failures, with bounded backoff.
+/// Both saved and discovery comic readers share this transport policy.
+Future<Uint8List> fetchComicImage(Uri uri, {HttpClient? client, bool Function()? isActive}) async {
+  for (var attempt = 0; ; attempt++) {
+    if (isActive != null && !isActive()) throw StateError('Comic image request is disposed.');
+    try {
+      return await _fetchComicImageAttempt(uri, client: client);
+    } on Object catch (error) {
+      final transient =
+          error is SocketException ||
+          error is TimeoutException ||
+          (error is HttpException && error is! ComicImageHttpStatusException && error is! _ComicImageValidationException) ||
+          (error is ComicImageHttpStatusException && const <int>{408, 500, 502, 503, 504}.contains(error.statusCode));
+      if (!transient || attempt >= 2) rethrow;
+      await Future<void>.delayed(Duration(milliseconds: attempt == 0 ? 250 : 750));
+    }
+  }
+}
+
+final class _ComicImageValidationException extends HttpException {
+  _ComicImageValidationException(super.message);
+}
+
+Future<Uint8List> _fetchComicImageAttempt(Uri uri, {HttpClient? client}) async {
   const maximumBytes = 8 * 1024 * 1024;
   final ownedClient = client ?? HttpClient();
   if (client == null) {
@@ -558,6 +581,8 @@ Future<Uint8List> fetchComicImage(Uri uri, {HttpClient? client}) async {
       ..maxConnectionsPerHost = 4
       ..connectionTimeout = const Duration(seconds: 15);
   }
+  HttpClientRequest? activeRequest;
+  HttpClientResponse? unreadResponse;
   try {
     var current = uri;
     for (var redirects = 0; ; redirects++) {
@@ -570,13 +595,30 @@ Future<Uint8List> fetchComicImage(Uri uri, {HttpClient? client}) async {
         // resource into an unrelated remote request.
         ownedClient.findProxy = (_) => 'DIRECT';
       }
-      final request = await ownedClient.getUrl(current).timeout(const Duration(seconds: 15));
+      var openingExpired = false;
+      final request = await ownedClient
+          .getUrl(current)
+          .then((request) {
+            if (openingExpired) request.abort();
+            return request;
+          })
+          .timeout(
+            const Duration(seconds: 15),
+            onTimeout: () {
+              openingExpired = true;
+              throw TimeoutException('Comic image connection timed out.');
+            },
+          );
+      activeRequest = request;
       request.followRedirects = false;
       final response = await request.close().timeout(const Duration(seconds: 20));
+      unreadResponse = response;
       if (response.isRedirect) {
         final location = response.headers.value(HttpHeaders.locationHeader);
-        if (redirects >= 3 || location == null) throw HttpException('Too many redirects.');
-        await response.drain<void>().timeout(const Duration(seconds: 20));
+        if (redirects >= 3 || location == null) throw _ComicImageValidationException('Too many redirects.');
+        unreadResponse = null;
+        await response.timeout(const Duration(seconds: 20)).drain<void>();
+        activeRequest = null;
         current = current.resolve(location);
         continue;
       }
@@ -585,9 +627,10 @@ Future<Uint8List> fetchComicImage(Uri uri, {HttpClient? client}) async {
       }
       final mime = response.headers.contentType?.mimeType ?? '';
       if (!RegExp(r'^image/[^\s/]+$', caseSensitive: false).hasMatch(mime)) {
-        throw HttpException('Image MIME is invalid.');
+        throw _ComicImageValidationException('Image MIME is invalid.');
       }
       if (response.contentLength > maximumBytes) throw StateError('Image exceeds 8 MiB.');
+      unreadResponse = null;
       final bytes = await response
           .timeout(const Duration(seconds: 20))
           .fold<BytesBuilder>(BytesBuilder(), (b, chunk) {
@@ -597,9 +640,15 @@ Future<Uint8List> fetchComicImage(Uri uri, {HttpClient? client}) async {
           })
           .then((b) => b.takeBytes());
       if (bytes.isEmpty) throw StateError('Image is empty.');
+      activeRequest = null;
       return Uint8List.fromList(bytes);
     }
   } finally {
+    // Once headers arrive, HttpClientRequest.abort no longer closes the
+    // response. Cancelling its body releases the pooled connection and tells
+    // Runtime to abort upstream work, even if an error body never finishes.
+    await unreadResponse?.listen(null).cancel();
+    activeRequest?.abort();
     if (client == null) ownedClient.close(force: true);
   }
 }
@@ -631,7 +680,7 @@ final class ComicImageHttpClientOwner {
     return task;
   }
 
-  Future<Uint8List> _fetch(Uri uri) async => fetchComicImage(uri, client: await _ensureClient());
+  Future<Uint8List> _fetch(Uri uri) async => fetchComicImage(uri, client: await _ensureClient(), isActive: () => !_disposed);
 
   Future<HttpClient> _ensureClient() async {
     if (_disposed) throw StateError('Comic image HTTP client is disposed.');

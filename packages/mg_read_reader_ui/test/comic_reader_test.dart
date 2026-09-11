@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 import 'package:novel_reader_ui/src/ui/comic/comic_image_cache.dart';
+import 'package:novel_reader_ui/src/ui/comic/comic_image_tile.dart';
+import 'package:novel_reader_ui/src/ui/comic/comic_chapter_preloader.dart';
 
 void main() {
   test('comic progress is anchored by chapter, image and fraction', () {
@@ -74,7 +76,7 @@ void main() {
   });
 
   testWidgets(
-    'comic reader does not prefetch while the first image is still loading',
+    'comic reader preloads the whole chapter while the first image is blocked',
     (WidgetTester tester) async {
       tester.view
         ..physicalSize = const Size(400, 600)
@@ -99,9 +101,15 @@ void main() {
         await tester.pump(const Duration(milliseconds: 10));
       }
 
-      expect(source.requestedImages, <String>['image-1']);
+      expect(
+        source.requestedImages,
+        List.generate(9, (index) => 'image-${index + 1}'),
+      );
       await tester.pump(const Duration(milliseconds: 100));
-      expect(source.requestedImages, <String>['image-1']);
+      expect(
+        source.requestedImages,
+        List.generate(9, (index) => 'image-${index + 1}'),
+      );
 
       source.releaseFirstImage();
       await tester.pumpAndSettle();
@@ -166,6 +174,183 @@ void main() {
     },
   );
 
+  test(
+    'chapter preload is ordered, bounded and waits before the next chapter',
+    () async {
+      final source = _BlockingComicSource();
+      final cache = ComicImageByteCache(bookId: 'book', dataSource: source);
+      final preloader = ComicChapterPreloader(cache);
+      addTearDown(cache.dispose);
+      var nextCalls = 0;
+      final chapter = ComicChapterContent(
+        chapterId: 'chapter-1',
+        title: '第一章',
+        images: [
+          for (var i = 0; i < 10; i++) ComicImageInfo(id: 'page-$i', index: i),
+        ],
+      );
+      preloader.start(
+        chapter,
+        nextChapter: () async {
+          nextCalls++;
+          return ComicChapterContent(
+            chapterId: 'chapter-2',
+            title: '第二章',
+            images: [_image('next', null)],
+          );
+        },
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(source.started, ['page-0', 'page-1', 'page-2', 'page-3']);
+      source.complete('page-2');
+      await Future<void>.delayed(Duration.zero);
+      expect(source.started.last, 'page-4');
+      for (final i in [0, 1, 3, 4, 5, 6, 7, 8]) {
+        source.complete('page-$i');
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(nextCalls, 0);
+      expect(source.started, List.generate(10, (i) => 'page-$i'));
+      source.complete('page-9');
+      await Future<void>.delayed(Duration.zero);
+      expect(nextCalls, 1);
+      expect(source.started.last, 'next');
+      expect(source.peakActive, 4);
+      source.complete('next');
+      await Future<void>.delayed(Duration.zero);
+      preloader.cancel();
+    },
+  );
+
+  test(
+    'cancelling chapter preload stops replenishment and preserves visible work',
+    () async {
+      final source = _BlockingComicSource();
+      final cache = ComicImageByteCache(bookId: 'book', dataSource: source);
+      final preloader = ComicChapterPreloader(cache);
+      addTearDown(cache.dispose);
+      final chapter = ComicChapterContent(
+        chapterId: 'chapter-1',
+        title: '第一章',
+        images: [
+          for (var i = 0; i < 10; i++) ComicImageInfo(id: 'page-$i', index: i),
+        ],
+      );
+      var nextCalls = 0;
+      preloader.start(
+        chapter,
+        nextChapter: () async {
+          nextCalls++;
+          return null;
+        },
+      );
+      final visible = cache.load('chapter-1', chapter.images.first);
+      preloader.cancel();
+      for (var i = 0; i < 4; i++) {
+        source.complete('page-$i');
+      }
+      expect(await visible, [1]);
+      await Future<void>.delayed(Duration.zero);
+      expect(source.started.length, 4);
+      expect(nextCalls, 0);
+      expect(cache.contains('chapter-1', chapter.images.first), isTrue);
+    },
+  );
+
+  testWidgets(
+    'unknown dimensions remain stable when scrolling up after byte eviction',
+    (tester) async {
+      tester.view
+        ..physicalSize = const Size(400, 600)
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final source = _LongComicSource();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ComicReaderView(
+            bookId: 'book',
+            dataSource: source,
+            stateStore: _MemoryComicStateStore(),
+          ),
+        ),
+      );
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      final cache = tester
+          .widget<ComicProgressiveImageTile>(
+            find.byType(ComicProgressiveImageTile).first,
+          )
+          .cache;
+      final position = tester
+          .state<ScrollableState>(find.byType(Scrollable).first)
+          .position;
+      position.jumpTo(10000);
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      cache.handleMemoryPressure();
+      for (var i = 0; i < 12; i++) {
+        final expected = position.pixels - 450;
+        position.jumpTo(expected);
+        for (var frame = 0; frame < 4; frame++) {
+          await tester.pump(const Duration(milliseconds: 20));
+        }
+        expect(
+          position.pixels,
+          closeTo(expected, .1),
+          reason: 'upward step $i must not bounce',
+        );
+      }
+      final before = position.pixels;
+      await tester.drag(find.byType(ListView).first, const Offset(0, 300));
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(position.pixels, lessThan(before - 100));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('a late image above the viewport preserves the visible anchor', (
+    tester,
+  ) async {
+    tester.view
+      ..physicalSize = const Size(400, 600)
+      ..devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final source = _GatedFirstImageComicSource();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ComicReaderView(
+          bookId: 'book',
+          dataSource: source,
+          stateStore: _MemoryComicStateStore(),
+        ),
+      ),
+    );
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    final position = tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position;
+    position.jumpTo(4500);
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    final page = find.byKey(
+      const ValueKey<String>('comic-reader-image-chapter-1-image-3'),
+    );
+    final before = tester.getRect(page);
+    source.releaseFirstImage();
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(tester.getRect(page).top, closeTo(before.top, .1));
+    expect(tester.takeException(), isNull);
+  });
+
   test('comic preferences always normalize image spacing to zero', () {
     expect(
       const ComicReaderPreferences(imageSpacing: 24).normalized().imageSpacing,
@@ -224,7 +409,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(observer.firstContentCount, 1);
     expect(observer.firstPresentation?.anchor?.imageId, 'image-1');
-    expect(observer.firstPresentation?.cacheHit, isFalse);
+    expect(observer.firstPresentation?.cacheHit, isTrue);
     expect(
       find.byKey(const ValueKey<String>('comic-reader-content-surface')),
       findsOneWidget,
@@ -615,4 +800,38 @@ class _RecordingComicObserver extends ComicReaderObserver {
   Future<void> onExitRequested(ComicReaderProgress? progress) async {
     exitCount++;
   }
+}
+
+class _LongComicSource extends _FakeComicSource {
+  @override
+  Future<ComicChapterCatalogPage> loadChapterCatalog(
+    String bookId, {
+    String? cursor,
+    int pageSize = 50,
+  }) async => ComicChapterCatalogPage(
+    items: const [
+      ComicChapterInfo(id: 'chapter-1', title: '第一章', index: 0, imageCount: 40),
+    ],
+    total: 1,
+    hasMore: false,
+  );
+
+  @override
+  Future<ComicChapterContent> loadChapterContent(
+    String bookId,
+    String chapterId,
+  ) async => ComicChapterContent(
+    chapterId: chapterId,
+    title: '第一章',
+    images: [
+      for (var i = 0; i < 40; i++) ComicImageInfo(id: 'image-$i', index: i),
+    ],
+  );
+
+  @override
+  Future<Uint8List> loadImageBytes(
+    String bookId,
+    String chapterId,
+    String imageId,
+  ) => super.loadImageBytes(bookId, chapterId, 'image-1');
 }

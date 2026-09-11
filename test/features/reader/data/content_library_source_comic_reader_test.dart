@@ -13,6 +13,87 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/reader/data/content_library_source_comic_reader.dart';
 
 void main() {
+  test('a truncated image response retries without retaining its connection', () async {
+    final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(server.close);
+    var calls = 0;
+    final sockets = <Socket>[];
+    addTearDown(() {
+      for (final socket in sockets) {
+        socket.destroy();
+      }
+    });
+    server.listen((socket) {
+      sockets.add(socket);
+      var handled = false;
+      socket.listen((_) async {
+        if (handled) return;
+        handled = true;
+        calls++;
+        socket.write('HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: 3\r\nConnection: close\r\n\r\n');
+        socket.add(calls == 1 ? [1] : [1, 2, 3]);
+        await socket.flush();
+        socket.destroy();
+      });
+    });
+    final client = HttpClient()
+      ..maxConnectionsPerHost = 1
+      ..findProxy = (_) => 'DIRECT';
+    addTearDown(() => client.close(force: true));
+    final uri = Uri.parse('http://127.0.0.1:${server.port}/image');
+    expect(await fetchComicImage(uri, client: client).timeout(const Duration(seconds: 4)), [1, 2, 3]);
+    expect(calls, 2);
+  });
+
+  test('transient image failures retry and unread responses release pooled connections', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final client = HttpClient()
+      ..maxConnectionsPerHost = 1
+      ..findProxy = (_) => 'DIRECT';
+    addTearDown(() => client.close(force: true));
+    var calls = 0;
+    server.listen((request) async {
+      calls++;
+      if (calls <= 2) {
+        request.response.statusCode = HttpStatus.badGateway;
+        request.response.contentLength = 100;
+        request.response.write('x');
+        await request.response.flush();
+        // Deliberately leave the error body incomplete. The client must abort
+        // this response before retry can acquire the single pooled connection.
+      } else {
+        request.response.headers.contentType = ContentType('image', 'png');
+        request.response.add([1, 2, 3]);
+        await request.response.close();
+      }
+    });
+    final uri = Uri.parse('http://127.0.0.1:${server.port}/image');
+    expect(await fetchComicImage(uri, client: client).timeout(const Duration(seconds: 4)), [1, 2, 3]);
+    expect(calls, 3);
+  });
+
+  test('permanent image status fails once and transient retries are bounded', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    var calls = 0;
+    var status = HttpStatus.notFound;
+    server.listen((request) async {
+      calls++;
+      request.response.statusCode = status;
+      await request.response.close();
+    });
+    final client = HttpClient()..findProxy = (_) => 'DIRECT';
+    addTearDown(() => client.close(force: true));
+    final uri = Uri.parse('http://127.0.0.1:${server.port}/image');
+    await expectLater(fetchComicImage(uri, client: client), throwsA(isA<ComicImageHttpStatusException>()));
+    expect(calls, 1);
+    calls = 0;
+    status = HttpStatus.serviceUnavailable;
+    await expectLater(fetchComicImage(uri, client: client), throwsA(isA<ComicImageHttpStatusException>()));
+    expect(calls, 3);
+  });
+
   test('syncs the full catalog and round-trips a session manifest', () async {
     final fixture = await _LibraryFixture.open();
     addTearDown(fixture.close);

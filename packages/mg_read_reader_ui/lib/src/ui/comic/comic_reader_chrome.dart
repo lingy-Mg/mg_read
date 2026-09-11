@@ -31,6 +31,7 @@ extension _ComicReaderChrome on _ComicReaderViewState {
           child: ListView.builder(
             key: _readingSurfaceKey,
             controller: _scrollController,
+            physics: ComicScrollPhysics(takeCorrection: _takeLayoutCorrection),
             padding: EdgeInsets.fromLTRB(
               _horizontalInset,
               _topPadding,
@@ -39,6 +40,7 @@ extension _ComicReaderChrome on _ComicReaderViewState {
             ),
             scrollCacheExtent: const ScrollCacheExtent.viewport(.7),
             itemCount: entries.length,
+            itemExtentBuilder: (int index, _) => entries[index].extent,
             itemBuilder: (BuildContext context, int index) {
               final _ComicListEntry entry = entries[index];
               return switch (entry) {
@@ -52,8 +54,7 @@ extension _ComicReaderChrome on _ComicReaderViewState {
                   placeholderHeight: entry.placeholderExtent,
                   palette: palette,
                   decodeBudget: _decodeBudget,
-                  onPresented: (bool cacheHit) =>
-                      _notifyFirstContentPresented(entry, cacheHit),
+                  onPresented: _notifyFirstContentPresented,
                   bookId: widget.bookId,
                   commentFeed: widget.commentFeed,
                   onOpenComments: (ReaderCommentTarget target) =>
@@ -91,7 +92,7 @@ extension _ComicReaderChrome on _ComicReaderViewState {
     );
   }
 
-  void _notifyFirstContentPresented(_ComicImageEntry entry, bool cacheHit) {
+  void _notifyFirstContentPresented(bool cacheHit) {
     if (_firstContentPresented || _disposed) return;
     _firstContentPresented = true;
     unawaited(
@@ -105,9 +106,6 @@ extension _ComicReaderChrome on _ComicReaderViewState {
             ),
       ),
     );
-    // This callback is posted only after the first real image is painted, so
-    // nearby downloads cannot compete with the reader's first-content path.
-    _prefetchAround(entry);
   }
 
   Widget _buildBoundary(_ComicBoundaryEntry entry, ReaderPalette palette) {

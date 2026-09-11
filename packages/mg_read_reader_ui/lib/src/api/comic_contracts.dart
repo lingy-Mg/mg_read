@@ -7,8 +7,9 @@ import 'models.dart';
 /// Supplies comic metadata and progressively loaded image bytes.
 ///
 /// Implementations own all networking, authentication, files, retries, and
-/// persistent caching. The reader requests only visible and nearby images and
-/// never constructs URLs or opens host storage directly.
+/// persistent caching. The reader prioritizes visible images and preloads the
+/// current chapter in page order, then one following chapter, with bounded
+/// concurrent calls. It never constructs URLs or opens host storage directly.
 abstract interface class ComicReaderDataSource {
   /// Loads lightweight metadata for [bookId].
   Future<ComicBookInfo> loadBookInfo(String bookId);
