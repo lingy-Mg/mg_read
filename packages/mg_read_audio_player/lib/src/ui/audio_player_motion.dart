@@ -155,15 +155,15 @@ class _AudioAnimatedPlayPauseButtonState
                   filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.14),
+                      color: Colors.white.withValues(alpha: 0.21),
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.22),
+                        color: Colors.white.withValues(alpha: 0.42),
                       ),
                       boxShadow: const <BoxShadow>[
                         BoxShadow(
-                          color: Color(0x26000000),
-                          blurRadius: 18,
+                          color: Color(0x24000000),
+                          blurRadius: 24,
                           offset: Offset(0, 8),
                         ),
                       ],

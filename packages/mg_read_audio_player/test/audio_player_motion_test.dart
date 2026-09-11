@@ -45,7 +45,7 @@ void main() {
     );
     expect(
       (backdropTint.decoration! as BoxDecoration).color,
-      const Color(0x78000000),
+      const Color(0x48000000),
     );
     await tester.pump(const Duration(milliseconds: 1540));
     expect(

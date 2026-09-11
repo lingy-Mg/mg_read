@@ -107,8 +107,8 @@ class _AudioPlayerArtworkBackdropState extends State<AudioPlayerArtworkBackdrop>
         : const Duration(milliseconds: 620);
     final artwork = widget.artworkBuilder?.call(context, widget.track);
     final glassTint = widget.playing
-        ? const Color(0x78000000)
-        : const Color(0x94000000);
+        ? const Color(0x48000000)
+        : const Color(0x5E000000);
     return IgnorePointer(
       child: Stack(
         key: const Key('audio-artwork-backdrop'),
@@ -119,8 +119,8 @@ class _AudioPlayerArtworkBackdropState extends State<AudioPlayerArtworkBackdrop>
             child: ImageFiltered(
               key: const Key('audio-artwork-backdrop-blur'),
               imageFilter: ImageFilter.blur(
-                sigmaX: 40,
-                sigmaY: 40,
+                sigmaX: 32,
+                sigmaY: 32,
                 tileMode: TileMode.clamp,
               ),
               child: AnimatedBuilder(
@@ -179,7 +179,7 @@ class _AudioPlayerArtworkBackdropState extends State<AudioPlayerArtworkBackdrop>
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: <Color>[Color(0x18000000), Color(0x70000000)],
+                colors: <Color>[Color(0x0D000000), Color(0x42000000)],
               ),
             ),
           ),
@@ -289,12 +289,12 @@ class _AudioPlayerCoverState extends State<AudioPlayerCover>
             key: const Key('audio-cover-glass'),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(30),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.42)),
               boxShadow: const <BoxShadow>[
                 BoxShadow(
-                  color: Color(0x2E000000),
-                  blurRadius: 30,
-                  offset: Offset(0, 16),
+                  color: Color(0x24000000),
+                  blurRadius: 32,
+                  offset: Offset(0, 18),
                 ),
               ],
             ),

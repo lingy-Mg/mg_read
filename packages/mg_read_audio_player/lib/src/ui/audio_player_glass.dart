@@ -69,8 +69,8 @@ final class AudioGlassPanel extends StatelessWidget {
             ? const <BoxShadow>[
                 BoxShadow(
                   color: AudioPlayerColors.shadow,
-                  blurRadius: 30,
-                  offset: Offset(0, 16),
+                  blurRadius: 36,
+                  offset: Offset(0, 18),
                 ),
               ]
             : null,
@@ -95,7 +95,7 @@ final class AudioGlassPanel extends StatelessWidget {
                       colors: colors,
                     ),
                     borderRadius: borderRadius,
-                    border: Border.all(color: borderColor, width: 0.8),
+                    border: Border.all(color: borderColor, width: 1),
                   ),
                 ),
               ),
@@ -110,8 +110,8 @@ final class AudioGlassPanel extends StatelessWidget {
                       gradient: LinearGradient(
                         colors: <Color>[
                           Colors.transparent,
-                          Colors.white.withValues(alpha: 0.18),
-                          Colors.white.withValues(alpha: 0.08),
+                          Colors.white.withValues(alpha: 0.42),
+                          Colors.white.withValues(alpha: 0.12),
                           Colors.transparent,
                         ],
                       ),
