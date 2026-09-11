@@ -118,7 +118,7 @@ class _TopBarButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AudioGlassPanel(
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(999),
       blur: 16,
       shadow: false,
       child: IconButton(
@@ -127,8 +127,9 @@ class _TopBarButton extends StatelessWidget {
         style: IconButton.styleFrom(
           fixedSize: const Size.square(44),
           foregroundColor: AudioPlayerColors.ink,
+          shape: const CircleBorder(),
         ),
-        icon: Icon(icon, size: 20),
+        icon: Icon(icon, size: 18),
       ),
     );
   }
@@ -345,6 +346,7 @@ final class AudioTransportControls extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: <Widget>[
         _TransportButton(
           key: const Key('audio-previous'),

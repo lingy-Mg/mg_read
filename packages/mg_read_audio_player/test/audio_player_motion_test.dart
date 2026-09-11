@@ -38,8 +38,19 @@ void main() {
     );
     expect(
       tester.getSize(find.byKey(const Key('audio-play-pause-surface'))),
-      const Size.square(84),
+      const Size.square(94),
     );
+    final transportBottom = tester
+        .getBottomLeft(find.byKey(const Key('audio-play-pause-surface')))
+        .dy;
+    for (final key in <Key>[
+      const Key('audio-previous'),
+      const Key('audio-seek-back'),
+      const Key('audio-seek-forward'),
+      const Key('audio-next'),
+    ]) {
+      expect(tester.getBottomLeft(find.byKey(key)).dy, transportBottom);
+    }
 
     await tester.tap(find.byKey(const Key('audio-play-pause')));
     await tester.pump(const Duration(milliseconds: 160));

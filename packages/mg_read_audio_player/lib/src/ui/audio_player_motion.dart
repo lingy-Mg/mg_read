@@ -136,7 +136,7 @@ class _AudioAnimatedPlayPauseButtonState
   Widget build(BuildContext context) {
     return SizedBox.square(
       key: const Key('audio-play-pause-surface'),
-      dimension: 84,
+      dimension: 94,
       child: Stack(
         clipBehavior: Clip.none,
         alignment: Alignment.center,
@@ -173,7 +173,7 @@ class _AudioAnimatedPlayPauseButtonState
                       key: const Key('audio-play-pause'),
                       tooltip: widget.snapshot.playing ? '暂停' : '播放',
                       onPressed: widget.onPressed,
-                      iconSize: 38,
+                      iconSize: 42,
                       color: AudioPlayerColors.ink,
                       icon: AnimatedSwitcher(
                         duration: widget.disableAnimations
@@ -182,7 +182,7 @@ class _AudioAnimatedPlayPauseButtonState
                         child: widget.snapshot.buffering
                             ? const SizedBox.square(
                                 key: Key('audio-buffering'),
-                                dimension: 28,
+                                dimension: 30,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2.4,
                                   color: AudioPlayerColors.ink,
