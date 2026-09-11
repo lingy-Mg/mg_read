@@ -617,6 +617,7 @@ final class DeferredDiscoveryBookshelfSaver implements DiscoveryBookshelfSaver {
             contentKind: item.kind,
             author: item.author,
             coverUrl: item.coverUrl,
+            coverOrientation: item.coverOrientation,
             coverPluginId: item.source.pluginId,
             coverPluginVersion: item.source.pluginVersion,
             coverRemoteContentId: item.source.remoteContentId,

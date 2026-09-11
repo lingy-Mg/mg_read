@@ -33,6 +33,7 @@ void main() {
           remoteContentId: 'book-1',
           contentKind: 'novel',
           title: '测试书籍',
+          coverOrientation: 'square',
           progress: LanSyncReadingProgress(
             chapterId: 'chapter-2',
             paragraphId: 'paragraph-4',
@@ -53,6 +54,7 @@ void main() {
     expect(decoded.plugins.single.id, 'source.example');
     expect(decoded.plugins.single.artifactFormat, LanSyncPluginArtifactFormat.singleFile);
     expect(decoded.shelfItems.single.identity, 'source.example\u001fbook-1');
+    expect(decoded.shelfItems.single.coverOrientation, 'square');
     expect(decoded.shelfItems.single.progress?.chapterIndex, 1);
     expect(decoded.skippedShelfItems, 1);
   });

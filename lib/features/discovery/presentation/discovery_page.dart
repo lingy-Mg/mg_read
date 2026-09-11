@@ -586,6 +586,7 @@ class DiscoveryHeroCard extends StatelessWidget {
                       coverBytes: data.coverBytes,
                       remoteContentId: data.remoteContentId,
                       coverUrl: data.coverUrl,
+                      presentation: discoveryCoverPresentation(data.coverOrientation),
                       width: AppSpacing.discoveryHeroCoverWidth,
                       height: AppSpacing.discoveryHeroCoverHeight,
                     ),

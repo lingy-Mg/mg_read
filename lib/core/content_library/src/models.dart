@@ -76,6 +76,26 @@ enum ContentKind {
   };
 }
 
+/// Host-owned cover composition family retained with shelf metadata.
+///
+/// It is intentionally independent from [ContentKind]: an audio source may
+/// use a portrait programme poster and a video source may use square artwork.
+enum CoverOrientation {
+  landscape('landscape'),
+  portrait('portrait'),
+  square('square');
+
+  const CoverOrientation(this.code);
+  final String code;
+
+  static CoverOrientation fromCode(String? code, {required ContentKind legacyKind}) => switch (code) {
+    'landscape' => landscape,
+    'portrait' => portrait,
+    'square' => square,
+    _ => legacyKind == ContentKind.video ? landscape : portrait,
+  };
+}
+
 final class LibraryItemId {
   const LibraryItemId(this.value);
   final String value;
@@ -108,6 +128,7 @@ final class LibraryItem {
     required this.revision,
     this.visibility = LibraryVisibility.normal,
     this.coverUrl,
+    this.coverOrientation = CoverOrientation.portrait,
     this.sourceName,
     this.sourceUrl,
     this.description,
@@ -142,6 +163,7 @@ final class LibraryItem {
   /// locally retained content.
   final LibraryVisibility visibility;
   final Uri? coverUrl;
+  final CoverOrientation coverOrientation;
   final String? sourceName;
   final Uri? sourceUrl;
   final String? description;
@@ -200,6 +222,7 @@ final class LibraryShelfProjection {
     required this.title,
     required this.author,
     required this.coverUrl,
+    required this.coverOrientation,
     required this.sourceName,
     required this.source,
     required this.sourceChapterCount,
@@ -217,6 +240,7 @@ final class LibraryShelfProjection {
   final String title;
   final String? author;
   final Uri? coverUrl;
+  final CoverOrientation coverOrientation;
   final String? sourceName;
   final LibraryItemSource source;
   final int? sourceChapterCount;
@@ -385,6 +409,7 @@ final class BookshelfAddRequest {
     required this.pluginVersion,
     required this.remoteContentId,
     this.coverUrl,
+    this.coverOrientation = CoverOrientation.portrait,
     this.sourceName,
     this.sourceUrl,
     this.description,
@@ -416,6 +441,7 @@ final class BookshelfAddRequest {
   final String pluginVersion;
   final String remoteContentId;
   final Uri? coverUrl;
+  final CoverOrientation coverOrientation;
   final String? sourceName;
   final Uri? sourceUrl;
   final String? description;
@@ -509,6 +535,7 @@ final class LibrarySyncItem {
     required this.title,
     this.author,
     this.coverUrl,
+    this.coverOrientation = CoverOrientation.portrait,
     this.sourceName,
     this.progress,
   });
@@ -520,6 +547,7 @@ final class LibrarySyncItem {
   final String title;
   final String? author;
   final Uri? coverUrl;
+  final CoverOrientation coverOrientation;
   final String? sourceName;
   final LibrarySyncReadingProgress? progress;
 

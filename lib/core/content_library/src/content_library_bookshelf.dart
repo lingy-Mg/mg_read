@@ -161,6 +161,7 @@ final class _LibrarySyncOperations {
           title: item.title,
           author: item.author,
           coverUrl: item.coverUrl,
+          coverOrientation: item.coverOrientation,
           sourceName: item.sourceName,
           progress: localProgress == null ? null : LibrarySyncReadingProgress.fromLocal(localProgress),
         ),
@@ -327,6 +328,7 @@ BookshelfAddRequest _syncAddRequest(LibrarySyncItem item) => BookshelfAddRequest
   title: item.title,
   author: item.author,
   coverUrl: item.coverUrl,
+  coverOrientation: item.coverOrientation,
   sourceName: item.sourceName,
 );
 
@@ -380,6 +382,7 @@ bool _sameSyncProjection(LibraryItem local, LibrarySyncItem sender, LibraryReadi
       local.title != sender.title ||
       local.author != sender.author ||
       local.coverUrl?.toString() != sender.coverUrl?.toString() ||
+      local.coverOrientation != sender.coverOrientation ||
       local.sourceName != sender.sourceName) {
     return false;
   }

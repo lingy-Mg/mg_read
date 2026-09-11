@@ -535,6 +535,7 @@ LibraryItemSummary _summaryFromShelfRequest(String mutationId, BookshelfAddReque
   contentKind: request.kind,
   author: request.author,
   coverUrl: request.coverUrl,
+  coverOrientation: request.coverOrientation,
   coverPluginId: request.pluginId,
   coverPluginVersion: request.pluginVersion,
   coverRemoteContentId: request.remoteContentId,

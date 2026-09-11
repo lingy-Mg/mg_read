@@ -361,7 +361,7 @@ final class ContentLibraryMetadataStore {
   Future<List<StoredShelfItem>> listShelf({required String visibility, required int limit}) => _owner._withOperation(() async {
     _owner._ensureOpen();
     final rows = await _select(
-      '''SELECT i.item_pk, i.item_id, i.content_kind, i.title, i.author, i.cover_url, i.source_name,
+      '''SELECT i.item_pk, i.item_id, i.content_kind, i.title, i.author, i.cover_url, i.source_name, i.details_json,
         i.source_plugin_id, i.source_plugin_version, i.remote_item_id, i.source_chapter_count,
         i.catalog_count, i.summary_excerpt, p.progress_kind, p.chapter_position, p.book_fraction,
         p.total_reading_seconds, p.updated_at_utc AS progress_updated_at_utc

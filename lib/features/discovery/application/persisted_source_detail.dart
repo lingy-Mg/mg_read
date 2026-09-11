@@ -152,6 +152,7 @@ PluginContentKind? _contentKind(Object? value) => switch (value) {
 PluginCoverOrientation _coverOrientation(Object? value, PluginContentKind contentKind) => switch (value) {
   'landscape' => PluginCoverOrientation.landscape,
   'portrait' => PluginCoverOrientation.portrait,
+  'square' => PluginCoverOrientation.square,
   _ => contentKind == PluginContentKind.video ? PluginCoverOrientation.landscape : PluginCoverOrientation.portrait,
 };
 

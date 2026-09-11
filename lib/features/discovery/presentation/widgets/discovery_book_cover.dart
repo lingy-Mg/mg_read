@@ -12,6 +12,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
@@ -22,7 +23,7 @@ import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart
 ///
 /// This is independent from media kind. It only controls presentation; source
 /// URLs and decoded bytes keep their existing typed boundary.
-enum DiscoveryCoverPresentation { portrait, landscape }
+enum DiscoveryCoverPresentation { portrait, square, landscape }
 
 /// 显示不阻塞周边内容的数据源封面。
 class DiscoveryBookCover extends ConsumerWidget {
@@ -144,6 +145,12 @@ class DiscoveryBookCover extends ConsumerWidget {
   BorderRadius get _borderRadius =>
       presentation == DiscoveryCoverPresentation.landscape ? BorderRadius.circular(10) : AppRadii.discoveryCover;
 }
+
+DiscoveryCoverPresentation discoveryCoverPresentation(PluginCoverOrientation orientation) => switch (orientation) {
+  PluginCoverOrientation.portrait => DiscoveryCoverPresentation.portrait,
+  PluginCoverOrientation.square => DiscoveryCoverPresentation.square,
+  PluginCoverOrientation.landscape => DiscoveryCoverPresentation.landscape,
+};
 
 class _LandscapeCoverPlaceholder extends StatelessWidget {
   const _LandscapeCoverPlaceholder({

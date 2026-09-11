@@ -24,7 +24,7 @@ class _DetailHeader extends StatelessWidget {
   );
 }
 
-/// Routes to one of two independent detail-header compositions. The source's
+/// Routes to one of three independent detail-header compositions. The source's
 /// cover direction selects the composition; media kind does not participate.
 class _DetailSummaryHeader extends StatelessWidget {
   const _DetailSummaryHeader({required this.content, required this.labels, required this.onCoverTap});
@@ -36,6 +36,7 @@ class _DetailSummaryHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) => switch (content.coverOrientation) {
     PluginCoverOrientation.portrait => _PortraitDetailSummaryHeader(content: content, labels: labels, onCoverTap: onCoverTap),
+    PluginCoverOrientation.square => _SquareDetailSummaryHeader(content: content, labels: labels, onCoverTap: onCoverTap),
     PluginCoverOrientation.landscape => _LandscapeDetailSummaryHeader(content: content, labels: labels, onCoverTap: onCoverTap),
   };
 }
@@ -54,6 +55,28 @@ class _PortraitDetailSummaryHeader extends StatelessWidget {
     crossAxisAlignment: CrossAxisAlignment.start,
     children: <Widget>[
       _DetailCoverLink(content: content, width: 112, height: 174, presentation: DiscoveryCoverPresentation.portrait, onTap: onCoverTap),
+      const SizedBox(width: AppSpacing.regular),
+      Expanded(
+        child: _DetailHeaderMetadata(content: content, labels: labels),
+      ),
+    ],
+  );
+}
+
+/// Square artwork keeps its full album-like composition beside metadata.
+class _SquareDetailSummaryHeader extends StatelessWidget {
+  const _SquareDetailSummaryHeader({required this.content, required this.labels, required this.onCoverTap});
+
+  final PluginContentSummary content;
+  final List<String> labels;
+  final VoidCallback? onCoverTap;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    key: const Key('source-detail-square-header'),
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: <Widget>[
+      _DetailCoverLink(content: content, width: 144, height: 144, presentation: DiscoveryCoverPresentation.square, onTap: onCoverTap),
       const SizedBox(width: AppSpacing.regular),
       Expanded(
         child: _DetailHeaderMetadata(content: content, labels: labels),
@@ -559,6 +582,7 @@ class _RecommendationCard extends StatelessWidget {
               remoteContentId: content.id,
               coverUrl: content.coverUrl,
               variant: _coverVariant(content.id),
+              presentation: discoveryCoverPresentation(content.coverOrientation),
               width: 96,
               height: 140,
             ),
@@ -816,6 +840,14 @@ class _DetailFailure extends StatelessWidget {
                   ),
                   const SizedBox(height: AppSpacing.unit),
                   Text(_detailErrorDescription(error), style: theme.textTheme.bodyMedium?.copyWith(color: colors.onErrorContainer)),
+                  if (error.detail case final detail? when detail.trim().isNotEmpty) ...<Widget>[
+                    const SizedBox(height: AppSpacing.compact),
+                    SelectableText(
+                      '原始原因：${detail.trim()}',
+                      key: const Key('source-detail-error-cause'),
+                      style: theme.textTheme.bodySmall?.copyWith(color: colors.onErrorContainer, fontFamily: 'monospace'),
+                    ),
+                  ],
                   if (hasRetainedData) ...<Widget>[
                     const SizedBox(height: AppSpacing.unit),
                     Text('已保留列表预览；实时详情和可播放选集尚未加载。', style: theme.textTheme.bodySmall?.copyWith(color: colors.onErrorContainer)),

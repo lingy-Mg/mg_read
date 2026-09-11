@@ -75,4 +75,23 @@ void main() {
     expect(data.books.first.isCoverBlurred, isTrue);
     expect(data.books.last.isCoverBlurred, isFalse);
   });
+
+  test('keeps source-declared cover composition in every home projection', () {
+    final data = LibraryHomeViewData.fromLocalOverview(
+      LibraryOverview(
+        items: <LibraryItemSummary>[
+          LibraryItemSummary(
+            id: 'square-audio',
+            title: '方形音频',
+            contentKind: ContentKind.audio,
+            coverOrientation: CoverOrientation.square,
+            lastReadAtUtc: DateTime.utc(2026, 9, 11),
+          ),
+        ],
+      ),
+    );
+
+    expect(data.continueReading?.coverOrientation, CoverOrientation.square);
+    expect(data.books.single.coverOrientation, CoverOrientation.square);
+  });
 }

@@ -32,6 +32,7 @@ final class ContentLibraryOverviewLoader implements LibraryOverviewLoader {
         contentKind: item.kind,
         author: item.author,
         coverUrl: item.coverUrl,
+        coverOrientation: item.coverOrientation,
         coverPluginId: source.pluginId,
         coverPluginVersion: source.pluginVersion,
         coverRemoteContentId: source.remoteContentId,

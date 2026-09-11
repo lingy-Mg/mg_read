@@ -299,6 +299,7 @@ final class LanSyncShelfItem {
     required this.title,
     this.author,
     this.coverUrl,
+    this.coverOrientation = 'portrait',
     this.sourceName,
     this.progress,
   });
@@ -310,6 +311,7 @@ final class LanSyncShelfItem {
   final String title;
   final String? author;
   final String? coverUrl;
+  final String coverOrientation;
   final String? sourceName;
   final LanSyncReadingProgress? progress;
 
@@ -323,6 +325,7 @@ final class LanSyncShelfItem {
     title: title,
     author: author,
     coverUrl: coverUrl,
+    coverOrientation: coverOrientation,
     sourceName: sourceName,
     progress: value,
   );
@@ -335,6 +338,7 @@ final class LanSyncShelfItem {
     'title': title,
     if (author != null) 'author': author,
     if (coverUrl != null) 'coverUrl': coverUrl,
+    'coverOrientation': coverOrientation,
     if (sourceName != null) 'sourceName': sourceName,
     if (progress != null) 'progress': progress!.toJson(),
   };
@@ -345,6 +349,10 @@ final class LanSyncShelfItem {
       throw const FormatException('invalid_content_kind');
     }
     final rawProgress = json['progress'];
+    final coverOrientation = _optionalString(json, 'coverOrientation', maxLength: 16) ?? 'portrait';
+    if (coverOrientation != 'portrait' && coverOrientation != 'square' && coverOrientation != 'landscape') {
+      throw const FormatException('invalid_cover_orientation');
+    }
     return LanSyncShelfItem(
       pluginId: _requiredString(json, 'pluginId', maxLength: 256),
       pluginVersion: _requiredString(json, 'pluginVersion', maxLength: 128),
@@ -353,6 +361,7 @@ final class LanSyncShelfItem {
       title: _requiredString(json, 'title', maxLength: 4096),
       author: _optionalString(json, 'author', maxLength: 2048),
       coverUrl: _optionalString(json, 'coverUrl', maxLength: 8192),
+      coverOrientation: coverOrientation,
       sourceName: _optionalString(json, 'sourceName', maxLength: 512),
       progress: rawProgress == null ? null : LanSyncReadingProgress.fromJson(_requiredMap(rawProgress)),
     );

@@ -42,7 +42,7 @@ import {
 } from "./plugin-content-types.js";
 
 const contentKinds = new Set<PluginContentKind>(["audio", "manga", "novel", "video"]);
-const coverOrientations = new Set<PluginCoverOrientation>(["landscape", "portrait"]);
+const coverOrientations = new Set<PluginCoverOrientation>(["landscape", "portrait", "square"]);
 const contentStatuses = new Set<PluginContentStatus>([
   "ongoing",
   "completed",

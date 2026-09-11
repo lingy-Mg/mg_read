@@ -172,6 +172,7 @@ class DiscoveryCarouselHeroCard extends StatelessWidget {
                         remoteContentId: data.remoteContentId,
                         coverUrl: data.coverUrl,
                         variant: data.coverVariant,
+                        presentation: discoveryCoverPresentation(data.coverOrientation),
                         width: coverWidth,
                         height: coverHeight,
                       ),

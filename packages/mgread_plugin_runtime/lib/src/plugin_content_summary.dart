@@ -15,12 +15,13 @@ enum PluginContentKind {
   final String code;
 }
 
-/// Selects one of the host's two generic cover composition families.
+/// Selects one of the host's generic cover composition families.
 ///
 /// Cover orientation is independent from [PluginContentKind].
 enum PluginCoverOrientation {
   landscape('landscape'),
-  portrait('portrait');
+  portrait('portrait'),
+  square('square');
 
   const PluginCoverOrientation(this.code);
   final String code;

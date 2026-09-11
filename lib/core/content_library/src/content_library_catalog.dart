@@ -236,15 +236,17 @@ LibraryItem _storedItem(StoredLibraryItem row) {
   final values = row.values;
   final rawDetails = jsonDecode(values['details_json']! as String);
   final details = rawDetails is Map<String, Object?> ? rawDetails : const <String, Object?>{};
+  final kind = ContentKind.fromCode(values['content_kind']! as String) ?? ContentKind.novel;
   return LibraryItem(
     id: LibraryItemId(values['item_id']! as String),
     title: values['title']! as String,
     author: values['author'] as String?,
-    kind: ContentKind.fromCode(values['content_kind']! as String) ?? ContentKind.novel,
+    kind: kind,
     state: values['shelf_state']! as String,
     revision: values['item_revision']! as int,
     visibility: LibraryVisibility.fromWireValue(values['visibility'] as String?),
     coverUrl: _uriFromValue(values['cover_url']),
+    coverOrientation: _coverOrientationFromDetails(details, kind),
     sourceName: values['source_name'] as String?,
     sourceUrl: _uriFromValue(details['sourceUrl']),
     description: details['description'] as String?,
@@ -275,12 +277,16 @@ LibraryItem _storedItem(StoredLibraryItem row) {
 LibraryShelfProjection _storedShelfProjection(StoredShelfItem row) {
   final values = row.values;
   final progressUpdated = values['progress_updated_at_utc'] as int?;
+  final kind = ContentKind.fromCode(values['content_kind']! as String) ?? ContentKind.novel;
+  final rawDetails = jsonDecode(values['details_json']! as String);
+  final details = rawDetails is Map<String, Object?> ? rawDetails : const <String, Object?>{};
   return LibraryShelfProjection(
     itemId: LibraryItemId(values['item_id']! as String),
-    kind: ContentKind.fromCode(values['content_kind']! as String) ?? ContentKind.novel,
+    kind: kind,
     title: values['title']! as String,
     author: values['author'] as String?,
     coverUrl: _uriFromValue(values['cover_url']),
+    coverOrientation: _coverOrientationFromDetails(details, kind),
     sourceName: values['source_name'] as String?,
     source: LibraryItemSource(
       pluginId: values['source_plugin_id']! as String,
@@ -326,6 +332,7 @@ Map<String, Object?> _stringObjectMap(Object? value) => value is Map
 
 Map<String, Object?> _shelfSummary(BookshelfAddRequest request) => <String, Object?>{
   if (request.coverUrl != null) 'coverUrl': request.coverUrl.toString(),
+  'coverOrientation': request.coverOrientation.code,
   if (request.sourceName != null) 'sourceName': request.sourceName,
   if (request.sourceUrl != null) 'sourceUrl': request.sourceUrl.toString(),
   if (request.description != null) 'description': request.description,
@@ -350,6 +357,17 @@ Map<String, Object?> _shelfSummary(BookshelfAddRequest request) => <String, Obje
   if (request.sourceDetail.isNotEmpty) 'sourceDetail': request.sourceDetail,
   if (request.labels.isNotEmpty) 'labels': request.labels,
 };
+
+CoverOrientation _coverOrientationFromDetails(Map<String, Object?> details, ContentKind kind) {
+  final sourceDetail = _stringObjectMap(details['sourceDetail']);
+  final summary = _stringObjectMap(sourceDetail['summary']);
+  final code = details['coverOrientation'] is String
+      ? details['coverOrientation']! as String
+      : summary['coverOrientation'] is String
+      ? summary['coverOrientation']! as String
+      : null;
+  return CoverOrientation.fromCode(code, legacyKind: kind);
+}
 
 Uri? _uriFromValue(Object? value) {
   if (value is! String || value.isEmpty) return null;

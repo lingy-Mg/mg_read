@@ -12,6 +12,7 @@ library;
 
 import 'package:flutter/foundation.dart';
 
+import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
 /// 更新、书架和阅读记录列表共用的不可变展示数据。
@@ -24,6 +25,7 @@ final class LibraryBookListItemViewData {
     required this.coverVariant,
     required this.status,
     this.coverUrl,
+    this.coverOrientation = CoverOrientation.portrait,
     this.coverBytes,
     this.coverRequest,
     this.coverAssetPath,
@@ -44,6 +46,7 @@ final class LibraryBookListItemViewData {
 
   /// Optional source cover retained by the app-owned shelf projection.
   final Uri? coverUrl;
+  final CoverOrientation coverOrientation;
 
   /// Cover bytes loaded from the app-owned persistent cover object.
   final List<int>? coverBytes;

@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 /// Immutable, display-ready data for the discovery presentation.
 @immutable
@@ -60,6 +61,7 @@ final class DiscoveryHeroViewData {
     required this.description,
     required this.metadata,
     required this.coverVariant,
+    this.coverOrientation = PluginCoverOrientation.portrait,
     this.coverBytes,
     this.remoteContentId,
     this.coverUrl,
@@ -71,6 +73,7 @@ final class DiscoveryHeroViewData {
   final String? description;
   final String? metadata;
   final DiscoveryCoverVariant coverVariant;
+  final PluginCoverOrientation coverOrientation;
   final List<int>? coverBytes;
   final String? remoteContentId;
   final Uri? coverUrl;

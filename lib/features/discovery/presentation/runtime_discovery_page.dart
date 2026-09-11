@@ -470,6 +470,7 @@ class _ContentCollection extends StatelessWidget {
     final coverOrientations = component.items.map((item) => item.content.coverOrientation).toSet();
     final hasMixedCoverOrientations = coverOrientations.length > 1;
     final isLandscapeCollection = coverOrientations.length == 1 && coverOrientations.single == PluginCoverOrientation.landscape;
+    final isSquareCollection = coverOrientations.length == 1 && coverOrientations.single == PluginCoverOrientation.square;
     final cards = component.items
         .map(
           (item) => DiscoveryContentListItem(
@@ -511,11 +512,21 @@ class _ContentCollection extends StatelessWidget {
             PluginDiscoveryContentLayout.coverGrid =>
               isLandscapeCollection
                   ? DiscoveryLandscapeCoverGrid(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf)
-                  : DiscoveryCoverGrid(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf),
+                  : DiscoveryCoverGrid(
+                      items: component.items,
+                      onPressed: onContentPressed,
+                      isInBookshelf: isInBookshelf,
+                      coverHeightRatio: isSquareCollection ? 1 : AppSpacing.discoveryCoverAspectRatio,
+                    ),
             PluginDiscoveryContentLayout.shelf =>
               isLandscapeCollection
                   ? DiscoveryLandscapeCoverShelf(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf)
-                  : DiscoveryBookShelf(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf),
+                  : DiscoveryBookShelf(
+                      items: component.items,
+                      onPressed: onContentPressed,
+                      isInBookshelf: isInBookshelf,
+                      coverHeightRatio: isSquareCollection ? 1 : AppSpacing.discoveryCoverAspectRatio,
+                    ),
             PluginDiscoveryContentLayout.compact || PluginDiscoveryContentLayout.ranking => DiscoveryCompactBookList(
               items: component.items,
               onPressed: onContentPressed,
@@ -563,6 +574,7 @@ DiscoveryHeroViewData _heroData(PluginDiscoveryContentItem item) => DiscoveryHer
   description: item.recommendation ?? item.content.description,
   metadata: item.content.author,
   coverVariant: _coverVariant(item.content.id),
+  coverOrientation: item.content.coverOrientation,
   coverBytes: item.content.coverBytes,
   remoteContentId: item.content.id,
   coverUrl: item.content.coverUrl,

@@ -20,6 +20,7 @@ final class LibraryItemSummary {
     this.contentKind = ContentKind.novel,
     this.author,
     this.coverUrl,
+    this.coverOrientation = CoverOrientation.portrait,
     this.coverBytes,
     this.coverPluginId,
     this.coverPluginVersion,
@@ -58,6 +59,7 @@ final class LibraryItemSummary {
   final String title;
   final String? author;
   final Uri? coverUrl;
+  final CoverOrientation coverOrientation;
 
   /// Cover bytes loaded from the app-owned file object, when available.
   final List<int>? coverBytes;

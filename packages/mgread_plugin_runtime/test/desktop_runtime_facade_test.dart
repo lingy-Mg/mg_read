@@ -388,6 +388,10 @@ void main() {
       expect(result.items.single.author, 'org.mgread.flutter.fixture');
       expect(result.items.single.wordCount, 123456);
       expect(result.items.single.coverUrl, isNull);
+      expect(
+        result.items.single.coverOrientation,
+        PluginCoverOrientation.square,
+      );
       expect(result.items.single.tags, isEmpty);
       expect(result.totalCount, 1);
       expect(discovery, isA<PluginDiscoveryDocumentResult>());
@@ -901,7 +905,7 @@ function summary(query) {
   return {
     id,
     title: `标准 Node：\${query}`,
-    contentKind: 'novel', coverOrientation: 'landscape',
+    contentKind: 'novel', coverOrientation: 'square',
     author: context.plugin.id,
     url: null,
     coverUrl: null,

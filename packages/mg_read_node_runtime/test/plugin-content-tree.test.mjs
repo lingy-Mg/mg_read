@@ -38,7 +38,7 @@ test('recursive discovery document accepts bounded semantic components', () => {
   assert.equal(result.document.components[1].children[0].children[0].items[0].content.coverOrientation, 'portrait');
 });
 
-test('cover orientation is explicit when declared and rejects unknown component families', () => {
+test('cover orientation accepts every host composition and rejects unknown component families', () => {
   const landscape = validateDiscoverResult('org.example.tree', '树数据源', {
     kind: 'document',
     document: { components: [{
@@ -47,12 +47,20 @@ test('cover orientation is explicit when declared and rejects unknown component 
     }] },
   });
   assert.equal(landscape.document.components[0].items[0].content.coverOrientation, 'landscape');
+  const square = validateDiscoverResult('org.example.tree', '树数据源', {
+    kind: 'document',
+    document: { components: [{
+      type: 'contentCollection', id: 'square', layout: 'coverGrid', continuation: null,
+      items: [{ content: { ...content, coverOrientation: 'square' }, rank: null, metric: null, recommendation: null }],
+    }] },
+  });
+  assert.equal(square.document.components[0].items[0].content.coverOrientation, 'square');
   assert.throws(
     () => validateDiscoverResult('org.example.tree', '树数据源', {
       kind: 'document',
       document: { components: [{
         type: 'contentCollection', id: 'invalid', layout: 'coverGrid', continuation: null,
-        items: [{ content: { ...content, coverOrientation: 'square' }, rank: null, metric: null, recommendation: null }],
+        items: [{ content: { ...content, coverOrientation: 'panorama' }, rank: null, metric: null, recommendation: null }],
       }] },
     }),
     PluginContentValidationError,

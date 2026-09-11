@@ -83,6 +83,7 @@ final class ContentLibraryDiscoveryBookshelfSaver implements DiscoveryBookshelfS
         pluginVersion: source.pluginVersion,
         remoteContentId: summary.id,
         coverUrl: summary.coverUrl,
+        coverOrientation: _libraryCoverOrientation(summary.coverOrientation),
         sourceName: resolvedDetail.sourceName.isEmpty ? source.displayName : resolvedDetail.sourceName,
         sourceUrl: resolvedDetail.catalogUrl ?? summary.url,
         description: summary.description,
@@ -121,6 +122,12 @@ final class ContentLibraryDiscoveryBookshelfSaver implements DiscoveryBookshelfS
     }
   }
 }
+
+CoverOrientation _libraryCoverOrientation(PluginCoverOrientation orientation) => switch (orientation) {
+  PluginCoverOrientation.landscape => CoverOrientation.landscape,
+  PluginCoverOrientation.portrait => CoverOrientation.portrait,
+  PluginCoverOrientation.square => CoverOrientation.square,
+};
 
 String? _statusLabel(PluginContentStatus status) => switch (status) {
   PluginContentStatus.ongoing => '连载',

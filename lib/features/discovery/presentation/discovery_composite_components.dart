@@ -7,7 +7,7 @@
 /// 注意：
 /// - 组件只消费 Runtime 已校验的数据，不执行 IO，也不接受数据源颜色、尺寸或任意 UI 代码。
 /// - 布局名称表达内容语义；列数、间距和主题始终由 MgRead 根据可用宽度决定。
-/// - 本文件只负责 `coverOrientation=portrait` 的竖向封面；横向封面由独立通用组件负责。
+/// - 本文件负责竖向与方形封面；横向封面由独立通用组件负责。
 /// - 分类 chips 按可用宽度等分列宽，最后一行保持同一列宽而不按内容收缩。
 /// - 横向书架在组件内允许触摸、手写笔、触控板和鼠标直接拖动。
 library;
@@ -23,11 +23,18 @@ import 'package:mg_read/features/discovery/presentation/widgets/discovery_booksh
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_drag_scroll_behavior.dart';
 
 class DiscoveryCoverGrid extends StatelessWidget {
-  const DiscoveryCoverGrid({required this.items, required this.onPressed, required this.isInBookshelf, super.key});
+  const DiscoveryCoverGrid({
+    required this.items,
+    required this.onPressed,
+    required this.isInBookshelf,
+    this.coverHeightRatio = AppSpacing.discoveryCoverAspectRatio,
+    super.key,
+  });
 
   final List<PluginDiscoveryContentItem> items;
   final ValueChanged<PluginContentSummary> onPressed;
   final bool Function(PluginContentSummary content) isInBookshelf;
+  final double coverHeightRatio;
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +49,7 @@ class DiscoveryCoverGrid extends StatelessWidget {
         };
         const gap = AppSpacing.discoveryComponentGap;
         final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
-        final coverHeight = width * AppSpacing.discoveryCoverAspectRatio;
+        final coverHeight = width * coverHeightRatio;
         return GridView.builder(
           key: const Key('runtime-discovery-cover-grid'),
           shrinkWrap: true,
@@ -72,18 +79,27 @@ class DiscoveryCoverGrid extends StatelessWidget {
 }
 
 class DiscoveryBookShelf extends StatelessWidget {
-  const DiscoveryBookShelf({required this.items, required this.onPressed, required this.isInBookshelf, super.key});
+  const DiscoveryBookShelf({
+    required this.items,
+    required this.onPressed,
+    required this.isInBookshelf,
+    this.coverHeightRatio = AppSpacing.discoveryCoverAspectRatio,
+    super.key,
+  });
 
   final List<PluginDiscoveryContentItem> items;
   final ValueChanged<PluginContentSummary> onPressed;
   final bool Function(PluginContentSummary content) isInBookshelf;
+  final double coverHeightRatio;
 
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) return const SizedBox.shrink();
     return SizedBox(
       key: const Key('runtime-discovery-book-shelf'),
-      height: AppSpacing.discoveryShelfHeight,
+      height: coverHeightRatio == 1
+          ? AppSpacing.discoveryShelfItemWidth + AppSpacing.discoveryCoverMetadataExtent
+          : AppSpacing.discoveryShelfHeight,
       child: ScrollConfiguration(
         behavior: discoveryDragScrollBehavior(context),
         child: ListView.separated(
@@ -99,7 +115,7 @@ class DiscoveryBookShelf extends StatelessWidget {
               child: _CoverTile(
                 item: item,
                 width: AppSpacing.discoveryShelfItemWidth,
-                coverHeight: AppSpacing.discoveryShelfItemWidth * AppSpacing.discoveryCoverAspectRatio,
+                coverHeight: AppSpacing.discoveryShelfItemWidth * coverHeightRatio,
                 inBookshelf: isInBookshelf(item.content),
                 onPressed: () => onPressed(item.content),
               ),
@@ -382,7 +398,7 @@ class _CoverTile extends StatelessWidget {
                   remoteContentId: content.id,
                   coverUrl: content.coverUrl,
                   variant: _coverVariant(content.id),
-                  presentation: DiscoveryCoverPresentation.portrait,
+                  presentation: discoveryCoverPresentation(content.coverOrientation),
                   width: width,
                   height: coverHeight,
                 ),

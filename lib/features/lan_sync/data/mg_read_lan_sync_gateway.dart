@@ -515,6 +515,7 @@ LanSyncShelfItem _withoutProgress(LanSyncShelfItem item) => LanSyncShelfItem(
   title: item.title,
   author: item.author,
   coverUrl: item.coverUrl,
+  coverOrientation: item.coverOrientation,
   sourceName: item.sourceName,
 );
 
@@ -544,6 +545,7 @@ LanSyncShelfItem _toLanShelfItem(LibrarySyncItem item) => LanSyncShelfItem(
   title: item.title,
   author: item.author,
   coverUrl: item.coverUrl?.toString(),
+  coverOrientation: item.coverOrientation.code,
   sourceName: item.sourceName,
   progress: item.progress == null ? null : _toLanProgress(item.progress!),
 );
@@ -570,6 +572,7 @@ LibrarySyncSnapshot _toLibrarySnapshot(LanSyncManifest manifest) => LibrarySyncS
         title: item.title,
         author: item.author,
         coverUrl: item.coverUrl == null ? null : Uri.tryParse(item.coverUrl!),
+        coverOrientation: CoverOrientation.fromCode(item.coverOrientation, legacyKind: ContentKind.fromCode(item.contentKind)!),
         sourceName: item.sourceName,
         progress: item.progress == null ? null : _toLibraryProgress(item.progress!),
       ),

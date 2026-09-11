@@ -21,19 +21,24 @@ void main() {
     if (await root.exists()) await root.delete(recursive: true);
   });
 
-  Future<LibraryItem> addItem({String remoteId = 'book-1', String title = '测试书', ContentKind kind = ContentKind.novel}) =>
-      library.addLibraryItem(
-        BookshelfAddRequest(
-          title: title,
-          author: '作者',
-          kind: kind,
-          pluginId: 'fixture',
-          pluginVersion: '1.0.0',
-          remoteContentId: remoteId,
-          description: List<String>.filled(300, '文').join(),
-          chapterCount: 20,
-        ),
-      );
+  Future<LibraryItem> addItem({
+    String remoteId = 'book-1',
+    String title = '测试书',
+    ContentKind kind = ContentKind.novel,
+    CoverOrientation coverOrientation = CoverOrientation.portrait,
+  }) => library.addLibraryItem(
+    BookshelfAddRequest(
+      title: title,
+      author: '作者',
+      kind: kind,
+      pluginId: 'fixture',
+      pluginVersion: '1.0.0',
+      remoteContentId: remoteId,
+      coverOrientation: coverOrientation,
+      description: List<String>.filled(300, '文').join(),
+      chapterCount: 20,
+    ),
+  );
 
   List<SourceNovelCatalogChapter> chapters(Iterable<String> ids) => <SourceNovelCatalogChapter>[
     for (final (index, id) in ids.indexed)
@@ -75,6 +80,13 @@ void main() {
     final results = await Future.wait(<Future<LibraryItem>>[addItem(), addItem(title: '并发更新')]);
     expect(results.map((item) => item.id.value).toSet(), hasLength(1));
     expect((await library.listLibrary(const LibraryQuery())).items, hasLength(1));
+  });
+
+  test('shelf projection retains square cover composition', () async {
+    final item = await addItem(remoteId: 'square-cover', coverOrientation: CoverOrientation.square);
+
+    expect(item.coverOrientation, CoverOrientation.square);
+    expect((await library.loadShelfProjection()).single.coverOrientation, CoverOrientation.square);
   });
 
   test('source identity cannot be rebound to a different media kind', () async {

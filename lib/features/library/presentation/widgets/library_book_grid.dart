@@ -54,7 +54,7 @@ class LibraryBookSliverGrid extends StatelessWidget {
         final double tileWidth = (constraints.crossAxisExtent - crossAxisSpacing * (columnCount - 1)) / columnCount;
         final double coverHeight = tileWidth / 0.72;
         final double textScale = MediaQuery.textScalerOf(context).scale(1).clamp(1, 1.6);
-        final double detailsHeight = 58 * textScale;
+        final double detailsHeight = 60 * textScale;
         return SliverGrid.builder(
           key: const Key('library-book-card-grid'),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -78,6 +78,7 @@ class LibraryBookSliverGrid extends StatelessWidget {
                 onAction: onBookAction == null ? null : (LibraryBookListAction action) => onBookAction!(book, action),
                 isPreparing: preparingBookId == book.id,
                 isRefreshing: refreshingBookIds.contains(book.id),
+                coverHeight: coverHeight,
               ),
             );
           },
@@ -98,6 +99,7 @@ class LibraryBookGridItem extends StatelessWidget {
     this.onAction,
     this.isPreparing = false,
     this.isRefreshing = false,
+    required this.coverHeight,
     super.key,
   });
 
@@ -109,6 +111,7 @@ class LibraryBookGridItem extends StatelessWidget {
   final ValueChanged<LibraryBookListAction>? onAction;
   final bool isPreparing;
   final bool isRefreshing;
+  final double coverHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -131,7 +134,9 @@ class LibraryBookGridItem extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Expanded(
+                SizedBox(
+                  width: double.infinity,
+                  height: coverHeight,
                   child: Stack(
                     fit: StackFit.expand,
                     children: <Widget>[

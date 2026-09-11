@@ -60,6 +60,7 @@ final class LibraryHomeViewData {
                 ContentKind.video => '上次观看',
               },
               coverVariant: LibraryCoverVariant.values[currentIndex % LibraryCoverVariant.values.length],
+              coverOrientation: current.coverOrientation,
               coverUrl: current.coverUrl,
               coverBytes: current.coverBytes,
               coverRequest: _coverRequest(current),
@@ -74,6 +75,7 @@ final class LibraryHomeViewData {
           coverBytes: entry.value.coverBytes,
           coverRequest: _coverRequest(entry.value),
           coverVariant: LibraryCoverVariant.values[entry.key % LibraryCoverVariant.values.length],
+          coverOrientation: entry.value.coverOrientation,
           status: LibraryBookStatus.local,
           isCoverBlurred: blurredIds.contains(entry.value.id),
         ),
@@ -99,6 +101,7 @@ final class LibraryHomeViewData {
           coverBytes: item.coverBytes,
           coverRequest: _coverRequest(item),
           coverVariant: LibraryCoverVariant.values[entry.key % LibraryCoverVariant.values.length],
+          coverOrientation: item.coverOrientation,
           status: LibraryBookStatus.local,
         );
       }),
@@ -166,6 +169,7 @@ final class LibraryContinueReadingViewData {
     required this.lastReadLabel,
     required this.coverVariant,
     this.contentKind = ContentKind.novel,
+    this.coverOrientation = CoverOrientation.portrait,
     this.hasDeterminateProgress = true,
     this.author,
     this.description,
@@ -182,6 +186,7 @@ final class LibraryContinueReadingViewData {
 
   final String bookId;
   final ContentKind contentKind;
+  final CoverOrientation coverOrientation;
   final String title;
   final String? author;
   final String? description;
@@ -357,6 +362,7 @@ abstract final class LibraryHomeFixtures {
         subtitle: '第980章 天道酬勤',
         activityLabel: '3小时前',
         coverVariant: LibraryCoverVariant.dawn,
+        coverOrientation: CoverOrientation.square,
         coverAssetPath: 'assets/fixtures/home_covers/heavenly_path.png',
         status: LibraryBookStatus.ongoing,
         hasAttentionIndicator: true,
@@ -371,6 +377,7 @@ abstract final class LibraryHomeFixtures {
         subtitle: '第465章 神明的丝线',
         activityLabel: '昨天更新',
         coverVariant: LibraryCoverVariant.indigo,
+        coverOrientation: CoverOrientation.landscape,
         coverAssetPath: 'assets/fixtures/home_covers/mental_hospital.png',
         status: LibraryBookStatus.completed,
         hasAttentionIndicator: true,

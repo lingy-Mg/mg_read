@@ -62,6 +62,7 @@ final class ContentLibraryBookRefresher implements LibraryBookRefresher {
         pluginVersion: source.pluginVersion,
         remoteContentId: source.remoteContentId,
         coverUrl: summary.coverUrl ?? item.coverUrl,
+        coverOrientation: _libraryCoverOrientation(summary.coverOrientation),
         sourceName: detail.sourceName.isEmpty ? item.sourceName : detail.sourceName,
         sourceUrl: detail.catalogUrl ?? summary.url ?? item.sourceUrl,
         description: summary.description,
@@ -149,3 +150,9 @@ final class ContentLibraryBookRefresher implements LibraryBookRefresher {
     PluginContentStatus.unknown => null,
   };
 }
+
+CoverOrientation _libraryCoverOrientation(PluginCoverOrientation orientation) => switch (orientation) {
+  PluginCoverOrientation.landscape => CoverOrientation.landscape,
+  PluginCoverOrientation.portrait => CoverOrientation.portrait,
+  PluginCoverOrientation.square => CoverOrientation.square,
+};

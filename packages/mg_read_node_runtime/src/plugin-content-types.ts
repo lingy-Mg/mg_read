@@ -32,7 +32,7 @@ export const MAX_MEDIA_HEADERS = 16;
 /** Content kinds shared by package metadata, Plugin API, wire and Flutter. */
 export type PluginContentKind = "audio" | "manga" | "novel" | "video";
 /** Cover composition family is independent from media kind. */
-export type PluginCoverOrientation = "landscape" | "portrait";
+export type PluginCoverOrientation = "landscape" | "portrait" | "square";
 export type PluginMangaPageResourcePolicy = "sessionOnly" | "refreshable" | "durable";
 /** Media is addressed through a Runtime proxy. Refreshable resources are
  * re-resolved with getContent. */

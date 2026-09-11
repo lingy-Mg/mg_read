@@ -960,6 +960,7 @@ PluginCoverOrientation _coverOrientation(String value, String context) =>
     switch (value) {
       'landscape' => PluginCoverOrientation.landscape,
       'portrait' => PluginCoverOrientation.portrait,
+      'square' => PluginCoverOrientation.square,
       _ => _contentInvalid('$context contains an unknown cover orientation.'),
     };
 

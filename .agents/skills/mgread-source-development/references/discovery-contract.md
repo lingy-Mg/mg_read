@@ -5,7 +5,7 @@
 ## 所有权边界
 
 - 来源拥有真实数据、稳定 `id/target/cursor`、组件树和内容语义。
-- `contentKind` 拥有媒介/打开能力语义，`coverOrientation` 拥有横竖封面语义；两者正交，来源必须分别声明。
+- `contentKind` 拥有媒介/打开能力语义，`coverOrientation` 拥有竖版、方形或横版封面语义；两者正交，来源必须分别声明。
 - Runtime 拒绝未知组件、布局、图标、重复 ID、越界深度/数量和非法 nullable 值，并把兼容输入归一化为稳定 wire 结果。
 - Flutter Facade 把 wire 解码成不可变强类型；主应用只消费公开 package 类型。
 - Flutter UI 决定 Material 图标、颜色、间距、列数、断点、滚动和交互。插件不能传 UI 代码或样式。
@@ -42,7 +42,7 @@
 - 来源内容结果类型：各来源自己的内容类型文件；不得复制宿主 Context/WebView 声明
 - 稳定规范：`docs/core.md` 的“插件内容 API”章节
 
-`coverOrientation=portrait|landscape` 只选择两套独立的通用封面组件。横向组件不表示视频，不添加播放图标或
+`coverOrientation=portrait|square|landscape` 选择独立的通用封面构图。横向组件不表示视频，不添加播放图标或
 “视频”标识；视频也可以声明竖向封面。新增 nullable 字段时优先保持旧插件兼容：允许旧输入缺省，在 Runtime
 输出中显式归一化；不要让 Flutter 猜测缺键含义。新增枚举时 Runtime、Facade、宿主映射和受影响参考来源必须同一轮完成。
 

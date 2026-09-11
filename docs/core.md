@@ -97,8 +97,8 @@ plugins/sources/                    真实数据源及其他能力参考实现
   使用 `source_media_resolution_failed`；来源明确返回访问异常页时使用 `source_access_blocked`，并可传入有界的
   `message + annotation`，由 Runtime 原样组合为 App 可见的原文和注释。数据源不得通过此错误接口绕过站点限制。
 - 数据源只返回允许的语义组件、布局和图标名。`contentKind` 表达小说、漫画、音频、视频等媒介能力；
-  `coverOrientation=portrait|landscape` 独立表达真实封面的横竖方向，二者不得互相推断。Flutter 宿主按封面方向
-  选择两套通用组件，并拥有主题、尺寸、断点、可访问性、导航和交互实现；横向组件不等同于视频播放器入口，
+  `coverOrientation=portrait|square|landscape` 独立表达真实封面的竖版、方形或横版构图，二者不得互相推断。Flutter 宿主按封面构图
+  选择通用组件，并拥有主题、尺寸、断点、可访问性、导航和交互实现；横向组件不等同于视频播放器入口，
   不附加播放图标或视频标识。旧 Plugin API v1 输出缺少该键时只在 Runtime 边界执行兼容归一化，新来源必须声明。
 - 热门词必须来自来源；默认进入搜索页不触发搜索，只有用户提交或点击建议才执行。
 - 目录完整、有序且 ID 唯一。小说正文使用 `text`；漫画 `pages`、封面及音视频只登记由数据源校验过的

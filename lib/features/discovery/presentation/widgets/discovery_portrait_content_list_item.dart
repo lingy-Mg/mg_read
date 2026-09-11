@@ -1,11 +1,11 @@
-/// 通用竖向封面列表项。
+/// 通用竖向与方形封面列表项。
 ///
 /// 职责：
 /// - 复用统一的纵向封面列表骨架，并按媒介类型解释来源已有的元数据。
 /// - 保持发现页与搜索页的间距、标签、书架状态和点击语义一致。
 ///
 /// 注意：
-/// - 本组件由 `coverOrientation=portrait` 选择；视频也可以使用竖向封面。
+/// - 本组件由 `coverOrientation=portrait|square` 选择；视频也可以使用竖向封面。
 /// - 横向封面由独立的通用横向列表组件维护。
 /// - 组件只消费 Runtime 已校验的数据，不执行封面以外的 IO。
 library;
@@ -175,7 +175,9 @@ class _PortraitContentListItem extends StatelessWidget {
           AppSpacing.discoveryListCoverMaxWidth,
           math.max(AppSpacing.discoveryListCoverMinWidth, constraints.maxWidth * 0.16),
         );
-        final coverHeight = coverWidth * AppSpacing.discoveryListCoverAspectRatio;
+        final coverHeight = content.coverOrientation == PluginCoverOrientation.square
+            ? coverWidth
+            : coverWidth * AppSpacing.discoveryListCoverAspectRatio;
         final titleStyle = theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600);
         final secondaryTextStyle = theme.textTheme.bodySmall;
         final metadataStyle = theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText);
@@ -208,6 +210,7 @@ class _PortraitContentListItem extends StatelessWidget {
                         remoteContentId: content.id,
                         coverUrl: content.coverUrl,
                         variant: variant,
+                        presentation: discoveryCoverPresentation(content.coverOrientation),
                         width: coverWidth,
                         height: coverHeight,
                       ),

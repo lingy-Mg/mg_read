@@ -155,6 +155,11 @@ final class ContentLibrarySourcePrefetcher {
             pluginVersion: source.pluginVersion,
             remoteContentId: source.remoteContentId,
             coverUrl: detail.summary.coverUrl ?? item.coverUrl,
+            coverOrientation: switch (detail.summary.coverOrientation) {
+              PluginCoverOrientation.landscape => CoverOrientation.landscape,
+              PluginCoverOrientation.portrait => CoverOrientation.portrait,
+              PluginCoverOrientation.square => CoverOrientation.square,
+            },
             sourceName: detail.sourceName.isEmpty ? item.sourceName : detail.sourceName,
             sourceUrl: detail.catalogUrl ?? detail.summary.url ?? item.sourceUrl,
             description: detail.summary.description,
