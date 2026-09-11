@@ -1,18 +1,21 @@
 /// 首页书籍卡片网格。
 ///
 /// 职责：
-/// - 以响应式 Sliver 网格展示首页书籍封面和真实摘要。
+/// - 以响应式 Sliver 瀑布流展示等宽、原图比例的封面和真实摘要。
 /// - 将点击、长按、加载和书籍操作转发给首页壳。
 ///
 /// 注意：
 /// - 不读取书架、封面缓存或持久化；封面继续使用共享请求组件。
 /// - 卡片模式必须保留列表模式已有的书籍操作，不建立第二套业务回调。
+/// - 图片解码前使用来源方向作为占位比例；解码后高度跟随原图像素比例。
 ///
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_list_action.dart';
@@ -20,7 +23,7 @@ import 'package:mg_read/features/library/presentation/widgets/library_book_remov
 
 typedef LibraryBookGridActionSelected = void Function(LibraryBookListItemViewData book, LibraryBookListAction action);
 
-/// A lazy, responsive card presentation for the home bookshelf.
+/// A lazy, responsive masonry presentation for the home bookshelf.
 class LibraryBookSliverGrid extends StatelessWidget {
   LibraryBookSliverGrid({
     required Iterable<LibraryBookListItemViewData> books,
@@ -50,22 +53,17 @@ class LibraryBookSliverGrid extends StatelessWidget {
     return SliverLayoutBuilder(
       builder: (BuildContext context, constraints) {
         const double crossAxisSpacing = AppSpacing.regular;
-        final int columnCount = (constraints.crossAxisExtent / 112).floor().clamp(3, 7);
+        final int columnCount = _columnCountForWidth(constraints.crossAxisExtent);
         final double tileWidth = (constraints.crossAxisExtent - crossAxisSpacing * (columnCount - 1)) / columnCount;
-        final double coverHeight = tileWidth / 0.72;
-        final double textScale = MediaQuery.textScalerOf(context).scale(1).clamp(1, 1.6);
-        final double detailsHeight = 60 * textScale;
-        return SliverGrid.builder(
+        return SliverMasonryGrid.count(
           key: const Key('library-book-card-grid'),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columnCount,
-            crossAxisSpacing: crossAxisSpacing,
-            mainAxisSpacing: AppSpacing.comfortable,
-            mainAxisExtent: coverHeight + detailsHeight,
-          ),
-          itemCount: books.length,
+          crossAxisCount: columnCount,
+          crossAxisSpacing: crossAxisSpacing,
+          mainAxisSpacing: AppSpacing.comfortable,
+          childCount: books.length,
           itemBuilder: (BuildContext context, int index) {
             final LibraryBookListItemViewData book = books[index];
+            final coverHeight = tileWidth / _coverAspectRatio(book.coverOrientation);
             return LibraryBookRemovalTransition(
               key: ValueKey<String>('library-grid-removal-${book.id}'),
               isRemoving: removingBookIds.contains(book.id),
@@ -78,6 +76,7 @@ class LibraryBookSliverGrid extends StatelessWidget {
                 onAction: onBookAction == null ? null : (LibraryBookListAction action) => onBookAction!(book, action),
                 isPreparing: preparingBookId == book.id,
                 isRefreshing: refreshingBookIds.contains(book.id),
+                coverWidth: tileWidth,
                 coverHeight: coverHeight,
               ),
             );
@@ -99,6 +98,7 @@ class LibraryBookGridItem extends StatelessWidget {
     this.onAction,
     this.isPreparing = false,
     this.isRefreshing = false,
+    required this.coverWidth,
     required this.coverHeight,
     super.key,
   });
@@ -111,6 +111,7 @@ class LibraryBookGridItem extends StatelessWidget {
   final ValueChanged<LibraryBookListAction>? onAction;
   final bool isPreparing;
   final bool isRefreshing;
+  final double coverWidth;
   final double coverHeight;
 
   @override
@@ -134,65 +135,59 @@ class LibraryBookGridItem extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                SizedBox(
-                  width: double.infinity,
-                  height: coverHeight,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: <Widget>[
-                      LayoutBuilder(
-                        builder: (BuildContext context, BoxConstraints constraints) {
-                          return DecoratedBox(
-                            decoration: BoxDecoration(
-                              borderRadius: AppRadii.bookCover,
-                              boxShadow: <BoxShadow>[
-                                BoxShadow(color: tokens.shadow.withValues(alpha: 0.12), blurRadius: 10, offset: const Offset(0, 4)),
-                              ],
-                            ),
-                            child: LibraryBookCover(
-                              title: data.title,
-                              variant: data.coverVariant,
-                              coverBytes: data.coverBytes,
-                              coverRequest: data.coverRequest,
-                              assetPath: data.coverAssetPath,
-                              isBlurred: data.isCoverBlurred,
-                              width: constraints.maxWidth,
-                              height: constraints.maxHeight,
-                              isRefreshing: isRefreshing,
-                            ),
-                          );
-                        },
+                Stack(
+                  fit: StackFit.loose,
+                  children: <Widget>[
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: AppRadii.bookCover,
+                        boxShadow: <BoxShadow>[
+                          BoxShadow(color: tokens.shadow.withValues(alpha: 0.12), blurRadius: 10, offset: const Offset(0, 4)),
+                        ],
                       ),
-                      if (data.hasAttentionIndicator)
-                        Positioned(
-                          left: AppSpacing.compact,
-                          top: AppSpacing.compact,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: tokens.notification,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: tokens.surface, width: 1.5),
-                            ),
-                            child: const SizedBox.square(dimension: AppSpacing.unreadDotSize + 2),
+                      child: LibraryBookCover(
+                        title: data.title,
+                        variant: data.coverVariant,
+                        coverBytes: data.coverBytes,
+                        coverRequest: data.coverRequest,
+                        assetPath: data.coverAssetPath,
+                        fit: BoxFit.cover,
+                        useIntrinsicAspectRatio: true,
+                        isBlurred: data.isCoverBlurred,
+                        width: coverWidth,
+                        height: coverHeight,
+                        isRefreshing: isRefreshing,
+                      ),
+                    ),
+                    if (data.hasAttentionIndicator)
+                      Positioned(
+                        left: AppSpacing.compact,
+                        top: AppSpacing.compact,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: tokens.notification,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: tokens.surface, width: 1.5),
+                          ),
+                          child: const SizedBox.square(dimension: AppSpacing.unreadDotSize + 2),
+                        ),
+                      ),
+                    if (!isPreparing && showMenu)
+                      Positioned(
+                        right: AppSpacing.unit,
+                        top: AppSpacing.unit,
+                        child: _GridBookMenu(book: data, actions: actions, onAction: onAction, onMore: onMore),
+                      ),
+                    if (isPreparing)
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.22), borderRadius: AppRadii.bookCover),
+                          child: const Center(
+                            child: SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
                           ),
                         ),
-                      if (!isPreparing && showMenu)
-                        Positioned(
-                          right: AppSpacing.unit,
-                          top: AppSpacing.unit,
-                          child: _GridBookMenu(book: data, actions: actions, onAction: onAction, onMore: onMore),
-                        ),
-                      if (isPreparing)
-                        Positioned.fill(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.22), borderRadius: AppRadii.bookCover),
-                            child: const Center(
-                              child: SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: AppSpacing.compact),
                 Text(
@@ -223,6 +218,21 @@ class LibraryBookGridItem extends StatelessWidget {
     return subtitle == null || subtitle.isEmpty ? data.title : '${data.title}，$subtitle';
   }
 }
+
+double _coverAspectRatio(CoverOrientation orientation) => switch (orientation) {
+  CoverOrientation.portrait => 0.72,
+  CoverOrientation.square => 1,
+  CoverOrientation.landscape => 16 / 9,
+};
+
+int _columnCountForWidth(double width) => switch (width) {
+  < 600 => 2,
+  < 840 => 3,
+  < 1120 => 4,
+  < 1440 => 5,
+  < 1760 => 6,
+  _ => 7,
+};
 
 class _GridBookMenu extends StatefulWidget {
   const _GridBookMenu({required this.book, required this.actions, required this.onAction, required this.onMore});

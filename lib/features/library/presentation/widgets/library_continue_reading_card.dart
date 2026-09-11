@@ -116,6 +116,8 @@ class LibraryContinueReadingCard extends StatelessWidget {
                     isBlurred: data.isCoverBlurred,
                     width: coverWidth,
                     height: coverHeight,
+                    fit: BoxFit.contain,
+                    showLetterboxBackground: false,
                   ),
                 ),
               ),

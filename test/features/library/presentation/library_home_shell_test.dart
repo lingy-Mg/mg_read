@@ -67,7 +67,10 @@ void main() {
     expect(find.byKey(const Key('library-home-top-bottom-fade')), findsOneWidget);
     expect(find.byKey(const Key('library-home-reading-readability-scrim')), findsOneWidget);
     expect(tester.widget<ClipRect>(find.byKey(const Key('library-home-top-backdrop'))), isA<ClipRect>());
-    expect(tester.widget<LibraryBookCover>(find.byKey(const Key('library-home-top-backdrop-cover'))).alignment, Alignment.topCenter);
+    final LibraryBookCover backdropCover = tester.widget<LibraryBookCover>(find.byKey(const Key('library-home-top-backdrop-cover')));
+    expect(backdropCover.alignment, Alignment.topCenter);
+    expect(backdropCover.fit, BoxFit.cover);
+    expect(backdropCover.showLetterboxBackground, isFalse);
     expect(backdrop.left, 0);
     expect(backdrop.right, 390);
     expect(backdrop.contains(topBar.topLeft), isTrue);

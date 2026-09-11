@@ -31,6 +31,9 @@ class LibraryBookCover extends ConsumerWidget {
     this.assetPath,
     this.coverBytes,
     this.coverRequest,
+    this.fit = BoxFit.contain,
+    this.useIntrinsicAspectRatio = false,
+    this.showLetterboxBackground = true,
     this.isRefreshing = false,
     this.isBlurred = false,
     this.alignment = Alignment.center,
@@ -44,6 +47,9 @@ class LibraryBookCover extends ConsumerWidget {
   final String? assetPath;
   final List<int>? coverBytes;
   final BookCoverRequest? coverRequest;
+  final BoxFit fit;
+  final bool useIntrinsicAspectRatio;
+  final bool showLetterboxBackground;
 
   /// Shows a transient overlay while the source refreshes this cover.
   final bool isRefreshing;
@@ -65,6 +71,16 @@ class LibraryBookCover extends ConsumerWidget {
     };
     final bytes = suppliedBytes ?? cachedBytes ?? loadedBytes;
     final isLoading = (bytes?.isNotEmpty ?? false) == false && (isRefreshing || asyncBytes?.isLoading == true);
+    final letterboxColor = Color.alphaBlend(start.withValues(alpha: 0.1), tokens.mutedSurface);
+    final hasImage = (bytes?.isNotEmpty ?? false) || assetPath != null;
+    final transparentContainedImage = !useIntrinsicAspectRatio && !showLetterboxBackground && fit == BoxFit.contain;
+    final imageWidth = transparentContainedImage ? null : width;
+    final imageHeight = useIntrinsicAspectRatio || transparentContainedImage ? null : height;
+    final imageFit = transparentContainedImage
+        ? BoxFit.fill
+        : useIntrinsicAspectRatio
+        ? BoxFit.fitWidth
+        : fit;
 
     return Semantics(
       image: true,
@@ -76,33 +92,39 @@ class LibraryBookCover extends ConsumerWidget {
       child: ExcludeSemantics(
         child: SizedBox(
           width: width,
-          height: height,
+          height: useIntrinsicAspectRatio && hasImage ? null : height,
           child: Stack(
-            fit: StackFit.expand,
+            fit: useIntrinsicAspectRatio && hasImage ? StackFit.loose : StackFit.expand,
             children: <Widget>[
               bytes != null && bytes.isNotEmpty
                   ? _imageFrame(
                       Image.memory(
                         normalizeBookCoverBytes(bytes),
-                        width: width,
-                        height: height,
-                        fit: BoxFit.cover,
+                        width: imageWidth,
+                        height: imageHeight,
+                        fit: imageFit,
                         alignment: alignment,
                         gaplessPlayback: true,
-                        errorBuilder: (context, error, stackTrace) => _placeholder(tokens, start, end, isLoading: false),
+                        excludeFromSemantics: true,
+                        frameBuilder: transparentContainedImage ? _buildTransparentContainedFrame : null,
+                        errorBuilder: (context, error, stackTrace) => _sizedPlaceholder(tokens, start, end),
                       ),
+                      backgroundColor: useIntrinsicAspectRatio || !showLetterboxBackground ? null : letterboxColor,
                     )
                   : assetPath == null
                   ? _placeholder(tokens, start, end, isLoading: isLoading)
                   : _imageFrame(
                       Image.asset(
                         assetPath!,
-                        width: width,
-                        height: height,
-                        fit: BoxFit.cover,
+                        width: imageWidth,
+                        height: imageHeight,
+                        fit: imageFit,
                         alignment: alignment,
-                        errorBuilder: (context, error, stackTrace) => _placeholder(tokens, start, end, isLoading: false),
+                        excludeFromSemantics: true,
+                        frameBuilder: transparentContainedImage ? _buildTransparentContainedFrame : null,
+                        errorBuilder: (context, error, stackTrace) => _sizedPlaceholder(tokens, start, end),
                       ),
+                      backgroundColor: useIntrinsicAspectRatio || !showLetterboxBackground ? null : letterboxColor,
                     ),
               if (isRefreshing && ((bytes?.isNotEmpty ?? false) || assetPath != null)) _refreshOverlay(),
             ],
@@ -112,9 +134,10 @@ class LibraryBookCover extends ConsumerWidget {
     );
   }
 
-  Widget _imageFrame(Widget image) {
+  Widget _imageFrame(Widget image, {Color? backgroundColor}) {
+    final content = backgroundColor == null ? image : ColoredBox(color: backgroundColor, child: image);
     if (!isBlurred) {
-      return ClipRRect(borderRadius: AppRadii.bookCover, child: image);
+      return ClipRRect(borderRadius: AppRadii.bookCover, child: content);
     }
 
     // Let the filtered pixels bleed past the final clip. Without this small
@@ -124,10 +147,25 @@ class LibraryBookCover extends ConsumerWidget {
       borderRadius: AppRadii.bookCover,
       child: ImageFiltered(
         imageFilter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Transform.scale(scale: 1.18, child: image),
+        child: Transform.scale(scale: 1.18, child: content),
       ),
     );
   }
+
+  Widget _buildTransparentContainedFrame(BuildContext context, Widget child, int? frame, bool wasSynchronouslyLoaded) {
+    if (child is! RawImage || child.image == null) return child;
+    final image = child.image!;
+    return Align(
+      alignment: alignment,
+      child: AspectRatio(
+        aspectRatio: image.width / image.height,
+        child: ClipRRect(key: const Key('book-cover-image-clip'), borderRadius: AppRadii.bookCover, child: child),
+      ),
+    );
+  }
+
+  Widget _sizedPlaceholder(AppThemeTokens tokens, Color start, Color end) =>
+      SizedBox(width: width, height: height, child: _placeholder(tokens, start, end, isLoading: false));
 
   Widget _placeholder(AppThemeTokens tokens, Color start, Color end, {required bool isLoading}) {
     final foreground = tokens.featureSurface.withValues(alpha: 0.96);

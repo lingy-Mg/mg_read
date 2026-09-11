@@ -72,6 +72,8 @@ class LibraryHomeTopVisual extends StatelessWidget {
                                     alignment: Alignment.topCenter,
                                     width: constraints.maxWidth,
                                     height: constraints.maxHeight,
+                                    fit: BoxFit.cover,
+                                    showLetterboxBackground: false,
                                   ),
                                 ),
                               ),

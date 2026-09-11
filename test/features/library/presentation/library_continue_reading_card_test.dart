@@ -22,6 +22,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+    await tester.pump();
 
     final Rect surface = tester.getRect(find.byKey(const Key('continue-reading-surface')));
     final Rect action = tester.getRect(find.byKey(const Key('continue-reading-cta')));
@@ -37,6 +39,10 @@ void main() {
     });
 
     expect(find.byType(LibraryBookCover), findsNWidgets(2));
+    final LibraryBookCover foregroundCover = tester.widget<LibraryBookCover>(flatCover);
+    expect(foregroundCover.fit, BoxFit.contain);
+    expect(foregroundCover.showLetterboxBackground, isFalse);
+    expect(find.descendant(of: flatCover, matching: find.byKey(const Key('book-cover-image-clip'))), findsOneWidget);
     expect(localCoverAncestors.whereType<Transform>(), isEmpty);
     expect(localCoverAncestors.whereType<RotatedBox>(), isEmpty);
     expect(surface.contains(cover.topLeft), isTrue);
