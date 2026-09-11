@@ -108,8 +108,8 @@ class _AudioPlayerArtworkBackdropState extends State<AudioPlayerArtworkBackdrop>
         : const Duration(milliseconds: 620);
     final artwork = widget.artworkBuilder?.call(context, widget.track);
     final glassTint = widget.playing
-        ? const Color(0x2EFFF9F1)
-        : const Color(0x3DFFF9F1);
+        ? const Color(0x2EB8D7E8)
+        : const Color(0x3DB8D7E8);
     return IgnorePointer(
       child: Stack(
         key: const Key('audio-artwork-backdrop'),
@@ -180,9 +180,9 @@ class _AudioPlayerArtworkBackdropState extends State<AudioPlayerArtworkBackdrop>
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: <Color>[
-                  Color(0x10FFFAF3),
-                  Color(0x18FFF8EE),
-                  Color(0x3CF7EDDF),
+                  Color(0x24D5E8F2),
+                  Color(0x2EB7D3E1),
+                  Color(0x50A9C3D4),
                 ],
                 stops: <double>[0, 0.48, 1],
               ),
@@ -195,7 +195,7 @@ class _AudioPlayerArtworkBackdropState extends State<AudioPlayerArtworkBackdrop>
                 radius: 0.78,
                 colors: <Color>[
                   Colors.white.withValues(alpha: 0.08),
-                  AudioPlayerColors.accent.withValues(alpha: 0.035),
+                  Color(0xFF7395AF).withValues(alpha: 0.05),
                   Colors.transparent,
                 ],
               ),
