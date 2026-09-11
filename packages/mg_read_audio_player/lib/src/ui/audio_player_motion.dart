@@ -227,7 +227,7 @@ class _AudioAnimatedPlayPauseButtonState
                     shape: const CircleBorder(),
                     padding: EdgeInsets.zero,
                     backgroundColor: AudioPlayerColors.accent,
-                    foregroundColor: Colors.white,
+                    foregroundColor: AudioPlayerColors.backgroundBottom,
                     shadowColor: AudioPlayerColors.shadow,
                     elevation: 8,
                   ),
@@ -242,7 +242,7 @@ class _AudioAnimatedPlayPauseButtonState
                             dimension: 26,
                             child: CircularProgressIndicator(
                               strokeWidth: 2.6,
-                              color: Colors.white,
+                              color: AudioPlayerColors.backgroundBottom,
                             ),
                           )
                         : Icon(

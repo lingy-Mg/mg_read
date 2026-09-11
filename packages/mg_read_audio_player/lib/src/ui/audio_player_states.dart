@@ -9,6 +9,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'audio_player_artwork_stage.dart';
+import 'audio_player_glass.dart';
 import 'audio_player_theme.dart';
 
 final class AudioLoadingView extends StatelessWidget {
@@ -40,28 +41,26 @@ final class AudioLoadingView extends StatelessWidget {
                 const SizedBox(height: 12),
                 const _SkeletonBar(width: 132, height: 13),
                 const Spacer(),
-                Container(
+                SizedBox(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  decoration: BoxDecoration(
-                    color: AudioPlayerColors.surface.withValues(alpha: 0.88),
-                    borderRadius: BorderRadius.circular(
-                      AudioPlayerMetrics.cardRadius,
-                    ),
-                  ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: <Widget>[
-                      SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.2,
-                          color: AudioPlayerColors.accent,
+                  child: AudioGlassPanel(
+                    key: const Key('audio-loading-glass'),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    tone: AudioGlassTone.strong,
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: <Widget>[
+                        SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            color: AudioPlayerColors.accent,
+                          ),
                         ),
-                      ),
-                      SizedBox(width: 11),
-                      Text('正在准备音频…'),
-                    ],
+                        SizedBox(width: 11),
+                        Text('正在准备音频…'),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -108,19 +107,21 @@ final class AudioErrorView extends StatelessWidget {
               children: <Widget>[
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: IconButton(
-                    key: const Key('audio-back'),
-                    tooltip: '返回',
-                    onPressed: onBack,
-                    style: IconButton.styleFrom(
-                      fixedSize: const Size.square(44),
-                      backgroundColor: AudioPlayerColors.surface,
-                      foregroundColor: AudioPlayerColors.ink,
-                      side: const BorderSide(color: AudioPlayerColors.divider),
-                    ),
-                    icon: const Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      size: 20,
+                  child: AudioGlassPanel(
+                    borderRadius: BorderRadius.circular(99),
+                    shadow: false,
+                    child: IconButton(
+                      key: const Key('audio-back'),
+                      tooltip: '返回',
+                      onPressed: onBack,
+                      style: IconButton.styleFrom(
+                        fixedSize: const Size.square(44),
+                        foregroundColor: AudioPlayerColors.ink,
+                      ),
+                      icon: const Icon(
+                        Icons.arrow_back_ios_new_rounded,
+                        size: 20,
+                      ),
                     ),
                   ),
                 ),
@@ -129,21 +130,10 @@ final class AudioErrorView extends StatelessWidget {
                     child: Center(
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 420),
-                        child: Container(
+                        child: AudioGlassPanel(
+                          key: const Key('audio-error-glass'),
                           padding: const EdgeInsets.fromLTRB(24, 30, 24, 24),
-                          decoration: BoxDecoration(
-                            color: AudioPlayerColors.surface,
-                            borderRadius: BorderRadius.circular(
-                              AudioPlayerMetrics.cardRadius,
-                            ),
-                            boxShadow: const <BoxShadow>[
-                              BoxShadow(
-                                color: AudioPlayerColors.shadow,
-                                blurRadius: 30,
-                                offset: Offset(0, 14),
-                              ),
-                            ],
-                          ),
+                          tone: AudioGlassTone.strong,
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: <Widget>[
@@ -182,58 +172,63 @@ final class AudioErrorView extends StatelessWidget {
                                   diagnosticCode != null ||
                                   technicalDetail != null) ...[
                                 const SizedBox(height: 18),
-                                Container(
+                                SizedBox(
                                   width: double.infinity,
-                                  padding: const EdgeInsets.all(13),
-                                  decoration: BoxDecoration(
-                                    color: AudioPlayerColors.control,
+                                  child: AudioGlassPanel(
+                                    padding: const EdgeInsets.all(13),
                                     borderRadius: BorderRadius.circular(15),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: <Widget>[
-                                      if (location != null)
-                                        Text(
-                                          '发生位置：$location',
-                                          style: theme.textTheme.bodySmall
-                                              ?.copyWith(
-                                                color: AudioPlayerColors.muted,
-                                              ),
-                                        ),
-                                      if (location != null &&
-                                          diagnosticCode != null)
-                                        const SizedBox(height: 5),
-                                      if (diagnosticCode != null)
-                                        Text(
-                                          '诊断编号：$diagnosticCode',
-                                          style: theme.textTheme.bodySmall
-                                              ?.copyWith(
-                                                color: AudioPlayerColors.muted,
-                                              ),
-                                        ),
-                                      if (technicalDetail != null) ...<Widget>[
-                                        if (location != null ||
+                                    shadow: false,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: <Widget>[
+                                        if (location != null)
+                                          Text(
+                                            '发生位置：$location',
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                                  color:
+                                                      AudioPlayerColors.muted,
+                                                ),
+                                          ),
+                                        if (location != null &&
                                             diagnosticCode != null)
                                           const SizedBox(height: 5),
-                                        Text(
-                                          '技术原因：',
-                                          style: theme.textTheme.bodySmall
-                                              ?.copyWith(
-                                                color: AudioPlayerColors.muted,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                        ),
-                                        const SizedBox(height: 3),
-                                        SelectableText(
-                                          technicalDetail!,
-                                          style: theme.textTheme.bodySmall
-                                              ?.copyWith(
-                                                color: AudioPlayerColors.muted,
-                                              ),
-                                        ),
+                                        if (diagnosticCode != null)
+                                          Text(
+                                            '诊断编号：$diagnosticCode',
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                                  color:
+                                                      AudioPlayerColors.muted,
+                                                ),
+                                          ),
+                                        if (technicalDetail !=
+                                            null) ...<Widget>[
+                                          if (location != null ||
+                                              diagnosticCode != null)
+                                            const SizedBox(height: 5),
+                                          Text(
+                                            '技术原因：',
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                                  color:
+                                                      AudioPlayerColors.muted,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                          ),
+                                          const SizedBox(height: 3),
+                                          SelectableText(
+                                            technicalDetail!,
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                                  color:
+                                                      AudioPlayerColors.muted,
+                                                ),
+                                          ),
+                                        ],
                                       ],
-                                    ],
+                                    ),
                                   ),
                                 ),
                               ],
@@ -246,7 +241,8 @@ final class AudioErrorView extends StatelessWidget {
                                   style: FilledButton.styleFrom(
                                     minimumSize: const Size.fromHeight(50),
                                     backgroundColor: AudioPlayerColors.accent,
-                                    foregroundColor: Colors.white,
+                                    foregroundColor:
+                                        AudioPlayerColors.backgroundBottom,
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(17),
                                     ),

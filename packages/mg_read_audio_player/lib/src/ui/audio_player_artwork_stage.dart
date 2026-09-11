@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 
 import '../api/audio_artwork.dart';
 import '../api/audio_models.dart';
+import 'audio_player_glass.dart';
 import 'audio_player_theme.dart';
 
 final class AudioPlayerAmbientBackground extends StatelessWidget {
@@ -24,20 +25,59 @@ final class AudioPlayerAmbientBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: <Color>[
-            AudioPlayerColors.backgroundTop,
-            AudioPlayerColors.backgroundBottom,
-          ],
-          stops: <double>[0, 0.78],
+    return const Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: <Color>[
+                AudioPlayerColors.backgroundTop,
+                AudioPlayerColors.backgroundBottom,
+              ],
+              stops: <double>[0, 0.78],
+            ),
+          ),
         ),
-      ),
+        Positioned(
+          top: -130,
+          right: -115,
+          child: _AmbientGlow(
+            size: 360,
+            colors: <Color>[Color(0x8A39A8EA), Color(0x0039A8EA)],
+          ),
+        ),
+        Positioned(
+          left: -170,
+          bottom: 40,
+          child: _AmbientGlow(
+            size: 390,
+            colors: <Color>[Color(0x66347DB6), Color(0x00347DB6)],
+          ),
+        ),
+      ],
     );
   }
+}
+
+final class _AmbientGlow extends StatelessWidget {
+  const _AmbientGlow({required this.size, required this.colors});
+
+  final double size;
+  final List<Color> colors;
+
+  @override
+  Widget build(BuildContext context) => SizedBox.square(
+    dimension: size,
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(colors: colors),
+      ),
+    ),
+  );
 }
 
 final class AudioPlayerArtworkBackdrop extends StatefulWidget {
@@ -108,8 +148,8 @@ class _AudioPlayerArtworkBackdropState extends State<AudioPlayerArtworkBackdrop>
         : const Duration(milliseconds: 620);
     final artwork = widget.artworkBuilder?.call(context, widget.track);
     final glassTint = widget.playing
-        ? const Color(0x2EB8D7E8)
-        : const Color(0x3DB8D7E8);
+        ? const Color(0x83051120)
+        : const Color(0xA1081526);
     return IgnorePointer(
       child: Stack(
         key: const Key('audio-artwork-backdrop'),
@@ -162,8 +202,8 @@ class _AudioPlayerArtworkBackdropState extends State<AudioPlayerArtworkBackdrop>
             child: BackdropFilter(
               key: const Key('audio-artwork-backdrop-glass'),
               filter: ImageFilter.blur(
-                sigmaX: 18,
-                sigmaY: 18,
+                sigmaX: 50,
+                sigmaY: 50,
                 tileMode: TileMode.clamp,
               ),
               child: AnimatedContainer(
@@ -180,9 +220,9 @@ class _AudioPlayerArtworkBackdropState extends State<AudioPlayerArtworkBackdrop>
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: <Color>[
-                  Color(0x24D5E8F2),
-                  Color(0x2EB7D3E1),
-                  Color(0x50A9C3D4),
+                  Color(0x5C2C6F9A),
+                  Color(0x8F102D49),
+                  Color(0xD6020914),
                 ],
                 stops: <double>[0, 0.48, 1],
               ),
@@ -194,17 +234,68 @@ class _AudioPlayerArtworkBackdropState extends State<AudioPlayerArtworkBackdrop>
                 center: const Alignment(0, -0.32),
                 radius: 0.78,
                 colors: <Color>[
-                  Colors.white.withValues(alpha: 0.08),
-                  Color(0xFF7395AF).withValues(alpha: 0.05),
+                  AudioPlayerColors.accent.withValues(alpha: 0.16),
+                  Color(0xFF2B83BD).withValues(alpha: 0.08),
                   Colors.transparent,
                 ],
               ),
+            ),
+          ),
+          const Positioned(
+            top: 72,
+            left: -150,
+            child: _BackdropGlow(
+              width: 320,
+              height: 430,
+              colors: <Color>[Color(0x7037B5F2), Color(0x0037B5F2)],
+            ),
+          ),
+          const Positioned(
+            top: 315,
+            right: -190,
+            child: _BackdropGlow(
+              width: 390,
+              height: 470,
+              colors: <Color>[Color(0x66306EA8), Color(0x00306EA8)],
+            ),
+          ),
+          const Positioned(
+            left: 35,
+            bottom: -180,
+            child: _BackdropGlow(
+              width: 330,
+              height: 330,
+              colors: <Color>[Color(0x55398DCC), Color(0x00398DCC)],
             ),
           ),
         ],
       ),
     );
   }
+}
+
+final class _BackdropGlow extends StatelessWidget {
+  const _BackdropGlow({
+    required this.width,
+    required this.height,
+    required this.colors,
+  });
+
+  final double width;
+  final double height;
+  final List<Color> colors;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: width,
+    height: height,
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(colors: colors),
+      ),
+    ),
+  );
 }
 
 final class AudioPlayerCover extends StatefulWidget {
@@ -300,80 +391,73 @@ class _AudioPlayerCoverState extends State<AudioPlayerCover>
             ? Duration.zero
             : const Duration(milliseconds: 420),
         curve: Curves.easeOutCubic,
-        child: Container(
+        child: SizedBox(
           width: widget.size,
           height: widget.size,
-          padding: const EdgeInsets.all(2),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.72),
+          child: AudioGlassPanel(
+            key: const Key('audio-cover-glass'),
+            padding: const EdgeInsets.all(3),
             borderRadius: BorderRadius.circular(32),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.76),
-              width: 0.8,
-            ),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color: _atmosphereActive
-                    ? AudioPlayerColors.shadow.withValues(alpha: 0.24)
-                    : AudioPlayerColors.shadow,
-                blurRadius: _atmosphereActive ? 34 : 30,
-                offset: const Offset(0, 15),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(29.5),
-            child: AnimatedSwitcher(
-              key: Key(
-                _switchDirection > 0
-                    ? 'audio-cover-switch-forward'
-                    : 'audio-cover-switch-backward',
-              ),
-              duration: switchDuration,
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              transitionBuilder: (child, animation) {
-                final incoming = child.key == ValueKey<String>(widget.track.id);
-                final direction = incoming
-                    ? _switchDirection.toDouble()
-                    : -_switchDirection.toDouble();
-                final curved = CurvedAnimation(
-                  parent: animation,
-                  curve: Curves.easeOutCubic,
-                );
-                return FadeTransition(
-                  opacity: curved,
-                  child: SlideTransition(
-                    position: Tween<Offset>(
-                      begin: Offset(direction * 0.12, 0),
-                      end: Offset.zero,
-                    ).animate(curved),
-                    child: ScaleTransition(
-                      scale: Tween<double>(begin: 0.97, end: 1).animate(curved),
-                      child: child,
+            tone: AudioGlassTone.strong,
+            blur: 14,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(29),
+              child: AnimatedSwitcher(
+                key: Key(
+                  _switchDirection > 0
+                      ? 'audio-cover-switch-forward'
+                      : 'audio-cover-switch-backward',
+                ),
+                duration: switchDuration,
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) {
+                  final incoming =
+                      child.key == ValueKey<String>(widget.track.id);
+                  final direction = incoming
+                      ? _switchDirection.toDouble()
+                      : -_switchDirection.toDouble();
+                  final curved = CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                  );
+                  return FadeTransition(
+                    opacity: curved,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: Offset(direction * 0.12, 0),
+                        end: Offset.zero,
+                      ).animate(curved),
+                      child: ScaleTransition(
+                        scale: Tween<double>(
+                          begin: 0.97,
+                          end: 1,
+                        ).animate(curved),
+                        child: child,
+                      ),
                     ),
-                  ),
-                );
-              },
-              child: Stack(
-                key: ValueKey<String>(widget.track.id),
-                fit: StackFit.expand,
-                children: <Widget>[
-                  widget.artworkBuilder?.call(context, widget.track) ??
-                      const AudioPlayerCoverPlaceholder(),
-                  IgnorePointer(
-                    child: AnimatedBuilder(
-                      animation: _atmosphereController,
-                      builder: (context, child) => CustomPaint(
-                        key: const Key('audio-cover-atmosphere'),
-                        painter: _AudioCoverAtmospherePainter(
-                          phase: _atmosphereController.value,
-                          active: _atmosphereActive,
+                  );
+                },
+                child: Stack(
+                  key: ValueKey<String>(widget.track.id),
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    widget.artworkBuilder?.call(context, widget.track) ??
+                        const AudioPlayerCoverPlaceholder(),
+                    IgnorePointer(
+                      child: AnimatedBuilder(
+                        animation: _atmosphereController,
+                        builder: (context, child) => CustomPaint(
+                          key: const Key('audio-cover-atmosphere'),
+                          painter: _AudioCoverAtmospherePainter(
+                            phase: _atmosphereController.value,
+                            active: _atmosphereActive,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -418,7 +502,7 @@ final class _AudioCoverAtmospherePainter extends CustomPainter {
         ..shader = LinearGradient(
           colors: <Color>[
             Colors.transparent,
-            Colors.white.withValues(alpha: opacity),
+            AudioPlayerColors.accentPressed.withValues(alpha: opacity),
             Colors.transparent,
           ],
         ).createShader(Offset.zero & size),
@@ -486,26 +570,40 @@ final class AudioPlayerCoverPlaceholder extends StatelessWidget {
               ),
             ),
           ),
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                const Icon(
-                  Icons.headphones_rounded,
-                  size: 64,
-                  color: Color(0xFFFFF7EB),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.biggest.shortestSide < 150;
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Icon(
+                      Icons.headphones_rounded,
+                      size: compact ? 40 : 64,
+                      color: AudioPlayerColors.ink,
+                    ),
+                    SizedBox(height: compact ? 7 : 14),
+                    Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: compact ? 8 : 16,
+                      ),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'MGREAD AUDIO',
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: Colors.white.withValues(alpha: 0.86),
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: compact ? 1.2 : 2.2,
+                              ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 14),
-                Text(
-                  'MGREAD AUDIO',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Colors.white.withValues(alpha: 0.86),
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 2.2,
-                  ),
-                ),
-              ],
-            ),
+              );
+            },
           ),
         ],
       ),

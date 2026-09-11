@@ -12,6 +12,7 @@
 library;
 
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/gestures.dart' show DragStartBehavior, PointerDeviceKind, PointerDownEvent, kBackMouseButton;
 import 'package:flutter/material.dart';
@@ -248,37 +249,55 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
         const ModalBarrier(key: Key('audio-background-exit-barrier'), dismissible: false, color: Color(0x73000000)),
         SafeArea(
           child: Center(
-            child: AlertDialog(
-              key: const Key('audio-background-exit-dialog'),
-              title: const Text('是否继续播放？'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  const Text('继续后可从应用内播放条恢复；Android 也可从系统媒体通知控制。'),
-                  const SizedBox(height: AppSpacing.compact),
-                  CheckboxListTile(
-                    key: const Key('audio-background-remember-choice'),
-                    contentPadding: EdgeInsets.zero,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    title: const Text('记住我的选择'),
-                    value: _rememberExitChoice,
-                    onChanged: (value) => setState(() => _rememberExitChoice = value ?? false),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
+                child: AlertDialog(
+                  key: const Key('audio-background-exit-dialog'),
+                  backgroundColor: const Color(0xA8142B43),
+                  surfaceTintColor: Colors.transparent,
+                  shadowColor: const Color(0xB8000612),
+                  titleTextStyle: Theme.of(
+                    context,
+                  ).textTheme.headlineSmall?.copyWith(color: const Color(0xFFF4F9FF), fontWeight: FontWeight.w800),
+                  contentTextStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(color: const Color(0xFFB5C9DC), height: 1.45),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(28),
+                    side: const BorderSide(color: Color(0x668DC7E9)),
                   ),
-                ],
+                  title: const Text('是否继续播放？'),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      const Text('继续后可从应用内播放条恢复；Android 也可从系统媒体通知控制。'),
+                      const SizedBox(height: AppSpacing.compact),
+                      CheckboxListTile(
+                        key: const Key('audio-background-remember-choice'),
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        title: const Text('记住我的选择'),
+                        value: _rememberExitChoice,
+                        onChanged: (value) => setState(() => _rememberExitChoice = value ?? false),
+                      ),
+                    ],
+                  ),
+                  actions: <Widget>[
+                    TextButton(
+                      key: const Key('audio-background-stop'),
+                      onPressed: () => unawaited(_resolveExit(false)),
+                      child: const Text('停止播放'),
+                    ),
+                    FilledButton(
+                      key: const Key('audio-background-continue'),
+                      onPressed: () => unawaited(_resolveExit(true)),
+                      style: FilledButton.styleFrom(backgroundColor: const Color(0xFF79C8FF), foregroundColor: const Color(0xFF020711)),
+                      child: const Text('继续播放'),
+                    ),
+                  ],
+                ),
               ),
-              actions: <Widget>[
-                TextButton(
-                  key: const Key('audio-background-stop'),
-                  onPressed: () => unawaited(_resolveExit(false)),
-                  child: const Text('停止播放'),
-                ),
-                FilledButton(
-                  key: const Key('audio-background-continue'),
-                  onPressed: () => unawaited(_resolveExit(true)),
-                  child: const Text('继续播放'),
-                ),
-              ],
             ),
           ),
         ),
@@ -491,67 +510,93 @@ final class _SourceAudioMiniPlayerState extends State<_SourceAudioMiniPlayer> {
     final snapshot = widget.controller.snapshot;
     final track = snapshot.currentTrack;
     final failure = snapshot.failure;
-    final tokens = AppThemeTokens.of(context);
-    return Material(
-      key: const Key('source-audio-mini-player'),
-      color: tokens.surface,
-      elevation: 8,
-      shadowColor: tokens.shadow,
-      borderRadius: AppRadii.detailControl,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: widget.onExpand,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(AppSpacing.regular, AppSpacing.compact, AppSpacing.unit, AppSpacing.compact),
-          child: Row(
-            children: <Widget>[
-              DecoratedBox(
-                decoration: BoxDecoration(color: tokens.accentSoft, borderRadius: AppRadii.discoveryTile),
-                child: SizedBox.square(
-                  dimension: 44,
-                  child: Tooltip(
-                    message: failure == null
-                        ? '音频正在后台播放'
-                        : '${failure.message}\n发生位置：${failure.location}\n诊断编号：${failure.code}'
-                              '${failure.debugDetail == null ? '' : '\n技术原因：${failure.debugDetail}'}',
-                    child: Icon(failure == null ? Icons.graphic_eq_rounded : Icons.error_outline_rounded),
-                  ),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.regular),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: AppRadii.detailControl,
+        boxShadow: const <BoxShadow>[
+          BoxShadow(color: Color(0x99000612), blurRadius: 28, offset: Offset(0, 14)),
+          BoxShadow(color: Color(0x4D2C9DDF), blurRadius: 24, spreadRadius: -12),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: AppRadii.detailControl,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Material(
+            key: const Key('source-audio-mini-player'),
+            color: const Color(0x9611263D),
+            shape: RoundedRectangleBorder(
+              borderRadius: AppRadii.detailControl,
+              side: const BorderSide(color: Color(0x668DC7E9)),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: widget.onExpand,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(AppSpacing.regular, AppSpacing.compact, AppSpacing.unit, AppSpacing.compact),
+                child: Row(
                   children: <Widget>[
-                    Text(
-                      track?.title ?? '正在准备音频',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                    DecoratedBox(
+                      decoration: BoxDecoration(color: const Color(0x522A86C4), borderRadius: AppRadii.discoveryTile),
+                      child: SizedBox.square(
+                        dimension: 44,
+                        child: Tooltip(
+                          message: failure == null
+                              ? '音频正在后台播放'
+                              : '${failure.message}\n发生位置：${failure.location}\n诊断编号：${failure.code}'
+                                    '${failure.debugDetail == null ? '' : '\n技术原因：${failure.debugDetail}'}',
+                          child: Icon(
+                            failure == null ? Icons.graphic_eq_rounded : Icons.error_outline_rounded,
+                            color: failure == null ? const Color(0xFF79C8FF) : const Color(0xFFFFA88F),
+                          ),
+                        ),
+                      ),
                     ),
-                    Text(
-                      failure == null ? track?.collectionTitle ?? '点按返回播放器' : '${failure.message} · ${failure.location} · ${failure.code}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: failure == null ? tokens.mutedText : tokens.warning),
+                    const SizedBox(width: AppSpacing.regular),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            track?.title ?? '正在准备音频',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodyLarge?.copyWith(color: const Color(0xFFF4F9FF), fontWeight: FontWeight.w600),
+                          ),
+                          Text(
+                            failure == null
+                                ? track?.collectionTitle ?? '点按返回播放器'
+                                : '${failure.message} · ${failure.location} · ${failure.code}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodySmall?.copyWith(color: failure == null ? const Color(0xFFB5C9DC) : const Color(0xFFFFA88F)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      key: const Key('source-audio-mini-toggle'),
+                      tooltip: snapshot.playing ? '暂停' : '播放',
+                      onPressed: () => unawaited(widget.controller.toggle()),
+                      color: const Color(0xFFF4F9FF),
+                      icon: Icon(snapshot.playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
+                    ),
+                    IconButton(
+                      key: const Key('source-audio-mini-stop'),
+                      tooltip: '停止并关闭',
+                      onPressed: widget.onStop,
+                      color: const Color(0xFFB5C9DC),
+                      icon: const Icon(Icons.close_rounded),
                     ),
                   ],
                 ),
               ),
-              IconButton(
-                key: const Key('source-audio-mini-toggle'),
-                tooltip: snapshot.playing ? '暂停' : '播放',
-                onPressed: () => unawaited(widget.controller.toggle()),
-                icon: Icon(snapshot.playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
-              ),
-              IconButton(
-                key: const Key('source-audio-mini-stop'),
-                tooltip: '停止并关闭',
-                onPressed: widget.onStop,
-                icon: const Icon(Icons.close_rounded),
-              ),
-            ],
+            ),
           ),
         ),
       ),

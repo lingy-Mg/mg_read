@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 
 import '../api/audio_controller.dart';
 import '../api/audio_models.dart';
+import 'audio_player_glass.dart';
 import 'audio_player_theme.dart';
 
 Future<void> showAudioQueueSheet(
@@ -78,88 +79,90 @@ class _AudioQueueSheetState extends State<_AudioQueueSheet> {
       child: FractionallySizedBox(
         heightFactor: 0.92,
         alignment: Alignment.bottomCenter,
-        child: DecoratedBox(
-          decoration: const BoxDecoration(
-            color: AudioPlayerColors.surface,
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(AudioPlayerMetrics.sheetRadius),
-            ),
+        child: AudioGlassPanel(
+          key: const Key('audio-queue-glass'),
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AudioPlayerMetrics.sheetRadius),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              const _SheetHandle(),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 4, 16, 14),
-                child: Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            '章节列表',
-                            style: Theme.of(context).textTheme.titleLarge
-                                ?.copyWith(
-                                  color: AudioPlayerColors.ink,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            '共 ${snapshot.queueEntries.length} 集',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: AudioPlayerColors.muted),
-                          ),
-                        ],
+          tone: AudioGlassTone.strong,
+          blur: 28,
+          child: Material(
+            color: Colors.transparent,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                const _SheetHandle(),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 4, 16, 14),
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              '章节列表',
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(
+                                    color: AudioPlayerColors.ink,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              '共 ${snapshot.queueEntries.length} 集',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: AudioPlayerColors.muted),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      key: const Key('audio-queue-close'),
-                      tooltip: '关闭章节列表',
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
+                      IconButton(
+                        key: const Key('audio-queue-close'),
+                        tooltip: '关闭章节列表',
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const Divider(height: 1, color: AudioPlayerColors.divider),
-              Expanded(
-                child: snapshot.queueEntries.isEmpty
-                    ? const Center(child: Text('暂无可播放章节'))
-                    : ListView.builder(
-                        key: const Key('audio-queue-list'),
-                        controller: _scrollController,
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                        itemExtent: _itemExtent,
-                        itemCount: snapshot.queueEntries.length,
-                        itemBuilder: (context, index) {
-                          final entry = snapshot.queueEntries[index];
-                          final selected =
-                              entry.id == snapshot.currentTrack?.id;
-                          return _AudioQueueTile(
-                            key: Key('audio-queue-track-${entry.id}'),
-                            entry: entry,
-                            index: index,
-                            selected: selected,
-                            playing: selected && snapshot.playing,
-                            onTap: entry.isLocked
-                                ? null
-                                : () async {
-                                    if (!selected) {
-                                      await widget.controller.selectQueueEntry(
-                                        entry.id,
-                                      );
-                                    }
-                                    if (context.mounted) {
-                                      Navigator.of(context).pop();
-                                    }
-                                  },
-                          );
-                        },
-                      ),
-              ),
-            ],
+                const Divider(height: 1, color: AudioPlayerColors.divider),
+                Expanded(
+                  child: snapshot.queueEntries.isEmpty
+                      ? const Center(child: Text('暂无可播放章节'))
+                      : ListView.builder(
+                          key: const Key('audio-queue-list'),
+                          controller: _scrollController,
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                          itemExtent: _itemExtent,
+                          itemCount: snapshot.queueEntries.length,
+                          itemBuilder: (context, index) {
+                            final entry = snapshot.queueEntries[index];
+                            final selected =
+                                entry.id == snapshot.currentTrack?.id;
+                            return _AudioQueueTile(
+                              key: Key('audio-queue-track-${entry.id}'),
+                              entry: entry,
+                              index: index,
+                              selected: selected,
+                              playing: selected && snapshot.playing,
+                              onTap: entry.isLocked
+                                  ? null
+                                  : () async {
+                                      if (!selected) {
+                                        await widget.controller
+                                            .selectQueueEntry(entry.id);
+                                      }
+                                      if (context.mounted) {
+                                        Navigator.of(context).pop();
+                                      }
+                                    },
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -197,8 +200,17 @@ class _AudioQueueTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Material(
-        color: selected ? AudioPlayerColors.accentSoft : Colors.transparent,
-        borderRadius: BorderRadius.circular(18),
+        color: selected
+            ? AudioPlayerColors.accentSoft
+            : AudioPlayerColors.control.withValues(alpha: 0.18),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: BorderSide(
+            color: selected
+                ? AudioPlayerColors.accentBorder
+                : AudioPlayerColors.divider,
+          ),
+        ),
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(18),
@@ -480,7 +492,7 @@ class _AudioPlayingIndicatorState extends State<_AudioPlayingIndicator>
                   height: height,
                   child: const DecoratedBox(
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: AudioPlayerColors.backgroundBottom,
                       borderRadius: BorderRadius.all(Radius.circular(2)),
                     ),
                   ),

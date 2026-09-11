@@ -354,6 +354,55 @@ void main() {
     expect(find.byKey(const Key('presentation-artwork')), findsNWidgets(2));
   });
 
+  testWidgets('ready surface and every modal use the shared glass system', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        backend: _PresentationBackend(),
+        dataSource: const _QueueDataSource(),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    for (final key in <Key>[
+      const Key('audio-top-bar-glass'),
+      const Key('audio-cover-glass'),
+      const Key('audio-metadata-glass'),
+      const Key('audio-control-glass'),
+      const Key('audio-settings-glass'),
+    ]) {
+      expect(find.byKey(key), findsOneWidget);
+    }
+
+    await tester.ensureVisible(find.byKey(const Key('audio-settings')));
+    await tester.tap(find.byKey(const Key('audio-settings')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('audio-settings-sheet')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('audio-settings-sheet')),
+        matching: find.byType(BackdropFilter),
+      ),
+      findsWidgets,
+    );
+    await tester.tap(find.byKey(const Key('audio-settings-close')));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byKey(const Key('audio-queue')));
+    await tester.tap(find.byKey(const Key('audio-queue')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('audio-queue-glass')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('audio-queue-close')));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byKey(const Key('audio-track-title')));
+    await tester.tap(find.byKey(const Key('audio-track-title')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('audio-details-glass')), findsOneWidget);
+  });
+
   testWidgets('short portrait keeps the complete control area on first view', (
     tester,
   ) async {

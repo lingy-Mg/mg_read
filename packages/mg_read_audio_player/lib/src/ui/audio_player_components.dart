@@ -11,6 +11,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../api/audio_models.dart';
+import 'audio_player_glass.dart';
 import 'audio_player_motion.dart';
 import 'audio_player_theme.dart';
 
@@ -37,84 +38,91 @@ final class AudioPlayerTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return SizedBox(
-      height: 60,
-      child: Row(
-        children: <Widget>[
-          _TopBarButton(
-            key: const Key('audio-back'),
-            tooltip: '返回',
-            onPressed: onBack,
-            icon: Icons.arrow_back_ios_new_rounded,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: <Widget>[
-                    AudioPlayingIndicator(
-                      playing: playing,
-                      buffering: buffering,
-                      disableAnimations: disableAnimations,
+    return AudioGlassPanel(
+      key: const Key('audio-top-bar-glass'),
+      borderRadius: BorderRadius.circular(22),
+      padding: const EdgeInsets.symmetric(horizontal: 7),
+      blur: 16,
+      shadow: false,
+      child: SizedBox(
+        height: 60,
+        child: Row(
+          children: <Widget>[
+            _TopBarButton(
+              key: const Key('audio-back'),
+              tooltip: '返回',
+              onPressed: onBack,
+              icon: Icons.arrow_back_ios_new_rounded,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      AudioPlayingIndicator(
+                        playing: playing,
+                        buffering: buffering,
+                        disableAnimations: disableAnimations,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        buffering ? '正在缓冲' : '正在播放',
+                        maxLines: 1,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: AudioPlayerColors.accent,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    collectionTitle?.trim().isNotEmpty == true
+                        ? collectionTitle!
+                        : '音频播放',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: AudioPlayerColors.ink,
+                      fontWeight: FontWeight.w700,
                     ),
-                    const SizedBox(width: 5),
-                    Text(
-                      buffering ? '正在缓冲' : '正在播放',
-                      maxLines: 1,
-                      style: theme.textTheme.labelSmall?.copyWith(
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Stack(
+              clipBehavior: Clip.none,
+              children: <Widget>[
+                _TopBarButton(
+                  key: const Key('audio-queue'),
+                  tooltip: '章节列表，共 $queueCount 集',
+                  onPressed: onQueue,
+                  icon: Icons.format_list_bulleted_rounded,
+                ),
+                if (queueCount > 0)
+                  Positioned(
+                    top: 5,
+                    right: 3,
+                    child: Container(
+                      key: const Key('audio-queue-indicator'),
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
                         color: AudioPlayerColors.accent,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.2,
+                        shape: BoxShape.circle,
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  collectionTitle?.trim().isNotEmpty == true
-                      ? collectionTitle!
-                      : '音频播放',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    color: AudioPlayerColors.ink,
-                    fontWeight: FontWeight.w700,
                   ),
-                ),
               ],
             ),
-          ),
-          const SizedBox(width: 10),
-          Stack(
-            clipBehavior: Clip.none,
-            children: <Widget>[
-              _TopBarButton(
-                key: const Key('audio-queue'),
-                tooltip: '章节列表，共 $queueCount 集',
-                onPressed: onQueue,
-                icon: Icons.format_list_bulleted_rounded,
-              ),
-              if (queueCount > 0)
-                Positioned(
-                  top: 5,
-                  right: 3,
-                  child: Container(
-                    key: const Key('audio-queue-indicator'),
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      color: AudioPlayerColors.accent,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -139,9 +147,9 @@ class _TopBarButton extends StatelessWidget {
       onPressed: onPressed,
       style: IconButton.styleFrom(
         fixedSize: const Size.square(44),
-        backgroundColor: AudioPlayerColors.surface.withValues(alpha: 0.9),
+        backgroundColor: AudioPlayerColors.control,
         foregroundColor: AudioPlayerColors.ink,
-        side: const BorderSide(color: AudioPlayerColors.divider),
+        side: const BorderSide(color: AudioPlayerColors.glassBorder),
         shadowColor: AudioPlayerColors.shadow,
         elevation: 2,
       ),
@@ -175,64 +183,73 @@ final class AudioPlayerMetadata extends StatelessWidget {
     return Semantics(
       button: true,
       label: '查看音频详情',
-      child: InkWell(
-        key: const Key('audio-details-open'),
-        onTap: onDetails,
-        borderRadius: BorderRadius.circular(18),
-        child: Column(
-          children: <Widget>[
-            DecoratedBox(
-              key: const Key('audio-track-position'),
-              decoration: BoxDecoration(
-                color: AudioPlayerColors.accentSoft.withValues(alpha: 0.64),
-                borderRadius: BorderRadius.circular(99),
-                border: Border.all(
-                  color: AudioPlayerColors.accent.withValues(alpha: 0.22),
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 13,
-                  vertical: 5,
-                ),
-                child: Text(
-                  '第 ${displayedIndex + 1} 集  ·  共 ${snapshot.queueEntries.length} 集',
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: AudioPlayerColors.accentPressed,
-                    fontWeight: FontWeight.w700,
+      child: AudioGlassPanel(
+        key: const Key('audio-metadata-glass'),
+        borderRadius: BorderRadius.circular(22),
+        blur: 16,
+        shadow: false,
+        child: InkWell(
+          key: const Key('audio-details-open'),
+          onTap: onDetails,
+          borderRadius: BorderRadius.circular(22),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 13),
+            child: Column(
+              children: <Widget>[
+                DecoratedBox(
+                  key: const Key('audio-track-position'),
+                  decoration: BoxDecoration(
+                    color: AudioPlayerColors.accentSoft,
+                    borderRadius: BorderRadius.circular(99),
+                    border: Border.all(
+                      color: AudioPlayerColors.accent.withValues(alpha: 0.22),
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 13,
+                      vertical: 5,
+                    ),
+                    child: Text(
+                      '第 ${displayedIndex + 1} 集  ·  共 ${snapshot.queueEntries.length} 集',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: AudioPlayerColors.accentPressed,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              track.title,
-              key: const Key('audio-track-title'),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontSize: 18,
-                color: AudioPlayerColors.ink,
-                fontWeight: FontWeight.w800,
-                height: 1.24,
-                letterSpacing: -0.1,
-              ),
-            ),
-            if (creator?.trim().isNotEmpty == true) ...<Widget>[
-              const SizedBox(height: 7),
-              Text(
-                creator!,
-                key: const Key('audio-track-creator'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: AudioPlayerColors.muted,
+                const SizedBox(height: 8),
+                Text(
+                  track.title,
+                  key: const Key('audio-track-title'),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontSize: 18,
+                    color: AudioPlayerColors.ink,
+                    fontWeight: FontWeight.w800,
+                    height: 1.24,
+                    letterSpacing: -0.1,
+                  ),
                 ),
-              ),
-            ],
-          ],
+                if (creator?.trim().isNotEmpty == true) ...<Widget>[
+                  const SizedBox(height: 7),
+                  Text(
+                    creator!,
+                    key: const Key('audio-track-creator'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: AudioPlayerColors.muted,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -491,22 +508,15 @@ final class AudioSettingsLauncher extends StatelessWidget {
       if (timer != null) '${timer.inMinutes} 分钟',
     ].join('  ·  ');
     final radius = BorderRadius.circular(AudioPlayerMetrics.controlRadius);
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: radius,
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: AudioPlayerColors.shadow,
-            blurRadius: 20,
-            offset: Offset(0, 8),
-          ),
-        ],
-      ),
+    return AudioGlassPanel(
+      key: const Key('audio-settings-glass'),
+      borderRadius: radius,
+      blur: 16,
       child: Semantics(
         button: true,
         label: '播放设置，$summary',
         child: Material(
-          color: AudioPlayerColors.surface.withValues(alpha: 0.97),
+          color: Colors.transparent,
           borderRadius: radius,
           child: InkWell(
             key: const Key('audio-settings'),
@@ -579,13 +589,12 @@ final class AudioInlineFailure extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return AudioGlassPanel(
       key: const Key('audio-inline-failure'),
       padding: const EdgeInsets.fromLTRB(14, 11, 8, 11),
-      decoration: BoxDecoration(
-        color: AudioPlayerColors.warningSoft,
-        borderRadius: BorderRadius.circular(18),
-      ),
+      borderRadius: BorderRadius.circular(18),
+      tone: AudioGlassTone.warning,
+      shadow: false,
       child: Row(
         children: <Widget>[
           const Icon(

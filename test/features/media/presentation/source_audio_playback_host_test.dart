@@ -118,9 +118,11 @@ void main() {
 
     await tester.tap(find.byKey(const Key('audio-back')));
     await _pumpUntil(tester, () => find.byKey(const Key('audio-background-exit-dialog')).evaluate().isNotEmpty);
+    expect(find.ancestor(of: find.byKey(const Key('audio-background-exit-dialog')), matching: find.byType(BackdropFilter)), findsOneWidget);
     await tester.tap(find.byKey(const Key('audio-background-remember-choice')));
     await tester.tap(find.byKey(const Key('audio-background-continue')));
     await _pumpUntil(tester, () => find.byKey(const Key('source-audio-mini-player')).evaluate().isNotEmpty);
+    expect(find.ancestor(of: find.byKey(const Key('source-audio-mini-player')), matching: find.byType(BackdropFilter)), findsOneWidget);
     expect(find.byKey(const Key('source-audio-player')), findsNothing);
     expect(backend.disposeCalls, 0);
     expect(service.controller, isNotNull);

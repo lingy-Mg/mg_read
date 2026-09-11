@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 
 import '../api/audio_controller.dart';
 import '../api/audio_models.dart';
+import 'audio_player_glass.dart';
 import 'audio_player_theme.dart';
 
 part 'audio_playback_settings_components.dart';
@@ -100,88 +101,91 @@ final class _AudioPlaybackSettingsSheetState
       child: FractionallySizedBox(
         heightFactor: heightFactor,
         alignment: Alignment.bottomCenter,
-        child: Material(
+        child: AudioGlassPanel(
           key: const Key('audio-settings-sheet'),
-          color: _SettingsTokens.sheet,
-          clipBehavior: Clip.antiAlias,
           borderRadius: const BorderRadius.vertical(
             top: Radius.circular(AudioPlayerMetrics.sheetRadius),
           ),
-          child: Column(
-            children: <Widget>[
-              const _SettingsHandle(),
-              _SettingsHeader(onClose: _close),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
-                child: _SessionSummary(
-                  rate: _rate,
-                  volume: _volume,
-                  timer: _timer,
-                  disableAnimations: disableAnimations,
-                ),
-              ),
-              Expanded(
-                child: SingleChildScrollView(
-                  key: const Key('audio-settings-scroll'),
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                  child: Column(
-                    children: <Widget>[
-                      _SettingsCard(
-                        key: const Key('audio-keep-screen-on'),
-                        icon: Icons.light_mode_rounded,
-                        title: '播放时防止自动锁屏',
-                        value: _keepScreenOn ? '已开启' : '已关闭',
-                        child: _KeepScreenOnControl(
-                          enabled: _keepScreenOn,
-                          onChanged: _setKeepScreenOn,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      _SettingsCard(
-                        key: const Key('audio-rate'),
-                        icon: Icons.speed_rounded,
-                        title: '播放速度',
-                        value: '${formatAudioRate(_rate)}x',
-                        child: _RateTrack(
-                          rates: _rates,
-                          selectedRate: _rate,
-                          disableAnimations: disableAnimations,
-                          onSelected: _setRate,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      _SettingsCard(
-                        key: const Key('audio-volume'),
-                        icon: _volumeIcon,
-                        title: '播放音量',
-                        value: formatAudioVolume(_volume),
-                        child: _VolumeControl(
-                          volume: _volume,
-                          onToggleMute: _toggleMute,
-                          onChanged: _setVolume,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      _SettingsCard(
-                        key: const Key('audio-timer'),
-                        icon: _timer == null
-                            ? Icons.timer_outlined
-                            : Icons.timer_rounded,
-                        title: '定时停止',
-                        value: _timerLabel,
-                        child: _TimerSelector(
-                          timers: _timers,
-                          selectedTimer: _timer,
-                          disableAnimations: disableAnimations,
-                          onSelected: _setTimer,
-                        ),
-                      ),
-                    ],
+          tone: AudioGlassTone.strong,
+          blur: 28,
+          child: Material(
+            color: Colors.transparent,
+            child: Column(
+              children: <Widget>[
+                const _SettingsHandle(),
+                _SettingsHeader(onClose: _close),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
+                  child: _SessionSummary(
+                    rate: _rate,
+                    volume: _volume,
+                    timer: _timer,
+                    disableAnimations: disableAnimations,
                   ),
                 ),
-              ),
-              _SettingsFooter(onDone: _close),
-            ],
+                Expanded(
+                  child: SingleChildScrollView(
+                    key: const Key('audio-settings-scroll'),
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                    child: Column(
+                      children: <Widget>[
+                        _SettingsCard(
+                          key: const Key('audio-keep-screen-on'),
+                          icon: Icons.light_mode_rounded,
+                          title: '播放时防止自动锁屏',
+                          value: _keepScreenOn ? '已开启' : '已关闭',
+                          child: _KeepScreenOnControl(
+                            enabled: _keepScreenOn,
+                            onChanged: _setKeepScreenOn,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        _SettingsCard(
+                          key: const Key('audio-rate'),
+                          icon: Icons.speed_rounded,
+                          title: '播放速度',
+                          value: '${formatAudioRate(_rate)}x',
+                          child: _RateTrack(
+                            rates: _rates,
+                            selectedRate: _rate,
+                            disableAnimations: disableAnimations,
+                            onSelected: _setRate,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        _SettingsCard(
+                          key: const Key('audio-volume'),
+                          icon: _volumeIcon,
+                          title: '播放音量',
+                          value: formatAudioVolume(_volume),
+                          child: _VolumeControl(
+                            volume: _volume,
+                            onToggleMute: _toggleMute,
+                            onChanged: _setVolume,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        _SettingsCard(
+                          key: const Key('audio-timer'),
+                          icon: _timer == null
+                              ? Icons.timer_outlined
+                              : Icons.timer_rounded,
+                          title: '定时停止',
+                          value: _timerLabel,
+                          child: _TimerSelector(
+                            timers: _timers,
+                            selectedTimer: _timer,
+                            disableAnimations: disableAnimations,
+                            onSelected: _setTimer,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                _SettingsFooter(onDone: _close),
+              ],
+            ),
           ),
         ),
       ),

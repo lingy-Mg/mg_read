@@ -8,12 +8,8 @@
 part of 'audio_playback_settings_sheet.dart';
 
 abstract final class _SettingsTokens {
-  static const sheet = Color(0xFFFFFCF8);
-  static const card = Color(0xFFFFFFFF);
-  static const neutralControl = Color(0xFFF8F2EB);
-  static const summary = Color(0xFFFFF5E9);
-  static const selected = Color(0xFFFFE3C2);
-  static const shadow = Color(0x173B2614);
+  static const neutralControl = AudioPlayerColors.control;
+  static const selected = AudioPlayerColors.accentGlass;
   static const cardRadius = 22.0;
 }
 
@@ -104,12 +100,11 @@ final class _SessionSummary extends StatelessWidget {
     return Semantics(
       container: true,
       label: '当前播放调节摘要',
-      child: DecoratedBox(
+      child: AudioGlassPanel(
         key: const Key('audio-settings-summary'),
-        decoration: BoxDecoration(
-          color: _SettingsTokens.summary,
-          borderRadius: BorderRadius.circular(18),
-        ),
+        borderRadius: BorderRadius.circular(18),
+        tone: AudioGlassTone.accent,
+        shadow: false,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 11),
           child: Row(
@@ -195,21 +190,9 @@ final class _SettingsCard extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(
-      color: _SettingsTokens.card,
-      borderRadius: BorderRadius.circular(_SettingsTokens.cardRadius),
-      border: Border.all(
-        color: AudioPlayerColors.divider.withValues(alpha: 0.8),
-      ),
-      boxShadow: const <BoxShadow>[
-        BoxShadow(
-          color: _SettingsTokens.shadow,
-          blurRadius: 18,
-          offset: Offset(0, 7),
-        ),
-      ],
-    ),
+  Widget build(BuildContext context) => AudioGlassPanel(
+    borderRadius: BorderRadius.circular(_SettingsTokens.cardRadius),
+    blur: 16,
     child: Padding(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 13),
       child: Column(
@@ -354,7 +337,7 @@ final class _RateTrack extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: (selectedRate - rate).abs() < 0.01
                                 ? AudioPlayerColors.accent
-                                : _SettingsTokens.card,
+                                : AudioPlayerColors.control,
                             shape: BoxShape.circle,
                             border: Border.all(
                               color: (selectedRate - rate).abs() < 0.01
@@ -569,7 +552,7 @@ final class _SettingsFooter extends StatelessWidget {
   @override
   Widget build(BuildContext context) => DecoratedBox(
     decoration: const BoxDecoration(
-      color: _SettingsTokens.sheet,
+      color: AudioPlayerColors.glassStrong,
       border: Border(top: BorderSide(color: AudioPlayerColors.divider)),
     ),
     child: SafeArea(
@@ -583,7 +566,7 @@ final class _SettingsFooter extends StatelessWidget {
           onPressed: onDone,
           style: FilledButton.styleFrom(
             backgroundColor: AudioPlayerColors.accent,
-            foregroundColor: Colors.white,
+            foregroundColor: AudioPlayerColors.backgroundBottom,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),

@@ -25,6 +25,7 @@ import 'audio_playback_settings_sheet.dart';
 import 'audio_player_artwork_stage.dart';
 import 'audio_player_components.dart';
 import 'audio_player_detail_sheet.dart';
+import 'audio_player_glass.dart';
 import 'audio_player_observer_proxy.dart';
 import 'audio_player_sheets.dart';
 import 'audio_player_states.dart';
@@ -32,11 +33,11 @@ import 'audio_player_theme.dart';
 
 const _audioPlayerSystemUiStyle = SystemUiOverlayStyle(
   statusBarColor: Colors.transparent,
-  statusBarIconBrightness: Brightness.dark,
-  statusBarBrightness: Brightness.light,
+  statusBarIconBrightness: Brightness.light,
+  statusBarBrightness: Brightness.dark,
   systemNavigationBarColor: Colors.transparent,
   systemNavigationBarDividerColor: Colors.transparent,
-  systemNavigationBarIconBrightness: Brightness.dark,
+  systemNavigationBarIconBrightness: Brightness.light,
   systemStatusBarContrastEnforced: false,
   systemNavigationBarContrastEnforced: false,
 );
@@ -192,38 +193,41 @@ class _AudioViewState extends State<AudioPlayerView>
   @override
   Widget build(BuildContext context) {
     final snapshot = _controller.snapshot;
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: _audioPlayerSystemUiStyle,
-      child: PopScope<void>(
-        canPop: _exitAuthorized,
-        onPopInvokedWithResult: (didPop, result) {
-          if (!didPop) unawaited(_requestExit());
-        },
-        child: CallbackShortcuts(
-          bindings: <ShortcutActivator, VoidCallback>{
-            const SingleActivator(LogicalKeyboardKey.escape): () =>
-                unawaited(_requestExit()),
+    return Theme(
+      data: audioPlayerTheme(Theme.of(context)),
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: _audioPlayerSystemUiStyle,
+        child: PopScope<void>(
+          canPop: _exitAuthorized,
+          onPopInvokedWithResult: (didPop, result) {
+            if (!didPop) unawaited(_requestExit());
           },
-          child: Focus(
-            focusNode: _focusNode,
-            autofocus: true,
-            child: Scaffold(
-              backgroundColor: AudioPlayerColors.backgroundBottom,
-              body: switch (snapshot.status) {
-                AudioPlayerStatus.loading => const AudioLoadingView(),
-                AudioPlayerStatus.error => AudioErrorView(
-                  title: snapshot.failure?.code == 'audio_queue_empty'
-                      ? '暂无可播放内容'
-                      : '暂时无法播放',
-                  message: snapshot.failure?.message ?? '音频加载失败。',
-                  location: snapshot.failure?.location,
-                  diagnosticCode: snapshot.failure?.code,
-                  technicalDetail: snapshot.failure?.debugDetail,
-                  onBack: _requestExit,
-                  onRetry: _controller.retry,
-                ),
-                AudioPlayerStatus.ready => _buildReady(context, snapshot),
-              },
+          child: CallbackShortcuts(
+            bindings: <ShortcutActivator, VoidCallback>{
+              const SingleActivator(LogicalKeyboardKey.escape): () =>
+                  unawaited(_requestExit()),
+            },
+            child: Focus(
+              focusNode: _focusNode,
+              autofocus: true,
+              child: Scaffold(
+                backgroundColor: AudioPlayerColors.backgroundBottom,
+                body: switch (snapshot.status) {
+                  AudioPlayerStatus.loading => const AudioLoadingView(),
+                  AudioPlayerStatus.error => AudioErrorView(
+                    title: snapshot.failure?.code == 'audio_queue_empty'
+                        ? '暂无可播放内容'
+                        : '暂时无法播放',
+                    message: snapshot.failure?.message ?? '音频加载失败。',
+                    location: snapshot.failure?.location,
+                    diagnosticCode: snapshot.failure?.code,
+                    technicalDetail: snapshot.failure?.debugDetail,
+                    onBack: _requestExit,
+                    onRetry: _controller.retry,
+                  ),
+                  AudioPlayerStatus.ready => _buildReady(context, snapshot),
+                },
+              ),
             ),
           ),
         ),
@@ -347,31 +351,15 @@ class _AudioViewState extends State<AudioPlayerView>
                             ),
                           ),
                           SizedBox(height: compactHeight ? 11 : 16),
-                          Container(
+                          AudioGlassPanel(
+                            key: const Key('audio-control-glass'),
                             padding: EdgeInsets.fromLTRB(
                               compactHeight ? 14 : 17,
                               compactHeight ? 12 : 16,
                               compactHeight ? 14 : 17,
                               compactHeight ? 13 : 16,
                             ),
-                            decoration: BoxDecoration(
-                              color: AudioPlayerColors.surface.withValues(
-                                alpha: 0.96,
-                              ),
-                              borderRadius: BorderRadius.circular(
-                                AudioPlayerMetrics.cardRadius,
-                              ),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.82),
-                              ),
-                              boxShadow: const <BoxShadow>[
-                                BoxShadow(
-                                  color: AudioPlayerColors.shadow,
-                                  blurRadius: 28,
-                                  offset: Offset(0, 12),
-                                ),
-                              ],
-                            ),
+                            tone: AudioGlassTone.strong,
                             child: Column(
                               children: <Widget>[
                                 AudioProgressControl(

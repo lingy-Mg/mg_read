@@ -24,9 +24,11 @@ void main() {
       find.byType(AnnotatedRegion<SystemUiOverlayStyle>),
     );
     expect(region.value.statusBarColor, Colors.transparent);
-    expect(region.value.statusBarIconBrightness, Brightness.dark);
+    expect(region.value.statusBarIconBrightness, Brightness.light);
     expect(region.value.systemNavigationBarColor, Colors.transparent);
+    expect(region.value.systemNavigationBarIconBrightness, Brightness.light);
     expect(region.value.systemStatusBarContrastEnforced, isFalse);
+    expect(find.byKey(const Key('audio-loading-glass')), findsOneWidget);
   });
 
   testWidgets('restores the saved track and position before becoming ready', (
@@ -106,6 +108,7 @@ void main() {
     );
     expect(find.text('技术原因：'), findsOneWidget);
     expect(find.text('Runtime request failed at getContent'), findsOneWidget);
+    expect(find.byKey(const Key('audio-error-glass')), findsOneWidget);
   });
 
   testWidgets('controls transport and saves before switching tracks', (
