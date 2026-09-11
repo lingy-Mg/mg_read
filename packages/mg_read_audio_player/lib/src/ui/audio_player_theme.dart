@@ -31,7 +31,7 @@ abstract final class AudioPlayerColors {
   static const disabled = Color(0x45FFFFFF);
   static const coverStart = Color(0xFF61534A);
   static const coverEnd = Color(0xFF171413);
-  static const shadow = Color(0x24000000);
+  static const shadow = Color(0x1A000000);
   static const blueGlow = Color(0x00000000);
   static const scrim = Color(0x8A000000);
 

@@ -81,9 +81,7 @@ class _AudioQueueSheetState extends State<_AudioQueueSheet> {
         alignment: Alignment.bottomCenter,
         child: AudioGlassPanel(
           key: const Key('audio-queue-glass'),
-          borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(AudioPlayerMetrics.sheetRadius),
-          ),
+          borderRadius: BorderRadius.zero,
           tone: AudioGlassTone.soft,
           blur: 34,
           child: Material(

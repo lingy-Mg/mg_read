@@ -47,7 +47,7 @@ void main() {
     final backdropTint = tester.widget<ColoredBox>(
       find.byKey(const Key('audio-artwork-backdrop-tint')),
     );
-    expect(backdropTint.color, const Color(0x4A000000));
+    expect(backdropTint.color, const Color(0x33000000));
     await tester.pump(const Duration(milliseconds: 1540));
     expect(
       tester.getTopLeft(find.byKey(const Key('audio-cover'))).dy,

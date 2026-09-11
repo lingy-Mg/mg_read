@@ -66,13 +66,13 @@ final class AudioPlayerArtworkBackdrop extends StatelessWidget {
             child: ImageFiltered(
               key: const Key('audio-artwork-backdrop-blur'),
               imageFilter: ImageFilter.blur(
-                sigmaX: 36,
-                sigmaY: 36,
+                sigmaX: 24,
+                sigmaY: 24,
                 tileMode: TileMode.clamp,
               ),
               child: Transform.scale(
                 key: const Key('audio-artwork-backdrop-static'),
-                scale: 1.18,
+                scale: 1.12,
                 child: AnimatedSwitcher(
                   duration: switchDuration,
                   switchInCurve: Curves.easeOutCubic,
@@ -106,14 +106,14 @@ final class AudioPlayerArtworkBackdrop extends StatelessWidget {
           ),
           const ColoredBox(
             key: Key('audio-artwork-backdrop-tint'),
-            color: Color(0x4A000000),
+            color: Color(0x33000000),
           ),
           const DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: <Color>[Color(0x0D000000), Color(0x42000000)],
+                colors: <Color>[Color(0x08000000), Color(0x36000000)],
               ),
             ),
           ),

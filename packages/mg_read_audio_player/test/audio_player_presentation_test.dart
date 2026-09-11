@@ -116,6 +116,14 @@ void main() {
     await tester.tap(find.byKey(const Key('audio-queue')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('audio-queue-list')), findsOneWidget);
+    final queueClip = find.descendant(
+      of: find.byKey(const Key('audio-queue-glass')),
+      matching: find.byType(ClipRRect),
+    );
+    expect(
+      tester.widget<ClipRRect>(queueClip.first).borderRadius,
+      BorderRadius.zero,
+    );
     expect(find.text('正在播放'), findsAtLeastNWidgets(2));
     expect(find.text('需解锁后播放'), findsOneWidget);
 

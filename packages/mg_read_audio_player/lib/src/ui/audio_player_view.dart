@@ -377,6 +377,7 @@ class _AudioViewState extends State<AudioPlayerView>
                               compactHeight ? 10 : 12,
                             ),
                             tone: AudioGlassTone.strong,
+                            blur: 28,
                             child: Column(
                               children: <Widget>[
                                 AnimatedBuilder(
