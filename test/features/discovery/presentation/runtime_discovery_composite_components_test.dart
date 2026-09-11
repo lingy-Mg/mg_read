@@ -175,17 +175,20 @@ void main() {
       await tester.pump();
     }
 
-    int columnCount() {
-      final grid = tester.widget<GridView>(find.byKey(const Key('runtime-discovery-cover-grid')));
-      return (grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount).crossAxisCount;
+    bool areInSameRow(int first, int second) {
+      final firstRect = tester.getRect(find.byKey(ValueKey<String>('runtime-discovery-cover-book:$first')));
+      final secondRect = tester.getRect(find.byKey(ValueKey<String>('runtime-discovery-cover-book:$second')));
+      return (firstRect.top - secondRect.top).abs() < 0.01;
     }
 
     await pumpAtWidth(390);
-    expect(columnCount(), 3);
+    expect(find.byKey(const Key('runtime-discovery-cover-grid')), findsOneWidget);
+    expect(areInSameRow(1, 3), isTrue);
+    expect(areInSameRow(1, 4), isFalse);
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/runtime_discovery_cover_grid_phone_light.png'));
 
     await pumpAtWidth(760);
-    expect(columnCount(), 4);
+    expect(areInSameRow(1, 4), isTrue);
   });
 
   testWidgets('renders the dedicated generic landscape cover grid without playback decoration', (tester) async {

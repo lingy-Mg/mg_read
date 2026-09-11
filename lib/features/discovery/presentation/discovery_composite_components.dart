@@ -23,18 +23,11 @@ import 'package:mg_read/features/discovery/presentation/widgets/discovery_booksh
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_drag_scroll_behavior.dart';
 
 class DiscoveryCoverGrid extends StatelessWidget {
-  const DiscoveryCoverGrid({
-    required this.items,
-    required this.onPressed,
-    required this.isInBookshelf,
-    this.coverHeightRatio = AppSpacing.discoveryCoverAspectRatio,
-    super.key,
-  });
+  const DiscoveryCoverGrid({required this.items, required this.onPressed, required this.isInBookshelf, super.key});
 
   final List<PluginDiscoveryContentItem> items;
   final ValueChanged<PluginContentSummary> onPressed;
   final bool Function(PluginContentSummary content) isInBookshelf;
-  final double coverHeightRatio;
 
   @override
   Widget build(BuildContext context) {
@@ -49,29 +42,24 @@ class DiscoveryCoverGrid extends StatelessWidget {
         };
         const gap = AppSpacing.discoveryComponentGap;
         final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
-        final coverHeight = width * coverHeightRatio;
-        return GridView.builder(
+        return Wrap(
           key: const Key('runtime-discovery-cover-grid'),
-          shrinkWrap: true,
-          primary: false,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: items.length,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns,
-            crossAxisSpacing: gap,
-            mainAxisSpacing: AppSpacing.discoverySectionContentGap,
-            mainAxisExtent: coverHeight + AppSpacing.discoveryCoverMetadataExtent,
-          ),
-          itemBuilder: (context, index) {
-            final item = items[index];
-            return _CoverTile(
-              item: item,
-              width: width,
-              coverHeight: coverHeight,
-              inBookshelf: isInBookshelf(item.content),
-              onPressed: () => onPressed(item.content),
-            );
-          },
+          spacing: gap,
+          runSpacing: AppSpacing.discoverySectionContentGap,
+          children: items
+              .map(
+                (item) => SizedBox(
+                  width: width,
+                  child: _CoverTile(
+                    item: item,
+                    width: width,
+                    coverHeight: null,
+                    inBookshelf: isInBookshelf(item.content),
+                    onPressed: () => onPressed(item.content),
+                  ),
+                ),
+              )
+              .toList(growable: false),
         );
       },
     );
@@ -371,7 +359,7 @@ class _CoverTile extends StatelessWidget {
 
   final PluginDiscoveryContentItem item;
   final double width;
-  final double coverHeight;
+  final double? coverHeight;
   final bool inBookshelf;
   final VoidCallback onPressed;
 

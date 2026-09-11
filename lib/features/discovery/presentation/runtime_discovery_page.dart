@@ -512,12 +512,7 @@ class _ContentCollection extends StatelessWidget {
             PluginDiscoveryContentLayout.coverGrid =>
               isLandscapeCollection
                   ? DiscoveryLandscapeCoverGrid(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf)
-                  : DiscoveryCoverGrid(
-                      items: component.items,
-                      onPressed: onContentPressed,
-                      isInBookshelf: isInBookshelf,
-                      coverHeightRatio: isSquareCollection ? 1 : AppSpacing.discoveryCoverAspectRatio,
-                    ),
+                  : DiscoveryCoverGrid(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf),
             PluginDiscoveryContentLayout.shelf =>
               isLandscapeCollection
                   ? DiscoveryLandscapeCoverShelf(items: component.items, onPressed: onContentPressed, isInBookshelf: isInBookshelf)

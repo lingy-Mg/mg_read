@@ -87,6 +87,23 @@ void main() {
     expect((cover.decoration as BoxDecoration).borderRadius, BorderRadius.circular(10));
   });
 
+  testWidgets('keeps the decoded cover ratio when height is not constrained', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      _host(
+        DiscoveryBookCover(
+          title: '原始比例封面',
+          variant: DiscoveryCoverVariant.gothic,
+          width: 112,
+          coverBytes: base64Decode(_onePixelPngBase64),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.getSize(find.byType(DiscoveryBookCover)), const Size(112, 112));
+    expect(tester.widget<Image>(find.byType(Image)).fit, BoxFit.cover);
+  });
+
   testWidgets('loads remote source icons through the shared persistent cover loader', (WidgetTester tester) async {
     BookCoverMemoryCache.clear();
     addTearDown(BookCoverMemoryCache.clear);

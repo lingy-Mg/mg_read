@@ -10,6 +10,9 @@
 ///
 library;
 
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -31,7 +34,7 @@ class DiscoveryBookCover extends ConsumerWidget {
     required this.title,
     required this.variant,
     required this.width,
-    required this.height,
+    this.height,
     this.presentation = DiscoveryCoverPresentation.portrait,
     this.coverBytes,
     this.remoteContentId,
@@ -42,7 +45,12 @@ class DiscoveryBookCover extends ConsumerWidget {
   final String title;
   final DiscoveryCoverVariant variant;
   final double width;
-  final double height;
+
+  /// A fixed presentation height for constrained placements such as shelves.
+  ///
+  /// When omitted, decoded source art determines the height after its width is
+  /// constrained. This preserves the original cover ratio in flowing grids.
+  final double? height;
   final DiscoveryCoverPresentation presentation;
   final List<int>? coverBytes;
   final String? remoteContentId;
@@ -63,6 +71,7 @@ class DiscoveryBookCover extends ConsumerWidget {
     };
     final bytes = coverBytes?.isNotEmpty ?? false ? coverBytes : loadedBytes;
     final bool hasCoverBytes = bytes?.isNotEmpty ?? false;
+    final Uint8List? normalizedBytes = hasCoverBytes ? normalizeBookCoverBytes(bytes!) : null;
     final bool isLoading = !hasCoverBytes && asyncBytes?.isLoading == true;
     final Color foreground = tokens.surface;
     return Semantics(
@@ -87,11 +96,24 @@ class DiscoveryBookCover extends ConsumerWidget {
             child: ClipRRect(
               borderRadius: _borderRadius,
               child: !hasCoverBytes
-                  ? _placeholder(foreground, start, end, isLoading: isLoading)
+                  ? SizedBox(
+                      height: _placeholderHeight,
+                      child: _placeholder(foreground, start, end, isLoading: isLoading),
+                    )
+                  : height == null
+                  ? _IntrinsicCoverImage(
+                      bytes: normalizedBytes!,
+                      width: width,
+                      fallbackHeight: _placeholderHeight,
+                      errorBuilder: (_, _, _) =>
+                          SizedBox(height: _placeholderHeight, child: _placeholder(foreground, start, end, isLoading: false)),
+                    )
                   : Image.memory(
-                      normalizeBookCoverBytes(bytes!),
+                      normalizedBytes!,
+                      width: width,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => _placeholder(foreground, start, end, isLoading: false),
+                      errorBuilder: (_, _, _) =>
+                          SizedBox(height: _placeholderHeight, child: _placeholder(foreground, start, end, isLoading: false)),
                     ),
             ),
           ),
@@ -99,6 +121,14 @@ class DiscoveryBookCover extends ConsumerWidget {
       ),
     );
   }
+
+  double get _placeholderHeight => height ?? width * _fallbackAspectRatio;
+
+  double get _fallbackAspectRatio => switch (presentation) {
+    DiscoveryCoverPresentation.portrait => AppSpacing.discoveryCoverAspectRatio,
+    DiscoveryCoverPresentation.square => 1,
+    DiscoveryCoverPresentation.landscape => 9 / 16,
+  };
 
   Widget _placeholder(Color foreground, Color start, Color end, {required bool isLoading}) {
     if (presentation == DiscoveryCoverPresentation.landscape) {
@@ -110,7 +140,7 @@ class DiscoveryBookCover extends ConsumerWidget {
         DefaultBookCoverArtwork(
           title: title,
           width: width,
-          height: height,
+          height: _placeholderHeight,
           startColor: start,
           endColor: end,
           foregroundColor: foreground,
@@ -144,6 +174,66 @@ class DiscoveryBookCover extends ConsumerWidget {
 
   BorderRadius get _borderRadius =>
       presentation == DiscoveryCoverPresentation.landscape ? BorderRadius.circular(10) : AppRadii.discoveryCover;
+}
+
+/// Renders a decoded cover at its intrinsic ratio after reserving fallback space.
+class _IntrinsicCoverImage extends StatefulWidget {
+  const _IntrinsicCoverImage({required this.bytes, required this.width, required this.fallbackHeight, required this.errorBuilder});
+
+  final Uint8List bytes;
+  final double width;
+  final double fallbackHeight;
+  final ImageErrorWidgetBuilder errorBuilder;
+
+  @override
+  State<_IntrinsicCoverImage> createState() => _IntrinsicCoverImageState();
+}
+
+class _IntrinsicCoverImageState extends State<_IntrinsicCoverImage> {
+  double? _aspectRatio;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveImage();
+  }
+
+  @override
+  void didUpdateWidget(covariant _IntrinsicCoverImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.bytes, widget.bytes)) {
+      _aspectRatio = null;
+      _resolveImage();
+    }
+  }
+
+  Future<void> _resolveImage() async {
+    final bytes = widget.bytes;
+    ui.ImmutableBuffer? buffer;
+    ui.ImageDescriptor? descriptor;
+    try {
+      buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+      descriptor = await ui.ImageDescriptor.encoded(buffer);
+      final aspectRatio = descriptor.width / descriptor.height;
+      if (mounted && identical(bytes, widget.bytes) && _aspectRatio != aspectRatio) {
+        setState(() => _aspectRatio = aspectRatio);
+      }
+    } catch (_) {
+      // Image.memory renders the existing visual fallback for invalid bytes.
+    } finally {
+      descriptor?.dispose();
+      buffer?.dispose();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final aspectRatio = _aspectRatio ?? widget.width / widget.fallbackHeight;
+    return AspectRatio(
+      aspectRatio: aspectRatio,
+      child: Image.memory(widget.bytes, fit: BoxFit.cover, errorBuilder: widget.errorBuilder),
+    );
+  }
 }
 
 DiscoveryCoverPresentation discoveryCoverPresentation(PluginCoverOrientation orientation) => switch (orientation) {
