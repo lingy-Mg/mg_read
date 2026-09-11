@@ -474,7 +474,11 @@ void main() {
   ) async {
     _setPortraitView(tester);
     await tester.pumpWidget(
-      _host(backend: _PresentationBackend(), textScale: 1),
+      _host(
+        backend: _PresentationBackend(),
+        textScale: 1,
+        artworkBuilder: _goldenArtworkBuilder,
+      ),
     );
     await tester.pump();
     await tester.pump();
@@ -494,6 +498,7 @@ void main() {
         backend: _PresentationBackend(),
         dataSource: const _QueueDataSource(),
         textScale: 1,
+        artworkBuilder: _goldenArtworkBuilder,
       ),
     );
     await tester.pump();
@@ -541,6 +546,23 @@ void main() {
       matchesGoldenFile('goldens/audio_player_details_390x844.png'),
     );
   });
+}
+
+Widget _goldenArtworkBuilder(BuildContext context, AudioTrack track) {
+  return const DecoratedBox(
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: <Color>[
+          Color(0xFFB9683D),
+          Color(0xFF59697C),
+          Color(0xFF241B19),
+        ],
+        stops: <double>[0, 0.52, 1],
+      ),
+    ),
+  );
 }
 
 void _setPortraitView(WidgetTester tester) {

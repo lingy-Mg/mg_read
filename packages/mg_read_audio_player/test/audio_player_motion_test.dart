@@ -36,6 +36,10 @@ void main() {
       ),
       findsAtLeastNWidgets(2),
     );
+    expect(
+      tester.getSize(find.byKey(const Key('audio-play-pause-surface'))),
+      const Size.square(84),
+    );
 
     await tester.tap(find.byKey(const Key('audio-play-pause')));
     await tester.pump(const Duration(milliseconds: 160));

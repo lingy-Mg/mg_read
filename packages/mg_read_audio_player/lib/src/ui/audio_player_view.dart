@@ -372,9 +372,9 @@ class _AudioViewState extends State<AudioPlayerView>
                             key: const Key('audio-control-glass'),
                             padding: EdgeInsets.fromLTRB(
                               compactHeight ? 14 : 17,
-                              compactHeight ? 12 : 16,
+                              compactHeight ? 17 : 22,
                               compactHeight ? 14 : 17,
-                              compactHeight ? 13 : 16,
+                              compactHeight ? 10 : 12,
                             ),
                             tone: AudioGlassTone.strong,
                             child: Column(
@@ -428,7 +428,7 @@ class _AudioViewState extends State<AudioPlayerView>
                                     );
                                   },
                                 ),
-                                SizedBox(height: compactHeight ? 6 : 9),
+                                SizedBox(height: compactHeight ? 2 : 4),
                                 AudioTransportControls(
                                   snapshot: snapshot,
                                   disableAnimations: disableAnimations,
@@ -445,7 +445,7 @@ class _AudioViewState extends State<AudioPlayerView>
                               ],
                             ),
                           ),
-                          SizedBox(height: compactHeight ? 9 : 11),
+                          SizedBox(height: compactHeight ? 6 : 8),
                           AudioSettingsLauncher(
                             snapshot: snapshot,
                             compact: compactHeight,

@@ -35,14 +35,14 @@ abstract final class AudioPlayerColors {
   static const blueGlow = Color(0x00000000);
   static const scrim = Color(0x8A000000);
 
-  static const glass = Color(0x1AFFFFFF);
-  static const glassHighlight = Color(0x30FFFFFF);
-  static const glassStrong = Color(0x24FFFFFF);
-  static const glassStrongHighlight = Color(0x3DFFFFFF);
-  static const glassBorder = Color(0x52FFFFFF);
-  static const accentGlass = Color(0x2BFFFFFF);
-  static const accentGlassHighlight = Color(0x42FFFFFF);
-  static const accentBorder = Color(0x5CFFFFFF);
+  static const glass = Color(0x14FFFFFF);
+  static const glassHighlight = Color(0x29FFFFFF);
+  static const glassStrong = Color(0x1DFFFFFF);
+  static const glassStrongHighlight = Color(0x33FFFFFF);
+  static const glassBorder = Color(0x48FFFFFF);
+  static const accentGlass = Color(0x24FFFFFF);
+  static const accentGlassHighlight = Color(0x38FFFFFF);
+  static const accentBorder = Color(0x52FFFFFF);
   static const warningGlass = Color(0x24FFB5A5);
   static const warningGlassHighlight = Color(0x33FFCEC4);
   static const warningBorder = Color(0x55FFCEC4);
