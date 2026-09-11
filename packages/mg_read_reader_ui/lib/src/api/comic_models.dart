@@ -12,6 +12,7 @@ class ComicBookInfo {
     this.author,
     this.description,
     this.sourceName,
+    this.sourceUrl,
     this.sourceKind = ReaderBookSourceKind.unknown,
   });
 
@@ -30,6 +31,11 @@ class ComicBookInfo {
   /// Optional host-managed source display name.
   final String? sourceName;
 
+  /// HTTP or HTTPS URL for the comic at its source, when the host knows it.
+  ///
+  /// The reader only displays and opens this URL after an explicit user tap.
+  final Uri? sourceUrl;
+
   /// Host classification of the book source.
   final ReaderBookSourceKind sourceKind;
 
@@ -41,11 +47,19 @@ class ComicBookInfo {
       author == other.author &&
       description == other.description &&
       sourceName == other.sourceName &&
+      sourceUrl == other.sourceUrl &&
       sourceKind == other.sourceKind;
 
   @override
-  int get hashCode =>
-      Object.hash(id, title, author, description, sourceName, sourceKind);
+  int get hashCode => Object.hash(
+    id,
+    title,
+    author,
+    description,
+    sourceName,
+    sourceUrl,
+    sourceKind,
+  );
 }
 
 @immutable

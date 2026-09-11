@@ -19,6 +19,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderBox, ScrollCacheExtent;
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../api/contracts.dart';
 import '../../api/comic_contracts.dart';
@@ -29,7 +30,9 @@ import '../../platform/reader_platform.dart';
 import '../../platform/screen_awake_coordinator.dart';
 import '../comments/reader_comment_strings.dart';
 import '../comments/reader_comment_widgets.dart';
+import '../reader_strings.dart';
 import '../reader_theme.dart';
+import '../reader_source_strip.dart';
 import 'comic_image_cache.dart';
 import 'comic_chapter_preloader.dart';
 import 'comic_image_tile.dart';

@@ -23,7 +23,10 @@ void main() {
       },
     );
 
-    expect((await reader.loadBookInfo('manga-1')).title, '示例漫画');
+    final book = await reader.loadBookInfo('manga-1');
+    expect(book.title, '示例漫画');
+    expect(book.sourceName, '示例漫画源');
+    expect(book.sourceUrl, Uri.parse('https://example.com/manga-1'));
     final first = await reader.loadChapterCatalog('manga-1', pageSize: 1);
     expect(first.items.single.id, 'chapter-1');
     expect(first.items.single.title, '第一章');
@@ -201,7 +204,7 @@ final _detail = PluginContentDetail(
   sourceName: '示例漫画源',
   summary: _summary,
   aliases: const <String>[],
-  catalogUrl: null,
+  catalogUrl: Uri.parse('https://example.com/manga-1'),
 );
 
 final _summary = PluginContentSummary(

@@ -118,17 +118,18 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
               ),
             ),
           ),
-          Material(
+          ReaderSourceStrip(
             key: const ValueKey<String>('reader-source-strip'),
-            color: _palette.panel.withValues(alpha: .76),
-            elevation: 0,
-            child: Container(
-              height: 28,
-              padding: const EdgeInsets.only(left: 56, right: 12),
-              decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: _palette.divider)),
-              ),
-              child: _buildCompactSourceRow(),
+            sourceName: _book?.sourceName,
+            sourceUrl: _sourceDisplayUrl,
+            sourceUri: _sourceDisplayUri,
+            style: ReaderSourceStripStyle.text(_palette),
+            onOpenSource: _sourceDisplayUri == null
+                ? null
+                : () => unawaited(_openSourceUrl(_sourceDisplayUri!)),
+            sourceNameKey: const ValueKey<String>('reader-source-name'),
+            sourceUrlRegionKey: const ValueKey<String>(
+              'reader-source-url-region',
             ),
           ),
         ],
@@ -146,94 +147,6 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
                 _pageIndex < _pages.length &&
                 _pages[_pageIndex].showsTitle));
     return chapterTitleIsOnPage ? book.title : _content?.title ?? book.title;
-  }
-
-  Widget _buildCompactSourceRow() {
-    final String sourceName = _sourceDisplayName;
-    final String? sourceUrl = _sourceDisplayUrl;
-    final Uri? sourceUri = _sourceDisplayUri;
-    return SizedBox(
-      height: 22,
-      child: Row(
-        children: <Widget>[
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 104),
-            child: Text(
-              sourceName,
-              key: const ValueKey<String>('reader-source-name'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: _palette.secondaryText.withValues(alpha: .78),
-                fontSize: 11,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(width: 1, height: 14, color: _palette.divider),
-          const SizedBox(width: 8),
-          Expanded(
-            key: const ValueKey<String>('reader-source-url-region'),
-            child: _buildSourceUrlAction(
-              sourceUrl: sourceUrl,
-              sourceUri: sourceUri,
-              compact: true,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSourceUrlAction({
-    required String? sourceUrl,
-    required Uri? sourceUri,
-    bool compact = false,
-  }) {
-    final Widget label = Row(
-      children: <Widget>[
-        Icon(
-          Icons.open_in_new_rounded,
-          size: compact ? 14 : 16,
-          color: sourceUri == null
-              ? _palette.secondaryText.withValues(alpha: .78)
-              : compact
-              ? _palette.accent.withValues(alpha: .82)
-              : _palette.accent,
-        ),
-        const SizedBox(width: 5),
-        Expanded(
-          child: Text(
-            sourceUrl ?? ReaderStrings.sourceUrlUnavailable,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: sourceUri == null
-                  ? _palette.secondaryText.withValues(alpha: .78)
-                  : compact
-                  ? _palette.text.withValues(alpha: .78)
-                  : _palette.text,
-              fontSize: compact ? 11 : 12,
-              decoration: sourceUri == null ? null : TextDecoration.underline,
-              decorationColor: _palette.accent,
-            ),
-          ),
-        ),
-      ],
-    );
-    if (sourceUri == null) return label;
-    void openSourceAction() => unawaited(_openSourceUrl(sourceUri));
-    return ReaderAccessibleTooltip(
-      label: '${ReaderStrings.openSourceUrl}: $sourceUrl',
-      tooltipMessage: sourceUrl,
-      link: true,
-      onTap: openSourceAction,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(6),
-        onTap: openSourceAction,
-        child: SizedBox(height: compact ? 22 : 48, child: label),
-      ),
-    );
   }
 
   Future<void> _openSourceUrl(Uri uri) async {
@@ -265,13 +178,6 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
       dismissControls: dismissControls,
       showLoadingOverlay: showLoadingOverlay,
     );
-  }
-
-  String get _sourceDisplayName {
-    final String? sourceName = _book?.sourceName?.trim();
-    return sourceName == null || sourceName.isEmpty
-        ? ReaderStrings.sourceUnavailable
-        : sourceName;
   }
 
   String? get _sourceDisplayUrl =>

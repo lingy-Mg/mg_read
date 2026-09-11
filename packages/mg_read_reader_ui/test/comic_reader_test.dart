@@ -52,6 +52,27 @@ void main() {
     expect(progress.imageId, 'image-2');
   });
 
+  test('comic book metadata keeps an optional source link', () {
+    final Uri sourceUrl = Uri.parse('https://source.example/comics/book');
+    final info = ComicBookInfo(
+      id: 'book',
+      title: '漫画',
+      sourceName: '测试漫画源',
+      sourceUrl: sourceUrl,
+    );
+
+    expect(info.sourceUrl, sourceUrl);
+    expect(
+      info,
+      ComicBookInfo(
+        id: 'book',
+        title: '漫画',
+        sourceName: '测试漫画源',
+        sourceUrl: sourceUrl,
+      ),
+    );
+  });
+
   test(
     'comic image cache enforces single-flight, byte LRU and 8 MiB default',
     () async {
@@ -449,6 +470,28 @@ void main() {
       find.byKey(const ValueKey<String>('comic-reader-add-bookmark')),
       findsOneWidget,
     );
+    final Finder primaryBar = find.byKey(
+      const ValueKey<String>('comic-reader-primary-top-bar'),
+    );
+    final Finder sourceStrip = find.byKey(
+      const ValueKey<String>('comic-reader-source-strip'),
+    );
+    expect(sourceStrip, findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('comic-reader-source-name')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('comic-reader-source-url-region')),
+      findsOneWidget,
+    );
+    expect(find.text('测试漫画源'), findsOneWidget);
+    expect(find.text('https://source.example/comics/book'), findsOneWidget);
+    expect(tester.getRect(sourceStrip).top, tester.getRect(primaryBar).bottom);
+    final Material stripMaterial = tester.widget<Material>(
+      find.descendant(of: sourceStrip, matching: find.byType(Material)).first,
+    );
+    expect(stripMaterial.color, const Color(0xD917191B));
     expect(
       find.byKey(const ValueKey<String>('comic-reader-catalog')),
       findsOneWidget,
@@ -543,8 +586,12 @@ class _FakeComicSource implements ComicReaderDataSource {
   int imageCalls = 0;
 
   @override
-  Future<ComicBookInfo> loadBookInfo(String bookId) async =>
-      const ComicBookInfo(id: 'book', title: '漫画');
+  Future<ComicBookInfo> loadBookInfo(String bookId) async => ComicBookInfo(
+    id: 'book',
+    title: '漫画',
+    sourceName: '测试漫画源',
+    sourceUrl: Uri.parse('https://source.example/comics/book'),
+  );
 
   @override
   Future<ComicChapterCatalogPage> loadChapterCatalog(

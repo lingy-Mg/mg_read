@@ -47,6 +47,7 @@ import 'chapter/reader_chapter_state_badge.dart';
 import 'effects/reader_page_effect.dart';
 import 'fonts/reader_font_controller.dart';
 import 'reader_accessible_tooltip.dart';
+import 'reader_source_strip.dart';
 import 'reader_strings.dart';
 import 'reader_theme.dart';
 import 'settings/reader_settings_sheet.dart';

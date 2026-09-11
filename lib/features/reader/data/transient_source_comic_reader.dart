@@ -54,6 +54,7 @@ final class TransientSourceComicReaderDataSource implements ComicReaderDataSourc
       author: summary.author,
       description: summary.description,
       sourceName: detail.sourceName,
+      sourceUrl: detail.catalogUrl ?? summary.url,
       sourceKind: ReaderBookSourceKind.remote,
     );
   }

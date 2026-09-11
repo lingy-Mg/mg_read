@@ -75,6 +75,7 @@ final class ContentLibraryComicReaderDataSource implements ComicReaderDataSource
       author: item.author,
       description: item.description,
       sourceName: item.sourceName,
+      sourceUrl: item.sourceUrl,
       sourceKind: ReaderBookSourceKind.remote,
     );
   }

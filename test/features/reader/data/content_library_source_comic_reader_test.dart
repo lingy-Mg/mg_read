@@ -102,6 +102,9 @@ void main() {
       pages: <PluginMangaPage>[_page(policy: PluginMangaPageResourcePolicy.sessionOnly)],
     );
     final adapter = ContentLibraryComicReaderDataSource(library: fixture.library, gateway: gateway, item: fixture.manga);
+    final book = await adapter.loadBookInfo(fixture.manga.id.value);
+    expect(book.sourceName, 'fixture');
+    expect(book.sourceUrl, Uri.parse('https://fixture.example/comic'));
 
     final firstPage = await adapter.loadChapterCatalog(fixture.manga.id.value, pageSize: 1);
     final secondPage = await adapter.loadChapterCatalog(fixture.manga.id.value, cursor: firstPage.nextCursor, pageSize: 1);
@@ -565,13 +568,15 @@ final class _LibraryFixture {
   }
 }
 
-const _mangaRequest = BookshelfAddRequest(
+final _mangaRequest = BookshelfAddRequest(
   pluginId: 'fixture',
   pluginVersion: '1',
   remoteContentId: 'comic',
   title: '漫画',
   author: null,
   kind: ContentKind.manga,
+  sourceName: 'fixture',
+  sourceUrl: Uri.parse('https://fixture.example/comic'),
 );
 
 final class _ChapterFixture {
