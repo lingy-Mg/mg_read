@@ -313,95 +313,95 @@ class _ComicReaderViewState extends State<ComicReaderView>
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: _comicReaderSystemUiStyle,
       child: PopScope<void>(
-      canPop: true,
-      onPopInvokedWithResult: (bool didPop, void result) {
-        if (didPop) unawaited(_requestExit());
-      },
-      child: MediaQuery.withClampedTextScaling(
-        minScaleFactor: .85,
-        maxScaleFactor: 1.3,
-        child: Theme(
-          data: ThemeData(
-            brightness: Brightness.dark,
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: palette.accent,
+        canPop: true,
+        onPopInvokedWithResult: (bool didPop, void result) {
+          if (didPop) unawaited(_requestExit());
+        },
+        child: MediaQuery.withClampedTextScaling(
+          minScaleFactor: .85,
+          maxScaleFactor: 1.3,
+          child: Theme(
+            data: ThemeData(
               brightness: Brightness.dark,
-              surface: palette.panel,
+              colorScheme: ColorScheme.fromSeed(
+                seedColor: palette.accent,
+                brightness: Brightness.dark,
+                surface: palette.panel,
+              ),
+              fontFamily: readerDefaultFontFamily,
+              fontFamilyFallback: const <String>[
+                'PingFang SC',
+                'Microsoft YaHei',
+                'Noto Sans CJK SC',
+                'sans-serif',
+              ],
             ),
-            fontFamily: readerDefaultFontFamily,
-            fontFamilyFallback: const <String>[
-              'PingFang SC',
-              'Microsoft YaHei',
-              'Noto Sans CJK SC',
-              'sans-serif',
-            ],
-          ),
-          child: KeyboardListener(
-            focusNode: _focusNode,
-            autofocus: true,
-            onKeyEvent: _handleKeyEvent,
-            child: Scaffold(
-              backgroundColor: Colors.white,
-              body: LayoutBuilder(
-                builder: (BuildContext context, BoxConstraints constraints) {
-                  final double previousWidth = _viewportWidth;
-                  _viewportWidth = constraints.maxWidth > 960
-                      ? 960
-                      : constraints.maxWidth;
-                  _horizontalInset =
-                      ((constraints.maxWidth - _viewportWidth) / 2).clamp(
-                        0,
-                        double.infinity,
-                      );
-                  _viewportHeight = constraints.maxHeight;
-                  _topPadding = MediaQuery.paddingOf(context).top;
-                  if (previousWidth > 0 &&
-                      (previousWidth - _viewportWidth).abs() > .5 &&
-                      _progress != null &&
-                      !_restoring) {
-                    final ComicReaderProgress anchor = _progress!;
-                    _restoring = true;
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (_disposed) return;
-                      _restorePosition(anchor);
-                      _restoring = false;
-                    });
-                  }
-                  return Stack(
-                    fit: StackFit.expand,
-                    children: <Widget>[
-                      ColoredBox(
-                        color: Colors.white,
-                        child: _buildReadingSurface(palette),
-                      ),
-                      IgnorePointer(
-                        child: ColoredBox(
-                          color: Colors.black.withValues(
-                            alpha: 1 - _preferences.brightness,
+            child: KeyboardListener(
+              focusNode: _focusNode,
+              autofocus: true,
+              onKeyEvent: _handleKeyEvent,
+              child: Scaffold(
+                backgroundColor: Colors.white,
+                body: LayoutBuilder(
+                  builder: (BuildContext context, BoxConstraints constraints) {
+                    final double previousWidth = _viewportWidth;
+                    _viewportWidth = constraints.maxWidth > 960
+                        ? 960
+                        : constraints.maxWidth;
+                    _horizontalInset =
+                        ((constraints.maxWidth - _viewportWidth) / 2).clamp(
+                          0,
+                          double.infinity,
+                        );
+                    _viewportHeight = constraints.maxHeight;
+                    _topPadding = MediaQuery.paddingOf(context).top;
+                    if (previousWidth > 0 &&
+                        (previousWidth - _viewportWidth).abs() > .5 &&
+                        _progress != null &&
+                        !_restoring) {
+                      final ComicReaderProgress anchor = _progress!;
+                      _restoring = true;
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (_disposed) return;
+                        _restorePosition(anchor);
+                        _restoring = false;
+                      });
+                    }
+                    return Stack(
+                      fit: StackFit.expand,
+                      children: <Widget>[
+                        ColoredBox(
+                          color: Colors.white,
+                          child: _buildReadingSurface(palette),
+                        ),
+                        IgnorePointer(
+                          child: ColoredBox(
+                            color: Colors.black.withValues(
+                              alpha: 1 - _preferences.brightness,
+                            ),
                           ),
                         ),
-                      ),
-                      _buildChrome(palette),
-                      if (_loading && _window.isEmpty)
-                        _buildLoadingOverlay(palette),
-                      if (_failure != null && _window.isEmpty)
-                        _buildFailureOverlay(palette),
-                      if (_failure != null && _window.isNotEmpty)
-                        _buildInlineFailure(palette),
-                      if (_loading && _window.isNotEmpty)
-                        const Align(
-                          alignment: Alignment.topCenter,
-                          child: LinearProgressIndicator(minHeight: 2),
-                        ),
-                    ],
-                  );
-                },
+                        _buildChrome(palette),
+                        if (_loading && _window.isEmpty)
+                          _buildLoadingOverlay(palette),
+                        if (_failure != null && _window.isEmpty)
+                          _buildFailureOverlay(palette),
+                        if (_failure != null && _window.isNotEmpty)
+                          _buildInlineFailure(palette),
+                        if (_loading && _window.isNotEmpty)
+                          const Align(
+                            alignment: Alignment.topCenter,
+                            child: LinearProgressIndicator(minHeight: 2),
+                          ),
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
           ),
         ),
       ),
-    ),
     );
   }
 }
