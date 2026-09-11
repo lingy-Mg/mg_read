@@ -405,6 +405,11 @@ class _AudioViewState extends State<AudioPlayerView>
                           AudioSettingsLauncher(
                             snapshot: snapshot,
                             compact: compactHeight,
+                            onQueue: () => showAudioQueueSheet(
+                              context,
+                              snapshot: snapshot,
+                              controller: _controller,
+                            ),
                             onPressed: () => showAudioPlaybackSettingsSheet(
                               context,
                               snapshot: snapshot,

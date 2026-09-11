@@ -322,7 +322,7 @@ void main() {
     },
   );
 
-  testWidgets('host artwork sits below a sampled glass backdrop', (
+  testWidgets('host artwork becomes the blurred immersive backdrop', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -340,21 +340,17 @@ void main() {
     final backdrop = find.byKey(const Key('audio-artwork-backdrop'));
     expect(backdrop, findsOneWidget);
     expect(
-      find.descendant(of: backdrop, matching: find.byType(BackdropFilter)),
+      find.descendant(of: backdrop, matching: find.byType(ImageFiltered)),
       findsOneWidget,
     );
     expect(
       find.byKey(const Key('audio-artwork-backdrop-cover')),
       findsOneWidget,
     );
-    expect(
-      find.descendant(of: backdrop, matching: find.byType(ImageFiltered)),
-      findsNothing,
-    );
     expect(find.byKey(const Key('presentation-artwork')), findsNWidgets(2));
   });
 
-  testWidgets('ready surface and every modal use the shared glass system', (
+  testWidgets('ready surface keeps glass treatment to controls and launchers', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -367,9 +363,7 @@ void main() {
     await tester.pump();
 
     for (final key in <Key>[
-      const Key('audio-top-bar-glass'),
       const Key('audio-cover-glass'),
-      const Key('audio-metadata-glass'),
       const Key('audio-control-glass'),
       const Key('audio-settings-glass'),
     ]) {

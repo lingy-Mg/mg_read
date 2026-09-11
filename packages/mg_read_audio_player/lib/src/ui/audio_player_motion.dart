@@ -12,6 +12,7 @@ library;
 
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 
@@ -128,49 +129,8 @@ final class AudioAnimatedPlayPauseButton extends StatefulWidget {
 }
 
 class _AudioAnimatedPlayPauseButtonState
-    extends State<AudioAnimatedPlayPauseButton>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _pulseController = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 2400),
-  );
+    extends State<AudioAnimatedPlayPauseButton> {
   bool _pressed = false;
-
-  bool get _pulseActive =>
-      widget.snapshot.playing &&
-      !widget.snapshot.buffering &&
-      !widget.disableAnimations;
-
-  @override
-  void initState() {
-    super.initState();
-    _syncPulse();
-  }
-
-  @override
-  void didUpdateWidget(AudioAnimatedPlayPauseButton oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.snapshot.playing != widget.snapshot.playing ||
-        oldWidget.snapshot.buffering != widget.snapshot.buffering ||
-        oldWidget.disableAnimations != widget.disableAnimations) {
-      _syncPulse();
-    }
-  }
-
-  void _syncPulse() {
-    if (_pulseActive) {
-      _pulseController.repeat();
-    } else {
-      _pulseController.stop();
-      _pulseController.value = 0;
-    }
-  }
-
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -180,35 +140,6 @@ class _AudioAnimatedPlayPauseButtonState
         clipBehavior: Clip.none,
         alignment: Alignment.center,
         children: <Widget>[
-          AnimatedBuilder(
-            animation: _pulseController,
-            builder: (context, child) {
-              final curved = Curves.easeOutCubic.transform(
-                _pulseController.value,
-              );
-              return IgnorePointer(
-                child: Opacity(
-                  key: const Key('audio-play-pulse'),
-                  opacity: _pulseActive ? (1 - curved) * 0.42 : 0,
-                  child: Transform.scale(
-                    scale: 0.92 + curved * 0.30,
-                    child: child,
-                  ),
-                ),
-              );
-            },
-            child: Container(
-              width: 74,
-              height: 74,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: AudioPlayerColors.accent.withValues(alpha: 0.66),
-                  width: 1.4,
-                ),
-              ),
-            ),
-          ),
           Listener(
             onPointerDown: (_) => setState(() => _pressed = true),
             onPointerUp: (_) => setState(() => _pressed = false),
@@ -219,39 +150,51 @@ class _AudioAnimatedPlayPauseButtonState
                   : const Duration(milliseconds: 120),
               curve: Curves.easeOutCubic,
               scale: _pressed ? 0.94 : 1,
-              child: SizedBox.square(
-                dimension: 74,
-                child: FilledButton(
-                  key: const Key('audio-play-pause'),
-                  style: FilledButton.styleFrom(
-                    shape: const CircleBorder(),
-                    padding: EdgeInsets.zero,
-                    backgroundColor: AudioPlayerColors.accent,
-                    foregroundColor: AudioPlayerColors.backgroundBottom,
-                    shadowColor: AudioPlayerColors.shadow,
-                    elevation: 8,
-                  ),
-                  onPressed: widget.onPressed,
-                  child: AnimatedSwitcher(
-                    duration: widget.disableAnimations
-                        ? Duration.zero
-                        : const Duration(milliseconds: 160),
-                    child: widget.snapshot.buffering
-                        ? const SizedBox.square(
-                            key: Key('audio-buffering'),
-                            dimension: 26,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.6,
-                              color: AudioPlayerColors.backgroundBottom,
-                            ),
-                          )
-                        : Icon(
-                            widget.snapshot.playing
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded,
-                            key: ValueKey<bool>(widget.snapshot.playing),
-                            size: 40,
-                          ),
+              child: ClipOval(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.14),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.22),
+                      ),
+                      boxShadow: const <BoxShadow>[
+                        BoxShadow(
+                          color: Color(0x26000000),
+                          blurRadius: 18,
+                          offset: Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: IconButton(
+                      key: const Key('audio-play-pause'),
+                      tooltip: widget.snapshot.playing ? '暂停' : '播放',
+                      onPressed: widget.onPressed,
+                      iconSize: 32,
+                      color: AudioPlayerColors.ink,
+                      icon: AnimatedSwitcher(
+                        duration: widget.disableAnimations
+                            ? Duration.zero
+                            : const Duration(milliseconds: 160),
+                        child: widget.snapshot.buffering
+                            ? const SizedBox.square(
+                                key: Key('audio-buffering'),
+                                dimension: 25,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.4,
+                                  color: AudioPlayerColors.ink,
+                                ),
+                              )
+                            : Icon(
+                                widget.snapshot.playing
+                                    ? Icons.pause_rounded
+                                    : Icons.play_arrow_rounded,
+                                key: ValueKey<bool>(widget.snapshot.playing),
+                              ),
+                      ),
+                    ),
                   ),
                 ),
               ),

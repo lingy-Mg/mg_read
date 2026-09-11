@@ -17,7 +17,6 @@ import 'package:flutter/material.dart';
 
 import '../api/audio_artwork.dart';
 import '../api/audio_models.dart';
-import 'audio_player_glass.dart';
 import 'audio_player_theme.dart';
 
 final class AudioPlayerAmbientBackground extends StatelessWidget {
@@ -25,59 +24,19 @@ final class AudioPlayerAmbientBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Stack(
-      fit: StackFit.expand,
-      children: <Widget>[
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: <Color>[
-                AudioPlayerColors.backgroundTop,
-                AudioPlayerColors.backgroundBottom,
-              ],
-              stops: <double>[0, 0.78],
-            ),
-          ),
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: <Color>[
+            AudioPlayerColors.backgroundTop,
+            AudioPlayerColors.backgroundBottom,
+          ],
         ),
-        Positioned(
-          top: -130,
-          right: -115,
-          child: _AmbientGlow(
-            size: 360,
-            colors: <Color>[Color(0x8A39A8EA), Color(0x0039A8EA)],
-          ),
-        ),
-        Positioned(
-          left: -170,
-          bottom: 40,
-          child: _AmbientGlow(
-            size: 390,
-            colors: <Color>[Color(0x66347DB6), Color(0x00347DB6)],
-          ),
-        ),
-      ],
+      ),
     );
   }
-}
-
-final class _AmbientGlow extends StatelessWidget {
-  const _AmbientGlow({required this.size, required this.colors});
-
-  final double size;
-  final List<Color> colors;
-
-  @override
-  Widget build(BuildContext context) => SizedBox.square(
-    dimension: size,
-    child: DecoratedBox(
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(colors: colors),
-      ),
-    ),
-  );
 }
 
 final class AudioPlayerArtworkBackdrop extends StatefulWidget {
@@ -148,8 +107,8 @@ class _AudioPlayerArtworkBackdropState extends State<AudioPlayerArtworkBackdrop>
         : const Duration(milliseconds: 620);
     final artwork = widget.artworkBuilder?.call(context, widget.track);
     final glassTint = widget.playing
-        ? const Color(0x83051120)
-        : const Color(0xA1081526);
+        ? const Color(0x78000000)
+        : const Color(0x94000000);
     return IgnorePointer(
       child: Stack(
         key: const Key('audio-artwork-backdrop'),
@@ -157,145 +116,77 @@ class _AudioPlayerArtworkBackdropState extends State<AudioPlayerArtworkBackdrop>
         children: <Widget>[
           const AudioPlayerAmbientBackground(),
           ClipRect(
-            child: AnimatedBuilder(
-              animation: _motionController,
-              builder: (context, child) {
-                final phase = _motionController.value;
-                final breathe = math.sin(phase * math.pi);
-                return Transform.translate(
-                  key: const Key('audio-artwork-backdrop-motion'),
-                  offset: Offset(-8 + phase * 16, 6 - phase * 12),
-                  child: Transform.scale(
-                    scale: 1.08 + breathe * 0.025,
-                    child: child,
-                  ),
-                );
-              },
-              child: AnimatedSwitcher(
-                duration: switchDuration,
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                transitionBuilder: (child, animation) {
-                  final curved = CurvedAnimation(
-                    parent: animation,
-                    curve: Curves.easeOutCubic,
-                  );
-                  return FadeTransition(
-                    opacity: curved,
-                    child: ScaleTransition(
-                      scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
+            child: ImageFiltered(
+              key: const Key('audio-artwork-backdrop-blur'),
+              imageFilter: ImageFilter.blur(
+                sigmaX: 40,
+                sigmaY: 40,
+                tileMode: TileMode.clamp,
+              ),
+              child: AnimatedBuilder(
+                animation: _motionController,
+                builder: (context, child) {
+                  final phase = _motionController.value;
+                  final breathe = math.sin(phase * math.pi);
+                  return Transform.translate(
+                    key: const Key('audio-artwork-backdrop-motion'),
+                    offset: Offset(-8 + phase * 16, 6 - phase * 12),
+                    child: Transform.scale(
+                      scale: 1.18 + breathe * 0.025,
                       child: child,
                     ),
                   );
                 },
-                child: RepaintBoundary(
-                  key: ValueKey<String>(widget.track.id),
-                  child: SizedBox.expand(
-                    key: const Key('audio-artwork-backdrop-cover'),
-                    child: artwork ?? const AudioPlayerCoverPlaceholder(),
+                child: AnimatedSwitcher(
+                  duration: switchDuration,
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) {
+                    final curved = CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeOutCubic,
+                    );
+                    return FadeTransition(
+                      opacity: curved,
+                      child: ScaleTransition(
+                        scale: Tween<double>(
+                          begin: 0.96,
+                          end: 1,
+                        ).animate(curved),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: RepaintBoundary(
+                    key: ValueKey<String>(widget.track.id),
+                    child: SizedBox.expand(
+                      key: const Key('audio-artwork-backdrop-cover'),
+                      child: artwork ?? const AudioPlayerCoverPlaceholder(),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-          ClipRect(
-            child: BackdropFilter(
-              key: const Key('audio-artwork-backdrop-glass'),
-              filter: ImageFilter.blur(
-                sigmaX: 50,
-                sigmaY: 50,
-                tileMode: TileMode.clamp,
-              ),
-              child: AnimatedContainer(
-                key: const Key('audio-artwork-backdrop-tint'),
-                duration: depthDuration,
-                curve: Curves.easeOutCubic,
-                color: glassTint,
-              ),
-            ),
+          AnimatedContainer(
+            key: const Key('audio-artwork-backdrop-tint'),
+            duration: depthDuration,
+            curve: Curves.easeOutCubic,
+            color: glassTint,
           ),
           const DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: <Color>[
-                  Color(0x5C2C6F9A),
-                  Color(0x8F102D49),
-                  Color(0xD6020914),
-                ],
-                stops: <double>[0, 0.48, 1],
+                colors: <Color>[Color(0x18000000), Color(0x70000000)],
               ),
-            ),
-          ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: const Alignment(0, -0.32),
-                radius: 0.78,
-                colors: <Color>[
-                  AudioPlayerColors.accent.withValues(alpha: 0.16),
-                  Color(0xFF2B83BD).withValues(alpha: 0.08),
-                  Colors.transparent,
-                ],
-              ),
-            ),
-          ),
-          const Positioned(
-            top: 72,
-            left: -150,
-            child: _BackdropGlow(
-              width: 320,
-              height: 430,
-              colors: <Color>[Color(0x7037B5F2), Color(0x0037B5F2)],
-            ),
-          ),
-          const Positioned(
-            top: 315,
-            right: -190,
-            child: _BackdropGlow(
-              width: 390,
-              height: 470,
-              colors: <Color>[Color(0x66306EA8), Color(0x00306EA8)],
-            ),
-          ),
-          const Positioned(
-            left: 35,
-            bottom: -180,
-            child: _BackdropGlow(
-              width: 330,
-              height: 330,
-              colors: <Color>[Color(0x55398DCC), Color(0x00398DCC)],
             ),
           ),
         ],
       ),
     );
   }
-}
-
-final class _BackdropGlow extends StatelessWidget {
-  const _BackdropGlow({
-    required this.width,
-    required this.height,
-    required this.colors,
-  });
-
-  final double width;
-  final double height;
-  final List<Color> colors;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    width: width,
-    height: height,
-    child: DecoratedBox(
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(colors: colors),
-      ),
-    ),
-  );
 }
 
 final class AudioPlayerCover extends StatefulWidget {
@@ -394,12 +285,19 @@ class _AudioPlayerCoverState extends State<AudioPlayerCover>
         child: SizedBox(
           width: widget.size,
           height: widget.size,
-          child: AudioGlassPanel(
+          child: DecoratedBox(
             key: const Key('audio-cover-glass'),
-            padding: const EdgeInsets.all(3),
-            borderRadius: BorderRadius.circular(32),
-            tone: AudioGlassTone.strong,
-            blur: 14,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+              boxShadow: const <BoxShadow>[
+                BoxShadow(
+                  color: Color(0x2E000000),
+                  blurRadius: 30,
+                  offset: Offset(0, 16),
+                ),
+              ],
+            ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(29),
               child: AnimatedSwitcher(
@@ -444,18 +342,6 @@ class _AudioPlayerCoverState extends State<AudioPlayerCover>
                   children: <Widget>[
                     widget.artworkBuilder?.call(context, widget.track) ??
                         const AudioPlayerCoverPlaceholder(),
-                    IgnorePointer(
-                      child: AnimatedBuilder(
-                        animation: _atmosphereController,
-                        builder: (context, child) => CustomPaint(
-                          key: const Key('audio-cover-atmosphere'),
-                          painter: _AudioCoverAtmospherePainter(
-                            phase: _atmosphereController.value,
-                            active: _atmosphereActive,
-                          ),
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -465,78 +351,6 @@ class _AudioPlayerCoverState extends State<AudioPlayerCover>
       ),
     );
   }
-}
-
-final class _AudioCoverAtmospherePainter extends CustomPainter {
-  const _AudioCoverAtmospherePainter({
-    required this.phase,
-    required this.active,
-  });
-
-  final double phase;
-  final bool active;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (!active) return;
-    _paintSheen(canvas, size);
-    _paintParticles(canvas, size);
-  }
-
-  void _paintSheen(Canvas canvas, Size size) {
-    const sheenStart = 0.72;
-    const sheenEnd = 0.90;
-    if (phase < sheenStart || phase > sheenEnd) return;
-    final amount = (phase - sheenStart) / (sheenEnd - sheenStart);
-    final opacity = math.sin(amount * math.pi) * 0.18;
-    final centerX = (-0.25 + amount * 1.5) * size.width;
-    final path = Path()
-      ..moveTo(centerX - size.width * 0.18, 0)
-      ..lineTo(centerX + size.width * 0.02, 0)
-      ..lineTo(centerX + size.width * 0.30, size.height)
-      ..lineTo(centerX + size.width * 0.10, size.height)
-      ..close();
-    canvas.drawPath(
-      path,
-      Paint()
-        ..shader = LinearGradient(
-          colors: <Color>[
-            Colors.transparent,
-            AudioPlayerColors.accentPressed.withValues(alpha: opacity),
-            Colors.transparent,
-          ],
-        ).createShader(Offset.zero & size),
-    );
-  }
-
-  void _paintParticles(Canvas canvas, Size size) {
-    const origins = <Offset>[
-      Offset(0.18, 0.77),
-      Offset(0.78, 0.68),
-      Offset(0.64, 0.28),
-    ];
-    const offsets = <double>[0.18, 0.61, 0.84];
-    for (var index = 0; index < origins.length; index += 1) {
-      final amount = (phase + offsets[index]) % 1;
-      final opacity = math.sin(amount * math.pi) * 0.42;
-      final origin = origins[index];
-      final center = Offset(
-        (origin.dx + amount * 0.035) * size.width,
-        (origin.dy - amount * 0.11) * size.height,
-      );
-      canvas.drawCircle(
-        center,
-        1.6 + amount * 0.8,
-        Paint()
-          ..color = AudioPlayerColors.accentSoft.withValues(alpha: opacity)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.2),
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_AudioCoverAtmospherePainter oldDelegate) =>
-      oldDelegate.phase != phase || oldDelegate.active != active;
 }
 
 final class AudioPlayerCoverPlaceholder extends StatelessWidget {

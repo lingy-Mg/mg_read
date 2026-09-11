@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read_audio_player/mg_read_audio_player.dart';
 
 void main() {
-  testWidgets('active playback drives indicator cover progress and pulse', (
+  testWidgets('active playback drives indicator cover and glass controls', (
     tester,
   ) async {
     final backend = _MotionBackend();
@@ -30,23 +30,22 @@ void main() {
       tester.widget<Transform>(backdropMotion).transform.storage,
     );
     expect(
-      tester.widget<Opacity>(find.byKey(const Key('audio-play-pulse'))).opacity,
-      0,
+      find.ancestor(
+        of: find.byKey(const Key('audio-play-pause')),
+        matching: find.byType(BackdropFilter),
+      ),
+      findsAtLeastNWidgets(2),
     );
 
     await tester.tap(find.byKey(const Key('audio-play-pause')));
     await tester.pump(const Duration(milliseconds: 160));
     expect(tester.getSize(indicatorBar).height, isNot(pausedBarHeight));
-    expect(
-      tester.widget<Opacity>(find.byKey(const Key('audio-play-pulse'))).opacity,
-      greaterThan(0),
-    );
     final backdropTint = tester.widget<AnimatedContainer>(
       find.byKey(const Key('audio-artwork-backdrop-tint')),
     );
     expect(
       (backdropTint.decoration! as BoxDecoration).color,
-      const Color(0x83051120),
+      const Color(0x78000000),
     );
     await tester.pump(const Duration(milliseconds: 1540));
     expect(
@@ -57,7 +56,6 @@ void main() {
       tester.widget<Transform>(backdropMotion).transform.storage,
       isNot(orderedEquals(pausedBackdropTransform)),
     );
-    expect(find.byKey(const Key('audio-cover-atmosphere')), findsOneWidget);
   });
 
   testWidgets('buffering and reduced motion stop decorative movement', (
@@ -91,10 +89,7 @@ void main() {
       tester.widget<Transform>(backdropMotion).transform.storage,
       orderedEquals(initialBackdropTransform),
     );
-    expect(
-      tester.widget<Opacity>(find.byKey(const Key('audio-play-pulse'))).opacity,
-      0,
-    );
+    expect(find.byKey(const Key('audio-buffering')), findsNothing);
 
     backend.setBuffering(true);
     await tester.pump();

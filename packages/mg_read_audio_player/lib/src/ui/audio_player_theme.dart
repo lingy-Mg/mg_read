@@ -1,4 +1,4 @@
-/// Internal visual language for the dark-blue spoken-audio player surface.
+/// Internal visual language for the cover-led frosted audio player surface.
 ///
 /// Responsibilities:
 /// - Centralize the player's color, radius and spacing decisions.
@@ -13,39 +13,39 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 abstract final class AudioPlayerColors {
-  static const backgroundTop = Color(0xFF0C2037);
-  static const backgroundBottom = Color(0xFF020711);
-  static const surface = Color(0x74162B43);
-  static const surfaceStrong = Color(0xA91A334F);
-  static const ink = Color(0xFFF4F9FF);
-  static const muted = Color(0xFFB5C9DC);
-  static const subtle = Color(0xFF7892AA);
-  static const accent = Color(0xFF79C8FF);
-  static const accentPressed = Color(0xFFA9DDFF);
-  static const accentSoft = Color(0x522A86C4);
-  static const warning = Color(0xFFFFA88F);
-  static const warningSoft = Color(0x522E1720);
-  static const track = Color(0xFF38536D);
-  static const divider = Color(0x3DADDFFF);
-  static const control = Color(0x70203852);
-  static const disabled = Color(0xFF587086);
-  static const coverStart = Color(0xFF307EB4);
-  static const coverEnd = Color(0xFF071A31);
-  static const shadow = Color(0x99000612);
-  static const blueGlow = Color(0x4D2C9DDF);
-  static const scrim = Color(0x66020710);
+  static const backgroundTop = Color(0xFF1C1C1E);
+  static const backgroundBottom = Color(0xFF090909);
+  static const surface = Color(0x1AFFFFFF);
+  static const surfaceStrong = Color(0x24FFFFFF);
+  static const ink = Color(0xEBFFFFFF);
+  static const muted = Color(0xA8FFFFFF);
+  static const subtle = Color(0x73FFFFFF);
+  static const accent = Color(0xE6FFFFFF);
+  static const accentPressed = Color(0xFFFFFFFF);
+  static const accentSoft = Color(0x1FFFFFFF);
+  static const warning = Color(0xFFFFC5B8);
+  static const warningSoft = Color(0x24FFB5A5);
+  static const track = Color(0x2EFFFFFF);
+  static const divider = Color(0x24FFFFFF);
+  static const control = Color(0x1AFFFFFF);
+  static const disabled = Color(0x45FFFFFF);
+  static const coverStart = Color(0xFF61534A);
+  static const coverEnd = Color(0xFF171413);
+  static const shadow = Color(0x33000000);
+  static const blueGlow = Color(0x00000000);
+  static const scrim = Color(0x8A000000);
 
-  static const glass = Color(0x5011263D);
-  static const glassHighlight = Color(0x703D6482);
-  static const glassStrong = Color(0x78101E31);
-  static const glassStrongHighlight = Color(0x903B607C);
-  static const glassBorder = Color(0x8A9CD8F7);
-  static const accentGlass = Color(0x62184869);
-  static const accentGlassHighlight = Color(0x803D91BD);
-  static const accentBorder = Color(0xB87BCBFF);
-  static const warningGlass = Color(0x86261720);
-  static const warningGlassHighlight = Color(0xA6472932);
-  static const warningBorder = Color(0x99FF9C82);
+  static const glass = Color(0x17FFFFFF);
+  static const glassHighlight = Color(0x1FFFFFFF);
+  static const glassStrong = Color(0x1FFFFFFF);
+  static const glassStrongHighlight = Color(0x2BFFFFFF);
+  static const glassBorder = Color(0x2EFFFFFF);
+  static const accentGlass = Color(0x24FFFFFF);
+  static const accentGlassHighlight = Color(0x33FFFFFF);
+  static const accentBorder = Color(0x40FFFFFF);
+  static const warningGlass = Color(0x24FFB5A5);
+  static const warningGlassHighlight = Color(0x33FFCEC4);
+  static const warningBorder = Color(0x55FFCEC4);
 }
 
 abstract final class AudioPlayerMetrics {
