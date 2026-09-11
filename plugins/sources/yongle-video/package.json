@@ -21,7 +21,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.yongle-video",
     "displayName": "永乐视频",
-    "description": "永乐视频原生数据源，直接解析站点页面和播放变量。",
+    "description": "永乐视频数据源，支持分类、搜索、详情、分组目录与播放变量解析。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["video"]

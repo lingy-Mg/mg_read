@@ -4,12 +4,13 @@ const categories = Object.freeze([['1', '麻豆视频'], ['2', '日本视频'], 
 let context;
 export async function activate(next) { context = next; next.log.info('source_activated'); }
 export async function search(request) {
-    if (request.cursor !== null)
-        throw new Error('Search cursor is unsupported.');
-    if (request.query.trim() === '')
+    const query = request.query.trim();
+    if (query === '')
         return frozen({ items: [], nextCursor: null, totalCount: 0 });
-    const json = await fetchJson(`${base}/index.php/ajax/suggest?mid=1&wd=${encodeURIComponent(request.query)}&page=1`);
-    return frozen({ items: records(json.list).slice(0, clamp(request.pageSize)).map(suggestion), nextCursor: null, totalCount: null });
+    const page = cursorPage(request.cursor, 'search');
+    const limit = clamp(request.pageSize);
+    const values = parseList(await fetchText(searchUrl(query, page))).slice(0, limit);
+    return frozen({ items: values, nextCursor: values.length >= limit && page < 50 ? `search:${page + 1}` : null, totalCount: null });
 }
 export async function searchSuggestions(_request) { return frozen({ items: [], nextCursor: null }); }
 export async function discover(request) {
@@ -55,8 +56,6 @@ export async function getContent(request) {
 }
 async function fetchText(url) { const response = await requireContext().http.fetch(url, { headers }); if (!response.ok)
     throw new Error('Source request failed.'); return response.text(); }
-async function fetchJson(url) { const text = await fetchText(url); const value = JSON.parse(text); if (!isObject(value))
-    throw new Error('Source response is invalid.'); return value; }
 async function rootDocument(pageSize) {
     const limit = Math.min(clamp(pageSize), 10);
     const values = parseList(await fetchText(categoryUrl('1', 1))).slice(0, limit);
@@ -67,7 +66,6 @@ async function rootDocument(pageSize) {
     components.push({ type: 'section', id: 'video-categories', title: '视频分类', subtitle: '按频道继续发现', icon: 'video', children: [{ type: 'categoryCollection', id: 'video-categories-list', layout: 'chips', categories: categories.map(([id, title]) => ({ id, title, target: `category:${id}`, count: null, url: null, icon: 'video' })) }] });
     return frozen({ kind: 'document', document: { components } });
 }
-function suggestion(value) { return summary(text(value.id), text(value.name), nullable(value.pic), null); }
 function parseList(html) { const entries = listEntries(html); const unique = new Map(); for (const entry of entries)
     if (!unique.has(entry.id))
         unique.set(entry.id, summary(entry.id, entry.title, entry.cover, null)); return [...unique.values()]; }
@@ -153,6 +151,7 @@ catch {
     }
 } }
 function categoryUrl(id, page) { return page <= 1 ? `${base}/index.php/vod/type/id/${id}.html` : `${base}/index.php/vod/show/id/${id}/page/${page}.html`; }
+function searchUrl(query, page) { const suffix = page <= 1 ? '' : `&page=${page}`; return `${base}/index.php/vod/search.html?wd=${encodeURIComponent(query)}${suffix}`; }
 function detailUrl(id) { return `${base}/index.php/vod/detail/id/${id}.html`; }
 function playUrl(id, sid, nid) { return `${base}/index.php/vod/play/id/${id}/sid/${sid}/nid/${nid}.html`; }
 function contentId(id) { const match = /^video:(\d+)$/u.exec(id); if (match?.[1] === undefined)
@@ -184,7 +183,6 @@ function strip(value) { return decode(value.replace(/<script[\s\S]*?<\/script>/g
 function decode(value) { return value.replace(/&amp;/giu, '&').replace(/&quot;/giu, '"').replace(/&#39;/giu, "'").replace(/&lt;/giu, '<').replace(/&gt;/giu, '>').replace(/&nbsp;/giu, ' '); }
 function clamp(value) { return Math.max(1, Math.min(100, Math.floor(value))); }
 function text(value) { return typeof value === 'string' ? value.trim() : typeof value === 'number' ? String(value) : ''; }
-function nullable(value) { const result = text(value); return result === '' ? null : result; }
 function records(value) { return Array.isArray(value) ? value.filter(isObject) : []; }
 function isObject(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
 function frozen(value) { return Object.freeze(value); }

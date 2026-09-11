@@ -21,7 +21,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.gdpm-10k-video",
     "displayName": "10KAV视频",
-    "description": "10KAV视频原生数据源，直接调用站点前端 API。",
+    "description": "10KAV视频成人视频数据源，支持分类、搜索、详情、单集目录与 HLS/视频播放。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["video"]

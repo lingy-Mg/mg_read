@@ -25,7 +25,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.ncat-video",
     "displayName": "网飞猫",
-    "description": "网飞猫原生 WebView 数据源，支持分类、搜索、详情、分组选集与 HLS 播放。",
+    "description": "网飞猫视频数据源，支持分类、搜索、详情、分组目录与 HLS 播放。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["video"]

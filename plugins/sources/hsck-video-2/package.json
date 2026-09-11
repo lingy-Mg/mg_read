@@ -21,7 +21,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.hsck-video-2",
     "displayName": "黄色仓库 2",
-    "description": "基于用户提供的 HSCK 镜像规则转换的视频数据源。",
+    "description": "黄色仓库 2 镜像成人视频数据源，支持分类、搜索、详情、单集目录与 HLS 播放。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["video"]

@@ -26,7 +26,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.tatays-novel",
     "displayName": "126小说网",
-    "description": "126小说网原生数据源，直接解析检索、详情、分页目录与正文。",
+    "description": "126小说网数据源，支持搜索、详情、分页目录与正文阅读。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["novel"]

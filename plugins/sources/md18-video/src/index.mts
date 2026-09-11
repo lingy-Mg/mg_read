@@ -18,9 +18,12 @@ let context: Context | undefined;
 
 export async function activate(next: Context): Promise<void> { context = next; next.log.info('source_activated'); }
 export async function search(request: { query: string; cursor: string | null; pageSize: number }) {
-  if (request.cursor !== null) throw new Error('Search cursor is unsupported.'); if (request.query.trim() === '') return frozen({ items: [], nextCursor: null, totalCount: 0 });
-  const json = await fetchJson(`${base}/index.php/ajax/suggest?mid=1&wd=${encodeURIComponent(request.query)}&page=1`);
-  return frozen({ items: records(json.list).slice(0, clamp(request.pageSize)).map(suggestion), nextCursor: null, totalCount: null });
+  const query = request.query.trim();
+  if (query === '') return frozen({ items: [], nextCursor: null, totalCount: 0 });
+  const page = cursorPage(request.cursor, 'search');
+  const limit = clamp(request.pageSize);
+  const values = parseList(await fetchText(searchUrl(query, page))).slice(0, limit);
+  return frozen({ items: values, nextCursor: values.length >= limit && page < 50 ? `search:${page + 1}` : null, totalCount: null });
 }
 export async function searchSuggestions(_request: { cursor: string | null; pageSize: number }) { return frozen({ items: [], nextCursor: null }); }
 export async function discover(request: { target: string | null; cursor: string | null; collectionId: string | null; pageSize: number }) {
@@ -45,7 +48,6 @@ export async function getContent(request: { id: string; chapterId: string }) {
 }
 
 async function fetchText(url: string) { const response = await requireContext().http.fetch(url, { headers }); if (!response.ok) throw new Error('Source request failed.'); return response.text(); }
-async function fetchJson(url: string): Promise<Json> { const text = await fetchText(url); const value: unknown = JSON.parse(text); if (!isObject(value)) throw new Error('Source response is invalid.'); return value; }
 async function rootDocument(pageSize: number) {
   const limit = Math.min(clamp(pageSize), 10);
   const values = parseList(await fetchText(categoryUrl('1', 1))).slice(0, limit);
@@ -55,7 +57,6 @@ async function rootDocument(pageSize: number) {
   components.push({ type: 'section', id: 'video-categories', title: '视频分类', subtitle: '按频道继续发现', icon: 'video', children: [{ type: 'categoryCollection', id: 'video-categories-list', layout: 'chips', categories: categories.map(([id, title]) => ({ id, title, target: `category:${id}`, count: null, url: null, icon: 'video' })) }] });
   return frozen({ kind: 'document' as const, document: { components } });
 }
-function suggestion(value: Json) { return summary(text(value.id), text(value.name), nullable(value.pic), null); }
 function parseList(html: string) { const entries = listEntries(html); const unique = new Map<string, ReturnType<typeof summary>>(); for (const entry of entries) if (!unique.has(entry.id)) unique.set(entry.id, summary(entry.id, entry.title, entry.cover, null)); return [...unique.values()]; }
 function listEntries(html: string) {
   const result: { id: string; title: string; cover: string | null }[] = [];
@@ -88,6 +89,7 @@ function balancedObject(text: string, start: number) { let depth = 0; let quote 
 function playerUrl(data: Json) { const raw = text(data.url); const encrypt = Number(data.encrypt ?? 0); const decoded = encrypt === 2 ? Buffer.from(raw, 'base64').toString('utf8') : raw; return legacyDecode(decoded); }
 function legacyDecode(value: string) { try { return decodeURIComponent(value); } catch { try { return unescape(value); } catch { return value; } } }
 function categoryUrl(id: string, page: number) { return page <= 1 ? `${base}/index.php/vod/type/id/${id}.html` : `${base}/index.php/vod/show/id/${id}/page/${page}.html`; }
+function searchUrl(query: string, page: number) { const suffix = page <= 1 ? '' : `&page=${page}`; return `${base}/index.php/vod/search.html?wd=${encodeURIComponent(query)}${suffix}`; }
 function detailUrl(id: string) { return `${base}/index.php/vod/detail/id/${id}.html`; }
 function playUrl(id: string, sid: string, nid: string) { return `${base}/index.php/vod/play/id/${id}/sid/${sid}/nid/${nid}.html`; }
 function contentId(id: string) { const match = /^video:(\d+)$/u.exec(id); if (match?.[1] === undefined) throw new Error('Content ID is invalid.'); return match[1]; }
@@ -103,7 +105,6 @@ function strip(value: string) { return decode(value.replace(/<script[\s\S]*?<\/s
 function decode(value: string) { return value.replace(/&amp;/giu, '&').replace(/&quot;/giu, '"').replace(/&#39;/giu, "'").replace(/&lt;/giu, '<').replace(/&gt;/giu, '>').replace(/&nbsp;/giu, ' '); }
 function clamp(value: number) { return Math.max(1, Math.min(100, Math.floor(value))); }
 function text(value: unknown) { return typeof value === 'string' ? value.trim() : typeof value === 'number' ? String(value) : ''; }
-function nullable(value: unknown) { const result = text(value); return result === '' ? null : result; }
 function records(value: unknown): Json[] { return Array.isArray(value) ? value.filter(isObject) : []; }
 function isObject(value: unknown): value is Json { return value !== null && typeof value === 'object' && !Array.isArray(value); }
 function frozen<T>(value: T): T { return Object.freeze(value); }

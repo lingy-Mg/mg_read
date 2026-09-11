@@ -21,7 +21,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.qq-music",
     "displayName": "QQ音乐",
-    "description": "QQ音乐原生数据源，直接读取搜索、榜单、歌曲详情和播放地址。",
+    "description": "QQ音乐音频数据源，支持搜索、榜单、歌曲详情与音频播放。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["audio"]

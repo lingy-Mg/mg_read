@@ -23,6 +23,7 @@
     "id": "org.mgread.discovery-demo",
     "displayName": "发现组件演示",
     "pluginApi": 1,
+    "description": "发现组件演示来源，用于离线验证递归发现组件、分页与内容投影。",
     "packageMode": "single-file",
     "icon": "assets/icon.png",
     "contentKinds": ["novel"]

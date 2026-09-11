@@ -25,7 +25,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.fanshu-anime",
     "displayName": "番薯动漫",
-    "description": "番薯动漫当前 Yoapp 原生接口数据源，支持分类、检索、详情、分组选集与视频播放。",
+    "description": "番薯动漫视频数据源，支持分类、搜索、详情、分组目录与视频播放。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["video"]

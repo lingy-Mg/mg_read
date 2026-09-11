@@ -36,7 +36,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.aisishuwu",
     "displayName": "\u7231\u4e3d\u4e1d\u4e66\u5c4b",
-    "description": "成人向原创网络小说数据源，覆盖分类、排行、搜索与章节阅读。",
+    "description": "爱丽丝书屋小说数据源，支持分类、排行、搜索、详情、目录与正文阅读。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

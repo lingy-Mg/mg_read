@@ -21,7 +21,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.xiaowei-duanju",
     "displayName": "小微短剧",
-    "description": "小微短剧原生数据源，直接使用站点 JSON API。",
+    "description": "小微短剧视频数据源，支持短剧首页、分类、搜索、详情、分集与 HLS/视频播放。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["video"]

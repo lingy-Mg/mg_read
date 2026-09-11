@@ -26,7 +26,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.yueting-audio",
     "displayName": "悦听听书",
-    "description": "悦听听书原生数据源，直接实现加密请求、响应解密、专辑目录和音频播放。",
+    "description": "悦听听书音频数据源，支持加密请求、专辑搜索、详情、目录与音频播放。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["audio"]

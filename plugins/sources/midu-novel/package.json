@@ -25,7 +25,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.midu-novel",
     "displayName": "米读小说",
-    "description": "米读小说原生接口数据源，支持发现、搜索、详情、目录与正文阅读。",
+    "description": "米读小说数据源，支持发现、分类、搜索、详情、目录与正文阅读。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["novel"]

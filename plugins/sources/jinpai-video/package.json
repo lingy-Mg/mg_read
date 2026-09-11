@@ -24,7 +24,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.jinpai-video",
     "displayName": "金牌影院",
-    "description": "金牌影院会话 HTTP 数据源；WebView 无感验证后由同一 Profile 的 HTTP 会话读取内容。",
+    "description": "金牌影院视频数据源，支持分类、搜索、详情、分组目录与播放地址；验证由宿主会话处理。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["video"]

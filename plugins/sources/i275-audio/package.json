@@ -22,7 +22,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.i275-audio",
     "displayName": "275听书网",
-    "description": "275听书网原生数据源，直接解析有声书、目录与音频。",
+    "description": "275听书网音频数据源，支持有声书搜索、专辑详情、章节目录与音频播放。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["audio"]

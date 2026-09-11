@@ -19,6 +19,7 @@
     "id": "org.mgread.browser-session-fixture",
     "displayName": "Browser Session Android Fixture",
     "pluginApi": 1,
+    "description": "浏览器会话测试来源，用于验证 Android WebView 会话与受保护页面状态。",
     "packageMode": "single-file",
     "icon": "assets/icon.png",
     "contentKinds": ["novel"]

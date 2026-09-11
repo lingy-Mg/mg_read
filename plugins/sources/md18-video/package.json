@@ -21,7 +21,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.md18-video",
     "displayName": "18MD视频",
-    "description": "18MD 原生数据源，直接解析站点列表、详情和播放数据。",
+    "description": "18MD 成人视频数据源，支持麻豆、日本、欧美、动漫、国产分类、搜索、分组选集与视频播放。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["video"]

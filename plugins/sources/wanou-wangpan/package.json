@@ -26,7 +26,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.wanou-wangpan",
     "displayName": "玩偶网盘",
-    "description": "玩偶站影视索引，聚合百度、夸克和优汐网盘；登录通过宿主 WebView 完成。",
+    "description": "玩偶影视网盘索引数据源，支持影视搜索、详情、分集与百度/夸克/优汐网盘链接解析。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["video"]

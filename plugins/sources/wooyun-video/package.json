@@ -21,7 +21,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.wooyun-video",
     "displayName": "乌云影视",
-    "description": "乌云影视原生数据源，直接调用站点前端 API。",
+    "description": "乌云影视视频数据源，支持站点分类、搜索、详情、分集目录与 HLS 播放。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["video"]

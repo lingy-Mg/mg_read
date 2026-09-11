@@ -21,7 +21,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.qingting-radio",
     "displayName": "蜻蜓电台",
-    "description": "蜻蜓电台原生数据源，直接调用公开 GraphQL 和电台接口。",
+    "description": "蜻蜓电台音频数据源，支持公开电台、频道搜索、详情、节目目录与音频播放。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["audio"]

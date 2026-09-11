@@ -26,7 +26,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.uaa-video",
     "displayName": "UAA 视频",
-    "description": "UAA 视频搜索、分类排行与单集播放数据源。",
+    "description": "UAA 成人视频数据源，支持最新、排行、国产、日本AV、H动漫等频道、搜索、详情与单集播放。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["video"],

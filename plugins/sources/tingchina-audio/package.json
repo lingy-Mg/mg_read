@@ -21,7 +21,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.tingchina-audio",
     "displayName": "听中国听书",
-    "description": "基于用户提供规则转换的音频数据源。",
+    "description": "听中国听书音频数据源，支持专辑搜索、详情、章节目录与音频播放。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["audio"]

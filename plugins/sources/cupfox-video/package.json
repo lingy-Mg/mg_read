@@ -21,7 +21,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.cupfox-video",
     "displayName": "茶杯狐",
-    "description": "茶杯狐原生数据源，直接解析搜索、分类、剧集和播放接口。",
+    "description": "茶杯狐影视数据源，支持分类、搜索、详情、分集目录与播放地址解析。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["video"]

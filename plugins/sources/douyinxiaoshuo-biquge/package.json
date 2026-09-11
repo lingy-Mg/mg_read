@@ -31,7 +31,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.douyinxiaoshuo-biquge",
     "displayName": "抖音小说-笔趣阁(移动)",
-    "description": "抖音小说移动站小说源，支持搜索、分类、详情、完整目录和多页正文。",
+    "description": "抖音小说笔趣阁移动站数据源，支持分类、搜索、详情、完整目录与多页正文。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",
