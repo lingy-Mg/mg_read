@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
@@ -33,6 +34,27 @@ void main() {
 
   tearDown(() {
     SchedulerBinding.instance.schedulingStrategy = schedulingStrategy;
+  });
+
+  testWidgets('owns transparent system bars while the text chapter loads', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TextReaderView(
+          bookId: 'system-ui-book',
+          dataSource: const _InitialChapterDataSource(),
+          stateStore: const _EmptyStateStore(),
+        ),
+      ),
+    );
+
+    final region = tester.widget<AnnotatedRegion<SystemUiOverlayStyle>>(
+      find.byType(AnnotatedRegion<SystemUiOverlayStyle>),
+    );
+    expect(region.value.statusBarColor, Colors.transparent);
+    expect(region.value.systemNavigationBarColor, Colors.transparent);
+    expect(region.value.systemStatusBarContrastEnforced, isFalse);
   });
 
   testWidgets('opens the first chapter when no reading progress exists', (

@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 import 'package:novel_reader_ui/src/ui/comic/comic_image_cache.dart';
@@ -10,6 +10,28 @@ import 'package:novel_reader_ui/src/ui/comic/comic_image_tile.dart';
 import 'package:novel_reader_ui/src/ui/comic/comic_chapter_preloader.dart';
 
 void main() {
+  testWidgets('owns transparent system bars while the comic chapter loads', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ComicReaderView(
+          bookId: 'system-ui-book',
+          dataSource: _FakeComicSource(),
+          stateStore: _MemoryComicStateStore(),
+        ),
+      ),
+    );
+
+    final region = tester.widget<AnnotatedRegion<SystemUiOverlayStyle>>(
+      find.byType(AnnotatedRegion<SystemUiOverlayStyle>),
+    );
+    expect(region.value.statusBarColor, Colors.transparent);
+    expect(region.value.statusBarIconBrightness, Brightness.light);
+    expect(region.value.systemNavigationBarColor, Colors.transparent);
+    expect(region.value.systemStatusBarContrastEnforced, isFalse);
+  });
+
   test('comic progress is anchored by chapter, image and fraction', () {
     const progress = ComicReaderProgress(
       chapterId: 'chapter-1',

@@ -4,10 +4,31 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read_audio_player/mg_read_audio_player.dart';
 
 void main() {
+  testWidgets('owns transparent system bars while the audio session loads', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _testHost(
+        backend: _FakeAudioBackend(),
+        store: _FakeAudioStateStore(),
+        observer: const AudioPlayerObserver(),
+      ),
+    );
+
+    final region = tester.widget<AnnotatedRegion<SystemUiOverlayStyle>>(
+      find.byType(AnnotatedRegion<SystemUiOverlayStyle>),
+    );
+    expect(region.value.statusBarColor, Colors.transparent);
+    expect(region.value.statusBarIconBrightness, Brightness.dark);
+    expect(region.value.systemNavigationBarColor, Colors.transparent);
+    expect(region.value.systemStatusBarContrastEnforced, isFalse);
+  });
+
   testWidgets('restores the saved track and position before becoming ready', (
     tester,
   ) async {

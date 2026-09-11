@@ -40,6 +40,17 @@ part 'comic_reader_session.dart';
 part 'comic_reader_preferences.dart';
 part 'comic_reader_chrome.dart';
 
+const _comicReaderSystemUiStyle = SystemUiOverlayStyle(
+  statusBarColor: Colors.transparent,
+  statusBarIconBrightness: Brightness.light,
+  statusBarBrightness: Brightness.dark,
+  systemNavigationBarColor: Colors.transparent,
+  systemNavigationBarDividerColor: Colors.transparent,
+  systemNavigationBarIconBrightness: Brightness.light,
+  systemStatusBarContrastEnforced: false,
+  systemNavigationBarContrastEnforced: false,
+);
+
 /// A vertically scrolling, progressively loaded comic reading surface.
 ///
 /// The host owns networking, files, authentication, and persistent image
@@ -296,7 +307,9 @@ class _ComicReaderViewState extends State<ComicReaderView>
     final ReaderPalette palette = ReaderPalette.fromPreset(
       ReaderThemePreset.deepNight,
     );
-    return PopScope<void>(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: _comicReaderSystemUiStyle,
+      child: PopScope<void>(
       canPop: true,
       onPopInvokedWithResult: (bool didPop, void result) {
         if (didPop) unawaited(_requestExit());
@@ -385,6 +398,7 @@ class _ComicReaderViewState extends State<ComicReaderView>
           ),
         ),
       ),
+    ),
     );
   }
 }

@@ -16,6 +16,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read_video_player/mg_read_video_player.dart';
 
 void main() {
+  testWidgets('owns transparent system bars while the video session loads', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      _playerApp(contentId: 'show', backend: _FakeVideoBackend()),
+    );
+    await tester.pump();
+
+    final region = tester.widget<AnnotatedRegion<SystemUiOverlayStyle>>(
+      find.byType(AnnotatedRegion<SystemUiOverlayStyle>),
+    );
+    expect(region.value.statusBarColor, Colors.transparent);
+    expect(region.value.statusBarIconBrightness, Brightness.light);
+    expect(region.value.systemNavigationBarColor, Colors.transparent);
+    expect(region.value.systemStatusBarContrastEnforced, isFalse);
+  });
+
   testWidgets(
     'loads content and progress together and reports one first frame',
     (WidgetTester tester) async {

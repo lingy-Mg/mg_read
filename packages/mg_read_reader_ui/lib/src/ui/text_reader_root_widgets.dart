@@ -7,9 +7,17 @@ extension _TextReaderRootWidgets on _TextReaderViewState {
   Widget _buildReaderRoot(BuildContext context) {
     final ReaderPalette palette = _palette;
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: palette.systemBrightness == Brightness.dark
-          ? SystemUiOverlayStyle.light
-          : SystemUiOverlayStyle.dark,
+      value:
+          (palette.systemBrightness == Brightness.dark
+                  ? SystemUiOverlayStyle.light
+                  : SystemUiOverlayStyle.dark)
+              .copyWith(
+                statusBarColor: Colors.transparent,
+                systemNavigationBarColor: Colors.transparent,
+                systemNavigationBarDividerColor: Colors.transparent,
+                systemStatusBarContrastEnforced: false,
+                systemNavigationBarContrastEnforced: false,
+              ),
       child: Theme(
         data: _readerMaterialTheme(palette),
         child: PopScope<void>(

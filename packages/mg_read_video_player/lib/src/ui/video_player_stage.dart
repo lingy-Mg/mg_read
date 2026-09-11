@@ -27,6 +27,17 @@ import 'video_player_gestures.dart';
 import 'video_player_status_layer.dart';
 import 'video_player_visuals.dart';
 
+const _videoPlayerSystemUiStyle = SystemUiOverlayStyle(
+  statusBarColor: Colors.transparent,
+  statusBarIconBrightness: Brightness.light,
+  statusBarBrightness: Brightness.dark,
+  systemNavigationBarColor: Colors.transparent,
+  systemNavigationBarDividerColor: Colors.transparent,
+  systemNavigationBarIconBrightness: Brightness.light,
+  systemStatusBarContrastEnforced: false,
+  systemNavigationBarContrastEnforced: false,
+);
+
 final class VideoPlayerStage extends StatelessWidget {
   const VideoPlayerStage({
     required this.backend,
@@ -87,7 +98,7 @@ final class VideoPlayerStage extends StatelessWidget {
   Widget build(BuildContext context) {
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
+      value: _videoPlayerSystemUiStyle,
       child: Theme(
         data: videoPlayerTheme(),
         child: PopScope<void>(

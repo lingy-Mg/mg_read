@@ -30,6 +30,17 @@ import 'audio_player_sheets.dart';
 import 'audio_player_states.dart';
 import 'audio_player_theme.dart';
 
+const _audioPlayerSystemUiStyle = SystemUiOverlayStyle(
+  statusBarColor: Colors.transparent,
+  statusBarIconBrightness: Brightness.dark,
+  statusBarBrightness: Brightness.light,
+  systemNavigationBarColor: Colors.transparent,
+  systemNavigationBarDividerColor: Colors.transparent,
+  systemNavigationBarIconBrightness: Brightness.dark,
+  systemStatusBarContrastEnforced: false,
+  systemNavigationBarContrastEnforced: false,
+);
+
 /// A complete audio playback page with an independently owned design.
 class AudioPlayerView extends StatefulWidget {
   const AudioPlayerView({
@@ -181,36 +192,39 @@ class _AudioViewState extends State<AudioPlayerView>
   @override
   Widget build(BuildContext context) {
     final snapshot = _controller.snapshot;
-    return PopScope<void>(
-      canPop: _exitAuthorized,
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) unawaited(_requestExit());
-      },
-      child: CallbackShortcuts(
-        bindings: <ShortcutActivator, VoidCallback>{
-          const SingleActivator(LogicalKeyboardKey.escape): () =>
-              unawaited(_requestExit()),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: _audioPlayerSystemUiStyle,
+      child: PopScope<void>(
+        canPop: _exitAuthorized,
+        onPopInvokedWithResult: (didPop, result) {
+          if (!didPop) unawaited(_requestExit());
         },
-        child: Focus(
-          focusNode: _focusNode,
-          autofocus: true,
-          child: Scaffold(
-            backgroundColor: AudioPlayerColors.backgroundBottom,
-            body: switch (snapshot.status) {
-              AudioPlayerStatus.loading => const AudioLoadingView(),
-              AudioPlayerStatus.error => AudioErrorView(
-                title: snapshot.failure?.code == 'audio_queue_empty'
-                    ? '暂无可播放内容'
-                    : '暂时无法播放',
-                message: snapshot.failure?.message ?? '音频加载失败。',
-                location: snapshot.failure?.location,
-                diagnosticCode: snapshot.failure?.code,
-                technicalDetail: snapshot.failure?.debugDetail,
-                onBack: _requestExit,
-                onRetry: _controller.retry,
-              ),
-              AudioPlayerStatus.ready => _buildReady(context, snapshot),
-            },
+        child: CallbackShortcuts(
+          bindings: <ShortcutActivator, VoidCallback>{
+            const SingleActivator(LogicalKeyboardKey.escape): () =>
+                unawaited(_requestExit()),
+          },
+          child: Focus(
+            focusNode: _focusNode,
+            autofocus: true,
+            child: Scaffold(
+              backgroundColor: AudioPlayerColors.backgroundBottom,
+              body: switch (snapshot.status) {
+                AudioPlayerStatus.loading => const AudioLoadingView(),
+                AudioPlayerStatus.error => AudioErrorView(
+                  title: snapshot.failure?.code == 'audio_queue_empty'
+                      ? '暂无可播放内容'
+                      : '暂时无法播放',
+                  message: snapshot.failure?.message ?? '音频加载失败。',
+                  location: snapshot.failure?.location,
+                  diagnosticCode: snapshot.failure?.code,
+                  technicalDetail: snapshot.failure?.debugDetail,
+                  onBack: _requestExit,
+                  onRetry: _controller.retry,
+                ),
+                AudioPlayerStatus.ready => _buildReady(context, snapshot),
+              },
+            ),
           ),
         ),
       ),
