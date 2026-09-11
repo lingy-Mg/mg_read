@@ -322,7 +322,7 @@ void main() {
     },
   );
 
-  testWidgets('host artwork is reused by the eased blurred backdrop', (
+  testWidgets('host artwork sits below a sampled glass backdrop', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -340,8 +340,16 @@ void main() {
     final backdrop = find.byKey(const Key('audio-artwork-backdrop'));
     expect(backdrop, findsOneWidget);
     expect(
-      find.descendant(of: backdrop, matching: find.byType(ImageFiltered)),
+      find.descendant(of: backdrop, matching: find.byType(BackdropFilter)),
       findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('audio-artwork-backdrop-cover')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: backdrop, matching: find.byType(ImageFiltered)),
+      findsNothing,
     );
     expect(find.byKey(const Key('presentation-artwork')), findsNWidgets(2));
   });

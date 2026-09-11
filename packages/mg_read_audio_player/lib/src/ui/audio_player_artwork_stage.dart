@@ -2,7 +2,7 @@
 ///
 /// Responsibilities:
 /// - Render one thin-framed foreground cover without performing artwork I/O.
-/// - Reuse the host artwork renderer as a blurred, tinted background layer.
+/// - Fill and crop host artwork beneath a sampled, tinted glass layer.
 /// - Cross-fade chapter artwork and ease playback-state depth changes.
 ///
 /// Notes:
@@ -107,6 +107,9 @@ class _AudioPlayerArtworkBackdropState extends State<AudioPlayerArtworkBackdrop>
         ? Duration.zero
         : const Duration(milliseconds: 620);
     final artwork = widget.artworkBuilder?.call(context, widget.track);
+    final glassTint = widget.playing
+        ? const Color(0x2EFFF9F1)
+        : const Color(0x3DFFF9F1);
     return IgnorePointer(
       child: Stack(
         key: const Key('audio-artwork-backdrop'),
@@ -114,59 +117,60 @@ class _AudioPlayerArtworkBackdropState extends State<AudioPlayerArtworkBackdrop>
         children: <Widget>[
           const AudioPlayerAmbientBackground(),
           ClipRect(
-            child: AnimatedOpacity(
-              key: const Key('audio-artwork-backdrop-opacity'),
-              duration: depthDuration,
-              curve: Curves.easeOutCubic,
-              opacity: widget.playing ? 0.58 : 0.42,
-              child: AnimatedBuilder(
-                animation: _motionController,
-                builder: (context, child) {
-                  final phase = _motionController.value;
-                  final breathe = math.sin(phase * math.pi);
-                  return Transform.translate(
-                    key: const Key('audio-artwork-backdrop-motion'),
-                    offset: Offset(-12 + phase * 24, 8 - phase * 16),
-                    child: Transform.scale(
-                      scale: 1.44 + breathe * 0.05,
+            child: AnimatedBuilder(
+              animation: _motionController,
+              builder: (context, child) {
+                final phase = _motionController.value;
+                final breathe = math.sin(phase * math.pi);
+                return Transform.translate(
+                  key: const Key('audio-artwork-backdrop-motion'),
+                  offset: Offset(-8 + phase * 16, 6 - phase * 12),
+                  child: Transform.scale(
+                    scale: 1.08 + breathe * 0.025,
+                    child: child,
+                  ),
+                );
+              },
+              child: AnimatedSwitcher(
+                duration: switchDuration,
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) {
+                  final curved = CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                  );
+                  return FadeTransition(
+                    opacity: curved,
+                    child: ScaleTransition(
+                      scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
                       child: child,
                     ),
                   );
                 },
-                child: ImageFiltered(
-                  imageFilter: ImageFilter.blur(
-                    sigmaX: 26,
-                    sigmaY: 26,
-                    tileMode: TileMode.decal,
-                  ),
-                  child: AnimatedSwitcher(
-                    duration: switchDuration,
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    transitionBuilder: (child, animation) {
-                      final curved = CurvedAnimation(
-                        parent: animation,
-                        curve: Curves.easeOutCubic,
-                      );
-                      return FadeTransition(
-                        opacity: curved,
-                        child: ScaleTransition(
-                          scale: Tween<double>(
-                            begin: 0.96,
-                            end: 1,
-                          ).animate(curved),
-                          child: child,
-                        ),
-                      );
-                    },
-                    child: RepaintBoundary(
-                      key: ValueKey<String>(widget.track.id),
-                      child: SizedBox.expand(
-                        child: artwork ?? const AudioPlayerCoverPlaceholder(),
-                      ),
-                    ),
+                child: RepaintBoundary(
+                  key: ValueKey<String>(widget.track.id),
+                  child: SizedBox.expand(
+                    key: const Key('audio-artwork-backdrop-cover'),
+                    child: artwork ?? const AudioPlayerCoverPlaceholder(),
                   ),
                 ),
+              ),
+            ),
+          ),
+          ClipRect(
+            child: BackdropFilter(
+              key: const Key('audio-artwork-backdrop-glass'),
+              filter: ImageFilter.blur(
+                sigmaX: 18,
+                sigmaY: 18,
+                tileMode: TileMode.clamp,
+              ),
+              child: AnimatedContainer(
+                key: const Key('audio-artwork-backdrop-tint'),
+                duration: depthDuration,
+                curve: Curves.easeOutCubic,
+                color: glassTint,
               ),
             ),
           ),
@@ -176,9 +180,9 @@ class _AudioPlayerArtworkBackdropState extends State<AudioPlayerArtworkBackdrop>
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: <Color>[
-                  Color(0x72FFFAF3),
-                  Color(0xA0FFF8EE),
-                  Color(0xD0F7EDDF),
+                  Color(0x10FFFAF3),
+                  Color(0x18FFF8EE),
+                  Color(0x3CF7EDDF),
                 ],
                 stops: <double>[0, 0.48, 1],
               ),

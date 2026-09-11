@@ -41,13 +41,12 @@ void main() {
       tester.widget<Opacity>(find.byKey(const Key('audio-play-pulse'))).opacity,
       greaterThan(0),
     );
+    final backdropTint = tester.widget<AnimatedContainer>(
+      find.byKey(const Key('audio-artwork-backdrop-tint')),
+    );
     expect(
-      tester
-          .widget<AnimatedOpacity>(
-            find.byKey(const Key('audio-artwork-backdrop-opacity')),
-          )
-          .opacity,
-      0.58,
+      (backdropTint.decoration! as BoxDecoration).color,
+      const Color(0x2EFFF9F1),
     );
     await tester.pump(const Duration(milliseconds: 1540));
     expect(
