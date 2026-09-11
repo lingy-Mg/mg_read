@@ -87,15 +87,6 @@ class PairedDevicesSection extends StatelessWidget {
                   ),
               ],
             ),
-            if (supportsScanner && !state.pairingBusy) ...<Widget>[
-              const SizedBox(height: AppSpacing.regular),
-              OutlinedButton.icon(
-                key: const Key('device-sync-scan-pairing'),
-                onPressed: onScanPairing,
-                icon: const Icon(Icons.qr_code_scanner_rounded),
-                label: const Text('扫描另一台设备的配对码'),
-              ),
-            ],
             if (state.pairingPhase != DevicePairingPhase.idle) ...<Widget>[
               const SizedBox(height: AppSpacing.regular),
               _PairingPanel(

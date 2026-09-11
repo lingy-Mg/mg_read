@@ -1,8 +1,8 @@
 /// 局域网同步二维码扫描页。
 ///
 /// 职责：
-/// - 管理相机扫描器生命周期，按当前用途校验同步或配对二维码。
-/// - 仅向上层路由返回已验证的二维码载荷。
+/// - 管理相机扫描器生命周期，并识别 MgRead 的配对、数据同步和 App 传输二维码。
+/// - 仅向上层路由返回已验证的二维码载荷；具体业务路由由页面控制器决定。
 ///
 /// 注意：
 /// - 扫描器必须在页面释放时停止和释放。
@@ -21,29 +21,37 @@ import 'package:mg_read/features/lan_sync/domain/app_transfer_qr_payload.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_qr_payload.dart';
 
 enum LanSyncQrScannerPurpose {
+  auto,
   sync,
   pairing,
   appTransfer;
 
   bool accepts(String payload) => switch (this) {
+    LanSyncQrScannerPurpose.auto =>
+      LanPairingQrPayload.decode(payload) != null ||
+          LanSyncQrPayload.decode(payload) != null ||
+          AppTransferQrPayload.decode(payload) != null,
     LanSyncQrScannerPurpose.sync => LanSyncQrPayload.decode(payload) != null,
     LanSyncQrScannerPurpose.pairing => LanPairingQrPayload.decode(payload) != null,
     LanSyncQrScannerPurpose.appTransfer => AppTransferQrPayload.decode(payload) != null,
   };
 
   String get title => switch (this) {
+    LanSyncQrScannerPurpose.auto => '扫码',
     LanSyncQrScannerPurpose.sync => '扫描同步二维码',
     LanSyncQrScannerPurpose.pairing => '扫码配对设备',
     LanSyncQrScannerPurpose.appTransfer => '扫描 App 二维码',
   };
 
   String get scanHint => switch (this) {
+    LanSyncQrScannerPurpose.auto => '扫描配对、数据同步或 App 传输二维码',
     LanSyncQrScannerPurpose.sync => '将发送端二维码放入取景框',
     LanSyncQrScannerPurpose.pairing => '将另一台设备的配对二维码放入取景框',
     LanSyncQrScannerPurpose.appTransfer => '将发送 App 的二维码放入取景框',
   };
 
   String get invalidMessage => switch (this) {
+    LanSyncQrScannerPurpose.auto => '这不是有效的 MgRead 局域网二维码',
     LanSyncQrScannerPurpose.sync => '这不是 MgRead 局域网同步二维码',
     LanSyncQrScannerPurpose.pairing => '这不是 MgRead 设备配对二维码',
     LanSyncQrScannerPurpose.appTransfer => '这不是 MgRead App 传输二维码',
@@ -51,7 +59,7 @@ enum LanSyncQrScannerPurpose {
 }
 
 class LanSyncQrScannerPage extends StatefulWidget {
-  const LanSyncQrScannerPage({super.key, this.purpose = LanSyncQrScannerPurpose.sync});
+  const LanSyncQrScannerPage({super.key, this.purpose = LanSyncQrScannerPurpose.auto});
 
   final LanSyncQrScannerPurpose purpose;
 
@@ -173,6 +181,7 @@ class _LanSyncQrScannerPageState extends State<LanSyncQrScannerPage> with Widget
       ),
       body: Semantics(
         label: switch (widget.purpose) {
+          LanSyncQrScannerPurpose.auto => 'MgRead 局域网二维码扫描器',
           LanSyncQrScannerPurpose.pairing => '设备配对二维码扫描器',
           LanSyncQrScannerPurpose.appTransfer => 'App 传输二维码扫描器',
           LanSyncQrScannerPurpose.sync => '局域网同步二维码扫描器',

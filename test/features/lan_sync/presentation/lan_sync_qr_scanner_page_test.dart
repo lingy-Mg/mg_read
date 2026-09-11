@@ -11,11 +11,14 @@ import 'package:mg_read/features/lan_sync/domain/lan_sync_qr_payload.dart';
 import 'package:mg_read/features/lan_sync/presentation/lan_sync_qr_scanner_page.dart';
 
 void main() {
-  test('scanner purpose accepts only the expected MgRead QR payload', () {
+  test('scanner purpose accepts the intended MgRead QR payloads', () {
     final syncPayload = _syncPayload();
     final pairingPayload = _pairingPayload();
     final appPayload = _appPayload();
 
+    expect(LanSyncQrScannerPurpose.auto.accepts(syncPayload), isTrue);
+    expect(LanSyncQrScannerPurpose.auto.accepts(pairingPayload), isTrue);
+    expect(LanSyncQrScannerPurpose.auto.accepts(appPayload), isTrue);
     expect(LanSyncQrScannerPurpose.sync.accepts(syncPayload), isTrue);
     expect(LanSyncQrScannerPurpose.sync.accepts(pairingPayload), isFalse);
     expect(LanSyncQrScannerPurpose.sync.accepts(appPayload), isFalse);

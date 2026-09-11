@@ -4,17 +4,8 @@
 part of 'lan_sync_page.dart';
 
 extension _LanSyncAppTransferActions on _LanSyncPageState {
-  Future<void> _scanAndReceiveApp() async {
+  Future<void> _connectScannedAppOffer(AppTransferConnectionOffer offer) async {
     final notifier = ref.read(appTransferControllerProvider.notifier);
-    final payload = await Navigator.of(context).push<String>(
-      MaterialPageRoute<String>(
-        fullscreenDialog: true,
-        builder: (_) => const LanSyncQrScannerPage(purpose: LanSyncQrScannerPurpose.appTransfer),
-      ),
-    );
-    if (!mounted || payload == null) return;
-    final offer = AppTransferQrPayload.decode(payload);
-    if (offer == null) return;
     await notifier.connectOffer(offer);
     if (mounted && ref.read(appTransferControllerProvider).phase == AppTransferPhase.ready) {
       await _showTemporaryAppUpdatePrompt();

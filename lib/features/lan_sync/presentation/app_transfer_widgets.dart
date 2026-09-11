@@ -13,11 +13,10 @@ import 'package:mg_read/features/lan_sync/domain/app_transfer_qr_payload.dart';
 import 'package:mg_read/features/lan_sync/domain/app_update_models.dart';
 
 class AppTransferRoleChooser extends StatelessWidget {
-  const AppTransferRoleChooser({required this.onSend, required this.onReceive, this.onScan, super.key});
+  const AppTransferRoleChooser({required this.onSend, required this.onReceive, super.key});
 
   final VoidCallback onSend;
   final VoidCallback onReceive;
-  final VoidCallback? onScan;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -37,14 +36,6 @@ class AppTransferRoleChooser extends StatelessWidget {
           description: '发现发送端，比较版本后选择升级或强制安装',
           onTap: onReceive,
         ),
-        if (onScan != null)
-          _AppRoleCard(
-            key: const Key('app-transfer-scan'),
-            icon: Icons.qr_code_scanner_rounded,
-            title: '扫码获取',
-            description: '扫描 App 二维码并核对双方版本',
-            onTap: onScan!,
-          ),
       ];
       if (constraints.maxWidth < 700) {
         return Column(

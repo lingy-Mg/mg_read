@@ -17,7 +17,7 @@ import 'package:mg_read/features/lan_sync/presentation/lan_sync_page.dart';
 import 'package:mg_read/features/lan_sync/presentation/lan_sync_qr_scanner_page.dart';
 
 void main() {
-  testWidgets('Android entry offers scanning and connection card renders QR', (WidgetTester tester) async {
+  testWidgets('Android exposes one unified scanner and connection card renders QR', (WidgetTester tester) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
     final container = ProviderContainer(
@@ -40,32 +40,16 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const Key('lan-sync-overview')), findsOneWidget);
-    final scrollable = find.descendant(of: find.byKey(const Key('lan-sync-content')), matching: find.byType(Scrollable)).first;
-    await tester.scrollUntilVisible(find.byKey(const Key('lan-sync-receive-qr')), 240, scrollable: scrollable);
-    expect(find.byKey(const Key('lan-sync-receive-qr')), findsOneWidget);
-    final pairingScanButton = find.byKey(const Key('device-sync-scan-pairing'));
-    expect(pairingScanButton, findsOneWidget);
-    await tester.ensureVisible(pairingScanButton);
-    await tester.tap(pairingScanButton);
+    expect(find.byKey(const Key('device-sync-scan-pairing')), findsNothing);
+    expect(find.byKey(const Key('lan-sync-receive-qr')), findsNothing);
+    expect(find.byKey(const Key('app-transfer-scan')), findsNothing);
+    await tester.tap(find.byKey(const Key('lan-sync-scan')));
     await tester.pumpAndSettle();
 
-    final pairingScanner = tester.widget<LanSyncQrScannerPage>(find.byType(LanSyncQrScannerPage));
-    expect(pairingScanner.purpose, LanSyncQrScannerPurpose.pairing);
+    final scanner = tester.widget<LanSyncQrScannerPage>(find.byType(LanSyncQrScannerPage));
+    expect(scanner.purpose, LanSyncQrScannerPurpose.auto);
     await tester.tap(find.byKey(const Key('lan-sync-scanner-close')));
     await tester.pumpAndSettle();
-
-    final appScanButton = find.byKey(const Key('app-transfer-scan'));
-    await tester.scrollUntilVisible(appScanButton, 240, scrollable: scrollable);
-    await tester.tap(appScanButton);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 350));
-
-    final appScanner = tester.widget<LanSyncQrScannerPage>(find.byType(LanSyncQrScannerPage));
-    expect(appScanner.purpose, LanSyncQrScannerPurpose.appTransfer);
-    await tester.tap(find.byKey(const Key('lan-sync-scanner-close')));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 350));
-    await container.read(appTransferControllerProvider.notifier).cancel();
     debugDefaultTargetPlatformOverride = null;
 
     await tester.pumpWidget(

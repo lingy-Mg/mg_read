@@ -1,7 +1,8 @@
 /// 局域网同步设置页面。
 ///
 /// 职责：
-/// - 展示同步角色、连接、预览和导入阶段。
+/// - 展示已配对设备、临时传输、连接、预览和导入阶段。
+/// - 从统一扫码入口识别二维码类型，并路由至配对、数据接收或 App 获取。
 /// - 在离开页面前取消进行中的同步操作。
 ///
 /// 注意：
@@ -24,6 +25,7 @@ import 'package:mg_read/features/lan_sync/application/device_sync_controller.dar
 import 'package:mg_read/features/lan_sync/application/lan_sync_controller.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 import 'package:mg_read/features/lan_sync/domain/app_transfer_qr_payload.dart';
+import 'package:mg_read/features/lan_sync/domain/lan_pairing_payload.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_qr_payload.dart';
 import 'package:mg_read/features/lan_sync/domain/paired_device_models.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
@@ -98,7 +100,21 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
             child: AppSecondaryPageContent(
               child: Column(
                 children: <Widget>[
-                  AppSecondaryPageTopBar(title: '局域网同步', onBack: () => unawaited(_back()), backButtonKey: const Key('lan-sync-back')),
+                  AppSecondaryPageTopBar(
+                    title: '局域网同步',
+                    onBack: () => unawaited(_back()),
+                    backButtonKey: const Key('lan-sync-back'),
+                    actions: _supportsQrScanner && _canOpenUnifiedScanner(state, appState, deviceState)
+                        ? <Widget>[
+                            AppSecondaryPageIconButton(
+                              key: const Key('lan-sync-scan'),
+                              label: '扫码',
+                              icon: Icons.qr_code_scanner_rounded,
+                              onPressed: () => unawaited(_scanAndRoute()),
+                            ),
+                          ]
+                        : const <Widget>[],
+                  ),
                   Expanded(
                     child: ListView(
                       key: const Key('lan-sync-content'),
@@ -115,7 +131,6 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
                           state: deviceState,
                           supportsScanner: _supportsQrScanner,
                           onBeginPairing: () => ref.read(deviceSyncControllerProvider.notifier).beginPairing(),
-                          onScanPairing: _supportsQrScanner ? () => unawaited(_scanAndPair()) : null,
                           onApprovePairing: () => ref.read(deviceSyncControllerProvider.notifier).approvePairing(),
                           onRejectPairing: () => ref.read(deviceSyncControllerProvider.notifier).rejectPairing(),
                           onCancelPairing: () => ref.read(deviceSyncControllerProvider.notifier).cancelPairing(),
@@ -146,7 +161,6 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
                               AppTransferRoleChooser(
                                 onSend: () => ref.read(appTransferControllerProvider.notifier).startSending(),
                                 onReceive: () => ref.read(appTransferControllerProvider.notifier).startReceiving(),
-                                onScan: _supportsQrScanner ? () => unawaited(_scanAndReceiveApp()) : null,
                               ),
                               const SizedBox(height: AppSpacing.section),
                               const LanSyncSectionHeader(title: '传输数据', description: '用于尚未配对的设备；仅本次有效，需要发送端保持页面并核对确认码。'),
@@ -154,7 +168,6 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
                               LanSyncRoleChooser(
                                 onSend: () => ref.read(lanSyncControllerProvider.notifier).startSending(),
                                 onReceive: () => ref.read(lanSyncControllerProvider.notifier).startReceiving(),
-                                onScan: _supportsQrScanner ? () => unawaited(_scanAndReceive()) : null,
                               ),
                               const SizedBox(height: AppSpacing.section),
                               const LanSyncTipsCard(),
@@ -176,15 +189,6 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
   List<Widget> _phaseContent(LanSyncViewState state) {
     return switch (state.phase) {
       LanSyncPhase.discovering => <Widget>[
-        if (_supportsQrScanner) ...<Widget>[
-          FilledButton.icon(
-            key: const Key('lan-sync-scan-qr'),
-            onPressed: () => unawaited(_scanAndReceive(startDiscovery: false)),
-            icon: const Icon(Icons.qr_code_scanner_rounded),
-            label: const Text('扫描发送端二维码'),
-          ),
-          const SizedBox(height: AppSpacing.regular),
-        ],
         if (state.peers.isEmpty) const _HintCard(message: '暂未发现设备，可等待广播或手动输入发送端地址。'),
         for (final peer in state.peers)
           Card(
@@ -296,31 +300,33 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
 
   bool get _supportsQrScanner => defaultTargetPlatform == TargetPlatform.android;
 
-  Future<void> _scanAndReceive({bool startDiscovery = true}) async {
-    final notifier = ref.read(lanSyncControllerProvider.notifier);
-    if (startDiscovery) {
-      await notifier.startReceiving();
-      if (!mounted || ref.read(lanSyncControllerProvider).phase != LanSyncPhase.discovering) {
-        return;
-      }
-    }
+  bool _canOpenUnifiedScanner(LanSyncViewState syncState, AppTransferState appState, DeviceSyncState deviceState) =>
+      !syncState.busy && appState.phase == AppTransferPhase.idle && !deviceState.pairingBusy;
+
+  Future<void> _scanAndRoute() async {
     final payload = await Navigator.of(
       context,
     ).push<String>(MaterialPageRoute<String>(fullscreenDialog: true, builder: (_) => const LanSyncQrScannerPage()));
     if (!mounted || payload == null) return;
-    final offer = LanSyncQrPayload.decode(payload);
-    if (offer != null) await notifier.connectOffer(offer);
-  }
 
-  Future<void> _scanAndPair() async {
-    final payload = await Navigator.of(context).push<String>(
-      MaterialPageRoute<String>(
-        fullscreenDialog: true,
-        builder: (_) => const LanSyncQrScannerPage(purpose: LanSyncQrScannerPurpose.pairing),
-      ),
-    );
-    if (!mounted || payload == null) return;
-    await ref.read(deviceSyncControllerProvider.notifier).joinPairing(payload);
+    final pairingOffer = LanPairingQrPayload.decode(payload);
+    if (pairingOffer != null) {
+      await ref.read(deviceSyncControllerProvider.notifier).joinPairing(payload);
+      return;
+    }
+
+    final syncOffer = LanSyncQrPayload.decode(payload);
+    if (syncOffer != null) {
+      final notifier = ref.read(lanSyncControllerProvider.notifier);
+      await notifier.startReceiving();
+      if (mounted && ref.read(lanSyncControllerProvider).phase == LanSyncPhase.discovering) {
+        await notifier.connectOffer(syncOffer);
+      }
+      return;
+    }
+
+    final appOffer = AppTransferQrPayload.decode(payload);
+    if (appOffer != null) await _connectScannedAppOffer(appOffer);
   }
 
   Future<void> _manageDevice(PairedDevice device) async {

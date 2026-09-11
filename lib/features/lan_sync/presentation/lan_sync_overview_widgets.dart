@@ -68,7 +68,7 @@ class _WideOverview extends StatelessWidget {
                     style: theme.textTheme.displaySmall?.copyWith(fontSize: 38, color: theme.colorScheme.onSurface, letterSpacing: -1),
                   ),
                   const SizedBox(height: AppSpacing.compact),
-                  Text('在同一局域网内，快速同步设备数据', style: theme.textTheme.bodyLarge?.copyWith(color: tokens.mutedText)),
+                  Text('配对设备自动发现；临时传输也可安全确认', style: theme.textTheme.bodyLarge?.copyWith(color: tokens.mutedText)),
                   const Spacer(),
                   const _FeatureLine(icon: Icons.bolt_rounded, title: '高速传输', description: '本地网络直连，无需上传云端'),
                   const SizedBox(height: AppSpacing.regular),
@@ -108,9 +108,9 @@ class _CompactOverview extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text('设备同步', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                    Text('局域网同步', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
                     const SizedBox(height: AppSpacing.unit),
-                    Text('配对一次，之后同网设备自动发现', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+                    Text('配对一次自动发现；扫码会自动识别任务', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
                   ],
                 ),
               ),
@@ -217,11 +217,10 @@ class _CompactFeature extends StatelessWidget {
 }
 
 class LanSyncRoleChooser extends StatelessWidget {
-  const LanSyncRoleChooser({required this.onSend, required this.onReceive, this.onScan, super.key});
+  const LanSyncRoleChooser({required this.onSend, required this.onReceive, super.key});
 
   final VoidCallback onSend;
   final VoidCallback onReceive;
-  final VoidCallback? onScan;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -245,16 +244,6 @@ class LanSyncRoleChooser extends StatelessWidget {
           background: const Color(0xFFF4F8FF),
           onTap: onReceive,
         ),
-        if (onScan != null)
-          _RoleCard(
-            key: const Key('lan-sync-receive-qr'),
-            icon: Icons.qr_code_scanner_rounded,
-            title: '扫码接收',
-            description: '扫描发送设备的二维码，直接建立本次传输',
-            tint: const Color(0xFF5D7D55),
-            background: const Color(0xFFF5F9F2),
-            onTap: onScan!,
-          ),
       ];
       if (constraints.maxWidth < 700) {
         return Column(
