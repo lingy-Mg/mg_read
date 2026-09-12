@@ -12,10 +12,12 @@ try {
   const options = parseSourceTestArguments(process.argv.slice(2));
   const report = await runSourceProjects(options);
   for (const source of report.sources) {
-    const status = source.status === 'passed' ? 'PASS' : 'FAIL';
+    const status = source.status === 'passed' ? 'PASS' : source.status === 'partial' ? 'PARTIAL' : 'FAIL';
     const detail = source.status === 'passed'
-      ? `chapters=${source.summary.chapterItems} samples=${source.summary.contentSamples}`
-      : `${source.failure.stage} ${source.failure.code}`;
+      ? `chapters=${source.summary.chapterItems} samples=${source.summary.contentSamples} ${formatResourceGroups(source.summary.resourceGroups)}`
+      : source.status === 'partial'
+        ? `chapters=${source.summary.chapterItems} samples=${source.summary.contentSamples} ${formatResourceGroups(source.summary.resourceGroups)}`
+      : `${source.failure.stage} ${source.failure.code}${source.summary?.resourceGroups ? ` ${formatResourceGroups(source.summary.resourceGroups)}` : ''}`;
     process.stdout.write(`${status} ${source.source} ${detail} ${source.durationMs}ms\n`);
   }
   if (options.reportPath !== null) {
@@ -28,4 +30,11 @@ try {
     : new SourceTestFailure('source_cli_failed', 'cli', {});
   process.stderr.write(`FAIL cli ${failure.stage} ${failure.code}\n`);
   process.exitCode = 2;
+}
+
+function formatResourceGroups(groups) {
+  if (groups === null || typeof groups !== 'object') return 'resources=unknown';
+  return `resources=${Object.entries(groups)
+    .map(([name, value]) => `${name}:${value?.status ?? 'unknown'}`)
+    .join(',')}`;
 }

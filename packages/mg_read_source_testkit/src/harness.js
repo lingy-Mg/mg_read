@@ -60,6 +60,13 @@ export async function createSourceTestHarness({
             {},
           );
         }
+        // Keep the Runtime-facing URL so the CLI can associate a returned
+        // cover/page/media URL with the exact upstream descriptor that was
+        // registered by the source. This is test metadata, not a plugin API.
+        resourceRequests[resourceRequests.length - 1] = Object.freeze({
+          ...captured,
+          projectedUrl: projected,
+        });
         return projected;
       },
     }),

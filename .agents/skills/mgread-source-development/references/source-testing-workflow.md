@@ -28,8 +28,9 @@ packages\mg_read_node_runtime\tools\node-v24.16.0-win-x64\node.exe --use-env-pro
 `test/acceptance.json.searchQuery` 只作无法派生查询时的后备；不得用固定 `contentId` 绕过自动发现与搜索。
 `--skip-build` 只用于已确认 dist 与源码一致的重复诊断。
 
-小说要按图书策略选择可读章节并验证文本；漫画、音频、视频与封面要分资源组报告。当前 CLI 若只返回一个聚合
-`resourceStatus`，用来源 live 测试补齐其余组，并明确标记 `notTested`，不能推断全组通过。
+小说要按图书策略选择可读章节并验证文本；漫画、音频、视频与封面要分资源组报告。当前 CLI 报告
+`summary.resourceGroups` 中的 `cover`、`comicImages`、`audio`、`video`，每组独立返回
+`passed/failed/notRegistered/notTested`；`resourceStatus` 仅是兼容聚合字段，不能推断全组通过。
 
 ### 当前 CLI 的解释边界
 
@@ -38,12 +39,13 @@ packages\mg_read_node_runtime\tools\node-v24.16.0-win-x64\node.exe --use-env-pro
   lock 恢复，再进行有效复跑。
 - 当前自动搜索只使用一个派生查询，标准链路选择搜索首项；`search_empty` 或选中错误条目时，用来源 live 测试
   按内容矩阵的有界查询和稳定 ID 规则复核，不能直接断言解析器损坏。
-- 当前章节抽样不自动跳过锁定项，资源结果只给一个聚合状态；严格验证必须补齐可读章节和各适用资源组。
+- 当前章节抽样不自动跳过锁定项；严格验证仍必须补齐可读章节和各适用资源组。资源分组失败会使来源失败，
+  适用组为 `notRegistered/notTested` 时来源降为 `partial`。
 - 当前全源报告和 stdout 可能在任务末尾才出现；监控进程而不是猜进度。修改 testkit 时优先增加逐源进度或
   原子检查点，不能改变“遇错继续”和最终退出码。
 
-因此当前 `--all` 是完整项目筛查入口，不单独构成内容矩阵的完整验收。CLI `passed` 但适用资源仍未验证时，
-对外结论必须降级为部分验证。
+因此当前 `--all` 是完整项目筛查入口，不单独构成内容矩阵的完整验收；只有内容链路和全部适用资源组均为
+`passed` 时才是严格通过。
 
 testkit 自身变化还运行固定 Node 的直接测试：
 

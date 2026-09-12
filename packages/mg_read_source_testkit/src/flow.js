@@ -118,6 +118,10 @@ export async function runReadingSourceFlow({
   const content = contents[0];
 
   return Object.freeze({
+    discoveryItems: Object.freeze(discoveryItems),
+    searchItems: Object.freeze(searchItems),
+    suggestionItems: Object.freeze(suggestionItems),
+    selectedId,
     detail,
     chapters,
     content,

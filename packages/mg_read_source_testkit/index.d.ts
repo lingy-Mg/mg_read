@@ -63,6 +63,16 @@ export declare function probeReachableResource(options: {
   readonly maximumAttempts?: number;
 }): Promise<Readonly<Record<string, unknown>>>;
 
+export declare function probeResourceGroups(options: {
+  readonly requests: readonly Readonly<Record<string, unknown>>[];
+  readonly detail?: Record<string, unknown> | null;
+  readonly discoveryItems?: readonly unknown[];
+  readonly searchItems?: readonly unknown[];
+  readonly contents?: readonly unknown[];
+  readonly contentKind?: string | null;
+  readonly fetch?: typeof globalThis.fetch;
+}): Promise<Readonly<Record<string, Readonly<Record<string, unknown>>>>>;
+
 export declare function collectDiscoveryContent(result: unknown): readonly unknown[];
 
 export declare function collectDiscoveryTargets(result: unknown): readonly string[];
@@ -74,6 +84,10 @@ export declare function runReadingSourceFlow(options: {
   readonly searchRequest?: Record<string, unknown> | null;
   readonly suggestionsRequest?: Record<string, unknown> | null;
 }): Promise<Readonly<{
+  discoveryItems: readonly unknown[];
+  searchItems: readonly unknown[];
+  suggestionItems: readonly unknown[];
+  selectedId: string;
   detail: unknown;
   chapters: unknown;
   content: unknown;

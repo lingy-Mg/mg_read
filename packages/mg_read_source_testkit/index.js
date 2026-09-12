@@ -13,7 +13,7 @@ export {
   standardSourceExports,
 } from './src/contract.js';
 export { createSourceTestHarness } from './src/harness.js';
-export { probeReachableResource } from './src/resource.js';
+export { probeReachableResource, probeResourceGroups } from './src/resource.js';
 export {
   collectDiscoveryContent,
   collectDiscoveryTargets,

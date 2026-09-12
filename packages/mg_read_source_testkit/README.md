@@ -23,4 +23,6 @@ packages\\mg_read_node_runtime\\tools\\node-v24.16.0-win-x64\\node.exe --use-env
 
 CLI 默认先执行来源声明的 `build`，再从 `dist` 直接运行发现、搜索、详情、目录以及首/中/末内容抽样。`--all`
 顺序执行全部来源并收集所有失败，不在首个失败处停止。可用 `--skip-build` 复用已有构建，用 `--report <path>`
-指定紧凑 JSON 报告。
+指定紧凑 JSON 报告。报告中的 `summary.resourceGroups` 会独立给出 `cover`、`comicImages`、`audio` 和
+`video` 的 `passed/failed/notRegistered/notTested` 状态；旧的 `resourceStatus` 仅保留为聚合兼容字段，不能替代
+资源分组结果。资源分组未完整验证时来源状态为 `partial`，CLI 仍以非零退出表示批量未达到严格通过。

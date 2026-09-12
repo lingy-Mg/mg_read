@@ -12,7 +12,7 @@ import { assertStandardSourceContract, loadSourcePackage } from './contract.js';
 import { SourceTestFailure, failureFromCause } from './diagnostics.js';
 import { collectDiscoveryContent, collectDiscoveryTargets, runReadingSourceFlow } from './flow.js';
 import { createSourceTestHarness } from './harness.js';
-import { probeReachableResource } from './resource.js';
+import { probeResourceGroups } from './resource.js';
 
 const maximumBuildOutputCharacters = 2400;
 const defaultStageTimeoutMs = 90000;
@@ -100,13 +100,15 @@ export async function runSourceProjects(options) {
     results.push(await runProject(project, options));
   }
   const passed = results.filter((result) => result.status === 'passed').length;
+  const partial = results.filter((result) => result.status === 'partial').length;
+  const failed = results.length - passed - partial;
   const report = Object.freeze({
     schemaVersion: 1,
     mode: options.all ? 'all' : 'single',
     status: passed === results.length ? 'passed' : 'failed',
     startedAt: startedAt.toISOString(),
     durationMs: Date.now() - startedAt.getTime(),
-    totals: Object.freeze({ sources: results.length, passed, failed: results.length - passed }),
+    totals: Object.freeze({ sources: results.length, passed, partial, failed }),
     sources: Object.freeze(results),
   });
   if (options.reportPath !== null) await writeReport(options.reportPath, report);
@@ -177,12 +179,25 @@ async function runProject(project, options) {
       'flow',
       defaultStageTimeoutMs * 4,
     );
-    const resource = await probeFirstReachableResource(harness.resourceRequests);
+    const resourceGroups = await probeResourceGroups({
+      requests: harness.resourceRequests,
+      detail: flow.detail,
+      discoveryItems,
+      searchItems: flow.searchItems,
+      contents: flow.contents,
+      contentKind: flow.summary.contentKind,
+      fetch: globalThis.fetch,
+    });
+    const resourceStatus = aggregateResourceStatus(resourceGroups);
+    const resourceFailure = resourceGroupFailure(resourceGroups);
+    const status = resourceFailure === null
+      ? resourceStatus === 'reachable' ? 'passed' : 'partial'
+      : 'failed';
     return Object.freeze({
       pluginId: project.pluginId,
       source: project.directory,
       version: project.packageJson.version,
-      status: 'passed',
+      status,
       durationMs: Date.now() - started,
       summary: Object.freeze({
         discoveryItems: discoveryItems.length,
@@ -193,8 +208,10 @@ async function runProject(project, options) {
         contentSamples: flow.summary.contentSamples,
         contentUnits: flow.summary.contentUnits,
         resources: harness.resourceRequests.length,
-        resourceStatus: resource.status,
+        resourceStatus,
+        resourceGroups,
       }),
+      ...(resourceFailure === null ? {} : { failure: resourceFailure }),
     });
   } catch (error) {
     const failure = error instanceof SourceTestFailure
@@ -255,30 +272,19 @@ async function readAcceptance(projectRoot) {
   }
 }
 
-async function probeFirstReachableResource(requests) {
-  if (!Array.isArray(requests) || requests.length === 0) return Object.freeze({ status: 'notRegistered' });
-  const groups = [
-    { pattern: /image|cover/u, mime: /^image\//u },
-    { pattern: /audio/u, mime: /^(audio\/|application\/octet-stream)/u },
-    { pattern: /hls|video/u, mime: /^(video\/|application\/|text\/plain)/u },
-  ];
-  for (const group of groups) {
-    const candidates = requests.filter((request) => group.pattern.test(String(request?.kind ?? '')));
-    if (candidates.length === 0) continue;
-    try {
-      const result = await probeReachableResource({
-        requests: candidates.map((request) => ({ ...request, kind: 'candidate' })),
-        expectedKind: 'candidate',
-        expectedContentType: group.mime,
-        maximumAttempts: Math.min(candidates.length, 8),
-      });
-      return Object.freeze({ status: 'reachable', bytesRead: result.bytesRead, contentType: result.contentType });
-    } catch (error) {
-      if (error instanceof SourceTestFailure) continue;
-      throw error;
-    }
-  }
-  return Object.freeze({ status: 'unverified' });
+function aggregateResourceStatus(groups) {
+  const values = Object.values(groups);
+  if (values.some((group) => group.status === 'failed')) return 'failed';
+  if (values.some((group) => group.applicable && group.status !== 'passed')) return 'unverified';
+  return 'reachable';
+}
+
+function resourceGroupFailure(groups) {
+  const failed = Object.entries(groups)
+    .filter(([, group]) => group.status === 'failed')
+    .map(([name, group]) => ({ name, failureCode: group.failureCode ?? 'source_resource_unreachable' }));
+  if (failed.length === 0) return null;
+  return new SourceTestFailure('source_resource_groups_failed', 'resource', { groups: failed }).toJSON();
 }
 
 function withTimeout(future, stage, timeoutMs = defaultStageTimeoutMs) {

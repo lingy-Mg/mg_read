@@ -11,6 +11,7 @@ import {
   createSourceTestHarness,
   parseSourceTestArguments,
   probeReachableResource,
+  probeResourceGroups,
   runReadingSourceFlow,
 } from '../index.js';
 
@@ -151,6 +152,49 @@ test('resource failures expose statuses and request URLs', async () => {
       && error.summary.attempts[0].status === 404
       && error.message.includes('private-fixture.invalid'),
   );
+});
+
+test('probes cover and comic image groups independently', async () => {
+  const groups = await probeResourceGroups({
+    requests: [
+      { kind: 'image', url: 'https://fixture.invalid/cover.jpg', projectedUrl: 'proxy:cover' },
+      { kind: 'image', url: 'https://fixture.invalid/page-1.jpg', projectedUrl: 'proxy:page-1' },
+    ],
+    detail: { contentKind: 'manga', coverUrl: 'proxy:cover' },
+    contents: [{
+      contentKind: 'manga',
+      pages: [{ url: 'proxy:page-1' }],
+    }],
+    contentKind: 'manga',
+    fetch: async (url) => new Response(new Uint8Array([1, 2, 3]), {
+      status: 200,
+      headers: { 'content-type': url.endsWith('cover.jpg') ? 'image/jpeg' : 'image/png' },
+    }),
+  });
+  assert.equal(groups.cover.status, 'passed');
+  assert.equal(groups.comicImages.status, 'passed');
+  assert.equal(groups.audio.status, 'notTested');
+  assert.equal(groups.video.status, 'notTested');
+  assert.equal(groups.cover.candidates, 1);
+  assert.equal(groups.comicImages.candidates, 1);
+});
+
+test('marks an applicable media group failed without masking the cover result', async () => {
+  const groups = await probeResourceGroups({
+    requests: [
+      { kind: 'image', url: 'https://fixture.invalid/cover.jpg', projectedUrl: 'proxy:cover' },
+      { kind: 'audio', url: 'https://fixture.invalid/audio.mp3', projectedUrl: 'proxy:audio' },
+    ],
+    detail: { contentKind: 'audio', coverUrl: 'proxy:cover' },
+    contents: [{ contentKind: 'audio', media: { url: 'proxy:audio' } }],
+    contentKind: 'audio',
+    fetch: async (url) => url.endsWith('cover.jpg')
+      ? new Response(new Uint8Array([1]), { headers: { 'content-type': 'image/jpeg' } })
+      : new Response('denied', { status: 403, headers: { 'content-type': 'text/plain' } }),
+  });
+  assert.equal(groups.cover.status, 'passed');
+  assert.equal(groups.audio.status, 'failed');
+  assert.equal(groups.video.status, 'notTested');
 });
 
 test('runs the standard reading chain and reports complete results', async () => {
