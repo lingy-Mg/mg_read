@@ -936,9 +936,19 @@ export class DesktopRuntime {
       case RUNTIME_CONTROL_METHOD.pluginsSetEnabled:
         return dispatchPluginEnabled(request, this.#pluginManager, this.#requestError.bind(this));
       case RUNTIME_CONTROL_METHOD.pluginsUninstall:
-        return dispatchPluginUninstall(request, this.#pluginManager, this.#requestError.bind(this));
+        return dispatchPluginUninstall(
+          request,
+          this.#pluginManager,
+          this.#requestError.bind(this),
+          cancellation,
+        );
       case RUNTIME_CONTROL_METHOD.pluginsUninstallAll:
-        return dispatchPluginUninstallAll(request, this.#pluginManager, this.#requestError.bind(this));
+        return dispatchPluginUninstallAll(
+          request,
+          this.#pluginManager,
+          this.#requestError.bind(this),
+          cancellation,
+        );
       case RUNTIME_CONTROL_METHOD.pluginWebViewDebug:
         return this.#dispatchPluginWebViewDebug(request, cancellation);
       case RUNTIME_CONTROL_METHOD.pluginsTransferList:

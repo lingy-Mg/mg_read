@@ -422,6 +422,12 @@ final class UninstallAllPluginsInvocation extends PluginInvocation<void> {
   @override
   String get _wireMethod => 'plugins.uninstallAll.v1';
 
+  // The Runtime removes each source's installed package, cache and private
+  // data serially. This is intentionally a bounded long-running operation,
+  // rather than a normal five-second control request.
+  @override
+  Duration get _timeout => const Duration(minutes: 2);
+
   @override
   Map<String, Object?> get _wireParams => const <String, Object?>{};
 

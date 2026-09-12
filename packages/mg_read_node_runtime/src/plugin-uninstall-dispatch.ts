@@ -53,6 +53,7 @@ export async function dispatchPluginUninstall(
   request: RuntimeRequest,
   manager: PluginManager | undefined,
   requestError: RequestError,
+  cancellation: AbortSignal,
 ): Promise<PluginUninstallDispatchResult> {
   const pluginId = request.params.pluginId;
   if (Object.keys(request.params).length !== 1 || typeof pluginId !== "string") {
@@ -60,7 +61,7 @@ export async function dispatchPluginUninstall(
   }
   try {
     if (manager === undefined) throw new PluginManagerError("plugin_load_failed");
-    return { result: await manager.uninstall(pluginId) };
+    return { result: await manager.uninstall(pluginId, cancellation, request.deadlineUnixMs) };
   } catch (error) {
     const code = error instanceof PluginManagerError ? error.code : "internal";
     return {
@@ -78,13 +79,14 @@ export async function dispatchPluginUninstallAll(
   request: RuntimeRequest,
   manager: PluginManager | undefined,
   requestError: RequestError,
+  cancellation: AbortSignal,
 ): Promise<PluginUninstallDispatchResult> {
   if (Object.keys(request.params).length !== 0) {
     return { error: requestError(request, "invalid_request", "The all-source uninstall request is invalid.") };
   }
   try {
     if (manager === undefined) throw new PluginManagerError("plugin_load_failed");
-    return { result: await manager.uninstallAll() };
+    return { result: await manager.uninstallAll(cancellation, request.deadlineUnixMs) };
   } catch (error) {
     const code = error instanceof PluginManagerError ? error.code : "internal";
     return {

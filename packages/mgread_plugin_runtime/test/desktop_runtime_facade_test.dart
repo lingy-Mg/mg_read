@@ -522,6 +522,35 @@ void main() {
   );
 
   test(
+    'bulk uninstall waits for an active source call beyond the control timeout',
+    () async {
+      final runtimeDataRoot = await _stageInstalledStandardPlugin();
+      final runtime = PluginRuntime.desktopForTesting(
+        runtimeRepositoryRoot: nodeRuntimeRepositoryRoot,
+        runtimeDataRoot: runtimeDataRoot,
+      );
+      addTearDown(() async {
+        await runtime.debugDispose();
+        await runtimeDataRoot.delete(recursive: true);
+      });
+
+      final slowDiscovery = runtime.invoke(
+        const SourceDiscoverInvocation(
+          pluginId: 'org.mgread.flutter.fixture',
+          target: 'slow-nested',
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      await runtime.invoke(const UninstallAllPluginsInvocation());
+
+      expect(await slowDiscovery, isA<PluginDiscoveryDocumentResult>());
+      expect(await runtime.invoke(const InstalledPluginsInvocation()), isEmpty);
+    },
+    timeout: const Timeout(Duration(seconds: 20)),
+  );
+
+  test(
     'desktop development source changes build and hot reload without restarting Runtime',
     () async {
       final repositoryRoot = nodeRuntimeRepositoryRoot;
