@@ -129,19 +129,15 @@ void main() {
   });
 
   test('rejects malformed hashes, inconsistent sizes and duplicate plugins', () {
-    Map<String, Object?> plugin({
-      String id = 'source.example',
-      String checksum = 'aaaaaaaa',
-      int bytes = 1,
-      bool transferable = true,
-    }) => <String, Object?>{
-      'id': id,
-      'version': '1.0.0',
-      'bytes': bytes,
-      'artifactFormat': 'archive',
-      'checksum': checksum,
-      'transferable': transferable,
-    };
+    Map<String, Object?> plugin({String id = 'source.example', String checksum = 'aaaaaaaa', int bytes = 1, bool transferable = true}) =>
+        <String, Object?>{
+          'id': id,
+          'version': '1.0.0',
+          'bytes': bytes,
+          'artifactFormat': 'archive',
+          'checksum': checksum,
+          'transferable': transferable,
+        };
 
     expect(() => LanSyncPluginDescriptor.fromJson(plugin(checksum: 'secret')), throwsFormatException);
     expect(() => LanSyncPluginDescriptor.fromJson(plugin()..['artifactFormat'] = 'zip'), throwsFormatException);

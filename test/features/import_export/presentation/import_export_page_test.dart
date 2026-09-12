@@ -63,7 +63,7 @@ const _plugin = LanSyncPluginDescriptor(
   version: '1.0.1-devsync.1',
   bytes: 5,
   artifactFormat: LanSyncPluginArtifactFormat.archive,
-  sha256: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+  checksum: 'bbbbbbbb',
   transferable: true,
   displayName: '开发数据源',
 );

@@ -28,13 +28,13 @@ test("plugin transfer v2 lists retained artifacts and plans SemVer", async (t) =
     format: "archive",
     id: "org.example.source",
     provenance: "installed",
-    sha256,
+    checksum,
     version: "1.2.0",
   }]);
   const installed = [{ id: "org.example.source", activeVersion: "1.0.0", pendingVersion: null }];
   const plan = manager.plan([
-    { bytes: archive.length, developmentFingerprint: null, developmentRevision: null, format: "archive", id: "org.example.source", provenance: "installed", sha256, version: "1.2.0" },
-    { bytes: archive.length, developmentFingerprint: null, developmentRevision: null, format: "singleFile", id: "org.new.source", provenance: "installed", sha256, version: "1.0.0" },
+    { bytes: archive.length, developmentFingerprint: null, developmentRevision: null, format: "archive", id: "org.example.source", provenance: "installed", checksum, version: "1.2.0" },
+    { bytes: archive.length, developmentFingerprint: null, developmentRevision: null, format: "singleFile", id: "org.new.source", provenance: "installed", checksum, version: "1.0.0" },
   ], installed);
   assert.deepEqual(plan.map((item) => item.action), ["upgrade", "missing"]);
   const localDevelopmentPlan = manager.plan(
@@ -45,7 +45,7 @@ test("plugin transfer v2 lists retained artifacts and plans SemVer", async (t) =
       format: "archive",
       id: "org.example.source",
       provenance: "installed",
-      sha256,
+      checksum,
       version: "9.0.0",
     }],
     installed,
@@ -60,7 +60,7 @@ test("plugin transfer v2 lists retained artifacts and plans SemVer", async (t) =
       format: "archive",
       id: "org.example.source",
       provenance: "developmentReplica",
-      sha256,
+      checksum,
       version: `1.0.1-devsync.2.${"b".repeat(64)}`,
     }],
     installed,
@@ -80,7 +80,7 @@ test("plugin transfer v2 lists retained artifacts and plans SemVer", async (t) =
   }));
   assert.equal(manager.plan(largePlan, installed).length, 33);
   assert.throws(
-    () => manager.plan([{ bytes: archive.length, id: "org.old.source", sha256, version: "1.0.0" }], installed),
+    () => manager.plan([{ bytes: archive.length, id: "org.old.source", checksum, version: "1.0.0" }], installed),
     (error) => error?.code === "invalid_request",
   );
 });

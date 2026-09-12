@@ -72,7 +72,7 @@ const _plugin = LanSyncPluginDescriptor(
   version: '1.2.3',
   bytes: 5,
   artifactFormat: LanSyncPluginArtifactFormat.singleFile,
-  sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  checksum: 'aaaaaaaa',
   transferable: true,
   displayName: '已打包数据源',
 );

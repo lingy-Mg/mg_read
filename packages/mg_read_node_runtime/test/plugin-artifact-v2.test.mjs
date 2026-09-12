@@ -176,10 +176,10 @@ test("artifact transfer v2 lists both retained formats and rejects v1-shaped ite
     { id: "org.example.single", activeVersion: "1.0.0", pendingVersion: null },
   ]);
   assert.deepEqual(listed, [
-    { bytes: single.length, developmentFingerprint: null, developmentRevision: null, format: "singleFile", id: "org.example.single", provenance: "installed", sha256: crc32(single), version: "1.0.0" },
-    { bytes: archive.length, developmentFingerprint: null, developmentRevision: null, format: "archive", id: "org.example.source", provenance: "installed", sha256: crc32(archive), version: "1.2.0" },
+    { bytes: single.length, developmentFingerprint: null, developmentRevision: null, format: "singleFile", id: "org.example.single", provenance: "installed", checksum: crc32(single), version: "1.0.0" },
+    { bytes: archive.length, developmentFingerprint: null, developmentRevision: null, format: "archive", id: "org.example.source", provenance: "installed", checksum: crc32(archive), version: "1.2.0" },
   ]);
-  assert.equal(isPluginTransferArtifact({ bytes: 1, id: "org.example.old", sha256: "0".repeat(8), version: "1.0.0" }), false);
+  assert.equal(isPluginTransferArtifact({ bytes: 1, id: "org.example.old", checksum: "0".repeat(8), version: "1.0.0" }), false);
 });
 
 test("development planning updates replicas and forced sync overwrites conflicts", async (t) => {
@@ -193,7 +193,7 @@ test("development planning updates replicas and forced sync overwrites conflicts
     format: "archive",
     id: "org.example.development",
     provenance: "development",
-    sha256: "b".repeat(8),
+    checksum: "b".repeat(8),
     version: `0.1.1-devsync.11.${"a".repeat(64)}`,
   };
 

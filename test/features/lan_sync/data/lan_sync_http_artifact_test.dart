@@ -59,7 +59,7 @@ void main() {
     final changed = await client.getUrl(uri);
     changed.headers
       ..set(HttpHeaders.rangeHeader, 'bytes=4-')
-      ..set(HttpHeaders.ifRangeHeader, '"sha256-old"');
+      ..set(HttpHeaders.ifRangeHeader, '"crc32-old"');
     final restarted = await changed.close();
     expect(restarted.statusCode, HttpStatus.ok);
     expect(await utf8.decodeStream(restarted), '0123456789');
@@ -157,7 +157,7 @@ void main() {
   });
 
   test('materialization rejects a generation whose declared hash changed', () async {
-    final descriptor = _descriptor(bytes, sha: 'a' * 64);
+    final descriptor = _descriptor(bytes, checksum: 'a' * 64);
     await expectLater(
       LanSyncHttpArtifact.materialize(descriptor, Stream.value(bytes)),
       throwsA(isA<LanSyncTransportException>().having((error) => error.code, 'code', 'lan_sync_plugin_hash_mismatch')),
@@ -185,11 +185,11 @@ Future<String> _readRequestHeader(Socket socket) {
   return completed.future.timeout(const Duration(seconds: 2));
 }
 
-LanSyncPluginDescriptor _descriptor(List<int> bytes, {String? sha}) => LanSyncPluginDescriptor(
+LanSyncPluginDescriptor _descriptor(List<int> bytes, {String? checksum}) => LanSyncPluginDescriptor(
   id: 'source.http-test',
   version: '1.0.0',
   bytes: bytes.length,
   artifactFormat: LanSyncPluginArtifactFormat.archive,
-  checksum: sha ?? lanSyncChecksum(bytes),
+  checksum: checksum ?? lanSyncChecksum(bytes),
   transferable: true,
 );
