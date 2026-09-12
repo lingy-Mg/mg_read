@@ -24,6 +24,7 @@
     "description": "4KHD 写真图集数据源，支持分类、搜索、图集详情、分页目录与图片阅读。",
     "pluginApi": 1,
     "packageMode": "single-file",
+    "icon": "assets/icon.png",
     "contentKinds": ["manga"]
   }
 }

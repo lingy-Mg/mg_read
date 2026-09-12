@@ -28,7 +28,7 @@
     "displayName": "玩偶网盘",
     "description": "玩偶影视网盘索引数据源，支持影视搜索、详情、分集与百度/夸克/优汐网盘链接解析。",
     "pluginApi": 1,
-    "packageMode": "single-file",
+    "packageMode": "single-file","icon":"assets/icon.png",
     "contentKinds": ["video"]
   }
 }

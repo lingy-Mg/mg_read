@@ -23,7 +23,7 @@
     "displayName": "茶杯狐",
     "description": "茶杯狐影视数据源，支持分类、搜索、详情、分集目录与播放地址解析。",
     "pluginApi": 1,
-    "packageMode": "single-file",
+    "packageMode": "single-file","icon":"assets/icon.png",
     "contentKinds": ["video"]
   }
 }

@@ -23,7 +23,7 @@
     "displayName": "乌云影视",
     "description": "乌云影视视频数据源，支持站点分类、搜索、详情、分集目录与 HLS 播放。",
     "pluginApi": 1,
-    "packageMode": "single-file",
+    "packageMode": "single-file","icon":"assets/icon.png",
     "contentKinds": ["video"]
   }
 }

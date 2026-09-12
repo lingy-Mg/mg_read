@@ -24,7 +24,7 @@
     "displayName": "漫蛙漫画",
     "description": "漫蛙漫画数据源，支持分类、搜索、详情、章节目录与图片阅读。",
     "pluginApi": 1,
-    "packageMode": "single-file",
+    "packageMode": "single-file","icon":"assets/icon.png",
     "contentKinds": ["manga"]
   }
 }

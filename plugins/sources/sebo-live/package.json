@@ -23,7 +23,7 @@
     "displayName": "Sebo Live",
     "description": "Sebo Live 直播数据源，支持频道索引、直播列表、详情与直播流播放。",
     "pluginApi": 1,
-    "packageMode": "single-file",
+    "packageMode": "single-file","icon":"assets/icon.png",
     "contentKinds": ["video"]
   }
 }

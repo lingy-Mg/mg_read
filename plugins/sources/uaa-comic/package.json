@@ -23,7 +23,7 @@
     "displayName": "UAA 漫画",
     "description": "UAA 漫画数据源，支持分类、搜索、详情、章节目录与漫画图片阅读。",
     "pluginApi": 1,
-    "packageMode": "single-file",
+    "packageMode": "single-file","icon":"assets/icon.png",
     "contentKinds": ["manga"]
   }
 }
