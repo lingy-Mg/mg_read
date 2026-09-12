@@ -11,12 +11,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive_io.dart';
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'package:mg_read/features/lan_sync/application/app_update_service.dart';
+import 'package:mg_read/features/lan_sync/data/lan_sync_checksum.dart';
 import 'package:mg_read/features/lan_sync/domain/app_update_models.dart';
 
 const MethodChannel _appUpdateChannel = MethodChannel('mgread/app_update');
@@ -199,11 +199,19 @@ final class PlatformAppUpdateService implements AppUpdateService {
   Future<PreparedAppPackage> _existingPackage(File file, AppVersionInfo version, String fileName) async {
     final bytes = await file.length();
     if (bytes <= 0 || bytes > appUpdateMaxPackageBytes) throw StateError('app_update_package_size_invalid');
-    final digest = await sha256.bind(file.openRead()).first;
+    final digest = await _checksumFile(file);
     return PreparedAppPackage(
-      descriptor: AppPackageDescriptor(version: version, bytes: bytes, sha256: digest.toString(), fileName: fileName),
+      descriptor: AppPackageDescriptor(version: version, bytes: bytes, checksum: digest, fileName: fileName),
       file: file,
     );
+  }
+
+  Future<String> _checksumFile(File file) async {
+    final sink = LanSyncChecksumSink();
+    await for (final chunk in file.openRead()) {
+      sink.add(chunk);
+    }
+    return sink.close();
   }
 
   Iterable<Directory> _candidateProjectRoots() sync* {
@@ -231,7 +239,7 @@ final class PlatformAppUpdateService implements AppUpdateService {
     if (!await package.exists() || await package.length() != descriptor.bytes) {
       throw StateError('app_update_package_size_invalid');
     }
-    if ((await sha256.bind(package.openRead()).first).toString() != descriptor.sha256) {
+    if (await _checksumFile(package) != descriptor.checksum) {
       throw StateError('app_update_hash_mismatch');
     }
   }
@@ -252,7 +260,7 @@ final class PlatformAppUpdateService implements AppUpdateService {
         target: executable.parent,
         executable: executable,
         processId: _dependencies.processId,
-        expectedSha256: descriptor.sha256,
+        expectedChecksum: descriptor.checksum,
       ),
     );
     unawaited(_dependencies.exitAfterWindowsUpdater());
@@ -420,7 +428,7 @@ List<String> windowsUpdaterArguments({
   required Directory target,
   required File executable,
   required int processId,
-  required String expectedSha256,
+  required String expectedChecksum,
 }) => <String>[
   '-NoProfile',
   '-NonInteractive',
@@ -436,8 +444,8 @@ List<String> windowsUpdaterArguments({
   executable.absolute.path,
   '-ProcessId',
   processId.toString(),
-  '-ExpectedSha256',
-  expectedSha256,
+  '-ExpectedChecksum',
+  expectedChecksum,
 ];
 
 bool _isSafeBundleFilePath(String path) {
@@ -451,7 +459,7 @@ param(
   [Parameter(Mandatory=$true)][string]$Target,
   [Parameter(Mandatory=$true)][string]$Executable,
   [Parameter(Mandatory=$true)][int]$ProcessId,
-  [Parameter(Mandatory=$true)][string]$ExpectedSha256
+  [Parameter(Mandatory=$true)][string]$ExpectedChecksum
 )
 $ErrorActionPreference = 'Stop'
 $maxFiles = 4096
@@ -492,8 +500,25 @@ try {
   $targetPath = [IO.Path]::GetFullPath($Target)
   $exePath = [IO.Path]::GetFullPath($Executable)
   if ([IO.Path]::GetFileName($exePath) -ine 'mg_read.exe' -or [IO.Path]::GetDirectoryName($exePath) -ne $targetPath -or [IO.Path]::GetPathRoot($targetPath) -eq $targetPath -or !(Test-Path -LiteralPath $exePath -PathType Leaf)) { Stop-Update 'app_update_windows_target_invalid' }
-  if (!(Test-Path -LiteralPath $Package -PathType Leaf) -or [IO.Path]::GetExtension($Package) -ine '.zip' -or $ExpectedSha256 -notmatch '^[a-f0-9]{64}$') { Stop-Update 'app_update_windows_package_invalid' }
-  if ((Get-FileHash -LiteralPath $Package -Algorithm SHA256).Hash.ToLowerInvariant() -ne $ExpectedSha256) { Stop-Update 'app_update_hash_mismatch' }
+  if (!(Test-Path -LiteralPath $Package -PathType Leaf) -or [IO.Path]::GetExtension($Package) -ine '.zip' -or $ExpectedChecksum -notmatch '^[a-f0-9]{8}$') { Stop-Update 'app_update_windows_package_invalid' }
+  $crcTable = New-Object 'UInt32[]' 256
+  for ($i = 0; $i -lt 256; $i++) {
+    [UInt32]$value = [UInt32]$i
+    for ($bit = 0; $bit -lt 8; $bit++) {
+      $value = if (($value -band 1) -ne 0) { ($value -shr 1) -bxor [UInt32]0xEDB88320 } else { $value -shr 1 }
+    }
+    $crcTable[$i] = $value
+  }
+  $stream = [IO.File]::OpenRead($Package)
+  try {
+    [UInt32]$crc = [UInt32]0xFFFFFFFF
+    $buffer = New-Object byte[] (1024 * 1024)
+    while (($read = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+      for ($i = 0; $i -lt $read; $i++) { $crc = ($crc -shr 8) -bxor $crcTable[($crc -bxor $buffer[$i]) -band 0xFF] }
+    }
+    $actualChecksum = ((($crc -bxor [UInt32]0xFFFFFFFF)).ToString('x8'))
+  } finally { $stream.Dispose() }
+  if ($actualChecksum -ne $ExpectedChecksum) { Stop-Update 'app_update_hash_mismatch' }
   Wait-Process -Id $ProcessId -ErrorAction SilentlyContinue
   $stage = Join-Path ([IO.Path]::GetTempPath()) ('mgread-update-stage-' + [Guid]::NewGuid().ToString('N'))
   New-Item -ItemType Directory -Path $stage | Out-Null

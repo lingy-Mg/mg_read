@@ -78,24 +78,24 @@ final class AppPackageOffer {
 
 @immutable
 final class AppPackageDescriptor {
-  const AppPackageDescriptor({required this.version, required this.bytes, required this.sha256, required this.fileName});
+  const AppPackageDescriptor({required this.version, required this.bytes, required this.checksum, required this.fileName});
 
   final AppVersionInfo version;
   final int bytes;
-  final String sha256;
+  final String checksum;
   final String fileName;
 
-  Map<String, Object?> toJson() => <String, Object?>{...version.toJson(), 'bytes': bytes, 'sha256': sha256, 'fileName': fileName};
+  Map<String, Object?> toJson() => <String, Object?>{...version.toJson(), 'bytes': bytes, 'checksum': checksum, 'fileName': fileName};
 
   factory AppPackageDescriptor.fromJson(Map<String, Object?> json) {
     final bytes = json['bytes'];
-    final sha256 = json['sha256'];
+    final checksum = json['checksum'];
     final fileName = json['fileName'];
     if (bytes is! int ||
         bytes <= 0 ||
         bytes > appUpdateMaxPackageBytes ||
-        sha256 is! String ||
-        !RegExp(r'^[a-f0-9]{64}$').hasMatch(sha256) ||
+        checksum is! String ||
+        !RegExp(r'^[a-f0-9]{8}$').hasMatch(checksum) ||
         fileName is! String ||
         fileName.isEmpty ||
         fileName.length > 128 ||
@@ -103,7 +103,7 @@ final class AppPackageDescriptor {
         fileName.contains(r'\')) {
       throw const FormatException('invalid_app_package');
     }
-    return AppPackageDescriptor(version: AppVersionInfo.fromJson(json), bytes: bytes, sha256: sha256, fileName: fileName);
+    return AppPackageDescriptor(version: AppVersionInfo.fromJson(json), bytes: bytes, checksum: checksum, fileName: fileName);
   }
 }
 

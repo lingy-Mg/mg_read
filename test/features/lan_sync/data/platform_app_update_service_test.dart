@@ -9,9 +9,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
-import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/features/lan_sync/data/platform_app_update_service.dart';
+import 'package:mg_read/features/lan_sync/data/lan_sync_checksum.dart';
 import 'package:mg_read/features/lan_sync/domain/app_update_models.dart';
 
 void main() {
@@ -83,7 +83,7 @@ void main() {
     final descriptor = AppPackageDescriptor(
       version: const AppVersionInfo(platform: AppUpdatePlatform.windows, version: '3.2.1', buildNumber: 44),
       bytes: await package.length(),
-      sha256: (await sha256.bind(package.openRead()).first).toString(),
+      checksum: lanSyncChecksum(await package.readAsBytes()),
       fileName: 'received.zip',
     );
     List<String>? arguments;
@@ -114,7 +114,14 @@ void main() {
     expect(arguments, containsAllInOrder(<String>['-NoProfile', '-NonInteractive', '-File']));
     expect(
       arguments,
-      containsAll(<String>['-Target', bundle.absolute.path, '-Executable', executable.absolute.path, '-ExpectedSha256', descriptor.sha256]),
+      containsAll(<String>[
+        '-Target',
+        bundle.absolute.path,
+        '-Executable',
+        executable.absolute.path,
+        '-ExpectedChecksum',
+        descriptor.checksum,
+      ]),
     );
     final script = File(arguments![arguments!.indexOf('-File') + 1]);
     final source = await script.readAsString();
@@ -143,7 +150,7 @@ void main() {
     final descriptor = AppPackageDescriptor(
       version: const AppVersionInfo(platform: AppUpdatePlatform.windows, version: '3.2.1', buildNumber: 44),
       bytes: await package.length(),
-      sha256: (await sha256.bind(package.openRead()).first).toString(),
+      checksum: lanSyncChecksum(await package.readAsBytes()),
       fileName: 'received.zip',
     );
     var launched = false;

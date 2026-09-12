@@ -2,7 +2,7 @@
 ///
 /// 职责：
 /// - 用独立二维码建立一次性 App 会话并显示双方版本。
-/// - 通过标准 HTTP Range、ETag 和 SHA-256 传输 App 包。
+/// - 通过标准 HTTP Range、ETag 和 CRC32 传输 App 包。
 /// - 下载完成后才把本地文件交给平台安装边界。
 ///
 /// 注意：App 包不会进入书架/插件 manifest；普通升级只接受更高版本，显式
@@ -18,6 +18,7 @@ import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'package:mg_read/features/lan_sync/application/app_update_service.dart';
+import 'package:mg_read/features/lan_sync/data/lan_sync_checksum.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_http_client.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/domain/app_transfer_qr_payload.dart';
@@ -260,7 +261,7 @@ Future<void> serveAppPackage(HttpRequest request, File file, AppPackageDescripto
     await request.response.close();
     return;
   }
-  final etag = '"sha256-${descriptor.sha256}"';
+  final etag = '"crc32-${descriptor.checksum}"';
   final rangeHeader = request.headers.value(HttpHeaders.rangeHeader);
   final ifRange = request.headers.value(HttpHeaders.ifRangeHeader);
   final range = rangeHeader == null || (ifRange != null && ifRange != etag) ? null : _range(rangeHeader, descriptor.bytes);
@@ -293,7 +294,7 @@ Future<File> downloadAppPackage(
   Uri uri,
   AppPackageDescriptor descriptor, {
   HttpClient? client,
-  void Function(HttpClientRequest request, String contentSha256)? authenticate,
+  void Function(HttpClientRequest request, String contentChecksum)? authenticate,
   void Function(int, int)? onProgress,
 }) async {
   final ownedClient = client == null;
@@ -310,7 +311,7 @@ Future<File> downloadAppPackage(
     for (var attempt = 0; attempt < 4 && offset < descriptor.bytes; attempt++) {
       try {
         final request = await http.getUrl(uri);
-        authenticate?.call(request, sha256.convert(const <int>[]).toString());
+        authenticate?.call(request, lanSyncChecksum(const <int>[]));
         if (offset > 0) {
           request.headers
             ..set(HttpHeaders.rangeHeader, 'bytes=$offset-')
@@ -327,7 +328,7 @@ Future<File> downloadAppPackage(
           throw LanSyncTransportException('app_update_http_failed', reason: 'status_${response.statusCode}');
         }
         final responseEtag = response.headers.value(HttpHeaders.etagHeader);
-        if (responseEtag != '"sha256-${descriptor.sha256}"') throw const LanSyncTransportException('app_update_package_changed');
+        if (responseEtag != '"crc32-${descriptor.checksum}"') throw const LanSyncTransportException('app_update_package_changed');
         if (offset > 0 && response.statusCode == HttpStatus.ok) {
           offset = 0;
           await file.writeAsBytes(const <int>[]);
@@ -354,7 +355,7 @@ Future<File> downloadAppPackage(
       }
     }
     if (offset != descriptor.bytes) throw const LanSyncTransportException('app_update_transfer_incomplete');
-    if ((await sha256.bind(file.openRead()).first).toString() != descriptor.sha256) {
+    if (await _checksumFile(file) != descriptor.checksum) {
       throw const LanSyncTransportException('app_update_hash_mismatch');
     }
     return file;
@@ -364,6 +365,14 @@ Future<File> downloadAppPackage(
   } finally {
     if (ownedClient) http.close(force: true);
   }
+}
+
+Future<String> _checksumFile(File file) async {
+  final sink = LanSyncChecksumSink();
+  await for (final chunk in file.openRead()) {
+    sink.add(chunk);
+  }
+  return sink.close();
 }
 
 void _verifyPreparedOffer(AppPackageDescriptor descriptor, AppPackageOffer offer) {
