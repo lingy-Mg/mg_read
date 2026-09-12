@@ -38,7 +38,9 @@ test('completes search, detail, catalog and content with opaque IDs', async (t) 
       completedDetailCalls += 1;
       return new Response(completedDetail);
     }
-    if (path === '/51/101.html') return new Response('<div class="container"><div class="submenu"><h1>测试书 > 第一章</h1></div><div class="con"><p>正文 canary</p></div></div>');
+    if (path === '/51/101.html') return new Response('<div class="container"><div class="submenu"><h1>测试书 > 第一章</h1></div><div class="con"><p>正文 canary 第一页</p><div class="prenext"><a href="/51/101-2.html">下一页</a><a href="/51/102.html">下一章</a></div></div></div>');
+    if (path === '/51/101-2.html') return new Response('<div class="container"><div class="submenu"><h1>测试书 > 第一章</h1></div><div class="con"><p>正文 canary 第二页</p><div class="prenext"><a href="/51/101-3.html">下一页</a><a href="/51/102.html">下一章</a></div></div></div>');
+    if (path === '/51/101-3.html') return new Response('<div class="container"><div class="submenu"><h1>测试书 > 第一章</h1></div><div class="con"><p>正文 canary 第三页</p><div class="prenext"><a href="/51/102.html">下一章</a></div></div></div>');
     if (path === '/51/102.html') return new Response('<div class="container"><div class="con"><p>第二章</p></div></div>');
     return new Response('not found', { status: 404 });
   }, join(root, 'cache'));
@@ -73,7 +75,7 @@ test('completes search, detail, catalog and content with opaque IDs', async (t) 
   const content = await plugin.getContent({ id: book.id, chapterId: chapters.items[0].id });
   const suggestions = await plugin.searchSuggestions({ cursor: null, pageSize: 10 });
   const cachedSuggestions = await plugin.searchSuggestions({ cursor: null, pageSize: 10 });
-  assert.equal(content.text, '正文 canary');
+  assert.equal(content.text, '正文 canary 第一页\n\n正文 canary 第二页\n\n正文 canary 第三页');
   assert.deepEqual(suggestions.items.map((item) => item.query), ['排行热书', '第二排行热书']);
   assert.deepEqual(cachedSuggestions, suggestions);
   assert.equal(homeCalls, 2);

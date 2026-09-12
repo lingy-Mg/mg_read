@@ -189,17 +189,38 @@ export class ShuduguSource {
         return loaded.value;
     }
     async getContent(request) {
-        decodeNovelId(request.id);
+        const bookId = decodeNovelId(request.id);
         const chapterUrl = this.#decodeChapterId(request.chapterId);
+        const firstPage = parseChapterPage(chapterUrl);
+        if (firstPage === null || firstPage.bookId !== bookId)
+            throw new Error('Chapter ID is invalid.');
         const cheerio = await loadCheerio();
-        const $ = cheerio.load(await this.#getHtml(chapterUrl));
-        const content = $('.container .con').first();
-        if (content.length === 0)
-            throw new Error('Source chapter content was not found.');
-        content.find('script,style,iframe,.submenu,.prenext').remove();
-        const title = textOrNull($('.submenu h1').first().text())?.split('>').pop()?.trim() ?? null;
-        const markup = (content.html() ?? '').replace(/<br\s*\/?>(?=.)/giu, '\n').replace(/<\/(?:p|div)>/giu, '\n\n');
-        const text = cheerio.load(`<body>${markup}</body>`).text().replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+        const visited = new Set();
+        const parts = [];
+        let pageUrl = chapterUrl;
+        let title = null;
+        for (let page = 1; page <= 120; page += 1) {
+            if (visited.has(pageUrl.toString()))
+                throw new Error('Chapter pagination loop detected.');
+            visited.add(pageUrl.toString());
+            const $ = cheerio.load(await this.#getHtml(pageUrl));
+            const content = $('.container .con').first();
+            if (content.length === 0)
+                throw new Error('Source chapter content was not found.');
+            title ??= textOrNull($('.submenu h1').first().text())?.split('>').pop()?.trim() ?? null;
+            const nextPage = this.#nextChapterPage($, pageUrl, firstPage);
+            content.find('script,style,iframe,.submenu,.prenext').remove();
+            const markup = (content.html() ?? '').replace(/<br\s*\/?>(?=.)/giu, '\n').replace(/<\/(?:p|div)>/giu, '\n\n');
+            const pageText = cheerio.load(`<body>${markup}</body>`).text().replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+            if (pageText !== '')
+                parts.push(pageText);
+            if (nextPage === null)
+                break;
+            pageUrl = nextPage;
+            if (page === 120)
+                throw new Error('Chapter pagination exceeds the safety limit.');
+        }
+        const text = parts.join('\n\n').trim();
         return Object.freeze({ chapterId: request.chapterId, contentKind: 'novel', title, updatedAt: null, text, pages: Object.freeze([]) });
     }
     async #getHtml(url, policy) {
@@ -352,6 +373,24 @@ export class ShuduguSource {
             return []; const url = this.#sourceUrl(href, base); const id = this.#chapterId(url); if (seen.has(id))
             return []; seen.add(id); return [Object.freeze({ id, title, url })]; }));
     }
+    #nextChapterPage($, current, firstPage) {
+        const next = $('.prenext a[href], a[rel="next"]').toArray().find((element) => {
+            const label = (textOrNull($(element).text()) ?? '').replace(/\s+/gu, '');
+            return /^(?:下一页|下页|next|>|›|»)$/iu.test(label);
+        });
+        if (next === undefined)
+            return null;
+        const href = $(next).attr('href');
+        if (href === undefined)
+            throw new Error('Chapter continuation is invalid.');
+        const candidate = this.#sourceUrl(href, current);
+        const page = parseChapterPage(candidate);
+        const currentPage = parseChapterPage(current);
+        if (page === null || currentPage === null || page.bookId !== firstPage.bookId || page.chapterNumber !== firstPage.chapterNumber || page.pageNumber !== currentPage.pageNumber + 1) {
+            throw new Error('Chapter continuation is invalid.');
+        }
+        return candidate;
+    }
     #category(target) { const id = target.startsWith('category:') ? target.slice(9) : ''; const result = this.#categories.find((category) => category.id === id); if (result === undefined)
         throw new Error('Category target is invalid.'); return result; }
     #categoryUrl(id, page) { return new URL(page === 1 ? `/${id}/` : `/${id}/${page}.html`, this.#baseUrl); }
@@ -363,10 +402,11 @@ export class ShuduguSource {
             return null;
         return this.context.resource.proxy({ kind: 'image', url, headers: { Accept: 'image/*' } });
     }
-    #chapterId(url) { if (!/^\/\d+\/\d+(?:-\d+)?\.html$/u.test(url.pathname))
+    #chapterId(url) { if (parseChapterPage(url) === null)
         throw new Error('Chapter URL is invalid.'); return `chapter:${Buffer.from(url.pathname).toString('base64url')}`; }
     #decodeChapterId(id) { if (!id.startsWith('chapter:'))
-        throw new Error('Chapter ID is invalid.'); const path = Buffer.from(id.slice(8), 'base64url').toString('utf8'); return this.#sourceUrl(path, this.#baseUrl); }
+        throw new Error('Chapter ID is invalid.'); const path = Buffer.from(id.slice(8), 'base64url').toString('utf8'); const url = this.#sourceUrl(path, this.#baseUrl); if (parseChapterPage(url) === null)
+        throw new Error('Chapter ID is invalid.'); return url; }
 }
 function categoryIcon(id, title) {
     if (id === 'dushi')
@@ -404,6 +444,8 @@ function textOrNull(value) { return nonBlank(value); }
 function novelIdFromUrl(url) { return /^\/(\d+)\/$/u.exec(url.pathname)?.[1] ?? null; }
 function decodeNovelId(id) { const value = /^novel:(\d+)$/u.exec(id)?.[1]; if (value === undefined)
     throw new Error('Novel ID is invalid.'); return value; }
+function parseChapterPage(url) { const match = /^\/(\d+)\/(\d+)(?:-(\d+))?\.html$/u.exec(url.pathname); if (match === null)
+    return null; const pageNumber = Number(match[3] ?? '1'); return Number.isSafeInteger(pageNumber) && pageNumber >= 1 ? Object.freeze({ bookId: match[1], chapterNumber: match[2], pageNumber }) : null; }
 function decodePage(cursor, scope) { if (cursor === null)
     return 1; const value = Number(new RegExp(`^${scope}:(\\d+)$`, 'u').exec(cursor)?.[1] ?? Number.NaN); if (!Number.isSafeInteger(value) || value < 1)
     throw new Error('Cursor is invalid.'); return value; }
