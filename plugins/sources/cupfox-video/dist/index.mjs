@@ -1,4 +1,4 @@
-const base = 'https://www.cupfox.in', headers = Object.freeze({ Accept: 'text/html,application/xhtml+xml,*/*', 'User-Agent': 'Mozilla/5.0 MgRead', Referer: `${base}/` }), categories = Object.freeze([['tv', '剧集'], ['movie', '电影'], ['anime', '动漫'], ['show', '综艺']]);
+const base = 'https://www.cupfox.in', headers = Object.freeze({ Accept: 'text/html,application/xhtml+xml,*/*', 'User-Agent': 'Mozilla/5.0 MgRead', Referer: `${base}/` }), directProxyMode = 'direct', categories = Object.freeze([['tv', '剧集'], ['movie', '电影'], ['anime', '动漫'], ['show', '综艺']]);
 let context;
 export async function activate(next) { context = next; next.log.info('source_activated'); }
 export async function search(request) { const query = request.query.trim(); if (query === '')
@@ -22,11 +22,11 @@ export async function getChapters(request) { const id = contentId(request.id), h
     items.push(frozen({ id: `video:${id}:ep:${encodeKey(slug)}`, title, order: items.length, url: null, volumeTitle: '播放列表', wordCount: null, updatedAt: null, isLocked: null, attributes: [] }));
 } return frozen({ items, groups: items.length === 0 ? [] : [frozen({ id: `group:video:${id}`, title: '播放列表', order: 0, episodes: items })] }); }
 export async function getContent(request) { const id = contentId(request.id), slug = chapterSlug(request.chapterId, id), page = `${base}/tea/${id}${slug === '' ? '' : `-${encodeURIComponent(slug)}`}`, raw = await fetchText(page), encoded = firstCapture(raw, /"play_data"\s*:\s*"([^"]+)"/iu), candidate = encoded === '' ? firstCapture(raw, /(https:\/\/[^"'\s]+\.m3u8[^"'\s]*)/iu) : decodeUrl(encoded), upstream = candidate.replaceAll('\\/', '/'); if (!safeUrl(upstream))
-    throw new Error('Playback address is unavailable.'); const resourceType = /\.m3u8(?:$|[?#])/iu.test(upstream) ? 'hls' : 'video', mediaHeaders = { Referer: detailUrl(id), 'User-Agent': headers['User-Agent'] }; return frozen({ chapterId: request.chapterId, contentKind: 'video', title: null, updatedAt: null, text: null, pages: [], media: { url: requireContext().resource.proxy({ kind: resourceType, url: upstream, headers: mediaHeaders }), resourceType, resourcePolicy: 'sessionOnly', expiresAt: null, mimeType: resourceType === 'hls' ? 'application/vnd.apple.mpegurl' : 'video/mp4', headers: mediaHeaders } }); }
+    throw new Error('Playback address is unavailable.'); const resourceType = /\.m3u8(?:$|[?#])/iu.test(upstream) ? 'hls' : 'video', mediaHeaders = { Referer: detailUrl(id), 'User-Agent': headers['User-Agent'] }; return frozen({ chapterId: request.chapterId, contentKind: 'video', title: null, updatedAt: null, text: null, pages: [], media: { url: requireContext().resource.proxy({ kind: resourceType, url: upstream, headers: mediaHeaders, proxyMode: directProxyMode }), resourceType, resourcePolicy: 'sessionOnly', expiresAt: null, mimeType: resourceType === 'hls' ? 'application/vnd.apple.mpegurl' : 'video/mp4', headers: mediaHeaders } }); }
 async function fetchText(url) { const response = await requireContext().http.fetch(url, { headers }); if (!response.ok)
     throw new Error('Source request failed.'); return response.text(); }
 function parseList(html) { const values = new Map(); for (const match of html.matchAll(/<a\b([^>]*)href=["']([^"']*\/vod-detail\/(\d+)\.html)["']([^>]*)>([\s\S]*?)<\/a>/giu)) {
-    const id = match[3] ?? '', attrs = `${match[1] ?? ''} ${match[4] ?? ''}`, body = match[5] ?? '', title = strip(firstCapture(body, /<[^>]*class=["'][^"']*movie-title[^"']*["'][^>]*>([\s\S]*?)<\/[^>]+>/iu)) || attribute(attrs, 'title') || strip(body) || `视频 ${id}`, image = /<img\b[^>]*>/iu.exec(body)?.[0] ?? '', cover = attribute(image, 'src') || attribute(image, 'data-src');
+    const id = match[3] ?? '', attrs = `${match[1] ?? ''} ${match[4] ?? ''}`, body = match[5] ?? '', title = strip(firstCapture(body, /<[^>]*class=["'][^"']*movie-title[^"']*["'][^>]*>([\s\S]*?)<\/[^>]+>/iu)) || listingTitle(html, id) || attribute(attrs, 'title') || strip(body) || `视频 ${id}`, image = /<img\b[^>]*>/iu.exec(body)?.[0] ?? '', cover = attribute(image, 'src') || attribute(image, 'data-src');
     if (id !== '' && !values.has(id))
         values.set(id, summary(id, title, cover));
 } return [...values.values()]; }
@@ -46,6 +46,8 @@ function proxyImage(value) { if (value === '')
 catch {
     return null;
 } return requireContext().resource.proxy({ kind: 'image', url, headers: { Referer: `${base}/` } }); }
+function listingTitle(html, id) { const start = html.indexOf(`/vod-detail/${id}.html`); if (start < 0)
+    return ''; const next = html.indexOf('movie-list-item', start + 1), region = html.slice(start, next < 0 ? start + 4096 : next); return strip(firstCapture(region, /<[^>]*class=["'][^"']*movie-title[^"']*["'][^>]*>([\s\S]*?)<\/[^>]+>/iu)); }
 function decodeUrl(value) { try {
     return decodeURIComponent(value);
 }
