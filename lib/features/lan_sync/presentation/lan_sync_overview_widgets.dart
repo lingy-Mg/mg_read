@@ -7,211 +7,59 @@ import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 
-const String _deviceConnectionAsset = 'assets/illustrations/page_backdrops/lan_sync_device_connection.png';
 const String _transferTipsAsset = 'assets/illustrations/page_backdrops/lan_sync_transfer_tips.png';
 
 class LanSyncOverviewCard extends StatelessWidget {
-  const LanSyncOverviewCard({super.key});
+  const LanSyncOverviewCard({this.networkReady = false, super.key});
+
+  final bool networkReady;
 
   @override
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        final bool wide = constraints.maxWidth >= 760;
-        return ClipRRect(
-          key: const Key('lan-sync-overview'),
-          borderRadius: const BorderRadius.all(Radius.circular(24)),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: <Color>[tokens.surface, const Color(0xFFFFF8F1), const Color(0xFFFFEFE0)],
-              ),
-              border: Border.all(color: tokens.accent.withValues(alpha: 0.18)),
+    final statusColor = networkReady ? tokens.dataSourceAccent : tokens.mutedText;
+    return DecoratedBox(
+      key: const Key('lan-sync-overview'),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF6EE),
+        borderRadius: const BorderRadius.all(Radius.circular(18)),
+        border: Border.all(color: tokens.accent.withValues(alpha: 0.18)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.regular),
+        child: Row(
+          children: <Widget>[
+            DecoratedBox(
+              decoration: BoxDecoration(color: tokens.surface, borderRadius: AppRadii.detailControl),
+              child: SizedBox.square(dimension: 42, child: Icon(Icons.wifi_rounded, color: statusColor)),
             ),
-            child: wide ? const _WideOverview() : const _CompactOverview(),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _WideOverview extends StatelessWidget {
-  const _WideOverview();
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final AppThemeTokens tokens = AppThemeTokens.of(context);
-    return SizedBox(
-      height: 360,
-      child: Stack(
-        children: <Widget>[
-          Positioned(
-            right: -18,
-            top: 10,
-            bottom: -10,
-            width: 570,
-            child: Image.asset(_deviceConnectionAsset, fit: BoxFit.contain, filterQuality: FilterQuality.high),
-          ),
-          Positioned.fill(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(36, 36, 500, 32),
+            const SizedBox(width: AppSpacing.regular),
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    '局域网同步',
-                    style: theme.textTheme.displaySmall?.copyWith(fontSize: 38, color: theme.colorScheme.onSurface, letterSpacing: -1),
+                    networkReady ? '已连接局域网' : '正在检测局域网',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                   ),
-                  const SizedBox(height: AppSpacing.compact),
-                  Text('配对设备自动发现；临时传输也可安全确认', style: theme.textTheme.bodyLarge?.copyWith(color: tokens.mutedText)),
-                  const Spacer(),
-                  const _FeatureLine(icon: Icons.bolt_rounded, title: '高速传输', description: '本地网络直连，无需上传云端'),
-                  const SizedBox(height: AppSpacing.regular),
-                  const _FeatureLine(icon: Icons.shield_outlined, title: '认证保护', description: '已配对设备使用认证连接'),
-                  const SizedBox(height: AppSpacing.regular),
-                  const _FeatureLine(icon: Icons.wifi_find_rounded, title: '自动发现', description: '同一网络中的已配对设备自动识别'),
+                  const SizedBox(height: AppSpacing.unit),
+                  Text(
+                    networkReady ? '附近的已配对设备可自动发现' : '打开后会检测本地网络和可信设备',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText),
+                  ),
                 ],
               ),
             ),
-          ),
-          Positioned(
-            right: 28,
-            top: 28,
-            child: _NetworkPill(color: tokens.accent, background: tokens.surface.withValues(alpha: 0.9)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CompactOverview extends StatelessWidget {
-  const _CompactOverview();
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final AppThemeTokens tokens = AppThemeTokens.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(AppSpacing.comfortable, AppSpacing.comfortable, AppSpacing.comfortable, AppSpacing.regular),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text('局域网同步', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-                    const SizedBox(height: AppSpacing.unit),
-                    Text('配对一次自动发现；扫码会自动识别任务', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
-                  ],
-                ),
+            DecoratedBox(
+              decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.12), borderRadius: AppRadii.pill),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.compact, vertical: AppSpacing.unit),
+                child: Text(networkReady ? '可发现' : '检测中', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: statusColor)),
               ),
-              const SizedBox(width: AppSpacing.compact),
-              _NetworkPill(color: tokens.accent, background: tokens.surface.withValues(alpha: 0.9)),
-            ],
-          ),
-          SizedBox(
-            height: 150,
-            child: Image.asset(_deviceConnectionAsset, fit: BoxFit.contain, filterQuality: FilterQuality.high),
-          ),
-          Row(
-            children: const <Widget>[
-              Expanded(
-                child: _CompactFeature(icon: Icons.bolt_rounded, label: '本地直连'),
-              ),
-              Expanded(
-                child: _CompactFeature(icon: Icons.shield_outlined, label: '认证保护'),
-              ),
-              Expanded(
-                child: _CompactFeature(icon: Icons.wifi_find_rounded, label: '自动发现'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _NetworkPill extends StatelessWidget {
-  const _NetworkPill({required this.color, required this.background});
-
-  final Color color;
-  final Color background;
-
-  @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(
-      color: background,
-      borderRadius: AppRadii.pill,
-      boxShadow: <BoxShadow>[BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12)],
-    ),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.regular, vertical: AppSpacing.compact),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Icon(Icons.wifi_rounded, color: color, size: 18),
-          const SizedBox(width: AppSpacing.compact),
-          Text('已连接局域网', style: Theme.of(context).textTheme.labelLarge?.copyWith(color: color)),
-        ],
-      ),
-    ),
-  );
-}
-
-class _FeatureLine extends StatelessWidget {
-  const _FeatureLine({required this.icon, required this.title, required this.description});
-
-  final IconData icon;
-  final String title;
-  final String description;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppThemeTokens tokens = AppThemeTokens.of(context);
-    return Row(
-      children: <Widget>[
-        DecoratedBox(
-          decoration: BoxDecoration(color: tokens.accentSoft, shape: BoxShape.circle),
-          child: SizedBox.square(dimension: 46, child: Icon(icon, color: tokens.dataSourceAccent, size: 23)),
-        ),
-        const SizedBox(width: AppSpacing.regular),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-            Text(description, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+            ),
           ],
         ),
-      ],
-    );
-  }
-}
-
-class _CompactFeature extends StatelessWidget {
-  const _CompactFeature({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final AppThemeTokens tokens = AppThemeTokens.of(context);
-    return Column(
-      children: <Widget>[
-        Icon(icon, size: 19, color: tokens.dataSourceAccent),
-        const SizedBox(height: AppSpacing.unit),
-        Text(label, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
-      ],
+      ),
     );
   }
 }

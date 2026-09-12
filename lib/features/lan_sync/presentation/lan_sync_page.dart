@@ -37,6 +37,7 @@ import 'paired_device_widgets.dart';
 import 'app_transfer_widgets.dart';
 
 part 'lan_sync_app_transfer_actions.dart';
+part 'lan_sync_page_cards.dart';
 part 'lan_sync_status_widgets.dart';
 
 class LanSyncPage extends ConsumerStatefulWidget {
@@ -125,55 +126,39 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
                         AppSpacing.page,
                       ),
                       children: <Widget>[
-                        const LanSyncOverviewCard(),
+                        LanSyncOverviewCard(networkReady: deviceState.started),
                         const SizedBox(height: AppSpacing.section),
-                        PairedDevicesSection(
-                          state: deviceState,
-                          supportsScanner: _supportsQrScanner,
-                          onBeginPairing: () => ref.read(deviceSyncControllerProvider.notifier).beginPairing(),
-                          onApprovePairing: () => ref.read(deviceSyncControllerProvider.notifier).approvePairing(),
-                          onRejectPairing: () => ref.read(deviceSyncControllerProvider.notifier).rejectPairing(),
-                          onCancelPairing: () => ref.read(deviceSyncControllerProvider.notifier).cancelPairing(),
-                          onSync: (deviceId, operation) =>
-                              ref.read(deviceSyncControllerProvider.notifier).syncNow(deviceId, operation: operation),
-                          onAppUpdate: (deviceId, force) => unawaited(_confirmPairedAppUpdate(deviceId, force)),
-                          onManage: _manageDevice,
+                        _UnifiedScanCard(
+                          enabled: _supportsQrScanner && _canOpenUnifiedScanner(state, appState, deviceState),
+                          onTap: () => unawaited(_scanAndRoute()),
                         ),
                         const SizedBox(height: AppSpacing.section),
-                        if (appState.phase != AppTransferPhase.idle)
-                          AppTransferPanel(
-                            state: appState,
-                            manualController: _appManualAddressController,
-                            onConnectManual: () =>
-                                ref.read(appTransferControllerProvider.notifier).connectManual(_appManualAddressController.text),
-                            onConnectPeer: (peer) => ref.read(appTransferControllerProvider.notifier).connectPeer(peer),
-                            onInstall: (force) => ref.read(appTransferControllerProvider.notifier).install(force: force),
-                            onCancel: () => ref.read(appTransferControllerProvider.notifier).cancel(),
-                            onReset: () => ref.read(appTransferControllerProvider.notifier).reset(),
-                          )
-                        else if (state.phase == LanSyncPhase.idle || state.phase == LanSyncPhase.cancelled)
-                          Column(
-                            key: const Key('lan-sync-temporary-transfer'),
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: <Widget>[
-                              const LanSyncSectionHeader(title: '传输 App', description: '另一台设备先看到双方版本，再决定升级；相同或较低版本仍可显式强制安装。'),
-                              const SizedBox(height: AppSpacing.regular),
-                              AppTransferRoleChooser(
-                                onSend: () => ref.read(appTransferControllerProvider.notifier).startSending(),
-                                onReceive: () => ref.read(appTransferControllerProvider.notifier).startReceiving(),
-                              ),
-                              const SizedBox(height: AppSpacing.section),
-                              const LanSyncSectionHeader(title: '传输数据', description: '用于尚未配对的设备；仅本次有效，需要发送端保持页面并核对确认码。'),
-                              const SizedBox(height: AppSpacing.regular),
-                              LanSyncRoleChooser(
-                                onSend: () => ref.read(lanSyncControllerProvider.notifier).startSending(),
-                                onReceive: () => ref.read(lanSyncControllerProvider.notifier).startReceiving(),
-                              ),
-                              const SizedBox(height: AppSpacing.section),
-                              const LanSyncTipsCard(),
-                            ],
-                          )
-                        else ...<Widget>[_StatusCard(state: state), const SizedBox(height: AppSpacing.regular), ..._phaseContent(state)],
+                        _DeviceSyncCard(
+                          state: deviceState,
+                          onAddDevice: _showAddDeviceSheet,
+                          onManage: _manageDevice,
+                          onShowAll: _showAllDevicesSheet,
+                        ),
+                        const SizedBox(height: AppSpacing.section),
+                        _CapabilityCard(
+                          key: const Key('lan-sync-send-app'),
+                          icon: Icons.mobile_friendly_rounded,
+                          title: '发送 App',
+                          description: '将当前 App 安装包发送给局域网中的其他设备',
+                          actionLabel: '发送 App',
+                          onTap: appState.active ? null : _showAppTransferSheet,
+                        ),
+                        const SizedBox(height: AppSpacing.regular),
+                        _CapabilityCard(
+                          key: const Key('lan-sync-temporary-transfer'),
+                          icon: Icons.send_to_mobile_rounded,
+                          title: '临时发送',
+                          description: '发送一次书架和插件数据，不建立长期同步关系',
+                          actionLabel: '发送数据',
+                          onTap: state.busy ? null : _showTemporarySendSheet,
+                        ),
+                        const SizedBox(height: AppSpacing.section),
+                        const LanSyncTipsCard(),
                       ],
                     ),
                   ),
@@ -311,17 +296,15 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
 
     final pairingOffer = LanPairingQrPayload.decode(payload);
     if (pairingOffer != null) {
-      await ref.read(deviceSyncControllerProvider.notifier).joinPairing(payload);
+      unawaited(ref.read(deviceSyncControllerProvider.notifier).joinPairing(payload));
+      if (mounted) await _showAddDeviceSheet();
       return;
     }
 
     final syncOffer = LanSyncQrPayload.decode(payload);
     if (syncOffer != null) {
-      final notifier = ref.read(lanSyncControllerProvider.notifier);
-      await notifier.startReceiving();
-      if (mounted && ref.read(lanSyncControllerProvider).phase == LanSyncPhase.discovering) {
-        await notifier.connectOffer(syncOffer);
-      }
+      unawaited(_receiveScannedData(syncOffer));
+      if (mounted) await _showTemporaryDataSheet(receiving: true);
       return;
     }
 
@@ -336,6 +319,118 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
       isScrollControlled: true,
       builder: (context) => DeviceSettingsSheet(deviceId: device.deviceId),
     );
+  }
+
+  Future<void> _showAddDeviceSheet() => showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (context) => Consumer(
+      builder: (context, ref, _) => DevicePairingSheet(
+        state: ref.watch(deviceSyncControllerProvider),
+        onBeginPairing: () => unawaited(ref.read(deviceSyncControllerProvider.notifier).beginPairing()),
+        onApprovePairing: () => unawaited(ref.read(deviceSyncControllerProvider.notifier).approvePairing()),
+        onRejectPairing: () => unawaited(ref.read(deviceSyncControllerProvider.notifier).rejectPairing()),
+        onCancelPairing: () => unawaited(ref.read(deviceSyncControllerProvider.notifier).cancelPairing()),
+      ),
+    ),
+  );
+
+  Future<void> _showAllDevicesSheet() => showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) {
+      final state = ref.read(deviceSyncControllerProvider);
+      return _AllDevicesSheet(
+        devices: state.devices,
+        onlineDeviceIds: state.onlineDeviceIds,
+        onManage: (device) {
+          Navigator.of(sheetContext).pop();
+          unawaited(_manageDevice(device));
+        },
+      );
+    },
+  );
+
+  Future<void> _showAppTransferSheet() async {
+    unawaited(ref.read(appTransferControllerProvider.notifier).startSending());
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => Consumer(
+        builder: (context, ref, _) {
+          final appState = ref.watch(appTransferControllerProvider);
+          return SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.comfortable,
+                AppSpacing.compact,
+                AppSpacing.comfortable,
+                AppSpacing.comfortable,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Text('发送 App', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: AppSpacing.unit),
+                  const Text('生成二维码后，对方使用“扫码连接 / 接收”即可继续。'),
+                  const SizedBox(height: AppSpacing.regular),
+                  AppTransferPanel(
+                    state: appState,
+                    manualController: _appManualAddressController,
+                    onConnectManual: () => unawaited(ref.read(appTransferControllerProvider.notifier).connectManual(_appManualAddressController.text)),
+                    onConnectPeer: (peer) => unawaited(ref.read(appTransferControllerProvider.notifier).connectPeer(peer)),
+                    onInstall: (force) => unawaited(ref.read(appTransferControllerProvider.notifier).install(force: force)),
+                    onCancel: () {
+                      unawaited(ref.read(appTransferControllerProvider.notifier).cancel());
+                      Navigator.of(sheetContext).pop();
+                    },
+                    onReset: () {
+                      unawaited(ref.read(appTransferControllerProvider.notifier).reset());
+                      Navigator.of(sheetContext).pop();
+                    },
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    if (mounted && ref.read(appTransferControllerProvider).active) await ref.read(appTransferControllerProvider.notifier).cancel();
+  }
+
+  Future<void> _showTemporarySendSheet() => _showTemporaryDataSheet(receiving: false);
+
+  Future<void> _showTemporaryDataSheet({required bool receiving}) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => Consumer(
+        builder: (context, ref, _) => _TemporaryDataSheet(
+          state: ref.watch(lanSyncControllerProvider),
+          receiving: receiving,
+          onGenerate: () => unawaited(ref.read(lanSyncControllerProvider.notifier).startSending()),
+          onCancel: () {
+            unawaited(ref.read(lanSyncControllerProvider.notifier).cancel());
+            Navigator.of(sheetContext).pop();
+          },
+          onReset: () => ref.read(lanSyncControllerProvider.notifier).reset(),
+          phaseContent: _phaseContent,
+        ),
+      ),
+    );
+    if (mounted && ref.read(lanSyncControllerProvider).busy) await ref.read(lanSyncControllerProvider.notifier).cancel();
+  }
+
+  Future<void> _receiveScannedData(LanSyncConnectionOffer offer) async {
+    final notifier = ref.read(lanSyncControllerProvider.notifier);
+    await notifier.startReceiving();
+    if (mounted && ref.read(lanSyncControllerProvider).phase == LanSyncPhase.discovering) await notifier.connectOffer(offer);
   }
 
   Future<void> _cancel() => ref.read(lanSyncControllerProvider.notifier).cancel();

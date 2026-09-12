@@ -158,6 +158,73 @@ class PairedDevicesSection extends StatelessWidget {
   }
 }
 
+/// “添加设备”底部弹层的配对流程。
+///
+/// 只展示真实可用的本机配对码和控制器状态；未配对设备尚无发现协议，不能
+/// 将已配对设备列表伪装成可配对的附近设备。
+class DevicePairingSheet extends StatelessWidget {
+  const DevicePairingSheet({
+    required this.state,
+    required this.onBeginPairing,
+    required this.onApprovePairing,
+    required this.onRejectPairing,
+    required this.onCancelPairing,
+    super.key,
+  });
+
+  final DeviceSyncState state;
+  final VoidCallback onBeginPairing;
+  final VoidCallback onApprovePairing;
+  final VoidCallback onRejectPairing;
+  final VoidCallback onCancelPairing;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppThemeTokens.of(context);
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(AppSpacing.comfortable, AppSpacing.compact, AppSpacing.comfortable, AppSpacing.comfortable),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text('添加设备', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: AppSpacing.unit),
+            Text('让另一台设备扫描本机配对码，确认后会建立长期同步关系。', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+            const SizedBox(height: AppSpacing.comfortable),
+            if (state.pairingPhase == DevicePairingPhase.idle)
+              FilledButton.icon(
+                key: const Key('device-sync-show-pairing-code'),
+                onPressed: onBeginPairing,
+                icon: const Icon(Icons.qr_code_rounded),
+                label: const Text('显示我的配对码'),
+              )
+            else
+              _PairingPanel(
+                state: state,
+                onApprove: onApprovePairing,
+                onReject: onRejectPairing,
+                onCancel: onCancelPairing,
+                onRetry: onBeginPairing,
+              ),
+            const SizedBox(height: AppSpacing.regular),
+            Text('若要连接另一台设备显示的配对码，请使用页面顶部的“扫码连接 / 接收”。', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+            const SizedBox(height: AppSpacing.compact),
+            TextButton(
+              onPressed: () {
+                onCancelPairing();
+                Navigator.of(context).pop();
+              },
+              child: const Text('关闭'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SyncFailureNotice extends StatelessWidget {
   const _SyncFailureNotice({required this.message, required this.errorCode, required this.details});
 
