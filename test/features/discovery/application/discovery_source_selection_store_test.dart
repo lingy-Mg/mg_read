@@ -47,4 +47,30 @@ void main() {
 
     expect(await AppSettingsDiscoverySourceSelectionStore(secondManager).loadPinned(), <String>['org.example.manga']);
   });
+
+  test('recent discovery sources survive manager reopen in most-recent-first order', () async {
+    final store = FakeSettingsStore();
+    final firstManager = AppSettingsManager(
+      store: store,
+      registry: AppSettingKeys.registry,
+      policy: const SettingsPersistencePolicy(debounce: Duration.zero),
+    );
+    await firstManager.initialize();
+    addTearDown(firstManager.close);
+
+    final firstSelection = AppSettingsDiscoverySourceSelectionStore(firstManager);
+    await firstSelection.recordUse('org.example.manga');
+    await firstSelection.recordUse('org.mgread.aisishuwu');
+    await firstSelection.recordUse('org.example.manga');
+    await firstManager.flush();
+
+    final secondManager = AppSettingsManager(store: store, registry: AppSettingKeys.registry);
+    await secondManager.initialize();
+    addTearDown(secondManager.close);
+
+    expect(await AppSettingsDiscoverySourceSelectionStore(secondManager).loadRecent(), <String>[
+      'org.example.manga',
+      'org.mgread.aisishuwu',
+    ]);
+  });
 }

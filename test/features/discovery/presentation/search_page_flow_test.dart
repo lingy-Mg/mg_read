@@ -304,6 +304,7 @@ final class _MemorySearchHistoryStore implements SearchHistoryStore {
 final class _MemoryDiscoverySourceSelectionStore implements DiscoverySourceSelectionStore {
   String? selectedSourceId;
   final Set<String> pinnedSourceIds = <String>{};
+  final List<String> recentSourceIds = <String>[];
 
   @override
   Future<String?> load() async => selectedSourceId;
@@ -321,6 +322,15 @@ final class _MemoryDiscoverySourceSelectionStore implements DiscoverySourceSelec
     } else {
       pinnedSourceIds.remove(sourceId);
     }
+  }
+
+  @override
+  Future<List<String>> loadRecent() async => List<String>.of(recentSourceIds);
+
+  @override
+  Future<void> recordUse(String sourceId) async {
+    recentSourceIds.remove(sourceId);
+    recentSourceIds.insert(0, sourceId);
   }
 }
 

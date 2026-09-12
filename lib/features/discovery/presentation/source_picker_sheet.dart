@@ -38,6 +38,7 @@ Future<DiscoverySourcePickerResult?> showDiscoverySourcePicker(
   required List<PluginSourceDescriptor> sources,
   required String selectedSourceId,
   Iterable<String> pinnedSourceIds = const <String>[],
+  Iterable<String> recentSourceIds = const <String>[],
   Future<void> Function(String sourceId, bool pinned)? onPinChanged,
 }) {
   return showModalBottomSheet<DiscoverySourcePickerResult>(
@@ -52,24 +53,28 @@ Future<DiscoverySourcePickerResult?> showDiscoverySourcePicker(
       sources: sources,
       selectedSourceId: selectedSourceId,
       pinnedSourceIds: pinnedSourceIds,
+      recentSourceIds: recentSourceIds,
       onPinChanged: onPinChanged,
     ),
   );
 }
 
-enum _SourceFilter { all, enabled, recent }
+enum _SourceFilter { available, recent }
 
 class _DiscoverySourcePickerSheet extends StatefulWidget {
   _DiscoverySourcePickerSheet({
     required this.sources,
     required this.selectedSourceId,
     required Iterable<String> pinnedSourceIds,
+    required Iterable<String> recentSourceIds,
     this.onPinChanged,
-  }) : pinnedSourceIds = List<String>.unmodifiable(pinnedSourceIds);
+  }) : pinnedSourceIds = List<String>.unmodifiable(pinnedSourceIds),
+       recentSourceIds = List<String>.unmodifiable(recentSourceIds);
 
   final List<PluginSourceDescriptor> sources;
   final String selectedSourceId;
   final List<String> pinnedSourceIds;
+  final List<String> recentSourceIds;
   final Future<void> Function(String sourceId, bool pinned)? onPinChanged;
 
   @override
@@ -77,30 +82,41 @@ class _DiscoverySourcePickerSheet extends StatefulWidget {
 }
 
 class _DiscoverySourcePickerSheetState extends State<_DiscoverySourcePickerSheet> {
-  _SourceFilter _filter = _SourceFilter.all;
+  _SourceFilter _filter = _SourceFilter.available;
   String _query = '';
   late List<String> _pinnedSourceIds;
+  late List<String> _recentSourceIds;
 
   @override
   void initState() {
     super.initState();
     _pinnedSourceIds = List<String>.of(widget.pinnedSourceIds);
+    _recentSourceIds = List<String>.of(widget.recentSourceIds);
   }
 
   List<PluginSourceDescriptor> get _visibleSources {
     final query = _query.trim().toLowerCase();
     final visible = widget.sources.where((source) {
-      if (_filter == _SourceFilter.recent && source.id != widget.selectedSourceId) {
+      if (_filter == _SourceFilter.recent && !_recentSourceIds.contains(source.id)) {
         return false;
       }
       if (query.isEmpty) return true;
       return source.displayName.toLowerCase().contains(query);
     }).toList();
     final pinOrder = <String, int>{for (var index = 0; index < _pinnedSourceIds.length; index++) _pinnedSourceIds[index]: index};
+    final recentOrder = <String, int>{for (var index = 0; index < _recentSourceIds.length; index++) _recentSourceIds[index]: index};
     return visible..sort((left, right) {
       final leftOrder = pinOrder[left.id];
       final rightOrder = pinOrder[right.id];
-      if (leftOrder == null && rightOrder == null) return 0;
+      if (leftOrder == null && rightOrder == null) {
+        if (_filter == _SourceFilter.recent) {
+          final leftRecentOrder = recentOrder[left.id] ?? _recentSourceIds.length;
+          final rightRecentOrder = recentOrder[right.id] ?? _recentSourceIds.length;
+          if (leftRecentOrder != rightRecentOrder) return leftRecentOrder.compareTo(rightRecentOrder);
+        }
+        final nameOrder = left.displayName.toLowerCase().compareTo(right.displayName.toLowerCase());
+        return nameOrder == 0 ? left.id.compareTo(right.id) : nameOrder;
+      }
       if (leftOrder == null) return 1;
       if (rightOrder == null) return -1;
       return leftOrder.compareTo(rightOrder);
@@ -211,8 +227,7 @@ class _DiscoverySourcePickerSheetState extends State<_DiscoverySourcePickerSheet
                             padding: EdgeInsetsDirectional.only(end: filter == _SourceFilter.recent ? 0 : AppSpacing.compact),
                             child: _SourceFilterButton(
                               label: switch (filter) {
-                                _SourceFilter.all => '全部',
-                                _SourceFilter.enabled => '已启用',
+                                _SourceFilter.available => '可用',
                                 _SourceFilter.recent => '最近使用',
                               },
                               selected: _filter == filter,
@@ -226,7 +241,7 @@ class _DiscoverySourcePickerSheetState extends State<_DiscoverySourcePickerSheet
                 const SizedBox(height: 6),
                 Expanded(
                   child: visibleSources.isEmpty
-                      ? const Center(child: Text('没有匹配的数据源'))
+                      ? Center(child: Text(_filter == _SourceFilter.recent ? '还没有最近使用的数据源' : '没有匹配的数据源'))
                       : ListView.separated(
                           key: const Key('discovery-source-picker-list'),
                           padding: const EdgeInsets.fromLTRB(AppSpacing.comfortable, 0, AppSpacing.comfortable, 0),

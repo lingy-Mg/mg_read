@@ -129,6 +129,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
   Future<void> selectSource(String pluginId) async {
     if (!state.sources.any((source) => source.id == pluginId)) return;
     await _saveSelectedSource(pluginId);
+    await _recordSourceUse(pluginId);
     _stack.clear();
     await _loadDocument(pluginId: pluginId, target: null, resetStack: true);
   }
@@ -251,6 +252,14 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
     } on Object {
       // Keep the user's in-session selection usable if durable persistence is
       // temporarily unavailable. The settings manager retains/retries it.
+    }
+  }
+
+  Future<void> _recordSourceUse(String sourceId) async {
+    try {
+      await _sourceSelectionStore.recordUse(sourceId);
+    } on Object {
+      // Keep the source selection usable if recency persistence is unavailable.
     }
   }
 
