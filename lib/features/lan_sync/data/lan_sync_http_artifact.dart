@@ -1,7 +1,7 @@
 /// 局域网同步的标准 HTTP 制品传输边界。
 ///
 /// 职责：固定单次传输的制品版本并提供 RFC 9110 单范围响应；客户端使用
-/// ETag/If-Range 从临时文件续传，完成大小与 SHA-256 校验后才交给安装层。
+/// ETag/If-Range 从临时文件续传，完成大小与 CRC32 校验后才交给安装层。
 ///
 /// 注意：本层不拥有 Runtime；调用方只应传入已经固定的制品流。所有临时文件
 /// 在成功、失败或取消时由会话所有者关闭并删除。
@@ -13,11 +13,15 @@ import 'dart:io';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
 
+import 'package:mg_read/features/lan_sync/data/lan_sync_checksum.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_http_client.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 
 const String lanSyncHttpProtocol = 'mgread-http/1';
+
+/// Hash verification progress for one received artifact.
+typedef LanSyncArtifactVerificationProgress = void Function(int completedBytes, int totalBytes);
 
 /// 配对密钥只用于请求认证；请求体仍由标准 HTTP 直接承载。
 final class LanSyncHttpAuthentication {
@@ -26,14 +30,14 @@ final class LanSyncHttpAuthentication {
   static const String deviceHeader = 'x-mgread-device';
   static const String timestampHeader = 'x-mgread-timestamp';
   static const String nonceHeader = 'x-mgread-nonce';
-  static const String contentHashHeader = 'x-mgread-content-sha256';
+  static const String contentHashHeader = 'x-mgread-content-crc32';
   static const String authorizationHeader = 'authorization';
 
   static void sign(
     HttpClientRequest request, {
     required String deviceId,
     required List<int> sharedSecret,
-    required String contentSha256,
+    required String contentChecksum,
     DateTime? now,
     String? nonce,
   }) {
@@ -47,13 +51,13 @@ final class LanSyncHttpAuthentication {
       deviceId: deviceId,
       timestamp: timestamp,
       nonce: requestNonce,
-      contentSha256: contentSha256,
+      contentChecksum: contentChecksum,
     );
     request.headers
       ..set(deviceHeader, deviceId)
       ..set(timestampHeader, timestamp.toString())
       ..set(nonceHeader, requestNonce)
-      ..set(contentHashHeader, contentSha256)
+      ..set(contentHashHeader, contentChecksum)
       ..set(authorizationHeader, 'MgRead-HMAC-SHA256 $signature');
   }
 
@@ -68,7 +72,7 @@ final class LanSyncHttpAuthentication {
         nonce == null ||
         nonce.length < 20 ||
         contentHash == null ||
-        !RegExp(r'^[a-f0-9]{64}$').hasMatch(contentHash) ||
+        !RegExp(r'^[a-f0-9]{8}$').hasMatch(contentHash) ||
         authorization == null ||
         !authorization.startsWith('MgRead-HMAC-SHA256 ')) {
       return false;
@@ -83,7 +87,7 @@ final class LanSyncHttpAuthentication {
       deviceId: deviceId,
       timestamp: timestamp,
       nonce: nonce,
-      contentSha256: contentHash,
+      contentChecksum: contentHash,
     );
     final actual = authorization.substring('MgRead-HMAC-SHA256 '.length);
     if (!_constantTimeEquals(expected, actual)) return false;
@@ -95,7 +99,7 @@ final class LanSyncHttpAuthentication {
     return true;
   }
 
-  static String bodyHash(List<int> bytes) => sha256.convert(bytes).toString();
+  static String bodyHash(List<int> bytes) => lanSyncChecksum(bytes);
 
   static String _signature(
     List<int> secret, {
@@ -104,9 +108,9 @@ final class LanSyncHttpAuthentication {
     required String deviceId,
     required int timestamp,
     required String nonce,
-    required String contentSha256,
+    required String contentChecksum,
   }) {
-    final canonical = '$method\n$path\n$deviceId\n$timestamp\n$nonce\n$contentSha256';
+    final canonical = '$method\n$path\n$deviceId\n$timestamp\n$nonce\n$contentChecksum';
     return base64Url.encode(Hmac(sha256, secret).convert(utf8.encode(canonical)).bytes).replaceAll('=', '');
   }
 
@@ -141,7 +145,7 @@ final class LanSyncHttpArtifact {
     final ownsDirectory = temporaryDirectory == null;
     final file = File('${directory.path}${Platform.pathSeparator}artifact.bin');
     final sink = file.openWrite();
-    final hashSink = _Sha256Sink();
+    final hashSink = LanSyncChecksumSink();
     var written = 0;
     try {
       await for (final chunk in bytes) {
@@ -153,8 +157,8 @@ final class LanSyncHttpArtifact {
         sink.add(chunk);
       }
       await sink.close();
-      final digest = await hashSink.close();
-      if (written != descriptor.bytes || digest != descriptor.sha256) {
+      final digest = hashSink.close();
+      if (written != descriptor.bytes || digest != descriptor.checksum) {
         throw const LanSyncTransportException('lan_sync_plugin_hash_mismatch');
       }
       return LanSyncHttpArtifact._(descriptor, file);
@@ -166,7 +170,7 @@ final class LanSyncHttpArtifact {
     }
   }
 
-  String get etag => '"sha256-${descriptor.sha256}"';
+  String get etag => '"crc32-${descriptor.checksum}"';
 
   Stream<List<int>> openRead() {
     if (_closed) throw const LanSyncTransportException('lan_sync_connection_closed');
@@ -238,7 +242,8 @@ final class LanSyncHttpArtifactClient {
     Uri uri,
     LanSyncPluginDescriptor descriptor, {
     HttpClient? client,
-    void Function(HttpClientRequest request, String contentSha256)? authenticate,
+    void Function(HttpClientRequest request, String contentChecksum)? authenticate,
+    LanSyncArtifactVerificationProgress? onVerificationProgress,
   }) async {
     final ownedClient = client == null;
     final http = client ?? createLanSyncHttpClient();
@@ -246,6 +251,7 @@ final class LanSyncHttpArtifactClient {
     final file = File('${directory.path}${Platform.pathSeparator}artifact.part');
     var offset = 0;
     String? etag;
+    var verifiedDuringWrite = false;
     try {
       for (var attempt = 0; attempt < maximumAttempts && offset < descriptor.bytes; attempt++) {
         try {
@@ -267,7 +273,7 @@ final class LanSyncHttpArtifactClient {
             throw LanSyncTransportException('lan_sync_http_failed', reason: 'status_${response.statusCode}');
           }
           final responseEtag = response.headers.value(HttpHeaders.etagHeader);
-          if (responseEtag == null || responseEtag != '"sha256-${descriptor.sha256}"') {
+          if (responseEtag == null || responseEtag != '"crc32-${descriptor.checksum}"') {
             throw const LanSyncTransportException('lan_sync_plugin_version_changed');
           }
           if (offset > 0 && response.statusCode == HttpStatus.ok) {
@@ -275,9 +281,19 @@ final class LanSyncHttpArtifactClient {
             await file.writeAsBytes(const <int>[]);
           }
           etag = responseEtag;
-          final sink = file.openWrite(mode: offset == 0 ? FileMode.write : FileMode.append);
+          final startingOffset = offset;
+          final hashSink = LanSyncChecksumSink();
+          var responseBytes = 0;
+          final sink = file.openWrite(mode: startingOffset == 0 ? FileMode.write : FileMode.append);
           try {
-            await sink.addStream(response);
+            await for (final chunk in response) {
+              sink.add(chunk);
+              hashSink.add(chunk);
+              responseBytes += chunk.length;
+              if (startingOffset == 0 && response.statusCode == HttpStatus.ok) {
+                onVerificationProgress?.call(responseBytes, descriptor.bytes);
+              }
+            }
             await sink.close();
           } on Object {
             await sink.close().catchError((_) {});
@@ -287,10 +303,18 @@ final class LanSyncHttpArtifactClient {
             }
             rethrow;
           }
-          offset = await file.length();
+          offset = startingOffset + responseBytes;
           if (offset > descriptor.bytes) {
             throw const LanSyncTransportException('lan_sync_plugin_size_mismatch');
           }
+          final responseDigest = hashSink.close();
+          if (startingOffset == 0 &&
+              response.statusCode == HttpStatus.ok &&
+              offset == descriptor.bytes &&
+              responseDigest != descriptor.checksum) {
+            throw const LanSyncTransportException('lan_sync_plugin_hash_mismatch');
+          }
+          verifiedDuringWrite = startingOffset == 0 && response.statusCode == HttpStatus.ok && offset == descriptor.bytes;
         } on LanSyncTransportException {
           rethrow;
         } on Object {
@@ -298,8 +322,13 @@ final class LanSyncHttpArtifactClient {
         }
       }
       if (offset != descriptor.bytes) throw const LanSyncTransportException('lan_sync_transfer_incomplete');
-      final digest = await _sha256File(file);
-      if (digest != descriptor.sha256) throw const LanSyncTransportException('lan_sync_plugin_hash_mismatch');
+      // A normal one-shot response is checksummed while it is written. Resumed
+      // responses must checksum the assembled file once because the prefix was
+      // received by an earlier request.
+      if (!verifiedDuringWrite) {
+        final digest = await _checksumFile(file, onProgress: onVerificationProgress, totalBytes: descriptor.bytes);
+        if (digest != descriptor.checksum) throw const LanSyncTransportException('lan_sync_plugin_hash_mismatch');
+      }
       return _DeletingFileStream(file, directory);
     } on Object {
       if (await file.exists()) await file.delete();
@@ -336,32 +365,13 @@ _ByteRange? _parseSingleRange(String value, int length) {
   return _ByteRange(start, requestedEnd.clamp(start, length - 1));
 }
 
-final class _Sha256Sink {
-  final _DigestSink _output = _DigestSink();
-  late final ByteConversionSink _input = sha256.startChunkedConversion(_output);
-
-  void add(List<int> bytes) => _input.add(bytes);
-
-  Future<String> close() async {
-    _input.close();
-    return _output.value!.toString();
-  }
-}
-
-final class _DigestSink implements Sink<Digest> {
-  Digest? value;
-
-  @override
-  void add(Digest data) => value = data;
-
-  @override
-  void close() {}
-}
-
-Future<String> _sha256File(File file) async {
-  final sink = _Sha256Sink();
+Future<String> _checksumFile(File file, {LanSyncArtifactVerificationProgress? onProgress, required int totalBytes}) async {
+  final sink = LanSyncChecksumSink();
+  var completedBytes = 0;
   await for (final chunk in file.openRead()) {
     sink.add(chunk);
+    completedBytes += chunk.length;
+    onProgress?.call(completedBytes, totalBytes);
   }
   return sink.close();
 }

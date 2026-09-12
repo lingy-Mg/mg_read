@@ -57,6 +57,9 @@ plugins/sources/                    真实数据源及其他能力参考实现
   业务权威。installed pending 版本只在冷启动激活并提交或回滚；已确认的 current 与 development 项目启动时
   只建立元数据快照，首次能力调用或传输时在唯一 VM 内单飞加载。development 构建变化先激活候选 generation，
   成功后才替换并回收旧 generation。
+- 已安装来源的安装、启停、隔离、冷启动提交、计划卸载与立即卸载统一经过 Runtime 内部 catalog owner；它用
+  dirty journal 和原子紧凑索引发布同一变更流。正常冷启动读取索引，只有旧数据、索引损坏或中断事务才有界
+  重扫不可变版本树；索引元数据不能替代首次执行前的完整项目复核。
 - Runtime 来源 HTTP 客户端默认继承系统代理，也可接收应用传入的瞬时上游 HTTP、HTTPS 或 SOCKS5 代理，
   覆盖 `ctx.http.fetch` 与 Runtime 代取的来源资源；不得增加 Flutter 回环转发服务器。关闭自定义覆盖后，新请求
   恢复系统代理，系统未配置代理时才直连。两类来源请求在未显式提供 `User-Agent` 时统一使用 Runtime 固定的

@@ -44,8 +44,12 @@ test("macOS staging uses the pinned Node executable and Runtime entrypoint", asy
   ]);
   assert.deepEqual(stagedBytes, sourceBytes);
   assert.deepEqual(stagedDist, sourceDist);
-  assert.notEqual(stagedStat.mode & 0o111, 0);
-  const { stdout } = await executeFile(staged, ["--version"]);
-  assert.equal(stdout.trim(), "v24.16.0");
+  // Windows can validate the staged macOS artifact bytes but neither preserves
+  // POSIX execute bits nor can launch a Mach-O binary.
+  if (process.platform === "darwin") {
+    assert.notEqual(stagedStat.mode & 0o111, 0);
+    const { stdout } = await executeFile(staged, ["--version"]);
+    assert.equal(stdout.trim(), "v24.16.0");
+  }
   await assert.rejects(access(stagedNpmPackage), { code: "ENOENT" });
 });

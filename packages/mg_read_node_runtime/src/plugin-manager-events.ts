@@ -22,6 +22,7 @@ export function emitPluginManagerDiagnostic(event: PluginManagerEvent): void {
     development_plugin_updated: "开发数据源已热重载。",
     plugin_disabled: "插件数据源已停用。",
     plugin_enabled: "插件数据源已启用。",
+    plugin_catalog_changed: "数据源目录已通过统一事务边界更新。",
     plugin_invocation_completed: "插件能力调用已成功完成。",
     plugin_invocation_failed: "插件能力调用失败。",
     plugin_invocation_started: "插件能力调用已开始。",
@@ -29,18 +30,25 @@ export function emitPluginManagerDiagnostic(event: PluginManagerEvent): void {
     plugin_load_failed: "无法加载标准 Node 插件。",
     plugin_load_started: "标准 Node 插件开始加载。",
     plugin_quarantined: "异常插件数据源已隔离。",
+    plugin_startup_phase_completed: event.startupPhase === undefined
+      ? "数据源启动阶段已完成。"
+      : `数据源启动阶段已完成：${event.startupPhase}，数量=${event.itemCount ?? 0}。`,
+    plugin_uninstall_started: "插件数据源开始卸载。",
     plugin_uninstall_scheduled: "插件数据源已标记为在下次冷启动时移除。",
     plugin_uninstall_completed: "待卸载的插件已完成卸载。",
   };
   emitRuntimeDiagnostic({
     code,
     component: "runtime.plugin",
+    ...(event.catalogState === undefined ? {} : { catalogState: event.catalogState }),
     ...(event.durationMs === undefined
       ? {}
       : { durationMicros: Math.max(0, Math.round(event.durationMs * 1_000)) }),
+    ...(event.itemCount === undefined ? {} : { itemCount: event.itemCount }),
     level: event.outcome === "error" ? "error" : "info",
     message: messages[code],
     outcome: event.outcome,
+    ...(event.startupPhase === undefined ? {} : { startupPhase: event.startupPhase }),
     type: "diagnostic",
   });
 }

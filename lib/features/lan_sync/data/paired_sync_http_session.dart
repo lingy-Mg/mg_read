@@ -69,7 +69,7 @@ final class _HttpExchange {
     }
     if (plugin == null ||
         !selected.contains(pluginId) ||
-        request.headers.value(LanSyncHttpAuthentication.contentHashHeader) != plugin.sha256 ||
+        request.headers.value(LanSyncHttpAuthentication.contentHashHeader) != plugin.checksum ||
         (request.contentLength >= 0 && request.contentLength != plugin.bytes)) {
       throw const LanSyncTransportException('lan_sync_plugin_descriptor_invalid');
     }
@@ -322,7 +322,7 @@ Future<Map<String, Object?>> _jsonRequest(
     request,
     deviceId: deviceId,
     sharedSecret: secret,
-    contentSha256: LanSyncHttpAuthentication.bodyHash(bytes),
+    contentChecksum: LanSyncHttpAuthentication.bodyHash(bytes),
   );
   request.headers.contentType = ContentType.json;
   request.contentLength = bytes.length;

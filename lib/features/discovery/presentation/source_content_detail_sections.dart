@@ -54,7 +54,7 @@ class _PortraitDetailSummaryHeader extends StatelessWidget {
     key: const Key('source-detail-portrait-header'),
     crossAxisAlignment: CrossAxisAlignment.start,
     children: <Widget>[
-      _DetailCoverLink(content: content, width: 112, height: 174, presentation: DiscoveryCoverPresentation.portrait, onTap: onCoverTap),
+      _DetailCoverLink(content: content, height: 174, presentation: DiscoveryCoverPresentation.portrait, onTap: onCoverTap),
       const SizedBox(width: AppSpacing.regular),
       Expanded(
         child: _DetailHeaderMetadata(content: content, labels: labels),
@@ -118,16 +118,10 @@ class _LandscapeDetailSummaryHeader extends StatelessWidget {
 }
 
 class _DetailCoverLink extends StatelessWidget {
-  const _DetailCoverLink({
-    required this.content,
-    required this.width,
-    required this.height,
-    required this.presentation,
-    required this.onTap,
-  });
+  const _DetailCoverLink({required this.content, this.width, required this.height, required this.presentation, required this.onTap});
 
   final PluginContentSummary content;
-  final double width;
+  final double? width;
   final double height;
   final DiscoveryCoverPresentation presentation;
   final VoidCallback? onTap;
@@ -769,7 +763,7 @@ Future<void> _showChapterContent(
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return _DetailFailure(error: AppError.fromUnknown(snapshot.error!));
+            return _DetailFailure(error: AppError.fromUnknown(snapshot.error!), pluginId: pluginId, contentId: id, chapterId: chapter.id);
           }
           final content = snapshot.requireData;
           return ListView(
@@ -799,17 +793,56 @@ Future<void> _showChapterContent(
 }
 
 class _DetailFailure extends StatelessWidget {
-  const _DetailFailure({required this.error, this.capability = 'source.getContent.v1', this.hasRetainedData = false, this.onRetry});
+  const _DetailFailure({
+    required this.error,
+    this.capability = 'source.getContent.v1',
+    this.hasRetainedData = false,
+    this.sourceName,
+    this.pluginId,
+    this.pluginVersion,
+    this.contentId,
+    this.chapterId,
+    this.onCopy = _copySourceDetailFailure,
+    this.onRetry,
+  });
 
   final AppError error;
   final String capability;
   final bool hasRetainedData;
+  final String? sourceName;
+  final String? pluginId;
+  final String? pluginVersion;
+  final String? contentId;
+  final String? chapterId;
+  final SourceDetailFailureCopy onCopy;
   final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final detail = error.detail?.trim();
+    final originalReason = detail == null || detail.isEmpty ? null : '原始原因：$detail';
+    final diagnosticPayloadParts = <String>[
+      'MgRead 详情诊断信息',
+      '操作：加载详情或目录',
+      if (sourceName case final value?) '数据源名称：$value',
+      if (pluginId case final value?) '插件 ID：$value',
+      if (pluginVersion case final value?) '插件版本：$value',
+      if (contentId case final value?) '内容 ID：$value',
+      if (chapterId case final value?) '章节 ID：$value',
+      '失败能力：$capability',
+      '错误码：${error.code.wireValue}',
+      '错误分类：${error.category.name}',
+      '可重试：${error.retryable ? '允许' : '不建议'}',
+      '用户提示：${_detailErrorDescription(error)}',
+      if (error.retryAfter case final retryAfter?) '建议等待：${retryAfter.inMilliseconds}ms',
+      if (error.traceId case final traceId?) '跟踪 ID：$traceId',
+      if (hasRetainedData) '已保留列表预览；实时详情和可播放选集尚未加载。',
+      if (error.location case final location? when location.trim().isNotEmpty) '诊断位置：${location.trim()}',
+    ];
+    if (originalReason != null) diagnosticPayloadParts.add(originalReason);
+    final diagnosticPayload = diagnosticPayloadParts.join('\n');
     return Semantics(
       liveRegion: true,
       child: Center(
@@ -835,22 +868,30 @@ class _DetailFailure extends StatelessWidget {
                       Expanded(
                         child: Text('详情加载失败', style: theme.textTheme.titleSmall?.copyWith(color: colors.onErrorContainer)),
                       ),
+                      TextButton(
+                        key: const Key('source-detail-error-copy'),
+                        onPressed: () => unawaited(_copySafely(diagnosticPayload)),
+                        child: const Text('复制诊断信息'),
+                      ),
                       if (onRetry != null) TextButton(key: const Key('source-detail-retry'), onPressed: onRetry, child: const Text('重试')),
                     ],
                   ),
                   const SizedBox(height: AppSpacing.unit),
-                  Text(_detailErrorDescription(error), style: theme.textTheme.bodyMedium?.copyWith(color: colors.onErrorContainer)),
-                  if (error.detail case final detail? when detail.trim().isNotEmpty) ...<Widget>[
+                  SelectableText(
+                    _detailErrorDescription(error),
+                    style: theme.textTheme.bodyMedium?.copyWith(color: colors.onErrorContainer),
+                  ),
+                  if (originalReason != null) ...<Widget>[
                     const SizedBox(height: AppSpacing.compact),
                     SelectableText(
-                      '原始原因：${detail.trim()}',
+                      originalReason,
                       key: const Key('source-detail-error-cause'),
                       style: theme.textTheme.bodySmall?.copyWith(color: colors.onErrorContainer, fontFamily: 'monospace'),
                     ),
                   ],
                   if (hasRetainedData) ...<Widget>[
                     const SizedBox(height: AppSpacing.unit),
-                    Text('已保留列表预览；实时详情和可播放选集尚未加载。', style: theme.textTheme.bodySmall?.copyWith(color: colors.onErrorContainer)),
+                    SelectableText('已保留列表预览；实时详情和可播放选集尚未加载。', style: theme.textTheme.bodySmall?.copyWith(color: colors.onErrorContainer)),
                   ],
                   const SizedBox(height: AppSpacing.compact),
                   SelectableText(
@@ -865,6 +906,14 @@ class _DetailFailure extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _copySafely(String payload) async {
+    try {
+      await onCopy(payload);
+    } catch (_) {
+      // Clipboard availability must not prevent retrying the detail request.
+    }
   }
 }
 

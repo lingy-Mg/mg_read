@@ -20,6 +20,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -83,6 +84,7 @@ enum SourceShelfAction { refresh, setPrivate, cancelPrivate, toggleCoverBlur, de
 typedef SourceShelfActionRequested = Future<void> Function(SourceShelfAction action);
 typedef SourceStartReadingRequested = Future<void> Function();
 typedef SourceRecommendationRequested = Future<void> Function(PluginContentSummary content);
+typedef SourceDetailFailureCopy = Future<void> Function(String payload);
 
 /// Whether this detail is being viewed from discovery or the local shelf.
 enum SourceDetailShelfState { canAdd, alreadyAdded, private }
@@ -109,6 +111,7 @@ Future<void> showSourceContentDetailSheet(
   SourceShelfActionRequested? onShelfAction,
   SourceStartReadingRequested? onStartReading,
   SourceRecommendationRequested? onRecommendationRequested,
+  SourceDetailFailureCopy onCopyFailure = _copySourceDetailFailure,
   bool isCoverBlurred = false,
   bool useModalBottomSheet = false,
 }) {
@@ -133,6 +136,7 @@ Future<void> showSourceContentDetailSheet(
     onShelfAction: onShelfAction,
     onStartReading: onStartReading,
     onRecommendationRequested: onRecommendationRequested,
+    onCopyFailure: onCopyFailure,
     isCoverBlurred: isCoverBlurred,
     isModalSheet: useModalBottomSheet,
   );
@@ -155,6 +159,8 @@ Future<void> showSourceContentDetailSheet(
 }
 
 Future<bool> _launchSystemBrowser(Uri url) => launchUrl(url, mode: LaunchMode.externalApplication);
+
+Future<void> _copySourceDetailFailure(String payload) => Clipboard.setData(ClipboardData(text: payload));
 
 Future<_SourceDetailBundle> _loadDetail(
   SourceContentGateway gateway,
@@ -294,6 +300,7 @@ class _SourceDetailScreen extends StatefulWidget {
     required this.onShelfAction,
     required this.onStartReading,
     this.onRecommendationRequested,
+    this.onCopyFailure = _copySourceDetailFailure,
     this.isCoverBlurred = false,
     required this.isModalSheet,
   });
@@ -318,6 +325,7 @@ class _SourceDetailScreen extends StatefulWidget {
   final SourceShelfActionRequested? onShelfAction;
   final SourceStartReadingRequested? onStartReading;
   final SourceRecommendationRequested? onRecommendationRequested;
+  final SourceDetailFailureCopy onCopyFailure;
   final bool isCoverBlurred;
   final bool isModalSheet;
 
@@ -494,6 +502,11 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                                 error: failure.error,
                                 capability: failure.capability,
                                 hasRetainedData: true,
+                                sourceName: previewBundle.detail.sourceName,
+                                pluginId: widget.pluginId,
+                                pluginVersion: widget.pluginVersion,
+                                contentId: widget.id,
+                                onCopy: widget.onCopyFailure,
                                 onRetry: _retryDetail,
                               ),
                             ),
@@ -520,7 +533,16 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                           ],
                         );
                       }
-                      return _DetailFailure(error: failure.error, capability: failure.capability, onRetry: _retryDetail);
+                      return _DetailFailure(
+                        error: failure.error,
+                        capability: failure.capability,
+                        sourceName: previewBundle?.detail.sourceName ?? widget.initialSourceName,
+                        pluginId: widget.pluginId,
+                        pluginVersion: widget.pluginVersion,
+                        contentId: widget.id,
+                        onCopy: widget.onCopyFailure,
+                        onRetry: _retryDetail,
+                      );
                     }
                     return AnimatedSwitcher(
                       duration: const Duration(milliseconds: 260),

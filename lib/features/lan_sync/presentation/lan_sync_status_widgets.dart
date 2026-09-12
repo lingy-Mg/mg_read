@@ -33,14 +33,22 @@ class _StatusDetail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final transferred = state.transferredBytes > 0 ? '${_formatBytes(state.transferredBytes)} 已接收' : null;
-    final detail = switch (state.message) {
-      '正在传输插件' => '正在从发送端接收插件文件。',
-      '正在校验并保存插件' => '文件已到齐，正在校验完整性并写入受控入箱。',
-      '正在完成插件安装' => '正在让数据源 Runtime 冷启动并确认插件可用。',
-      '正在写入书架和阅读进度' => '插件已处理，正在单事务写入选中的书架和进度。',
-      _ => null,
-    };
+    final progressLabel = state.message.startsWith('正在校验')
+        ? '已校验'
+        : state.message.startsWith('正在写入')
+        ? '已写入'
+        : '已接收';
+    final transferred = state.transferredBytes > 0 ? '${_formatBytes(state.transferredBytes)} $progressLabel' : null;
+    final detail = state.message.startsWith('正在校验')
+        ? '正在校验文件完整性，校验通过后才会交给数据源 Runtime。'
+        : state.message.startsWith('正在写入')
+        ? '校验已通过，正在写入受控入箱。'
+        : switch (state.message) {
+            '正在传输插件' => '正在从发送端接收插件文件。',
+            '正在完成插件安装' => '正在让数据源 Runtime 冷启动并确认插件可用。',
+            '正在写入书架和阅读进度' => '插件已处理，正在单事务写入选中的书架和进度。',
+            _ => null,
+          };
     if (transferred == null && detail == null) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

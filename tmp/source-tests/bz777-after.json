@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "mode": "single",
+  "status": "failed",
+  "startedAt": "2026-09-12T13:54:17.854Z",
+  "durationMs": 1664,
+  "totals": {
+    "sources": 1,
+    "passed": 0,
+    "partial": 0,
+    "failed": 1
+  },
+  "sources": [
+    {
+      "pluginId": "org.mgread.bz777777777-comv3",
+      "source": "bz777777777-comv3",
+      "version": "3.0.1",
+      "status": "failed",
+      "durationMs": 1631,
+      "failure": {
+        "name": "SourceTestFailure",
+        "code": "source_discover_root_failed",
+        "stage": "discover.root",
+        "summary": {
+          "causeName": "PluginManagerError",
+          "causeCode": "source_access_blocked",
+          "causeMessage": "访问异常，请完成来源页面的浏览器验证后重试。"
+        }
+      }
+    }
+  ]
+}

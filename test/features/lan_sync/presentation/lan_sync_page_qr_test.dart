@@ -65,9 +65,7 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const Key('lan-sync-sender-qr')), findsOneWidget);
-    expect(find.byKey(const Key('lan-sync-sender-address')), findsOneWidget);
-    expect(find.byKey(const Key('lan-sync-sender-address-1')), findsOneWidget);
-    expect(find.textContaining('并发测试并自动选择'), findsOneWidget);
+    expect(find.textContaining('请使用接收设备扫描二维码'), findsOneWidget);
   });
 }
 

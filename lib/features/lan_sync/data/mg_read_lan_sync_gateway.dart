@@ -81,7 +81,7 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
           artifactFormat: _toLanArtifactFormat(artifact?.format ?? offer?.format ?? PluginArtifactFormat.archive),
           developmentFingerprint: artifact?.developmentFingerprint ?? offer?.developmentFingerprint,
           developmentRevision: artifact?.developmentRevision ?? offer?.developmentRevision,
-          sha256: artifact?.sha256 ?? ''.padLeft(64, '0'),
+          checksum: artifact?.checksum ?? ''.padLeft(8, '0'),
           transferable: artifact != null || offer != null,
           deferred: offer != null,
           displayName: installedPlugin?.displayName,
@@ -130,7 +130,7 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
         artifactFormat: _toLanArtifactFormat(materialized.artifact.format),
         developmentFingerprint: materialized.artifact.developmentFingerprint,
         developmentRevision: materialized.artifact.developmentRevision,
-        sha256: materialized.artifact.sha256,
+        checksum: materialized.artifact.checksum,
         transferable: true,
         displayName: plugin.displayName,
         provenance: _toLanProvenance(materialized.artifact.provenance),
@@ -387,7 +387,7 @@ PluginTransferArtifact _toRuntimeArtifact(LanSyncPluginDescriptor plugin) => Plu
   },
   pluginId: plugin.id,
   provenance: _toRuntimeProvenance(plugin.provenance),
-  sha256: plugin.sha256,
+  checksum: plugin.checksum,
   version: plugin.version,
 );
 

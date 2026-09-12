@@ -8,7 +8,6 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/lan_sync/application/app_transfer_controller.dart';
-import 'package:mg_read/features/lan_sync/data/app_transfer_transport.dart';
 import 'package:mg_read/features/lan_sync/domain/app_transfer_qr_payload.dart';
 import 'package:mg_read/features/lan_sync/domain/app_update_models.dart';
 
@@ -33,7 +32,7 @@ class AppTransferRoleChooser extends StatelessWidget {
           key: const Key('app-transfer-receive'),
           icon: Icons.system_update_alt_rounded,
           title: '获取 App',
-          description: '发现发送端，比较版本后选择升级或强制安装',
+          description: '扫描发送端二维码，比较版本后选择升级或强制安装',
           onTap: onReceive,
         ),
       ];
@@ -60,22 +59,20 @@ class AppTransferRoleChooser extends StatelessWidget {
 class AppTransferPanel extends StatelessWidget {
   const AppTransferPanel({
     required this.state,
-    required this.manualController,
-    required this.onConnectManual,
-    required this.onConnectPeer,
+    required this.onScanQr,
     required this.onInstall,
     required this.onCancel,
     required this.onReset,
+    this.showActions = true,
     super.key,
   });
 
   final AppTransferState state;
-  final TextEditingController manualController;
-  final VoidCallback onConnectManual;
-  final ValueChanged<AppTransferPeer> onConnectPeer;
+  final VoidCallback? onScanQr;
   final ValueChanged<bool> onInstall;
   final VoidCallback onCancel;
   final VoidCallback onReset;
+  final bool showActions;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -86,28 +83,17 @@ class AppTransferPanel extends StatelessWidget {
       const SizedBox(height: AppSpacing.regular),
       if (state.phase == AppTransferPhase.waitingForPeer && state.connectionOffer != null)
         _AppQrCard(offer: state.connectionOffer!, version: state.localVersion)
-      else if (state.phase == AppTransferPhase.discovering) ...<Widget>[
-        if (state.peers.isEmpty) const _AppHint('暂未发现发送 App 的设备，可等待广播或输入二维码下方地址。'),
-        for (final peer in state.peers)
-          Card(
-            child: ListTile(
-              key: Key('app-transfer-peer-${peer.sessionId}'),
-              leading: const Icon(Icons.devices_rounded),
-              title: Text(peer.label),
-              subtitle: Text('${peer.address}:${peer.port}'),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => onConnectPeer(peer),
-            ),
+      else if (state.phase == AppTransferPhase.awaitingQr) ...<Widget>[
+        const _AppHint('请扫描发送 App 设备显示的二维码，局域网内不会自动发现或广播设备。'),
+        if (onScanQr != null) ...<Widget>[
+          const SizedBox(height: AppSpacing.compact),
+          FilledButton.icon(
+            key: const Key('app-transfer-scan-qr'),
+            onPressed: onScanQr,
+            icon: const Icon(Icons.qr_code_scanner_rounded),
+            label: const Text('扫描二维码'),
           ),
-        const SizedBox(height: AppSpacing.compact),
-        TextField(
-          key: const Key('app-transfer-manual-address'),
-          controller: manualController,
-          decoration: const InputDecoration(labelText: '手动连接地址', border: OutlineInputBorder()),
-          onSubmitted: (_) => onConnectManual(),
-        ),
-        const SizedBox(height: AppSpacing.compact),
-        FilledButton.tonalIcon(onPressed: onConnectManual, icon: const Icon(Icons.link_rounded), label: const Text('连接')),
+        ],
       ] else if (state.phase == AppTransferPhase.pairing || state.phase == AppTransferPhase.ready) ...<Widget>[
         AppVersionComparisonCard(
           local: state.role == AppTransferRole.sender ? state.offeredVersion : state.localVersion,
@@ -128,11 +114,13 @@ class AppTransferPanel extends StatelessWidget {
       ] else if (state.phase == AppTransferPhase.downloading || state.phase == AppTransferPhase.launchingInstaller) ...<Widget>[
         LinearProgressIndicator(value: state.progress, key: const Key('app-transfer-progress')),
       ],
-      const SizedBox(height: AppSpacing.regular),
-      if (state.phase == AppTransferPhase.completed || state.phase == AppTransferPhase.failed)
-        FilledButton(key: const Key('app-transfer-finish'), onPressed: onReset, child: const Text('完成'))
-      else
-        OutlinedButton(key: const Key('app-transfer-cancel'), onPressed: onCancel, child: const Text('取消 App 传输')),
+      if (showActions) ...<Widget>[
+        const SizedBox(height: AppSpacing.regular),
+        if (state.phase == AppTransferPhase.completed || state.phase == AppTransferPhase.failed)
+          FilledButton(key: const Key('app-transfer-finish'), onPressed: onReset, child: const Text('完成'))
+        else
+          OutlinedButton(key: const Key('app-transfer-cancel'), onPressed: onCancel, child: const Text('取消 App 传输')),
+      ],
     ],
   );
 }
@@ -241,8 +229,6 @@ class _AppQrCard extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.compact),
           const Text('对方扫码后会先看到双方版本，并自行确认是否升级。'),
-          const SizedBox(height: AppSpacing.compact),
-          for (final address in offer.manualAddresses) Align(alignment: Alignment.centerLeft, child: SelectableText(address)),
         ],
       ),
     ),

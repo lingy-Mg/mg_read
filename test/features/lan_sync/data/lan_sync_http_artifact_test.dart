@@ -5,8 +5,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mg_read/features/lan_sync/data/lan_sync_checksum.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_http_artifact.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
@@ -36,7 +36,7 @@ void main() {
     final response = await request.close();
     expect(response.statusCode, HttpStatus.ok);
     expect(response.headers.value(HttpHeaders.acceptRangesHeader), 'bytes');
-    expect(response.headers.value(HttpHeaders.etagHeader), '"sha256-${sha256.convert(bytes)}"');
+    expect(response.headers.value(HttpHeaders.etagHeader), '"crc32-${lanSyncChecksum(bytes)}"');
     expect(await response.fold<List<int>>(<int>[], (all, chunk) => all..addAll(chunk)), bytes);
   });
 
@@ -46,7 +46,7 @@ void main() {
     final request = await client.getUrl(uri);
     request.headers
       ..set(HttpHeaders.rangeHeader, 'bytes=4-7')
-      ..set(HttpHeaders.ifRangeHeader, '"sha256-${sha256.convert(bytes)}"');
+      ..set(HttpHeaders.ifRangeHeader, '"crc32-${lanSyncChecksum(bytes)}"');
     final response = await request.close();
     expect(response.statusCode, HttpStatus.partialContent);
     expect(response.headers.value(HttpHeaders.contentRangeHeader), 'bytes 4-7/10');
@@ -73,8 +73,41 @@ void main() {
   });
 
   test('client verifies length and hash before exposing install stream', () async {
-    final stream = await const LanSyncHttpArtifactClient().download(uri, _descriptor(bytes));
+    final progress = <List<int>>[];
+    final stream = await const LanSyncHttpArtifactClient().download(
+      uri,
+      _descriptor(bytes),
+      onVerificationProgress: (completed, total) => progress.add(<int>[completed, total]),
+    );
     expect(await stream.fold<List<int>>(<int>[], (all, chunk) => all..addAll(chunk)), bytes);
+    expect(progress, isNotEmpty);
+    expect(progress.last, <int>[bytes.length, bytes.length]);
+  });
+
+  test('client rejects bytes that keep the declared length but fail the hash', () async {
+    await server.close(force: true);
+    final rawServer = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(rawServer.close);
+    rawServer.listen((socket) async {
+      await _readRequestHeader(socket);
+      socket.add(
+        utf8.encode(
+          'HTTP/1.1 200 OK\r\n'
+          'Content-Length: 10\r\n'
+          'ETag: "crc32-${lanSyncChecksum(bytes)}"\r\n'
+          'Connection: close\r\n\r\n'
+          'abcdefghij',
+        ),
+      );
+      await socket.flush();
+      await socket.close();
+    });
+    uri = Uri.parse('http://${rawServer.address.address}:${rawServer.port}/artifact');
+
+    await expectLater(
+      const LanSyncHttpArtifactClient().download(uri, _descriptor(bytes)),
+      throwsA(isA<LanSyncTransportException>().having((error) => error.code, 'code', 'lan_sync_plugin_hash_mismatch')),
+    );
   });
 
   test('client resumes an interrupted response from the received byte offset', () async {
@@ -91,7 +124,7 @@ void main() {
           utf8.encode(
             'HTTP/1.1 200 OK\r\n'
             'Content-Length: ${bytes.length}\r\n'
-            'ETag: "sha256-${sha256.convert(bytes)}"\r\n'
+            'ETag: "crc32-${lanSyncChecksum(bytes)}"\r\n'
             'Connection: close\r\n\r\n'
             '0123',
           ),
@@ -106,7 +139,7 @@ void main() {
           'HTTP/1.1 206 Partial Content\r\n'
           'Content-Length: 6\r\n'
           'Content-Range: bytes 4-9/10\r\n'
-          'ETag: "sha256-${sha256.convert(bytes)}"\r\n'
+          'ETag: "crc32-${lanSyncChecksum(bytes)}"\r\n'
           'Connection: close\r\n\r\n'
           '456789',
         ),
@@ -157,6 +190,6 @@ LanSyncPluginDescriptor _descriptor(List<int> bytes, {String? sha}) => LanSyncPl
   version: '1.0.0',
   bytes: bytes.length,
   artifactFormat: LanSyncPluginArtifactFormat.archive,
-  sha256: sha ?? sha256.convert(bytes).toString(),
+  checksum: sha ?? lanSyncChecksum(bytes),
   transferable: true,
 );

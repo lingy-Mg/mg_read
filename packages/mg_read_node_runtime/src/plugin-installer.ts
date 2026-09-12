@@ -15,9 +15,8 @@ import {
   rename,
   rm,
   stat,
-  writeFile,
 } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 
 import {
   DependencyStore,
@@ -45,6 +44,7 @@ import {
   readPluginProject,
   resolveInside,
 } from "./plugin-package.js";
+import { InstalledPluginCatalog } from "./plugin-catalog.js";
 
 /** Stable event names for installer ownership and exactly-one terminal checks. */
 export type PluginInstallerEventCode =
@@ -78,6 +78,7 @@ export interface PluginInstallResult {
 
 /** Runtime-owned standard-project installer and dependency mark/sweep owner. */
 export class PluginInstaller {
+  readonly #catalog: InstalledPluginCatalog;
   readonly #dataRoot: string;
   readonly #dependencyStore: DependencyStore;
   readonly #events: PluginInstallerEventSink;
@@ -88,9 +89,11 @@ export class PluginInstaller {
       readonly dependencyStore?: DependencyStore;
       readonly events?: PluginInstallerEventSink;
       readonly onProgress?: DesktopRuntimeProgressSink;
+      readonly catalog?: InstalledPluginCatalog;
     } = {},
   ) {
     this.#dataRoot = resolve(runtimeDataRoot);
+    this.#catalog = options.catalog ?? new InstalledPluginCatalog(this.#dataRoot);
     this.#dependencyStore =
       options.dependencyStore ?? new DependencyStore(this.#dataRoot);
     this.#events = options.events ?? (() => {});
@@ -245,7 +248,8 @@ export class PluginInstaller {
     assertPluginId(pluginId);
     const pluginRoot = resolve(this.#dataRoot, "plugins", pluginId);
     await access(pluginRoot);
-    await atomicWrite(resolve(pluginRoot, "uninstall-pending"), "1\n");
+    await this.#catalog.load();
+    await this.#catalog.scheduleRemoval(pluginId);
     this.#events({
       code: "plugin_uninstall_scheduled",
       outcome: "success",
@@ -256,16 +260,8 @@ export class PluginInstaller {
   /** Enables/disables future dispatch without hot-unloading imported modules. */
   async setEnabled(pluginId: string, enabled: boolean): Promise<void> {
     assertPluginId(pluginId);
-    const marker = resolve(this.#dataRoot, "plugins", pluginId, "disabled");
-    const quarantine = resolve(this.#dataRoot, "plugins", pluginId, "quarantined");
-    if (enabled) {
-      await rm(marker, { force: true });
-      // Explicit user re-enable is also an explicit retry request. A later
-      // valid cold-activated update clears this marker on its own.
-      await rm(quarantine, { force: true });
-      return;
-    }
-    await atomicWrite(marker, "1\n");
+    await this.#catalog.load();
+    await this.#catalog.setEnabled(pluginId, enabled);
   }
 
   /** Mark-and-sweep GC derived only from retained package-lock files. */
@@ -342,7 +338,8 @@ export class PluginInstaller {
         stage: "plugin_installing",
         totalBytes: 1,
       });
-      await atomicWrite(resolve(pluginRoot, "pending"), `${descriptor.version}\n`);
+      await this.#catalog.load();
+      await this.#catalog.installPending(descriptor, async () => {});
       return Object.freeze({
         copiedFiles: 0,
         descriptor,
@@ -414,31 +411,35 @@ export class PluginInstaller {
       }
     }
 
-    await mkdir(versionsRoot, { recursive: true });
-    let previousVersionRoot: string | undefined;
-    let previousVersionMoved = false;
-    let newVersionMoved = false;
-    try {
-      if (existingVersion) {
-        previousVersionRoot = resolve(versionsRoot, `.${descriptor.version}.replaced-${randomUUID()}`);
-        await rename(finalVersionRoot, previousVersionRoot);
-        previousVersionMoved = true;
+    await this.#catalog.load();
+    await this.#catalog.installPending(descriptor, async () => {
+      await mkdir(versionsRoot, { recursive: true });
+      let previousVersionRoot: string | undefined;
+      let previousVersionMoved = false;
+      let newVersionMoved = false;
+      try {
+        if (existingVersion) {
+          previousVersionRoot = resolve(versionsRoot, `.${descriptor.version}.replaced-${randomUUID()}`);
+          await rename(finalVersionRoot, previousVersionRoot);
+          previousVersionMoved = true;
+        }
+        await rename(stagingRoot, finalVersionRoot);
+        newVersionMoved = true;
+      } catch (error) {
+        if (previousVersionMoved && !newVersionMoved && previousVersionRoot !== undefined) {
+          await rename(previousVersionRoot, finalVersionRoot).catch(() => {});
+        }
+        throw error;
       }
-      await rename(stagingRoot, finalVersionRoot);
-      newVersionMoved = true;
-    } catch (error) {
-      if (previousVersionMoved && !newVersionMoved && previousVersionRoot !== undefined) {
-        await rename(previousVersionRoot, finalVersionRoot).catch(() => {});
+      if (previousVersionRoot !== undefined) {
+        await rm(previousVersionRoot, { force: true, recursive: true }).catch(() => {});
       }
-      throw error;
-    }
-    if (previousVersionRoot !== undefined) await rm(previousVersionRoot, { force: true, recursive: true }).catch(() => {});
-    // Android's app sandbox can reject renaming a directory whose root was
-    // chmod-ed read-only while it still lives under the staging tree. Commit
-    // the atomic directory move first, then enforce immutability at its final
-    // location before publishing the pending pointer.
-    await makeVersionTreeReadOnly(finalVersionRoot);
-    await atomicWrite(resolve(pluginRoot, "pending"), `${descriptor.version}\n`);
+      // Android's app sandbox can reject renaming a directory whose root was
+      // chmod-ed read-only while it still lives under the staging tree. Commit
+      // the atomic directory move first, then enforce immutability at its final
+      // location before publishing the pending pointer.
+      await makeVersionTreeReadOnly(finalVersionRoot);
+    });
     this.#reportProgress({
       completedBytes: dependencyTotal,
       detail: requiresNpmDependencies
@@ -511,17 +512,6 @@ async function makeVersionTreeReadOnly(root: string): Promise<void> {
     }
   }
   await chmod(root, directoryMode).catch(() => {});
-}
-
-async function atomicWrite(path: string, value: string): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  const temporary = `${path}.next-${randomUUID()}`;
-  await writeFile(temporary, value, { flag: "wx", mode: 0o600 });
-  try {
-    await rename(temporary, path);
-  } finally {
-    await rm(temporary, { force: true }).catch(() => {});
-  }
 }
 
 function assertPluginId(pluginId: string): void {

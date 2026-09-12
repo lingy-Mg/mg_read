@@ -14,7 +14,6 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import {
-  createServer,
   type IncomingMessage,
   type Server,
   type ServerResponse,
@@ -77,7 +76,12 @@ export type {
   DesktopRuntimeProgress,
   DesktopRuntimeProgressSink,
 } from "./desktop-runtime-options.js";
-import { installPluginArtifactInbox, seedBundledPluginArtifacts } from "./plugin-artifact-inbox.js";
+import {
+  createInitializedPluginManager,
+  reportRuntimeServiceReady,
+  startLoopbackServer,
+  startupProgressFromManagerEvent,
+} from "./desktop-runtime-startup.js";
 import { dispatchPluginEnabled, dispatchPluginUninstall, dispatchPluginUninstallAll } from "./plugin-uninstall-dispatch.js";
 import {
   dispatchPluginDevelopmentPackage,
@@ -331,14 +335,9 @@ export class DesktopRuntime {
       );
     }
 
-    try {
-      await installPluginArtifactInbox(this.#dataRoot, this.#pluginImportInboxRoot, this.#onProgress);
-      await seedBundledPluginArtifacts(this.#dataRoot, this.#bundledPluginRoot, this.#onProgress);
-    } catch (error) {
-      throw error;
-    }
-    const pluginManager = new PluginManager(this.#dataRoot, {
+    const pluginManager = await createInitializedPluginManager(this.#dataRoot, {
       ...(this.#browserSession === undefined ? {} : { browserSession: this.#browserSession }),
+      bundledPluginRoot: this.#bundledPluginRoot,
       embedded: this.#embedded,
       ...(this.#developmentPluginRoot === undefined
         ? {}
@@ -351,13 +350,11 @@ export class DesktopRuntime {
       events: (event) => this.#handlePluginManagerEvent(event),
       debugLogEnabled: () => this.#debugHttp?.status().enabled === true,
       http: this.#pluginHttp,
+      onProgress: this.#onProgress,
+      pluginImportInboxRoot: this.#pluginImportInboxRoot,
     });
-    try {
-      await pluginManager.initialize();
-    } catch (error) {
-      throw error;
-    }
     this.#pluginManager = pluginManager;
+    const serviceStartedAt = performance.now();
     if (this.#debugHttpAllowed) {
       this.#debugHttp = createRuntimeDebugHttpServer(
         this.#bootId,
@@ -385,53 +382,29 @@ export class DesktopRuntime {
       type: "diagnostic",
     });
 
-    const server = createServer({ maxHeaderSize: 32 * 1024 }, (request, response) => {
-      this.#handleHttp(request, response);
+    const startedServer = await startLoopbackServer({
+      host: LOOPBACK_HOST,
+      onHttp: (request, response) => this.#handleHttp(request, response),
+      onUpgrade: (request, socket, head) => this.#handleUpgrade(request, socket, head),
+      port: this.#port,
     });
-    server.on("upgrade", (request, socket, head) => {
-      this.#handleUpgrade(request, socket, head);
-    });
+    const server = startedServer.server;
     this.#server = server;
-
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const onError = (error: Error): void => {
-          server.off("listening", onListening);
-          reject(error);
-        };
-        const onListening = (): void => {
-          server.off("error", onError);
-          resolve();
-        };
-
-        server.once("error", onError);
-        server.once("listening", onListening);
-        server.listen({ host: LOOPBACK_HOST, port: this.#port });
-      });
-    } catch (error) {
-      this.#server = undefined;
-      server.close();
-      throw error;
-    }
-
-    const address = server.address();
-    if (address === null || typeof address === "string") {
-      throw new Error("Runtime did not expose a TCP loopback address.");
-    }
 
     const ready: DesktopRuntimeReady = Object.freeze({
       bootId: this.#bootId,
       host: LOOPBACK_HOST,
       nodeVersion: process.versions.node,
       pid: process.pid,
-      port: address.port,
+      port: startedServer.port,
       protocolVersion,
       runtimeVersion,
       startedAt: this.#startedAt,
       type: "ready",
     });
-    pluginManager.setResourceOrigin(`http://${LOOPBACK_HOST}:${address.port}`);
+    pluginManager.setResourceOrigin(`http://${LOOPBACK_HOST}:${startedServer.port}`);
     this.#ready = ready;
+    reportRuntimeServiceReady(serviceStartedAt, this.#onProgress);
     return ready;
   }
 
@@ -449,6 +422,8 @@ export class DesktopRuntime {
       }
       return;
     }
+    const startupProgress = startupProgressFromManagerEvent(event);
+    if (startupProgress !== undefined) this.#onProgress(startupProgress);
     const developmentChange = developmentPluginChangeFromManagerEvent(event);
     if (developmentChange !== undefined) {
       this.#developmentEventRevision += 1;

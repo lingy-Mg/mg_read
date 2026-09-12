@@ -9,6 +9,59 @@ final pluginRuntimeSourceActionProvider = NotifierProvider<PluginRuntimeSourceAc
   PluginRuntimeSourceActionController.new,
 );
 
+/// Projects bounded Runtime-owned bulk-removal progress for the management UI.
+final pluginRuntimeSourceRemovalProgressProvider =
+    NotifierProvider<PluginRuntimeSourceRemovalProgressController, PluginSourceRemovalProgress>(
+      PluginRuntimeSourceRemovalProgressController.new,
+    );
+
+final class PluginSourceRemovalProgress {
+  const PluginSourceRemovalProgress({
+    required this.completedItems,
+    required this.isRemoving,
+    required this.message,
+    required this.totalItems,
+  });
+
+  const PluginSourceRemovalProgress.idle() : completedItems = 0, isRemoving = false, message = '', totalItems = 0;
+
+  final int completedItems;
+  final bool isRemoving;
+  final String message;
+  final int totalItems;
+
+  double? get fraction => totalItems == 0 ? null : completedItems / totalItems;
+}
+
+final class PluginRuntimeSourceRemovalProgressController extends Notifier<PluginSourceRemovalProgress> {
+  @override
+  PluginSourceRemovalProgress build() {
+    final subscription = ref.read(pluginRuntimeGatewayProvider).initialization.listen(_onRuntimeProgress);
+    ref.onDispose(() => unawaited(subscription.cancel()));
+    return const PluginSourceRemovalProgress.idle();
+  }
+
+  void begin({required int totalItems}) {
+    state = PluginSourceRemovalProgress(completedItems: 0, isRemoving: true, message: '正在准备清理本地数据源', totalItems: totalItems);
+  }
+
+  void finish() => state = const PluginSourceRemovalProgress.idle();
+
+  void _onRuntimeProgress(RuntimeInitializationProgress progress) {
+    if (!state.isRemoving ||
+        (progress.stage != RuntimeInitializationStage.pluginUninstalling &&
+            progress.stage != RuntimeInitializationStage.pluginUninstalled)) {
+      return;
+    }
+    state = PluginSourceRemovalProgress(
+      completedItems: progress.completedBytes,
+      isRemoving: true,
+      message: progress.detail ?? _initializationMessage(progress.stage),
+      totalItems: progress.totalBytes,
+    );
+  }
+}
+
 final class PluginRuntimeSourceActionController extends Notifier<Set<String>> {
   @override
   Set<String> build() => const <String>{};
@@ -26,11 +79,24 @@ final class PluginRuntimeSourceActionController extends Notifier<Set<String>> {
     operation: () => ref.read(pluginRuntimeGatewayProvider).uninstall(pluginId: pluginId),
   );
 
-  Future<void> uninstallAll() => _run(
-    pluginId: _allSourcesOperationKey,
-    capability: 'runtime.plugins.uninstallAll.v1',
-    operation: () => ref.read(pluginRuntimeGatewayProvider).uninstallAll(),
-  );
+  Future<void> uninstallAll({int totalItems = 0}) async {
+    final progress = ref.read(pluginRuntimeSourceRemovalProgressProvider.notifier);
+    progress.begin(totalItems: totalItems);
+    try {
+      await _run(
+        pluginId: _allSourcesOperationKey,
+        capability: 'runtime.plugins.uninstallAll.v1',
+        operation: () async {
+          // Let the pending state reach a Flutter frame before a fast local
+          // deletion completes. Runtime progress drives every item update.
+          await Future<void>.delayed(const Duration(milliseconds: 32));
+          await ref.read(pluginRuntimeGatewayProvider).uninstallAll();
+        },
+      );
+    } finally {
+      progress.finish();
+    }
+  }
 
   Future<void> _run({
     required String pluginId,

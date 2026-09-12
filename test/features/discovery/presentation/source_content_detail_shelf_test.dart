@@ -261,7 +261,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('source-detail-portrait-header')), findsOneWidget);
     expect(find.byKey(const Key('source-detail-landscape-header')), findsNothing);
-    expect(tester.getSize(find.byKey(const Key('source-detail-cover'))), const Size(112, 174));
+    final portraitSize = tester.getSize(find.byKey(const Key('source-detail-cover')));
+    expect(portraitSize.height, 174);
+    expect(portraitSize.width, closeTo(174 / AppSpacing.discoveryCoverAspectRatio, 0.01));
 
     await tester.pumpWidget(
       MaterialApp(

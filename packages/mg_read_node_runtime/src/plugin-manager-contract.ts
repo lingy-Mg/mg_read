@@ -30,11 +30,14 @@ export type PluginManagerEventCode =
   | "plugin_invocation_completed"
   | "plugin_invocation_failed"
   | "plugin_invocation_started"
+  | "plugin_catalog_changed"
   | "plugin_load_completed"
   | "plugin_load_failed"
   | "plugin_load_started"
   | "plugin_log_emitted"
   | "plugin_quarantined"
+  | "plugin_startup_phase_completed"
+  | "plugin_uninstall_started"
   | "plugin_uninstall_scheduled"
   | "plugin_uninstall_completed";
 
@@ -50,6 +53,11 @@ export interface PluginManagerEvent {
   readonly buildOutput?: string;
   readonly operation?: PluginContentOperation;
   readonly outcome: "error" | "started" | "success";
+  readonly itemCount?: number;
+  /** Total item count for a bounded multi-source lifecycle operation. */
+  readonly totalItemCount?: number;
+  readonly catalogState?: "hit" | "rebuilt";
+  readonly startupPhase?: "development_scan" | "installed_snapshot" | "pending_activation";
   readonly pluginId?: string;
   readonly pluginName?: string;
 }

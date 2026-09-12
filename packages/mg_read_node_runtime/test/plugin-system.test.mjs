@@ -513,7 +513,8 @@ test("running Runtime removes all installed sources immediately", async (t) => {
   const installer = new PluginInstaller(dataRoot);
   await installer.installProject(fixtureRoot);
   await installer.installProject(secondProject);
-  const manager = new PluginManager(dataRoot);
+  const events = [];
+  const manager = new PluginManager(dataRoot, { events: (event) => events.push(event) });
   t.after(() => manager.close());
   await manager.initialize();
   assert.equal((await manager.listInstalled()).length, 2);
@@ -522,6 +523,12 @@ test("running Runtime removes all installed sources immediately", async (t) => {
   assert.deepEqual(await manager.listInstalled(), []);
   assert.equal(await fileExists(join(dataRoot, "plugins", "org.mgread.runtime.fixture")), false);
   assert.equal(await fileExists(join(dataRoot, "plugins", "org.mgread.runtime.fixture.second")), false);
+  const uninstallEvents = events.filter((event) =>
+    event.code === "plugin_uninstall_started" || event.code === "plugin_uninstall_completed"
+  );
+  assert.equal(uninstallEvents.filter((event) => event.code === "plugin_uninstall_started").length, 2);
+  assert.equal(uninstallEvents.filter((event) => event.code === "plugin_uninstall_completed").length, 2);
+  assert.ok(uninstallEvents.every((event) => event.totalItemCount === 2));
 
   const restarted = new PluginManager(dataRoot);
   t.after(() => restarted.close());

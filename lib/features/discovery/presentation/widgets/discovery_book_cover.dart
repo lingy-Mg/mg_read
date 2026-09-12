@@ -33,18 +33,23 @@ class DiscoveryBookCover extends ConsumerWidget {
   const DiscoveryBookCover({
     required this.title,
     required this.variant,
-    required this.width,
+    this.width,
     this.height,
     this.presentation = DiscoveryCoverPresentation.portrait,
     this.coverBytes,
     this.remoteContentId,
     this.coverUrl,
     super.key,
-  });
+  }) : assert(width != null || height != null, 'DiscoveryBookCover needs a width or height constraint.');
 
   final String title;
   final DiscoveryCoverVariant variant;
-  final double width;
+
+  /// A fixed presentation width for constrained placements such as grids.
+  ///
+  /// At least one dimension must be provided. When only [height] is set, a
+  /// decoded cover determines the width from its intrinsic aspect ratio.
+  final double? width;
 
   /// A fixed presentation height for constrained placements such as shelves.
   ///
@@ -89,7 +94,7 @@ class DiscoveryBookCover extends ConsumerWidget {
             decoration: BoxDecoration(
               borderRadius: _borderRadius,
               boxShadow: <BoxShadow>[
-                BoxShadow(color: tokens.shadow, blurRadius: width >= 80 ? 8 : 3, offset: Offset(0, width >= 80 ? 4 : 1.5)),
+                BoxShadow(color: tokens.shadow, blurRadius: _visualWidth >= 80 ? 8 : 3, offset: Offset(0, _visualWidth >= 80 ? 4 : 1.5)),
               ],
               gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: <Color>[start, end]),
             ),
@@ -97,23 +102,29 @@ class DiscoveryBookCover extends ConsumerWidget {
               borderRadius: _borderRadius,
               child: !hasCoverBytes
                   ? SizedBox(
+                      width: _placeholderWidth,
                       height: _placeholderHeight,
                       child: _placeholder(foreground, start, end, isLoading: isLoading),
                     )
-                  : height == null
+                  : width == null || height == null
                   ? _IntrinsicCoverImage(
                       bytes: normalizedBytes!,
-                      width: width,
-                      fallbackHeight: _placeholderHeight,
-                      errorBuilder: (_, _, _) =>
-                          SizedBox(height: _placeholderHeight, child: _placeholder(foreground, start, end, isLoading: false)),
+                      fallbackAspectRatio: _fallbackAspectRatio,
+                      errorBuilder: (_, _, _) => SizedBox(
+                        width: _placeholderWidth,
+                        height: _placeholderHeight,
+                        child: _placeholder(foreground, start, end, isLoading: false),
+                      ),
                     )
                   : Image.memory(
                       normalizedBytes!,
                       width: width,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) =>
-                          SizedBox(height: _placeholderHeight, child: _placeholder(foreground, start, end, isLoading: false)),
+                      errorBuilder: (_, _, _) => SizedBox(
+                        width: _placeholderWidth,
+                        height: _placeholderHeight,
+                        child: _placeholder(foreground, start, end, isLoading: false),
+                      ),
                     ),
             ),
           ),
@@ -122,7 +133,11 @@ class DiscoveryBookCover extends ConsumerWidget {
     );
   }
 
-  double get _placeholderHeight => height ?? width * _fallbackAspectRatio;
+  double get _visualWidth => width ?? _placeholderWidth;
+
+  double get _placeholderWidth => width ?? height! / _fallbackAspectRatio;
+
+  double get _placeholderHeight => height ?? width! * _fallbackAspectRatio;
 
   double get _fallbackAspectRatio => switch (presentation) {
     DiscoveryCoverPresentation.portrait => AppSpacing.discoveryCoverAspectRatio,
@@ -132,14 +147,14 @@ class DiscoveryBookCover extends ConsumerWidget {
 
   Widget _placeholder(Color foreground, Color start, Color end, {required bool isLoading}) {
     if (presentation == DiscoveryCoverPresentation.landscape) {
-      return _LandscapeCoverPlaceholder(foreground: foreground, start: start, end: end, width: width, isLoading: isLoading);
+      return _LandscapeCoverPlaceholder(foreground: foreground, start: start, end: end, width: _visualWidth, isLoading: isLoading);
     }
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
         DefaultBookCoverArtwork(
           title: title,
-          width: width,
+          width: _visualWidth,
           height: _placeholderHeight,
           startColor: start,
           endColor: end,
@@ -151,8 +166,8 @@ class DiscoveryBookCover extends ConsumerWidget {
             color: Colors.black.withValues(alpha: 0.16),
             child: Center(
               child: SizedBox(
-                width: width >= 80 ? 22 : 16,
-                height: width >= 80 ? 22 : 16,
+                width: _visualWidth >= 80 ? 22 : 16,
+                height: _visualWidth >= 80 ? 22 : 16,
                 child: CircularProgressIndicator(strokeWidth: 2, color: foreground),
               ),
             ),
@@ -178,11 +193,10 @@ class DiscoveryBookCover extends ConsumerWidget {
 
 /// Renders a decoded cover at its intrinsic ratio after reserving fallback space.
 class _IntrinsicCoverImage extends StatefulWidget {
-  const _IntrinsicCoverImage({required this.bytes, required this.width, required this.fallbackHeight, required this.errorBuilder});
+  const _IntrinsicCoverImage({required this.bytes, required this.fallbackAspectRatio, required this.errorBuilder});
 
   final Uint8List bytes;
-  final double width;
-  final double fallbackHeight;
+  final double fallbackAspectRatio;
   final ImageErrorWidgetBuilder errorBuilder;
 
   @override
@@ -228,7 +242,7 @@ class _IntrinsicCoverImageState extends State<_IntrinsicCoverImage> {
 
   @override
   Widget build(BuildContext context) {
-    final aspectRatio = _aspectRatio ?? widget.width / widget.fallbackHeight;
+    final aspectRatio = _aspectRatio ?? 1 / widget.fallbackAspectRatio;
     return AspectRatio(
       aspectRatio: aspectRatio,
       child: Image.memory(widget.bytes, fit: BoxFit.cover, errorBuilder: widget.errorBuilder),

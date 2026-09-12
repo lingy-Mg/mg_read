@@ -78,7 +78,7 @@ export async function servePluginTransferResource(
       "Cache-Control": "no-store", "Content-Length": resource.bytes,
       "Content-Type": resource.format === "singleFile" ? "text/javascript; charset=utf-8" : "application/octet-stream",
       "X-MgRead-Artifact-Format": resource.format,
-      "X-MgRead-Sha256": resource.sha256,
+      "X-MgRead-Checksum": resource.checksum,
     });
     resource.stream.on("error", () => { response.destroy(); finish(500); });
     resource.stream.pipe(response).on("finish", () => finish(200, resource.bytes));

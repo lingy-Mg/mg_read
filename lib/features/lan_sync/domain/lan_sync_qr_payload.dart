@@ -17,18 +17,6 @@ final class LanSyncConnectionOffer {
   final String sessionId;
   final int port;
   final List<String> addresses;
-
-  List<String> get manualAddresses => List.unmodifiable(addresses.map((address) => '$sessionId@$address:$port'));
-
-  static LanSyncConnectionOffer? tryParseManual(String value) {
-    final match = RegExp(r'^([A-Za-z0-9_-]{8,128})@([0-9.]+):([0-9]{1,5})$').firstMatch(value.trim());
-    final port = match == null ? null : int.tryParse(match.group(3)!);
-    final address = match?.group(2);
-    if (match == null || port == null || port < 1 || port > 65535 || address == null || !isLanSyncPrivateIpv4(address)) {
-      return null;
-    }
-    return LanSyncConnectionOffer(sessionId: match.group(1)!, port: port, addresses: <String>[address]);
-  }
 }
 
 final class LanSyncQrPayload {

@@ -2,9 +2,10 @@
 library;
 
 import 'dart:convert';
+import 'dart:async';
 
-import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mg_read/features/lan_sync/data/lan_sync_checksum.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 
@@ -16,7 +17,7 @@ void main() {
       version: '1.0.0',
       bytes: bytes.length,
       artifactFormat: LanSyncPluginArtifactFormat.archive,
-      sha256: sha256.convert(bytes).toString(),
+      checksum: lanSyncChecksum(bytes),
       transferable: true,
     );
     final sender = await LanSyncSenderService.start(
@@ -37,11 +38,28 @@ void main() {
     final manifest = await receiver.confirmAndReadManifest();
     expect(manifest.plugins.single.id, plugin.id);
     final received = <int>[];
-    await receiver.receivePlugins(
+    final senderDone = sender.events.firstWhere((event) => event is LanSyncSenderDone);
+    final importStarted = Completer<void>();
+    final releaseImport = Completer<void>();
+    final verificationProgress = <List<int>>[];
+    final writeProgress = <List<int>>[];
+    final receiving = receiver.receivePlugins(
       pluginIds: {plugin.id},
-      importPlugin: (_, stream) async => received.addAll(await stream.expand((chunk) => chunk).toList()),
+      importPlugin: (_, stream) async {
+        received.addAll(await stream.expand((chunk) => chunk).toList());
+        importStarted.complete();
+        await releaseImport.future;
+      },
+      onVerificationProgress: (_, completed, total) => verificationProgress.add(<int>[completed, total]),
+      onWriteProgress: (_, completed, total) => writeProgress.add(<int>[completed, total]),
     );
+    await importStarted.future;
+    await senderDone;
+    releaseImport.complete();
+    await receiving;
     expect(received, bytes);
+    expect(verificationProgress.last, <int>[bytes.length, bytes.length]);
+    expect(writeProgress.last, <int>[bytes.length, bytes.length]);
   });
 
   test('address selection excludes virtual interfaces and duplicates', () {

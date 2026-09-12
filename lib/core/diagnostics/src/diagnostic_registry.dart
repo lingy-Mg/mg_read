@@ -291,6 +291,9 @@ abstract final class AppDiagnosticEvents {
     fields: <String, DiagnosticFieldDefinition>{
       'stage': _requiredInstantString,
       'durationMicros': _requiredInstantInt64,
+      'phaseDurationMicros': _int64,
+      'itemCount': _int64,
+      'catalogState': _string,
       'resultState': _requiredInstantString,
       'errorCode': _string,
       'attempt': _requiredInstantInt64,

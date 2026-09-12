@@ -331,7 +331,7 @@ Future<Map<String, Object?>> _requestJson(
     request,
     deviceId: deviceId,
     sharedSecret: secret,
-    contentSha256: LanSyncHttpAuthentication.bodyHash(body),
+    contentChecksum: LanSyncHttpAuthentication.bodyHash(body),
   );
   request.headers.contentType = ContentType.json;
   request.contentLength = body.length;

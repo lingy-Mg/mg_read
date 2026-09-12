@@ -314,7 +314,7 @@ final class PluginRuntime {
   Stream<RuntimeDiagnostic> get fatalDiagnostics =>
       diagnostics.where((diagnostic) => diagnostic.isFatal);
 
-  /// Reports bounded Runtime-owned initialization progress when available.
+  /// Reports bounded Runtime-owned lifecycle progress when available.
   Stream<RuntimeInitializationProgress> get initialization =>
       _supervisor.initialization;
 

@@ -220,12 +220,18 @@ RuntimeInitializationProgress? _parseStructuredProgress(String line) {
     final value = _jsonObject(jsonDecode(line), 'Runtime progress record');
     if (value['type'] != 'progress') return null;
     final completedBytes = value['completedBytes'];
+    final catalogState = value['catalogState'];
+    final durationMicros = value['durationMicros'];
+    final itemCount = value['itemCount'];
     final totalBytes = value['totalBytes'];
     final stage = value['stage'];
     final detail = value['detail'];
     if (completedBytes is! int ||
         totalBytes is! int ||
         stage is! String ||
+        (catalogState != null && catalogState is! String) ||
+        (durationMicros != null && durationMicros is! int) ||
+        (itemCount != null && itemCount is! int) ||
         (detail != null && detail is! String) ||
         completedBytes < 0 ||
         totalBytes < 0 ||
@@ -233,8 +239,11 @@ RuntimeInitializationProgress? _parseStructuredProgress(String line) {
       return null;
     }
     return RuntimeInitializationProgress.fromPlatform(
+      catalogState: catalogState as String?,
       completedBytes: completedBytes,
       detail: detail as String?,
+      durationMicros: durationMicros as int?,
+      itemCount: itemCount as int?,
       stage: stage,
       totalBytes: totalBytes,
     );

@@ -8,9 +8,10 @@ package com.mgread.mgread_plugin_runtime
 
 import android.content.Context
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.security.MessageDigest
 import java.util.UUID
+import java.util.zip.CRC32
 
 internal class AndroidPluginArtifactTransfer(
     private val context: Context,
@@ -19,12 +20,13 @@ internal class AndroidPluginArtifactTransfer(
         val target: File,
         val temporary: File,
         val expectedBytes: Long,
-        val expectedSha256: String,
+        val expectedChecksum: String,
+        val output: FileOutputStream,
         var receivedBytes: Long = 0,
-        val digest: MessageDigest = MessageDigest.getInstance("SHA-256"),
+        val digest: CRC32 = CRC32(),
     )
 
-    private data class ExportSession(val file: File, var offset: Long = 0)
+    private data class ExportSession(val input: FileInputStream)
 
     private val importSessions = mutableMapOf<String, ImportSession>()
     private val exportSessions = mutableMapOf<String, ExportSession>()
@@ -33,21 +35,23 @@ internal class AndroidPluginArtifactTransfer(
         pluginId: String,
         version: String,
         expectedBytes: Long,
-        expectedSha256: String,
+        expectedChecksum: String,
         format: String,
     ): String {
         validateIdentity(pluginId, version, format)
         check(expectedBytes in 1..MAX_ARTIFACT_BYTES) { "file_too_large" }
-        check(expectedSha256.matches(Regex("[a-f0-9]{64}"))) { "invalid_request" }
+        check(expectedChecksum.matches(Regex("[a-f0-9]{8}"))) { "invalid_request" }
         check(importSessions.size < MAX_TRANSFER_BATCH) { "transfer_batch_too_large" }
         val inbox = File(context.filesDir, "mgread-runtime/import-inbox").apply { mkdirs() }
         val id = UUID.randomUUID().toString().replace("-", "")
         val target = File(inbox, "transfer-$pluginId-$version-$id${artifactSuffix(format)}")
+        val temporary = File(target.path + ".part")
         importSessions[id] = ImportSession(
             target = target,
-            temporary = File(target.path + ".part"),
+            temporary = temporary,
             expectedBytes = expectedBytes,
-            expectedSha256 = expectedSha256,
+            expectedChecksum = expectedChecksum,
+            output = FileOutputStream(temporary, true),
         )
         return id
     }
@@ -65,7 +69,7 @@ internal class AndroidPluginArtifactTransfer(
         )
         check(file.isFile) { "plugin_transfer_artifact_missing" }
         check(file.length() in 1..MAX_ARTIFACT_BYTES) { "plugin_transfer_artifact_too_large" }
-        val digest = MessageDigest.getInstance("SHA-256")
+        val digest = CRC32()
         file.inputStream().use { input ->
             val buffer = ByteArray(TRANSFER_CHUNK_BYTES)
             while (true) {
@@ -75,40 +79,29 @@ internal class AndroidPluginArtifactTransfer(
             }
         }
         val id = UUID.randomUUID().toString().replace("-", "")
-        exportSessions[id] = ExportSession(file)
+        exportSessions[id] = ExportSession(file.inputStream())
         return mapOf(
             "id" to id,
             "bytes" to file.length(),
             "format" to format,
-            "sha256" to digest.digest().joinToString("") { byte -> "%02x".format(byte) },
+            "checksum" to digest.value.toString(16).padStart(8, '0'),
         )
     }
 
     fun readExportChunk(id: String): ByteArray {
         val session = exportSessions[id] ?: error("invalid_request")
-        val remaining = session.file.length() - session.offset
-        if (remaining <= 0) {
+        val output = ByteArray(TRANSFER_CHUNK_BYTES)
+        val read = session.input.read(output)
+        if (read < 0) {
+            session.input.close()
             exportSessions.remove(id)
             return ByteArray(0)
         }
-        val count = minOf(remaining, TRANSFER_CHUNK_BYTES.toLong()).toInt()
-        val output = ByteArray(count)
-        session.file.inputStream().use { input ->
-            check(input.skip(session.offset) == session.offset) { "plugin_transfer_artifact_missing" }
-            var read = 0
-            while (read < count) {
-                val next = input.read(output, read, count - read)
-                if (next < 0) break
-                read += next
-            }
-            check(read == count) { "plugin_transfer_artifact_missing" }
-        }
-        session.offset += count
-        return output
+        return if (read == output.size) output else output.copyOf(read)
     }
 
     fun cancelExport(id: String) {
-        exportSessions.remove(id)
+        exportSessions.remove(id)?.input?.close()
     }
 
     fun writeImportChunk(id: String, chunk: ByteArray) {
@@ -118,7 +111,7 @@ internal class AndroidPluginArtifactTransfer(
             "plugin_transfer_size_mismatch"
         }
         session.temporary.parentFile?.mkdirs()
-        FileOutputStream(session.temporary, true).use { output -> output.write(chunk) }
+        session.output.write(chunk)
         session.digest.update(chunk)
         session.receivedBytes += chunk.size
     }
@@ -128,15 +121,21 @@ internal class AndroidPluginArtifactTransfer(
         ids.forEach { id ->
             val session = importSessions[id] ?: error("invalid_request")
             check(session.receivedBytes == session.expectedBytes) { "plugin_transfer_size_mismatch" }
-            val actual = session.digest.digest().joinToString("") { byte -> "%02x".format(byte) }
-            check(actual == session.expectedSha256) { "plugin_transfer_checksum_mismatch" }
+            val actual = session.digest.value.toString(16).padStart(8, '0')
+            check(actual == session.expectedChecksum) { "plugin_transfer_checksum_mismatch" }
+            session.output.close()
             check(session.temporary.renameTo(session.target)) { "disk_full" }
         }
         ids.forEach { importSessions.remove(it) }
     }
 
     fun cancelImports(ids: List<String>) {
-        ids.forEach { id -> importSessions.remove(id)?.temporary?.delete() }
+        ids.forEach { id ->
+            importSessions.remove(id)?.let { session ->
+                session.output.close()
+                session.temporary.delete()
+            }
+        }
     }
 
     private fun validateIdentity(pluginId: String, version: String, format: String) {

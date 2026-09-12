@@ -156,7 +156,8 @@ void main() {
   testWidgets('shows stable error details over retained preview and can retry', (tester) async {
     await _setViewport(tester, const Size(390, 900));
     final gateway = _RetryingDetailGateway();
-    await tester.pumpWidget(_DetailGoldenHost(gateway: gateway));
+    String? copiedPayload;
+    await tester.pumpWidget(_DetailGoldenHost(gateway: gateway, onCopyFailure: (payload) async => copiedPayload = payload));
     await tester.pumpAndSettle();
 
     expect(find.text('详情加载失败'), findsOneWidget);
@@ -164,6 +165,16 @@ void main() {
     expect(find.textContaining('失败阶段：source.getDetail.v1'), findsOneWidget);
     expect(find.text('原始原因：Source detail response had an unexpected shape.'), findsOneWidget);
     expect(find.text('已保留列表预览；实时详情和可播放选集尚未加载。'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('source-detail-error-copy')));
+    await tester.pump();
+    expect(copiedPayload, contains('详情加载失败'));
+    expect(copiedPayload, contains('数据源名称：'));
+    expect(copiedPayload, contains('插件 ID：'));
+    expect(copiedPayload, contains('插件版本：'));
+    expect(copiedPayload, contains('内容 ID：'));
+    expect(copiedPayload, contains('原始原因：Source detail response had an unexpected shape.'));
+    expect(copiedPayload, contains('失败阶段：source.getDetail.v1'));
+    expect(copiedPayload, contains('可重试：不建议'));
     expect(find.byKey(const Key('source-detail-start-reading')), findsOneWidget);
     expect(tester.widget<FilledButton>(find.byKey(const Key('source-detail-start-reading'))).onPressed, isNull);
 
@@ -180,12 +191,19 @@ Finder _detailVerticalScrollableFinder() =>
     find.byWidgetPredicate((Widget widget) => widget is Scrollable && widget.axisDirection == AxisDirection.down);
 
 class _DetailGoldenHost extends StatelessWidget {
-  const _DetailGoldenHost({this.gateway, this.useReference = false, this.includeInitialContent = true, this.onRecommendationRequested});
+  const _DetailGoldenHost({
+    this.gateway,
+    this.useReference = false,
+    this.includeInitialContent = true,
+    this.onRecommendationRequested,
+    this.onCopyFailure,
+  });
 
   final _GoldenDetailGateway? gateway;
   final bool useReference;
   final bool includeInitialContent;
   final SourceRecommendationRequested? onRecommendationRequested;
+  final SourceDetailFailureCopy? onCopyFailure;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -203,16 +221,23 @@ class _DetailGoldenHost extends StatelessWidget {
       gateway: gateway ?? _GoldenDetailGateway(useReference: useReference),
       includeInitialContent: includeInitialContent,
       onRecommendationRequested: onRecommendationRequested,
+      onCopyFailure: onCopyFailure,
     ),
   );
 }
 
 class _DetailEntry extends StatefulWidget {
-  const _DetailEntry({required this.gateway, required this.includeInitialContent, required this.onRecommendationRequested});
+  const _DetailEntry({
+    required this.gateway,
+    required this.includeInitialContent,
+    required this.onRecommendationRequested,
+    this.onCopyFailure,
+  });
 
   final _GoldenDetailGateway gateway;
   final bool includeInitialContent;
   final SourceRecommendationRequested? onRecommendationRequested;
+  final SourceDetailFailureCopy? onCopyFailure;
 
   @override
   State<_DetailEntry> createState() => _DetailEntryState();
@@ -235,6 +260,7 @@ class _DetailEntryState extends State<_DetailEntry> {
           relatedContents: widget.gateway.recommendations,
           onExternalUrlRequested: (_) async => true,
           onRecommendationRequested: widget.onRecommendationRequested,
+          onCopyFailure: widget.onCopyFailure ?? (String _) async {},
         ),
       );
     });

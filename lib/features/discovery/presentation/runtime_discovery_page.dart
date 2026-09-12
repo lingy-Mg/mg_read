@@ -56,6 +56,8 @@ class RuntimeDiscoveryPage extends StatelessWidget {
     this.contentFailureMessage,
     this.contentFailureDetail,
     this.contentFailureCode,
+    this.contentFailureCopyPayload,
+    this.onCopyFailure = _copyDiscoveryFailure,
     super.key,
   });
 
@@ -80,6 +82,8 @@ class RuntimeDiscoveryPage extends StatelessWidget {
   final String? contentFailureMessage;
   final String? contentFailureDetail;
   final String? contentFailureCode;
+  final String? contentFailureCopyPayload;
+  final DiscoveryFailureCopy onCopyFailure;
 
   @override
   Widget build(BuildContext context) {
@@ -154,6 +158,8 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                                       failureMessage: contentFailureMessage,
                                       failureDetail: contentFailureDetail,
                                       failureCode: contentFailureCode,
+                                      failureCopyPayload: contentFailureCopyPayload,
+                                      onCopy: onCopyFailure,
                                       onRetry: onRefreshRequested,
                                     ),
                                   )
@@ -200,6 +206,8 @@ class RuntimeDiscoveryPage extends StatelessWidget {
     );
   }
 }
+
+Future<void> _copyDiscoveryFailure(String payload) => Clipboard.setData(ClipboardData(text: payload));
 
 bool _neverInBookshelf(PluginContentSummary _) => false;
 

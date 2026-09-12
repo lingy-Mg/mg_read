@@ -21,7 +21,6 @@ const int lanSyncMaxShelfItemCount = bookshelfMaxItemCount;
 const int lanSyncMaxBatchBytes = 512 * 1024 * 1024;
 const Duration lanSyncSessionLifetime = Duration(minutes: 10);
 const Duration lanSyncHandshakeTimeout = Duration(seconds: 30);
-const int lanSyncDiscoveryPort = 47231;
 
 enum LanSyncRole { sender, receiver }
 
@@ -161,7 +160,7 @@ final class LanSyncPluginDescriptor {
     required this.version,
     required this.bytes,
     required this.artifactFormat,
-    required this.sha256,
+    required this.checksum,
     required this.transferable,
     this.deferred = false,
     this.developmentFingerprint,
@@ -177,7 +176,7 @@ final class LanSyncPluginDescriptor {
   final LanSyncPluginArtifactFormat artifactFormat;
   final String? developmentFingerprint;
   final int? developmentRevision;
-  final String sha256;
+  final String checksum;
   final bool transferable;
   final bool deferred;
   final String? displayName;
@@ -192,7 +191,7 @@ final class LanSyncPluginDescriptor {
     'developmentRevision': developmentRevision,
     'artifactFormat': artifactFormat.name,
     'provenance': provenance.name,
-    'sha256': sha256,
+    'checksum': checksum,
     'transferable': transferable,
     'deferred': deferred,
     if (displayName != null) 'displayName': displayName,
@@ -211,7 +210,7 @@ final class LanSyncPluginDescriptor {
       },
       developmentFingerprint: _nullableString(json, 'developmentFingerprint', maxLength: 64),
       developmentRevision: _nullableInt(json, 'developmentRevision', min: 1, max: 9007199254740991),
-      sha256: _requiredString(json, 'sha256', maxLength: 128),
+      checksum: _requiredString(json, 'checksum', maxLength: 16),
       transferable: _requiredBool(json, 'transferable'),
       deferred: _optionalBool(json, 'deferred') ?? false,
       displayName: _optionalString(json, 'displayName', maxLength: 512),
@@ -223,10 +222,10 @@ final class LanSyncPluginDescriptor {
       },
       reason: _optionalString(json, 'reason', maxLength: 128),
     );
-    if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(descriptor.sha256) ||
+    if (!RegExp(r'^[a-f0-9]{8}$').hasMatch(descriptor.checksum) ||
         (descriptor.transferable && descriptor.bytes == 0 && !descriptor.deferred) ||
         (descriptor.deferred && (!descriptor.transferable || descriptor.bytes != 0)) ||
-        (descriptor.deferred && descriptor.sha256 != ''.padLeft(64, '0')) ||
+        (descriptor.deferred && descriptor.checksum != ''.padLeft(8, '0')) ||
         (!descriptor.transferable && descriptor.bytes != 0) ||
         (descriptor.provenance == LanSyncPluginProvenance.installed &&
             (descriptor.developmentFingerprint != null || descriptor.developmentRevision != null)) ||

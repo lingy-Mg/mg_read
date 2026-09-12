@@ -195,13 +195,25 @@ final class AppStartupController extends ValueNotifier<AppStartupState> {
     recordStage('shellFirstFrame', resultState: resultState);
   }
 
-  void recordStage(String stage, {required String resultState, String? errorCode, int? attempt, int? durationMicros}) {
+  void recordStage(
+    String stage, {
+    required String resultState,
+    String? errorCode,
+    int? attempt,
+    int? durationMicros,
+    int? phaseDurationMicros,
+    int? itemCount,
+    String? catalogState,
+  }) {
     try {
       diagnostics.emit(
         AppDiagnosticEvents.startupStage,
         attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
           'stage': DiagnosticValue.string(stage),
           'durationMicros': DiagnosticValue.int64(durationMicros ?? _elapsed.elapsedMicroseconds),
+          if (phaseDurationMicros != null) 'phaseDurationMicros': DiagnosticValue.int64(phaseDurationMicros),
+          if (itemCount != null) 'itemCount': DiagnosticValue.int64(itemCount),
+          if (catalogState != null) 'catalogState': DiagnosticValue.string(catalogState),
           'resultState': DiagnosticValue.string(resultState),
           if (errorCode != null) 'errorCode': DiagnosticValue.string(errorCode),
           'attempt': DiagnosticValue.int64(attempt ?? _attemptNumber),

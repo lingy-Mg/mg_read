@@ -592,7 +592,14 @@ String _initializationMessage(RuntimeInitializationStage stage) {
     RuntimeInitializationStage.nodeStarting => '正在启动 Node Runtime',
     RuntimeInitializationStage.pluginCopying => '正在复制数据源插件文件',
     RuntimeInitializationStage.pluginCopied => '数据源插件文件复制完成',
+    RuntimeInitializationStage.pluginInboxScanned => '数据源收件箱扫描完成',
     RuntimeInitializationStage.pluginInstalling => '正在安装数据源插件',
+    RuntimeInitializationStage.pluginUninstalling => '正在删除本地数据源',
+    RuntimeInitializationStage.pluginUninstalled => '本地数据源已删除',
+    RuntimeInitializationStage.developmentPluginsScanned => '开发数据源扫描完成',
+    RuntimeInitializationStage.installedPluginsSnapshotted => '稳定数据源快照完成',
+    RuntimeInitializationStage.pendingPluginsActivated => '待激活数据源处理完成',
+    RuntimeInitializationStage.serviceReady => '数据源 Runtime 服务已启动',
     RuntimeInitializationStage.ready => '数据源运行环境已就绪',
   };
 }

@@ -206,6 +206,55 @@ void main() {
     );
   });
 
+  test('all local source removal projects the current Runtime deletion progress', () async {
+    final diagnostics = DiagnosticsTestkit();
+    addTearDown(diagnostics.dispose);
+    final gateway = _MutablePluginRuntimeGateway();
+    final completion = Completer<void>();
+    gateway.uninstallAllCompletion = completion.future;
+    final container = ProviderContainer(
+      overrides: [
+        diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
+        pluginRuntimeGatewayProvider.overrideWithValue(gateway),
+        configuredFlutterNetworkProxyManagerProvider.overrideWithValue(_testProxyManager()),
+      ],
+    );
+    addTearDown(container.dispose);
+    container.read(pluginRuntimeSourceRemovalProgressProvider);
+
+    final removal = container.read(pluginRuntimeSourceActionProvider.notifier).uninstallAll(totalItems: 3);
+    await Future<void>.delayed(Duration.zero);
+    expect(container.read(pluginRuntimeSourceActionProvider), contains('__all_installed_sources__'));
+    expect(gateway.uninstallAllCalls, 0);
+    expect(
+      container.read(pluginRuntimeSourceRemovalProgressProvider),
+      isA<PluginSourceRemovalProgress>()
+          .having((state) => state.message, 'message', '正在准备清理本地数据源')
+          .having((state) => state.totalItems, 'totalItems', 3),
+    );
+
+    gateway.emitInitializationProgress(
+      RuntimeInitializationProgress.fromPlatform(
+        completedBytes: 1,
+        detail: '正在删除 测试数据源（1/3）',
+        stage: 'plugin_uninstalling',
+        totalBytes: 3,
+      )!,
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      container.read(pluginRuntimeSourceRemovalProgressProvider),
+      isA<PluginSourceRemovalProgress>()
+          .having((state) => state.message, 'message', '正在删除 测试数据源（1/3）')
+          .having((state) => state.completedItems, 'completedItems', 1)
+          .having((state) => state.totalItems, 'totalItems', 3),
+    );
+
+    completion.complete();
+    await removal;
+    expect(container.read(pluginRuntimeSourceRemovalProgressProvider).isRemoving, isFalse);
+  });
+
   test('development package action returns only a file name and records one terminal', () async {
     final diagnostics = DiagnosticsTestkit();
     addTearDown(diagnostics.dispose);
@@ -521,9 +570,14 @@ final class _MutablePluginRuntimeGateway implements PluginRuntimeGateway {
   final List<String> packagedPluginIds = <String>[];
   final List<String> uninstalledPluginIds = <String>[];
   int uninstallAllCalls = 0;
+  Future<void>? uninstallAllCompletion;
+  final StreamController<RuntimeInitializationProgress> _initializationController =
+      StreamController<RuntimeInitializationProgress>.broadcast();
 
   @override
-  Stream<RuntimeInitializationProgress> get initialization => const Stream<RuntimeInitializationProgress>.empty();
+  Stream<RuntimeInitializationProgress> get initialization => _initializationController.stream;
+
+  void emitInitializationProgress(RuntimeInitializationProgress progress) => _initializationController.add(progress);
 
   @override
   Future<PluginInstallationSize> inspectInstallationSize({required String pluginId, required PluginInstallationSizeScope scope}) async =>
@@ -593,6 +647,7 @@ final class _MutablePluginRuntimeGateway implements PluginRuntimeGateway {
   @override
   Future<void> uninstallAll() async {
     uninstallAllCalls += 1;
+    await uninstallAllCompletion;
   }
 
   @override

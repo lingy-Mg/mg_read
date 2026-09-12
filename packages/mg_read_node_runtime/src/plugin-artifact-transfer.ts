@@ -5,7 +5,7 @@
  * - 局域网同步只流式读取已发布的 devsync 制品；用户主动打包仍保留项目声明版本。
  * 注意：开发构建工具在唯一 Runtime VM 内动态导入；Runtime 信任其 artifact 结果，不重复解析；wire 不暴露路径、代码或图标字节。
  */
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -16,6 +16,7 @@ import {
   type PluginArtifactFormat,
 } from "./plugin-single-file.js";
 import { developmentProjectFingerprint } from "./plugin-manager-files.js";
+import { crc32, crc32Update } from "./lan-sync-checksum.js";
 import type { JsonObject } from "./protocol.js";
 
 export const MAX_PLUGIN_ARTIFACT_TRANSFER_BATCH_BYTES = 512 * 1024 * 1024;
@@ -27,7 +28,7 @@ export interface PluginTransferArtifact extends JsonObject {
   readonly format: PluginArtifactFormat;
   readonly id: string;
   readonly provenance: "development" | "developmentReplica" | "installed";
-  readonly sha256: string;
+  readonly checksum: string;
   readonly version: string;
 }
 
@@ -52,7 +53,7 @@ export interface PluginTransferResource {
   readonly bytes: number;
   readonly format: PluginArtifactFormat;
   readonly path: string;
-  readonly sha256: string;
+  readonly checksum: string;
   readonly stream: ReturnType<typeof createReadStream>;
 }
 
@@ -179,7 +180,7 @@ export class PluginArtifactTransferManager {
         ...developmentMetadataForVersion(version),
         format: retained.format,
         id: plugin.id,
-        sha256: await hashFile(retained.path),
+        checksum: await hashFile(retained.path),
         version,
       }));
     }
@@ -276,7 +277,7 @@ export class PluginArtifactTransferManager {
           ...developmentMetadataForVersion(version),
           format: retained.format,
           id,
-          sha256: await hashFile(retained.path),
+          checksum: await hashFile(retained.path),
           version,
         }),
         expiresAt: Number.MAX_SAFE_INTEGER,
@@ -311,7 +312,7 @@ export class PluginArtifactTransferManager {
       for (const path of candidates) {
         if (formatForPath(path) !== artifact.format) continue;
         const metadata = await stat(path).catch(() => undefined);
-        if (metadata?.isFile() && metadata.size === artifact.bytes && await hashFile(path) === artifact.sha256) { matched = path; break; }
+        if (metadata?.isFile() && metadata.size === artifact.bytes && await hashFile(path) === artifact.checksum) { matched = path; break; }
       }
       if (matched === undefined) throw new PluginArtifactTransferError("plugin_transfer_checksum_mismatch");
       candidates.delete(matched);
@@ -323,7 +324,7 @@ export class PluginArtifactTransferManager {
     this.#resources.delete(token);
     if (entry === undefined || entry.expiresAt < Date.now()) return undefined;
     return { bytes: entry.artifact.bytes, format: entry.artifact.format, path: entry.path,
-      sha256: entry.artifact.sha256, stream: createReadStream(entry.path, { highWaterMark: 64 * 1024 }) };
+      checksum: entry.artifact.checksum, stream: createReadStream(entry.path, { highWaterMark: 64 * 1024 }) };
   }
 
   async dispose(): Promise<void> {
@@ -373,7 +374,7 @@ export class PluginArtifactTransferManager {
         format,
         id: project.id,
         provenance,
-        sha256: sha256(built.bytes),
+        checksum: crc32(built.bytes),
         version,
       });
       return Object.freeze({ artifact, expiresAt: Number.MAX_SAFE_INTEGER, path });
@@ -398,7 +399,7 @@ export class PluginArtifactTransferManager {
       const path = resolve(root, decoded.format === "singleFile" ? "artifact.mgplugin.js" : "artifact.mgplugin");
       const metadata = await stat(path);
       if (!metadata.isFile() || metadata.size !== decoded.bytes ||
-          await hashFile(path) !== decoded.sha256) return undefined;
+          await hashFile(path) !== decoded.checksum) return undefined;
       return Object.freeze({ artifact: Object.freeze(decoded), expiresAt: Number.MAX_SAFE_INTEGER, path });
     } catch {
       return undefined;
@@ -521,7 +522,7 @@ export function isPluginTransferArtifact(value: unknown): value is PluginTransfe
   if (!isRecord(value) || Object.keys(value).length !== 8) return false;
   return isPluginId(value.id) && typeof value.version === "string" && parseSemver(value.version) !== null &&
     typeof value.bytes === "number" && Number.isSafeInteger(value.bytes) && value.bytes > 0 && value.bytes <= MAX_PLUGIN_ARTIFACT_BYTES &&
-    typeof value.sha256 === "string" && /^[a-f0-9]{64}$/.test(value.sha256) && (value.format === "archive" || value.format === "singleFile") &&
+    typeof value.checksum === "string" && /^[a-f0-9]{8}$/.test(value.checksum) && (value.format === "archive" || value.format === "singleFile") &&
     (value.provenance === "installed" || value.provenance === "development" || value.provenance === "developmentReplica") &&
     ((value.provenance === "installed" && value.developmentFingerprint === null && value.developmentRevision === null) ||
       (value.provenance !== "installed" && typeof value.developmentFingerprint === "string" && /^[a-f0-9]{64}$/.test(value.developmentFingerprint) &&
@@ -552,8 +553,13 @@ function isBuildResult(value: unknown): value is { bytes: Uint8Array; fileName: 
     typeof value.fileName === "string" && value.fileName.length > 0 && value.fileName.length <= 240 &&
     (value.format === "archive" || value.format === "singleFile");
 }
-async function hashFile(path: string): Promise<string> { return sha256(await readFile(path)); }
-function sha256(bytes: Uint8Array): string { return createHash("sha256").update(bytes).digest("hex"); }
+async function hashFile(path: string): Promise<string> {
+  let checksum = 0xffffffff;
+  for await (const chunk of createReadStream(path)) {
+    checksum = crc32Update(checksum, chunk);
+  }
+  return ((checksum ^ 0xffffffff) >>> 0).toString(16).padStart(8, "0");
+}
 interface Semver { major: number; minor: number; patch: number; prerelease: string[] }
 function parseSemver(value: string): Semver | null { const m = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/.exec(value); return m === null ? null : { major: Number(m[1]), minor: Number(m[2]), patch: Number(m[3]), prerelease: m[4]?.split(".") ?? [] }; }
 function compareSemver(left: string, right: string): number { const a = parseSemver(left)!; const b = parseSemver(right)!; for (const k of ["major", "minor", "patch"] as const) if (a[k] !== b[k]) return a[k] > b[k] ? 1 : -1; if (!a.prerelease.length && b.prerelease.length) return 1; if (a.prerelease.length && !b.prerelease.length) return -1; return a.prerelease.join(".").localeCompare(b.prerelease.join(".")); }

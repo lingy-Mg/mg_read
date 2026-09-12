@@ -253,6 +253,9 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
       contentFailureMessage: isActiveLayer && state.status == DiscoveryPageStatus.failure ? _sourceErrorTitle(state.error!) : null,
       contentFailureDetail: isActiveLayer && state.status == DiscoveryPageStatus.failure ? _sourceErrorDetail(state.error!) : null,
       contentFailureCode: isActiveLayer && state.status == DiscoveryPageStatus.failure ? state.error!.code.wireValue : null,
+      contentFailureCopyPayload: isActiveLayer && state.status == DiscoveryPageStatus.failure
+          ? _sourceErrorCopyPayload(source: selectedSource, error: state.error!)
+          : null,
     );
   }
 
@@ -461,6 +464,27 @@ String _sourceErrorDetail(AppError error) => <String>[
   if (error.detail case final detail?) '技术详情：$detail',
   if (error.location case final location?) '诊断位置：$location',
 ].join('\n');
+
+String _sourceErrorCopyPayload({required PluginSourceDescriptor source, required AppError error}) {
+  final lines = <String>[
+    'MgRead 发现内容诊断信息',
+    '操作：加载发现内容',
+    '失败能力：source.discover.v1',
+    '数据源名称：${source.displayName}',
+    '插件 ID：${source.id}',
+    '插件版本：${source.pluginVersion}',
+    '错误码：${error.code.wireValue}',
+    '错误分类：${error.category.name}',
+    '可重试：${error.retryable ? '允许' : '不建议'}',
+    '用户原因：${_sourceErrorReason(error)}',
+  ];
+  if (error.retryAfter case final retryAfter?) lines.add('建议等待：${retryAfter.inMilliseconds}ms');
+  if (error.traceId case final traceId?) lines.add('跟踪 ID：$traceId');
+  if (error.detail case final detail? when detail.trim().isNotEmpty) lines.add('技术详情：${detail.trim()}');
+  if (error.location case final location? when location.trim().isNotEmpty) lines.add('诊断位置：${location.trim()}');
+  lines.add('页面详情：${_sourceErrorDetail(error)}');
+  return lines.join('\n');
+}
 
 String _sourceErrorReason(AppError error) => switch (error.code) {
   AppErrorCode.invalidFormat => '数据源返回内容未通过 Runtime 格式或大小校验。',

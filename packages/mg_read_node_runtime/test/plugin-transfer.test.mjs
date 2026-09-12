@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createHash } from "node:crypto";
 import test from "node:test";
 
 import {
   MAX_PLUGIN_TRANSFER_BYTES,
   PluginTransferManager,
 } from "../dist/plugin-transfer.js";
+import { crc32 } from "../dist/lan-sync-checksum.js";
 
 test("plugin transfer v2 lists retained artifacts and plans SemVer", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "mgread-transfer-test-"));
@@ -18,7 +18,7 @@ test("plugin transfer v2 lists retained artifacts and plans SemVer", async (t) =
   const archivePath = join(root, "plugin-archives", "org.example.source", "1.2.0.mgplugin");
   await mkdir(join(root, "plugin-archives", "org.example.source"), { recursive: true });
   await writeFile(archivePath, archive);
-  const sha256 = createHash("sha256").update(archive).digest("hex");
+  const checksum = crc32(archive);
   const manager = new PluginTransferManager(root);
   const listed = await manager.listExportable([{ id: "org.example.source", activeVersion: "1.2.0", pendingVersion: null }]);
   assert.deepEqual(listed, [{
@@ -75,7 +75,7 @@ test("plugin transfer v2 lists retained artifacts and plans SemVer", async (t) =
     format: "archive",
     id: `org.example.extra-${index}`,
     provenance: "installed",
-    sha256,
+    checksum,
     version: "1.0.0",
   }));
   assert.equal(manager.plan(largePlan, installed).length, 33);

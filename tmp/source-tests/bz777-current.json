@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "mode": "single",
+  "status": "failed",
+  "startedAt": "2026-09-12T13:52:03.241Z",
+  "durationMs": 1739,
+  "totals": {
+    "sources": 1,
+    "passed": 0,
+    "partial": 0,
+    "failed": 1
+  },
+  "sources": [
+    {
+      "pluginId": "org.mgread.bz777777777-comv3",
+      "source": "bz777777777-comv3",
+      "version": "3.0.1",
+      "status": "failed",
+      "durationMs": 1703,
+      "failure": {
+        "name": "SourceTestFailure",
+        "code": "source_webview_interaction_required",
+        "stage": "webview.show",
+        "summary": {}
+      }
+    }
+  ]
+}

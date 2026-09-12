@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/features/lan_sync/application/device_identity_store.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/application/paired_device_repository.dart';
+import 'package:mg_read/features/lan_sync/data/lan_sync_checksum.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/data/paired_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
@@ -918,7 +919,7 @@ final class _PluginGateway implements LanSyncGateway, LanSyncPairedGateway {
         artifactFormat: plugin.artifactFormat,
         developmentFingerprint: plugin.developmentFingerprint,
         developmentRevision: plugin.developmentRevision,
-        sha256: sha256.convert(const <int>[1, 2, 3]).toString(),
+        checksum: lanSyncChecksum(const <int>[1, 2, 3]),
         transferable: true,
         provenance: plugin.provenance,
       );
@@ -1009,7 +1010,7 @@ LanSyncPluginDescriptor _offer(String id) => LanSyncPluginDescriptor(
   artifactFormat: LanSyncPluginArtifactFormat.archive,
   developmentFingerprint: ''.padLeft(64, 'b'),
   developmentRevision: 7,
-  sha256: ''.padLeft(64, '0'),
+  checksum: ''.padLeft(8, '0'),
   transferable: true,
   deferred: true,
   provenance: LanSyncPluginProvenance.development,

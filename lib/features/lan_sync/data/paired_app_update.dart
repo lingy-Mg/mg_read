@@ -98,7 +98,7 @@ Future<void> pullPairedAppUpdate({
       descriptor,
       client: client,
       authenticate: (request, hash) =>
-          LanSyncHttpAuthentication.sign(request, deviceId: identity.deviceId, sharedSecret: sharedSecret, contentSha256: hash),
+          LanSyncHttpAuthentication.sign(request, deviceId: identity.deviceId, sharedSecret: sharedSecret, contentChecksum: hash),
       onProgress: onProgress,
     );
     await _jsonRequest(

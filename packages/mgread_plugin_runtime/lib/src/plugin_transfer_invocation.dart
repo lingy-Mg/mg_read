@@ -16,7 +16,7 @@ final class PluginTransferArtifact {
     required this.format,
     required this.pluginId,
     required this.provenance,
-    required this.sha256,
+    required this.checksum,
     required this.version,
   });
 
@@ -26,7 +26,7 @@ final class PluginTransferArtifact {
   final PluginArtifactFormat format;
   final String pluginId;
   final PluginArtifactProvenance provenance;
-  final String sha256;
+  final String checksum;
   final String version;
 
   Map<String, Object?> toJson() => <String, Object?>{
@@ -36,7 +36,7 @@ final class PluginTransferArtifact {
     'format': format.name,
     'id': pluginId,
     'provenance': provenance.name,
-    'sha256': sha256,
+    'checksum': checksum,
     'version': version,
   };
 }
@@ -264,7 +264,7 @@ PluginTransferArtifact _decodePluginTransferArtifact(Object? value) {
     'developmentReplica' => PluginArtifactProvenance.developmentReplica,
     _ => null,
   };
-  final sha256 = item['sha256'];
+  final checksum = item['checksum'];
   final version = item['version'];
   if (bytes is! int ||
       bytes <= 0 ||
@@ -273,8 +273,8 @@ PluginTransferArtifact _decodePluginTransferArtifact(Object? value) {
       pluginId is! String ||
       provenance == null ||
       version is! String ||
-      sha256 is! String ||
-      !RegExp(r'^[a-f0-9]{64}$').hasMatch(sha256) ||
+      checksum is! String ||
+      !RegExp(r'^[a-f0-9]{8}$').hasMatch(checksum) ||
       (provenance == PluginArtifactProvenance.installed &&
           (developmentFingerprint != null || developmentRevision != null)) ||
       (provenance != PluginArtifactProvenance.installed &&
@@ -294,7 +294,7 @@ PluginTransferArtifact _decodePluginTransferArtifact(Object? value) {
     format: format,
     pluginId: pluginId,
     provenance: provenance,
-    sha256: sha256,
+    checksum: checksum,
     version: version,
   );
 }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
+  chmod,
   cp,
   mkdtemp,
   mkdir,
@@ -305,6 +306,109 @@ test("persisted current plugins single-flight their first lazy activation", asyn
   );
   assert.equal(events.filter((event) => event.code === "plugin_load_started").length, 1);
   assert.equal(events.filter((event) => event.code === "plugin_load_completed").length, 1);
+});
+
+test("trusted catalog keeps stable source metadata off the cold-start version scan", async (t) => {
+  const dataRoot = await temporaryDirectory(t, "mgread-plugin-catalog-hit-");
+  await new PluginInstaller(dataRoot).installProject(fixtureRoot);
+  const priming = new PluginManager(dataRoot);
+  await priming.initialize();
+  await priming.close();
+
+  assert.equal(await fileExists(join(dataRoot, "plugin-catalog-v1.json")), true);
+  assert.equal(await fileExists(join(dataRoot, "plugin-catalog-dirty")), false);
+  const packagePath = join(dataRoot, "plugins", "org.mgread.runtime.fixture", "versions", "1.0.0", "package.json");
+  await chmod(packagePath, 0o644);
+  await writeFile(
+    packagePath,
+    "{ damaged before restart\n",
+  );
+
+  const events = [];
+  const manager = new PluginManager(dataRoot, { events: (event) => events.push(event) });
+  t.after(() => manager.close());
+  await manager.initialize();
+  const listed = await manager.listInstalled();
+  assert.equal(listed[0].displayName, "Runtime 标准测试数据源");
+  assert.equal(listed[0].status, "active");
+  assert.equal(events.filter((event) => event.code === "plugin_load_started").length, 0);
+  assert.equal(
+    events.find((event) => event.startupPhase === "installed_snapshot")?.catalogState,
+    "hit",
+  );
+
+  await assert.rejects(
+    manager.search(
+      "org.mgread.runtime.fixture",
+      { query: "首次调用复核", cursor: null, pageSize: 20 },
+      new AbortController().signal,
+      String(Date.now() + 5_000),
+    ),
+    (error) => error?.code === "plugin_load_failed",
+  );
+  assert.equal((await manager.listInstalled())[0].status, "quarantined");
+});
+
+test("invalid catalog content falls back to a bounded repair scan", async (t) => {
+  const dataRoot = await temporaryDirectory(t, "mgread-plugin-catalog-invalid-");
+  await new PluginInstaller(dataRoot).installProject(fixtureRoot);
+  const priming = new PluginManager(dataRoot);
+  await priming.initialize();
+  await priming.close();
+  await writeFile(
+    join(dataRoot, "plugin-catalog-v1.json"),
+    `${JSON.stringify({
+      entries: [{
+        activeVersion: null,
+        descriptor: null,
+        enabled: true,
+        id: "../../outside",
+        pendingVersion: null,
+        status: "damaged",
+        uninstallPending: false,
+      }],
+      schemaVersion: 1,
+    })}\n`,
+  );
+
+  const events = [];
+  const manager = new PluginManager(dataRoot, { events: (event) => events.push(event) });
+  t.after(() => manager.close());
+  await manager.initialize();
+  assert.equal((await manager.listInstalled()).length, 1);
+  assert.equal(
+    events.find((event) => event.startupPhase === "installed_snapshot")?.catalogState,
+    "rebuilt",
+  );
+});
+
+test("dirty catalog repairs once and all management changes share its observer", async (t) => {
+  const dataRoot = await temporaryDirectory(t, "mgread-plugin-catalog-repair-");
+  await new PluginInstaller(dataRoot).installProject(fixtureRoot);
+  const priming = new PluginManager(dataRoot);
+  await priming.initialize();
+  await priming.close();
+  await writeFile(join(dataRoot, "plugin-catalog-dirty"), "1\n");
+
+  const events = [];
+  const manager = new PluginManager(dataRoot, { events: (event) => events.push(event) });
+  t.after(() => manager.close());
+  await manager.initialize();
+  assert.equal(
+    events.find((event) => event.startupPhase === "installed_snapshot")?.catalogState,
+    "rebuilt",
+  );
+  const changesAfterRepair = events.filter((event) => event.code === "plugin_catalog_changed").length;
+  assert.equal(changesAfterRepair, 1);
+
+  await manager.setEnabled("org.mgread.runtime.fixture", false);
+  await manager.setEnabled("org.mgread.runtime.fixture", true);
+  await manager.uninstall("org.mgread.runtime.fixture");
+  assert.equal(
+    events.filter((event) => event.code === "plugin_catalog_changed").length,
+    changesAfterRepair + 3,
+  );
+  assert.deepEqual(await manager.listInstalled(), []);
 });
 
 test("development projects stay metadata-only until an operation needs code", async (t) => {

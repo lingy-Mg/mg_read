@@ -37,6 +37,7 @@ class MgReadApp extends ConsumerStatefulWidget {
 
 class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserver {
   Timer? _developmentSyncDebounce;
+  StreamSubscription<RuntimeInitializationProgress>? _runtimeInitializationSubscription;
 
   @override
   void initState() {
@@ -48,6 +49,24 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
     // Let the first usable library frame render before warming the process-
     // scoped Runtime. Every feature joins this one global startup Future.
     final startup = ref.read(appStartupControllerProvider);
+    _runtimeInitializationSubscription = ref.read(pluginRuntimeGatewayProvider).initialization.listen((progress) {
+      final stage = switch (progress.stage) {
+        RuntimeInitializationStage.pluginInboxScanned => 'runtimeInbox',
+        RuntimeInitializationStage.developmentPluginsScanned => 'runtimeDevelopmentScan',
+        RuntimeInitializationStage.installedPluginsSnapshotted => 'runtimeInstalledSnapshot',
+        RuntimeInitializationStage.pendingPluginsActivated => 'runtimePendingActivation',
+        RuntimeInitializationStage.serviceReady => 'runtimeServiceReady',
+        _ => null,
+      };
+      if (stage == null || startup.isClosed) return;
+      startup.recordStage(
+        stage,
+        resultState: 'complete',
+        phaseDurationMicros: progress.durationMicros,
+        itemCount: progress.itemCount,
+        catalogState: progress.catalogState,
+      );
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(_warmAfterLibrary(startup));
     });
@@ -147,6 +166,7 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
   @override
   void dispose() {
     _developmentSyncDebounce?.cancel();
+    unawaited(_runtimeInitializationSubscription?.cancel());
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

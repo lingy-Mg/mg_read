@@ -33,6 +33,7 @@ import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.da
 
 import 'lan_sync_qr_scanner_page.dart';
 import 'lan_sync_overview_widgets.dart';
+import 'lan_sync_sheet_widgets.dart';
 import 'paired_device_widgets.dart';
 import 'app_transfer_widgets.dart';
 
@@ -51,22 +52,12 @@ class LanSyncPage extends ConsumerStatefulWidget {
 }
 
 class _LanSyncPageState extends ConsumerState<LanSyncPage> {
-  final TextEditingController _manualAddressController = TextEditingController();
-  final TextEditingController _appManualAddressController = TextEditingController();
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(ref.read(deviceSyncControllerProvider.notifier).start());
     });
-  }
-
-  @override
-  void dispose() {
-    _manualAddressController.dispose();
-    _appManualAddressController.dispose();
-    super.dispose();
   }
 
   Future<void> _back() async {
@@ -167,34 +158,16 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
   List<Widget> _phaseContent(LanSyncViewState state) {
     return switch (state.phase) {
       LanSyncPhase.discovering => <Widget>[
-        if (state.peers.isEmpty) const _HintCard(message: '暂未发现设备，可等待广播或手动输入发送端地址。'),
-        for (final peer in state.peers)
-          Card(
-            child: ListTile(
-              key: Key('lan-sync-peer-${peer.sessionId}'),
-              leading: const Icon(Icons.devices_rounded),
-              title: Text(peer.label),
-              subtitle: Text(peer.endpoint),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => ref.read(lanSyncControllerProvider.notifier).connectPeer(peer),
-            ),
+        const _HintCard(message: '请扫描发送设备显示的二维码，局域网内不会自动发现或广播设备。'),
+        if (_supportsQrScanner) ...<Widget>[
+          const SizedBox(height: AppSpacing.regular),
+          FilledButton.icon(
+            key: const Key('lan-sync-scan-qr'),
+            onPressed: () => unawaited(_scanAndRoute()),
+            icon: const Icon(Icons.qr_code_scanner_rounded),
+            label: const Text('扫描二维码'),
           ),
-        const SizedBox(height: AppSpacing.regular),
-        TextField(
-          key: const Key('lan-sync-manual-address'),
-          controller: _manualAddressController,
-          decoration: const InputDecoration(labelText: '手动连接地址', hintText: '会话ID@192.168.1.2:端口', border: OutlineInputBorder()),
-          autocorrect: false,
-          enableSuggestions: false,
-          onSubmitted: (_) => _connectManual(),
-        ),
-        const SizedBox(height: AppSpacing.compact),
-        FilledButton.tonalIcon(
-          key: const Key('lan-sync-connect-manual'),
-          onPressed: _connectManual,
-          icon: const Icon(Icons.link_rounded),
-          label: const Text('连接'),
-        ),
+        ],
       ],
       LanSyncPhase.waitingForPeer => <Widget>[
         LanSyncConnectionQrCard(offer: state.connectionOffer),
@@ -272,10 +245,6 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
     };
   }
 
-  void _connectManual() {
-    ref.read(lanSyncControllerProvider.notifier).connectManual(_manualAddressController.text);
-  }
-
   bool get _supportsQrScanner => defaultTargetPlatform == TargetPlatform.android;
 
   Future<void> _scanAndRoute() async {
@@ -287,7 +256,7 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
     final pairingOffer = LanPairingQrPayload.decode(payload);
     if (pairingOffer != null) {
       unawaited(ref.read(deviceSyncControllerProvider.notifier).joinPairing(payload));
-      if (mounted) await _showAddDeviceSheet();
+      if (mounted) await _showAddDeviceSheet(beginPairing: false);
       return;
     }
 
@@ -311,20 +280,28 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
     );
   }
 
-  Future<void> _showAddDeviceSheet() => showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    isScrollControlled: true,
-    builder: (context) => Consumer(
-      builder: (context, ref, _) => DevicePairingSheet(
-        state: ref.watch(deviceSyncControllerProvider),
-        onBeginPairing: () => unawaited(ref.read(deviceSyncControllerProvider.notifier).beginPairing()),
-        onApprovePairing: () => unawaited(ref.read(deviceSyncControllerProvider.notifier).approvePairing()),
-        onRejectPairing: () => unawaited(ref.read(deviceSyncControllerProvider.notifier).rejectPairing()),
-        onCancelPairing: () => unawaited(ref.read(deviceSyncControllerProvider.notifier).cancelPairing()),
+  Future<void> _showAddDeviceSheet({bool beginPairing = true}) async {
+    final controller = ref.read(deviceSyncControllerProvider.notifier);
+    if (beginPairing && !ref.read(deviceSyncControllerProvider).pairingBusy) unawaited(controller.beginPairing());
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => Consumer(
+        builder: (context, ref, _) => DevicePairingSheet(
+          state: ref.watch(deviceSyncControllerProvider),
+          onBeginPairing: () => unawaited(ref.read(deviceSyncControllerProvider.notifier).beginPairing()),
+          onApprovePairing: () => unawaited(ref.read(deviceSyncControllerProvider.notifier).approvePairing()),
+          onRejectPairing: () => unawaited(ref.read(deviceSyncControllerProvider.notifier).rejectPairing()),
+          onCancelPairing: () {
+            unawaited(ref.read(deviceSyncControllerProvider.notifier).cancelPairing());
+            Navigator.of(context).pop();
+          },
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   Future<void> _showAllDevicesSheet() => showModalBottomSheet<void>(
     context: context,
@@ -351,40 +328,37 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
       builder: (sheetContext) => Consumer(
         builder: (context, ref, _) {
           final appState = ref.watch(appTransferControllerProvider);
-          return SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.comfortable,
-                AppSpacing.compact,
-                AppSpacing.comfortable,
-                AppSpacing.comfortable,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  Text('发送 App', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-                  const SizedBox(height: AppSpacing.unit),
-                  const Text('生成二维码后，对方使用“扫码连接 / 接收”即可继续。'),
-                  const SizedBox(height: AppSpacing.regular),
-                  AppTransferPanel(
-                    state: appState,
-                    manualController: _appManualAddressController,
-                    onConnectManual: () => unawaited(ref.read(appTransferControllerProvider.notifier).connectManual(_appManualAddressController.text)),
-                    onConnectPeer: (peer) => unawaited(ref.read(appTransferControllerProvider.notifier).connectPeer(peer)),
-                    onInstall: (force) => unawaited(ref.read(appTransferControllerProvider.notifier).install(force: force)),
-                    onCancel: () {
-                      unawaited(ref.read(appTransferControllerProvider.notifier).cancel());
-                      Navigator.of(sheetContext).pop();
-                    },
-                    onReset: () {
+          return LanSyncSheetFrame(
+            title: '发送 App',
+            description: '生成二维码后，对方使用“扫码连接 / 接收”即可继续。',
+            closeLabel: appState.active ? '取消 App 传输' : '关闭',
+            onClose: () {
+              if (appState.active) unawaited(ref.read(appTransferControllerProvider.notifier).cancel());
+              Navigator.of(sheetContext).pop();
+            },
+            footer: appState.phase == AppTransferPhase.completed || appState.phase == AppTransferPhase.failed
+                ? FilledButton(
+                    key: const Key('app-transfer-finish'),
+                    onPressed: () {
                       unawaited(ref.read(appTransferControllerProvider.notifier).reset());
                       Navigator.of(sheetContext).pop();
                     },
-                  ),
-                ],
-              ),
+                    child: const Text('完成'),
+                  )
+                : null,
+            child: AppTransferPanel(
+              state: appState,
+              showActions: false,
+              onScanQr: null,
+              onInstall: (force) => unawaited(ref.read(appTransferControllerProvider.notifier).install(force: force)),
+              onCancel: () {
+                unawaited(ref.read(appTransferControllerProvider.notifier).cancel());
+                Navigator.of(sheetContext).pop();
+              },
+              onReset: () {
+                unawaited(ref.read(appTransferControllerProvider.notifier).reset());
+                Navigator.of(sheetContext).pop();
+              },
             ),
           );
         },
@@ -393,7 +367,10 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
     if (mounted && ref.read(appTransferControllerProvider).active) await ref.read(appTransferControllerProvider.notifier).cancel();
   }
 
-  Future<void> _showTemporarySendSheet() => _showTemporaryDataSheet(receiving: false);
+  Future<void> _showTemporarySendSheet() {
+    unawaited(ref.read(lanSyncControllerProvider.notifier).startSending());
+    return _showTemporaryDataSheet(receiving: false);
+  }
 
   Future<void> _showTemporaryDataSheet({required bool receiving}) async {
     await showModalBottomSheet<void>(
@@ -404,7 +381,6 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
         builder: (context, ref, _) => _TemporaryDataSheet(
           state: ref.watch(lanSyncControllerProvider),
           receiving: receiving,
-          onGenerate: () => unawaited(ref.read(lanSyncControllerProvider.notifier).startSending()),
           onCancel: () {
             unawaited(ref.read(lanSyncControllerProvider.notifier).cancel());
             Navigator.of(sheetContext).pop();
@@ -468,31 +444,12 @@ class LanSyncConnectionQrCard extends StatelessWidget {
             const SizedBox(height: AppSpacing.regular),
             if (value != null) ...<Widget>[
               Text(
-                '二维码包含 ${value.addresses.length} 个可用地址，接收端会并发测试并自动选择。',
+                '请使用接收设备扫描二维码。二维码包含 ${value.addresses.length} 个可用局域网地址。',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: AppSpacing.regular),
             ],
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text('手动连接地址', style: Theme.of(context).textTheme.labelLarge),
-            ),
-            const SizedBox(height: AppSpacing.unit),
-            if (value == null)
-              const Align(alignment: Alignment.centerLeft, child: Text('未找到可用的私有 IPv4 地址'))
-            else
-              for (var index = 0; index < value.manualAddresses.length; index++)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: EdgeInsets.only(bottom: index == value.manualAddresses.length - 1 ? 0 : AppSpacing.unit),
-                    child: SelectableText(
-                      value.manualAddresses[index],
-                      key: Key(index == 0 ? 'lan-sync-sender-address' : 'lan-sync-sender-address-$index'),
-                    ),
-                  ),
-                ),
           ],
         ),
       ),

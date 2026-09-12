@@ -557,7 +557,7 @@ final class PairedSyncClientSession {
     for (var attempt = 0; attempt < 3; attempt++) {
       try {
         final request = await _client.putUrl(uri);
-        LanSyncHttpAuthentication.sign(request, deviceId: _identity.deviceId, sharedSecret: _secret, contentSha256: plugin.sha256);
+        LanSyncHttpAuthentication.sign(request, deviceId: _identity.deviceId, sharedSecret: _secret, contentChecksum: plugin.checksum);
         request.contentLength = plugin.bytes;
         request.headers.contentType = ContentType.binary;
         await request.addStream(artifact.openRead());
@@ -613,7 +613,7 @@ final class PairedSyncClientSession {
           plugin,
           client: _client,
           authenticate: (request, hash) =>
-              LanSyncHttpAuthentication.sign(request, deviceId: _identity.deviceId, sharedSecret: _secret, contentSha256: hash),
+              LanSyncHttpAuthentication.sign(request, deviceId: _identity.deviceId, sharedSecret: _secret, contentChecksum: hash),
         );
         await gateway.importPluginArchive(plugin, stream);
       });

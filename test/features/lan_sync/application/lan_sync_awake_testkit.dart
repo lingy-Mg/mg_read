@@ -17,7 +17,7 @@ const awakePlugin = LanSyncPluginDescriptor(
   version: '1.0.0',
   bytes: 3,
   artifactFormat: LanSyncPluginArtifactFormat.archive,
-  sha256: '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81',
+  checksum: '55bc801d',
   transferable: true,
 );
 const awakeManifest = LanSyncManifest(plugins: [awakePlugin], shelfItems: [], skippedShelfItems: 0);

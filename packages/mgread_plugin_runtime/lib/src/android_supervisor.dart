@@ -326,7 +326,7 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
       ),
     );
     if (materialized.artifact.bytes != artifact.bytes ||
-        materialized.artifact.sha256 != artifact.sha256) {
+        materialized.artifact.checksum != artifact.checksum) {
       throw const PluginRuntimeException(
         'plugin_transfer_checksum_mismatch',
         'Android Runtime returned an invalid transfer artifact.',
@@ -349,14 +349,14 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
       final item = _jsonObject(metadata, 'Android plugin transfer export');
       final id = item['id'];
       final bytes = item['bytes'];
-      final sha256 = item['sha256'];
+      final checksum = item['checksum'];
       if (id is! String ||
           bytes is! int ||
           bytes <= 0 ||
           bytes > maxPluginTransferBytes ||
           item['format'] != offer.format.name ||
-          sha256 is! String ||
-          !RegExp(r'^[a-f0-9]{64}$').hasMatch(sha256)) {
+          checksum is! String ||
+          !RegExp(r'^[a-f0-9]{8}$').hasMatch(checksum)) {
         if (id is String) {
           try {
             await _androidRuntimeChannel.invokeMethod<void>(
@@ -379,7 +379,7 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
         format: offer.format,
         pluginId: offer.pluginId,
         provenance: offer.provenance,
-        sha256: sha256,
+        checksum: checksum,
         version: offer.version,
       );
       return MaterializedPluginArtifact(
@@ -530,7 +530,7 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
               'bytes': item.artifact.bytes,
               'format': item.artifact.format.name,
               'pluginId': item.artifact.pluginId,
-              'sha256': item.artifact.sha256,
+              'checksum': item.artifact.checksum,
               'version': item.artifact.version,
             });
         if (id == null || id.isEmpty) {
@@ -638,6 +638,9 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
   void _onNativeProgress(dynamic raw) {
     if (raw is! Map<Object?, Object?>) return;
     final completedBytes = raw['completedBytes'];
+    final catalogState = raw['catalogState'];
+    final durationMicros = raw['durationMicros'];
+    final itemCount = raw['itemCount'];
     final stage = raw['stage'];
     final totalBytes = raw['totalBytes'];
     final detail = raw['detail'];
@@ -645,14 +648,20 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
         stage is! String ||
         totalBytes is! int ||
         (detail != null && detail is! String) ||
+        (catalogState != null && catalogState is! String) ||
+        (durationMicros != null && durationMicros is! int) ||
+        (itemCount != null && itemCount is! int) ||
         completedBytes < 0 ||
         totalBytes < 0 ||
         completedBytes > totalBytes && totalBytes != 0) {
       return;
     }
     final progress = RuntimeInitializationProgress.fromPlatform(
+      catalogState: catalogState as String?,
       completedBytes: completedBytes,
       detail: detail as String?,
+      durationMicros: durationMicros as int?,
+      itemCount: itemCount as int?,
       stage: stage,
       totalBytes: totalBytes,
     );

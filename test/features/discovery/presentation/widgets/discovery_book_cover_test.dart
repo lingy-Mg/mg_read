@@ -104,6 +104,22 @@ void main() {
     expect(tester.widget<Image>(find.byType(Image)).fit, BoxFit.cover);
   });
 
+  testWidgets('keeps the fixed height and derives width when width is not constrained', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      _host(
+        DiscoveryBookCover(
+          title: '仅限制高度的封面',
+          variant: DiscoveryCoverVariant.gothic,
+          height: 174,
+          coverBytes: base64Decode(_onePixelPngBase64),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.getSize(find.byType(DiscoveryBookCover)), const Size(174, 174));
+  });
+
   testWidgets('loads remote source icons through the shared persistent cover loader', (WidgetTester tester) async {
     BookCoverMemoryCache.clear();
     addTearDown(BookCoverMemoryCache.clear);

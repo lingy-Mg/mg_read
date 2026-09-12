@@ -14,6 +14,7 @@ import { mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import type { DesktopRuntimeProgressSink } from "./desktop-runtime.js";
+import { InstalledPluginCatalog } from "./plugin-catalog.js";
 import { PluginInstaller } from "./plugin-installer.js";
 import { MAX_PLUGIN_ARTIFACT_BYTES } from "./plugin-single-file.js";
 
@@ -30,13 +31,19 @@ interface BundledPluginMarkers {
   readonly uninstallPending: boolean;
 }
 
+export interface PluginArtifactInboxSummary {
+  readonly discoveredCount: number;
+  readonly installedCount: number;
+}
+
 /** Installs new immutable bundled artifacts without overriding user markers. */
 export async function seedBundledPluginArtifacts(
   dataRoot: string,
   bundledPluginRoot: string | undefined,
   onProgress: DesktopRuntimeProgressSink,
-): Promise<void> {
-  if (bundledPluginRoot === undefined) return;
+  catalog = new InstalledPluginCatalog(dataRoot),
+): Promise<PluginArtifactInboxSummary> {
+  if (bundledPluginRoot === undefined) return Object.freeze({ discoveredCount: 0, installedCount: 0 });
   const pluginsRoot = resolve(dataRoot, "plugins");
   await mkdir(pluginsRoot, { recursive: true });
   const artifacts = (await readdir(bundledPluginRoot, { withFileTypes: true }))
@@ -44,13 +51,16 @@ export async function seedBundledPluginArtifacts(
     .map((entry) => parseBundledPluginArtifact(entry.name, bundledPluginRoot))
     .sort((left, right) => left.path.localeCompare(right.path));
   if (artifacts.length === 0) throw new Error("Runtime bundled plugin assets are unavailable.");
-  const installer = new PluginInstaller(dataRoot, { onProgress });
+  const installer = new PluginInstaller(dataRoot, { catalog, onProgress });
+  let installedCount = 0;
   for (const artifact of artifacts) {
     const markers = await readBundledPluginMarkers(resolve(pluginsRoot, artifact.pluginId));
     if (markers.disabled || markers.uninstallPending ||
         markers.currentVersion === artifact.version || markers.pendingVersion === artifact.version) continue;
     await installer.installArtifact(artifact.path);
+    installedCount += 1;
   }
+  return Object.freeze({ discoveredCount: artifacts.length, installedCount });
 }
 
 /** Installs and consumes every bounded artifact handed off by a platform adapter. */
@@ -58,14 +68,16 @@ export async function installPluginArtifactInbox(
   dataRoot: string,
   inboxRoot: string | undefined,
   onProgress: DesktopRuntimeProgressSink,
-): Promise<void> {
-  if (inboxRoot === undefined) return;
+  catalog = new InstalledPluginCatalog(dataRoot),
+): Promise<PluginArtifactInboxSummary> {
+  if (inboxRoot === undefined) return Object.freeze({ discoveredCount: 0, installedCount: 0 });
   await mkdir(inboxRoot, { recursive: true });
   const artifacts = (await readdir(inboxRoot, { withFileTypes: true }))
     .filter((entry) => entry.isFile() && /^[a-zA-Z0-9._-]+\.mgplugin(?:\.js)?$/.test(entry.name))
     .sort((left, right) => left.name.localeCompare(right.name));
   if (artifacts.length > 32) throw new Error("Runtime plugin import inbox is over budget.");
-  const installer = new PluginInstaller(dataRoot, { onProgress });
+  const installer = new PluginInstaller(dataRoot, { catalog, onProgress });
+  let installedCount = 0;
   for (const artifact of artifacts) {
     const path = resolve(inboxRoot, artifact.name);
     const metadata = await stat(path);
@@ -74,12 +86,14 @@ export async function installPluginArtifactInbox(
     }
     try {
       await installer.installArtifact(path, { replaceExistingVersion: true });
+      installedCount += 1;
       await rm(path, { force: true });
     } catch (error) {
       await rm(path, { force: true }).catch(() => {});
       throw error;
     }
   }
+  return Object.freeze({ discoveredCount: artifacts.length, installedCount });
 }
 
 function parseBundledPluginArtifact(name: string, root: string): BundledPluginArtifact {

@@ -1,7 +1,7 @@
 /// 临时 App 传输与通用 App 制品 HTTP 下载。
 ///
 /// 职责：
-/// - 用独立二维码/UDP 类型建立一次性 App 会话并显示双方版本。
+/// - 用独立二维码建立一次性 App 会话并显示双方版本。
 /// - 通过标准 HTTP Range、ETag 和 SHA-256 传输 App 包。
 /// - 下载完成后才把本地文件交给平台安装边界。
 ///
@@ -24,7 +24,6 @@ import 'package:mg_read/features/lan_sync/domain/app_transfer_qr_payload.dart';
 import 'package:mg_read/features/lan_sync/domain/app_update_models.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_endpoint_policy.dart';
 
-const int appTransferDiscoveryPort = 47234;
 const Duration appTransferSessionLifetime = Duration(minutes: 10);
 
 sealed class AppTransferSenderEvent {
@@ -55,21 +54,6 @@ final class AppTransferSenderFailed extends AppTransferSenderEvent {
   final StackTrace? stackTrace;
 }
 
-final class AppTransferPeer {
-  const AppTransferPeer({
-    required this.sessionId,
-    required this.address,
-    required this.port,
-    required this.label,
-    required this.expiresAtUtc,
-  });
-  final String sessionId;
-  final String address;
-  final int port;
-  final String label;
-  final DateTime expiresAtUtc;
-}
-
 final class AppTransferSenderService {
   AppTransferSenderService._({
     required this.sessionId,
@@ -78,7 +62,6 @@ final class AppTransferSenderService {
     required this.connectionOffer,
     required this._service,
     required this._server,
-    required this._socket,
   });
 
   final String sessionId;
@@ -87,9 +70,7 @@ final class AppTransferSenderService {
   final AppTransferConnectionOffer connectionOffer;
   final AppUpdateService _service;
   final HttpServer _server;
-  final RawDatagramSocket _socket;
   final StreamController<AppTransferSenderEvent> _events = StreamController<AppTransferSenderEvent>.broadcast();
-  Timer? _announcer;
   Timer? _expiry;
   String? _pairingCode;
   AppUpdatePlatform? _selectedPlatform;
@@ -105,10 +86,7 @@ final class AppTransferSenderService {
     final addresses = await eligibleLanSyncAddresses();
     if (addresses.isEmpty) throw const LanSyncTransportException('lan_sync_local_network_unavailable');
     final server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
-    RawDatagramSocket? socket;
     try {
-      socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
-      socket.broadcastEnabled = true;
       final sessionId = _randomToken(18);
       final result = AppTransferSenderService._(
         sessionId: sessionId,
@@ -117,12 +95,10 @@ final class AppTransferSenderService {
         connectionOffer: AppTransferConnectionOffer(sessionId: sessionId, port: server.port, addresses: addresses),
         service: service,
         server: server,
-        socket: socket,
       );
       result._start();
       return result;
     } on Object {
-      socket?.close();
       await server.close(force: true);
       rethrow;
     }
@@ -130,32 +106,7 @@ final class AppTransferSenderService {
 
   void _start() {
     _server.listen(_handle, onError: (Object error, StackTrace stack) => _fail('app_update_listen_failed', error, stack));
-    _announce();
-    _announcer = Timer.periodic(const Duration(seconds: 1), (_) => _announce());
     _expiry = Timer(appTransferSessionLifetime, () => _fail('app_update_session_expired'));
-  }
-
-  void _announce() {
-    if (_closed) return;
-    final packet = utf8.encode(
-      jsonEncode(<String, Object?>{
-        'kind': 'mgread-app-transfer',
-        'protocolVersion': 1,
-        'sessionId': sessionId,
-        'label': Platform.isWindows
-            ? 'Windows 设备'
-            : Platform.isAndroid
-            ? 'Android 设备'
-            : 'MgRead 设备',
-        'port': _server.port,
-        'expiresAtUtc': DateTime.now().toUtc().add(appTransferSessionLifetime).toIso8601String(),
-      }),
-    );
-    try {
-      _socket.send(packet, InternetAddress('255.255.255.255'), appTransferDiscoveryPort);
-    } on Object {
-      // QR/manual connection remains available when broadcast is blocked.
-    }
   }
 
   Future<void> _handle(HttpRequest request) async {
@@ -225,9 +176,7 @@ final class AppTransferSenderService {
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
-    _announcer?.cancel();
     _expiry?.cancel();
-    _socket.close();
     await _prepared?.close();
     await _server.close(force: true);
     await _events.close();
@@ -303,55 +252,6 @@ final class AppTransferReceiverConnection {
   }
 
   void close() => _client.close(force: true);
-}
-
-final class AppTransferDiscoveryService {
-  AppTransferDiscoveryService._(this._socket);
-  final RawDatagramSocket _socket;
-  final StreamController<AppTransferPeer> _peers = StreamController<AppTransferPeer>.broadcast();
-  Stream<AppTransferPeer> get peers => _peers.stream;
-
-  static Future<AppTransferDiscoveryService> start() async {
-    final socket = await RawDatagramSocket.bind(
-      InternetAddress.anyIPv4,
-      appTransferDiscoveryPort,
-      reuseAddress: true,
-      reusePort: Platform.isMacOS,
-    );
-    final result = AppTransferDiscoveryService._(socket);
-    socket.listen(result._handle, onError: (_) {});
-    return result;
-  }
-
-  void _handle(RawSocketEvent event) {
-    if (event != RawSocketEvent.read) return;
-    Datagram? datagram;
-    while ((datagram = _socket.receive()) != null) {
-      final packet = datagram!;
-      try {
-        if (!isLanSyncPrivateIpv4(packet.address.address)) continue;
-        final raw = jsonDecode(utf8.decode(packet.data));
-        if (raw is! Map || raw['kind'] != 'mgread-app-transfer' || raw['protocolVersion'] != 1) continue;
-        final sessionId = raw['sessionId'];
-        final label = raw['label'];
-        final port = raw['port'];
-        final expires = DateTime.tryParse(raw['expiresAtUtc']?.toString() ?? '');
-        if (sessionId is! String || label is! String || label.length > 128 || port is! int || port < 1 || port > 65535 || expires == null) {
-          continue;
-        }
-        _peers.add(
-          AppTransferPeer(sessionId: sessionId, address: packet.address.address, port: port, label: label, expiresAtUtc: expires.toUtc()),
-        );
-      } on Object {
-        // Discovery is untrusted and best-effort.
-      }
-    }
-  }
-
-  Future<void> close() async {
-    _socket.close();
-    await _peers.close();
-  }
 }
 
 Future<void> serveAppPackage(HttpRequest request, File file, AppPackageDescriptor descriptor) async {

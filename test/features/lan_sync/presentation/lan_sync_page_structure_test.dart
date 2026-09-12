@@ -44,17 +44,19 @@ void main() {
     await tester.tap(find.byKey(const Key('device-sync-add-device')));
     await tester.pumpAndSettle();
     expect(find.text('添加设备'), findsAtLeastNWidgets(2));
-    expect(find.byKey(const Key('device-sync-show-pairing-code')), findsOneWidget);
+    expect(find.byKey(const Key('device-sync-show-pairing-code')), findsNothing);
 
     await tester.tap(find.text('关闭'));
     await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(find.byKey(const Key('device-sync-add-device'))).onPressed, isNotNull);
     final temporarySend = find.byKey(const Key('lan-sync-temporary-transfer'));
     await tester.drag(find.byKey(const Key('lan-sync-content')), const Offset(0, -260));
     await tester.pumpAndSettle();
     await tester.tap(temporarySend);
     await tester.pumpAndSettle();
     expect(find.text('临时发送数据'), findsOneWidget);
-    expect(find.byKey(const Key('lan-sync-generate-transfer-code')), findsOneWidget);
+    expect(find.byKey(const Key('lan-sync-sheet-scroll')), findsOneWidget);
+    expect(find.byKey(const Key('lan-sync-generate-transfer-code')), findsNothing);
   });
 }
 

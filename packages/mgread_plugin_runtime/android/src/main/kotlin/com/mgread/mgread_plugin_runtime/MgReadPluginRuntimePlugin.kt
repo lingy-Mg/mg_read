@@ -72,7 +72,10 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                 progressSink?.success(
                     mapOf(
                         "completedBytes" to progress.completedBytes,
+                        "catalogState" to progress.catalogState,
                         "detail" to progress.detail,
+                        "durationMicros" to progress.durationMicros,
+                        "itemCount" to progress.itemCount,
                         "stage" to progress.stage,
                         "totalBytes" to progress.totalBytes,
                     ),
@@ -151,13 +154,13 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                 val pluginId = call.argument<String>("pluginId")
                 val version = call.argument<String>("version")
                 val bytes = call.argument<Number>("bytes")?.toLong()
-                val sha256 = call.argument<String>("sha256")
+                val checksum = call.argument<String>("checksum")
                 val format = call.argument<String>("format")
-                if (pluginId.isNullOrBlank() || version.isNullOrBlank() || bytes == null || sha256.isNullOrBlank() || format.isNullOrBlank()) {
+                if (pluginId.isNullOrBlank() || version.isNullOrBlank() || bytes == null || checksum.isNullOrBlank() || format.isNullOrBlank()) {
                     result.error("invalid_request", "The plugin transfer metadata is invalid.", null)
                     return
                 }
-                host.beginPluginTransfer(pluginId, version, bytes, sha256, format) { error, id ->
+                host.beginPluginTransfer(pluginId, version, bytes, checksum, format) { error, id ->
                     mainHandler.post {
                         if (error == null) result.success(id) else result.error(error.code, error.message, null)
                     }

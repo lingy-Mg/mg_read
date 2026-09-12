@@ -6,11 +6,10 @@ library;
 
 import 'dart:async';
 
-import 'package:crypto/crypto.dart';
-
 import 'package:mg_read/features/lan_sync/application/device_identity_store.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/application/paired_device_repository.dart';
+import 'package:mg_read/features/lan_sync/data/lan_sync_checksum.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 import 'package:mg_read/features/lan_sync/domain/paired_device_models.dart';
 
@@ -126,7 +125,7 @@ final class CrossDeviceSyncGateway implements LanSyncGateway, LanSyncPairedGatew
         version: plugin.version,
         bytes: bytes.length,
         artifactFormat: plugin.artifactFormat,
-        sha256: sha256.convert(bytes).toString(),
+        checksum: lanSyncChecksum(bytes),
         transferable: true,
         displayName: plugin.displayName,
         provenance: plugin.provenance,
@@ -158,7 +157,7 @@ final class CrossDeviceSyncGateway implements LanSyncGateway, LanSyncPairedGatew
     await for (final chunk in bytes) {
       received.addAll(chunk);
     }
-    if (received.length != plugin.bytes || sha256.convert(received).toString() != plugin.sha256) {
+    if (received.length != plugin.bytes || lanSyncChecksum(received) != plugin.checksum) {
       throw StateError('cross_device_plugin_invalid');
     }
     importedPluginIds.add(plugin.id);
@@ -205,7 +204,7 @@ LanSyncPluginDescriptor _offer(String id) => LanSyncPluginDescriptor(
   version: '1.0.0',
   bytes: 0,
   artifactFormat: LanSyncPluginArtifactFormat.archive,
-  sha256: ''.padLeft(64, '0'),
+  checksum: ''.padLeft(8, '0'),
   transferable: true,
   deferred: true,
   displayName: id,

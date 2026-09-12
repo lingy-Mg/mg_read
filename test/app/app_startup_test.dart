@@ -151,6 +151,26 @@ void main() {
     expect(startup.isInteractive, isTrue);
   });
 
+  test('Runtime startup phases retain count, duration and catalog state', () async {
+    final diagnostics = DiagnosticsTestkit();
+    addTearDown(diagnostics.dispose);
+    final startup = AppStartupController(diagnostics: diagnostics.manager, openResources: () async => const AppStartupResources());
+    addTearDown(startup.close);
+
+    startup.recordStage(
+      'runtimeInstalledSnapshot',
+      resultState: 'complete',
+      phaseDurationMicros: 12345,
+      itemCount: 66,
+      catalogState: 'hit',
+    );
+
+    final event = diagnostics.sink.events.single;
+    expect((event.attributes.values['phaseDurationMicros'] as DiagnosticInt64Value).decimal, '12345');
+    expect((event.attributes.values['itemCount'] as DiagnosticInt64Value).decimal, '66');
+    expect((event.attributes.values['catalogState'] as DiagnosticStringValue).value, 'hit');
+  });
+
   testWidgets('Runtime warmup completes before deferred maintenance', (tester) async {
     final settings = await createTestAppSettings();
     addTearDown(settings.close);

@@ -53,6 +53,10 @@ import {
   resolveInside,
 } from "./plugin-package.js";
 import { PluginInstaller } from "./plugin-installer.js";
+import {
+  InstalledPluginCatalog,
+  type InstalledPluginCatalogRecord,
+} from "./plugin-catalog.js";
 import { PluginIconResources } from "./plugin-icon-resources.js";
 import { measureInstallationTree, retainedArtifactPath } from "./plugin-installation-usage.js";
 import { createDevelopmentPackageArtifactResource, listExportablePluginArtifacts, listPluginTransferOffers, prepareActiveDevelopmentArtifact, toDevelopmentTransferProject } from "./plugin-manager-artifact-transfer.js";
@@ -103,18 +107,17 @@ import {
 } from "./plugin-manager-contract.js";
 
 import {
-  atomicWrite,
   exists,
   isMissingPath,
   isPluginId,
   normalizePluginModule,
-  removePluginStorage,
   readVersionPointer,
   snapshotFrom,
-  withEnabledPluginSnapshot,
 } from "./plugin-manager-files.js";
 
 const DEFAULT_CACHE_CLEAR_TIMEOUT_MS = 5_000;
+const DEFAULT_UNINSTALL_CONCURRENCY = 4;
+const EMBEDDED_UNINSTALL_CONCURRENCY = 2;
 
 export {
   PluginManagerError,
@@ -147,6 +150,9 @@ export class PluginManager {
   readonly #sourceResources: SourceResourceCoordinator;
   readonly #browserSession: PluginBrowserSessionProvider | undefined;
   readonly #pluginIcons: PluginIconResources;
+  readonly #catalog: InstalledPluginCatalog;
+  readonly #catalogSubscription: () => void;
+  readonly #installer: PluginInstaller;
   #resourceOrigin = "http://127.0.0.1";
   readonly #invocationScope = new AsyncLocalStorage<PluginInvocationScope>();
   readonly #installedLoaded = new Map<string, LoadedPlugin>();
@@ -173,11 +179,21 @@ export class PluginManager {
       readonly maxActiveInvocationsPerPlugin?: number;
       readonly maxQueuedOperationsPerPlugin?: number;
       readonly pluginActivationTimeoutMs?: number;
+      readonly catalog?: InstalledPluginCatalog;
     } = {},
   ) {
     this.#dataRoot = resolve(runtimeDataRoot);
     this.#embedded = options.embedded ?? false;
     this.#events = options.events ?? (() => {});
+    this.#catalog = options.catalog ?? new InstalledPluginCatalog(this.#dataRoot);
+    this.#catalogSubscription = this.#catalog.observe((change) => {
+      this.#events({
+        code: "plugin_catalog_changed",
+        itemCount: change.itemCount,
+        outcome: "success",
+        ...(change.pluginId === undefined ? {} : { pluginId: change.pluginId }),
+      });
+    });
     this.#debugLogEnabled = options.debugLogEnabled ?? (() => false);
     this.#http = options.http ?? { fetch: (input, init) => fetch(input, init) };
     this.#sourceResources = new SourceResourceCoordinator(this.#http, this.#events, this.#debugLogEnabled);
@@ -200,6 +216,7 @@ export class PluginManager {
     } satisfies PluginOperationCoordinatorOptions);
     this.#pluginTransfer = new PluginArtifactTransferManager(this.#dataRoot);
     this.#pluginIcons = new PluginIconResources(this.#dataRoot);
+    this.#installer = new PluginInstaller(this.#dataRoot, { catalog: this.#catalog });
     this.#development = new DevelopmentPluginRegistry({
       dataRoot: this.#dataRoot,
       events: this.#events,
@@ -244,7 +261,12 @@ export class PluginManager {
   async listInstalled(): Promise<readonly InstalledPluginSnapshot[]> {
     await this.initialize();
     return Object.freeze(await Promise.all(this.#combinedSnapshots().map((snapshot) =>
-      this.#pluginIcons.project(snapshot, this.#development.projects(), this.#resourceOrigin))));
+      this.#pluginIcons.project(
+        snapshot,
+        this.#development.projects(),
+        this.#resourceOrigin,
+        this.#catalog.record(snapshot.id)?.descriptor,
+      ))));
   }
 
   /** Lists retained artifacts plus explicit development exports, loading those projects on demand. */
@@ -266,6 +288,7 @@ export class PluginManager {
   }
 
   async close(): Promise<void> {
+    this.#catalogSubscription();
     await this.#development.close();
     await this.#pluginTransfer.dispose();
   }
@@ -451,9 +474,14 @@ export class PluginManager {
     const index = this.#installedSnapshots.findIndex((item) => item.id === pluginId);
     if (index < 0) throw new PluginManagerError("plugin_not_found");
 
-    await new PluginInstaller(this.#dataRoot).setEnabled(pluginId, enabled);
-    const { snapshots, updated } = withEnabledPluginSnapshot(this.#installedSnapshots, index, enabled);
-    this.#installedSnapshots = snapshots;
+    const record = await this.#catalog.setEnabled(pluginId, enabled);
+    if (record === undefined) throw new PluginManagerError("plugin_not_found");
+    const updated = record.snapshot;
+    this.#installedSnapshots = Object.freeze([
+      ...this.#installedSnapshots.slice(0, index),
+      updated,
+      ...this.#installedSnapshots.slice(index + 1),
+    ]);
     this.#events({
       code: enabled ? "plugin_enabled" : "plugin_disabled",
       outcome: "success",
@@ -473,10 +501,13 @@ export class PluginManager {
     if (this.#development.has(pluginId)) {
       throw new PluginManagerError("invalid_request");
     }
-    if (!this.#installedSnapshots.some((item) => item.id === pluginId)) {
+    const snapshot = this.#installedSnapshots.find((item) => item.id === pluginId);
+    if (snapshot === undefined) {
       throw new PluginManagerError("plugin_not_found");
     }
+    this.#reportUninstallProgress("plugin_uninstall_started", snapshot, 0, 1);
     await this.#uninstallInstalled(pluginId, signal, deadlineUnixMs);
+    this.#reportUninstallProgress("plugin_uninstall_completed", snapshot, 1, 1);
     return Object.freeze({ pluginId, removed: true } satisfies PluginUninstallResult);
   }
 
@@ -486,37 +517,58 @@ export class PluginManager {
     deadlineUnixMs?: string,
   ): Promise<PluginUninstallAllResult> {
     await this.initialize();
-    const pluginIds = this.#installedSnapshots.map((item) => item.id);
-    for (const pluginId of pluginIds) {
-      await this.#uninstallInstalled(pluginId, signal, deadlineUnixMs);
-    }
-    return Object.freeze({ removedCount: pluginIds.length } satisfies PluginUninstallAllResult);
+    const snapshots = this.#installedSnapshots;
+    let completedCount = 0;
+    await mapWithConcurrency(
+      snapshots,
+      this.#embedded ? EMBEDDED_UNINSTALL_CONCURRENCY : DEFAULT_UNINSTALL_CONCURRENCY,
+      async (snapshot) => {
+        this.#reportUninstallProgress("plugin_uninstall_started", snapshot, completedCount, snapshots.length);
+        await this.#uninstallInstalled(snapshot.id, signal, deadlineUnixMs, false);
+        completedCount += 1;
+        this.#reportUninstallProgress("plugin_uninstall_completed", snapshot, completedCount, snapshots.length);
+      },
+    );
+    await this.#installer.collectUnusedDependencies();
+    return Object.freeze({ removedCount: snapshots.length } satisfies PluginUninstallAllResult);
   }
 
   async #uninstallInstalled(
     pluginId: string,
     signal?: AbortSignal,
     deadlineUnixMs?: string,
+    collectUnusedDependencies = true,
   ): Promise<void> {
     const cancellation = signal ?? new AbortController().signal;
     const deadline = deadlineUnixMs ?? String(Date.now() + this.#cacheClearTimeoutMs);
     const release = await this.#pluginOperations.acquireCacheClear(pluginId, cancellation, deadline);
     try {
-      await removePluginStorage(this.#dataRoot, pluginId);
-      await new PluginInstaller(this.#dataRoot).collectUnusedDependencies();
+      await this.#catalog.remove(pluginId);
+      if (collectUnusedDependencies) await this.#installer.collectUnusedDependencies();
       this.#installedLoaded.delete(pluginId);
       this.#installedLoadPromises.delete(pluginId);
       this.#installedSnapshots = Object.freeze(
         this.#installedSnapshots.filter((item) => item.id !== pluginId),
       );
-      this.#events({
-        code: "plugin_uninstall_completed",
-        outcome: "success",
-        pluginId,
-      });
     } finally {
       release();
     }
+  }
+
+  #reportUninstallProgress(
+    code: "plugin_uninstall_started" | "plugin_uninstall_completed",
+    snapshot: InstalledPluginSnapshot,
+    itemCount: number,
+    totalItemCount: number,
+  ): void {
+    this.#events({
+      code,
+      itemCount,
+      outcome: code === "plugin_uninstall_started" ? "started" : "success",
+      pluginId: snapshot.id,
+      pluginName: snapshot.displayName,
+      totalItemCount,
+    });
   }
 
   async discover(
@@ -716,26 +768,97 @@ export class PluginManager {
       force: true,
       recursive: true,
     });
+    const developmentStartedAt = performance.now();
     await this.#development.initialize();
-    const snapshots: InstalledPluginSnapshot[] = [];
-    const entries = await readdir(pluginsRoot, { withFileTypes: true });
-    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-      if (!entry.isDirectory() || !isPluginId(entry.name)) continue;
-      const pluginRoot = resolve(pluginsRoot, entry.name);
-      if (await exists(resolve(pluginRoot, "uninstall-pending"))) {
-        await removePluginStorage(this.#dataRoot, entry.name);
+    this.#startupPhase(
+      "development_scan",
+      this.#development.snapshots.length,
+      performance.now() - developmentStartedAt,
+    );
+
+    const installedStartedAt = performance.now();
+    let records = await this.#catalog.load();
+    let catalogState: "hit" | "rebuilt" = "hit";
+    if (records === undefined) {
+      catalogState = "rebuilt";
+      const entries = (await readdir(pluginsRoot, { withFileTypes: true }))
+        .filter((entry) => entry.isDirectory() && isPluginId(entry.name))
+        .sort((left, right) => left.name.localeCompare(right.name));
+      const inspected = await mapWithConcurrency(
+        entries,
+        this.#embedded ? 4 : 8,
+        (entry) => this.#inspectInstalledPlugin(
+          entry.name,
+          resolve(pluginsRoot, entry.name),
+        ),
+      );
+      for (const record of inspected.filter((entry) => entry.uninstallPending)) {
+        await this.#catalog.remove(record.snapshot.id);
         this.#events({
           code: "plugin_uninstall_completed",
           outcome: "success",
-          pluginId: entry.name,
+          pluginId: record.snapshot.id,
         });
-        continue;
       }
-      // The imported version remains a cold-start fallback, but must not share activation or private state with its development source.
-      if (this.#development.has(entry.name)) continue;
-      snapshots.push(await this.#initializePlugin(entry.name, pluginRoot));
+      records = inspected.filter((entry) => !entry.uninstallPending);
+      await this.#catalog.recover(records);
+    } else {
+      for (const record of records.filter((entry) => entry.uninstallPending)) {
+        await this.#catalog.remove(record.snapshot.id);
+        this.#events({
+          code: "plugin_uninstall_completed",
+          outcome: "success",
+          pluginId: record.snapshot.id,
+        });
+      }
+      records = this.#catalog.records;
     }
-    this.#installedSnapshots = Object.freeze(snapshots);
+    this.#syncInstalledSnapshots();
+    this.#startupPhase(
+      "installed_snapshot",
+      this.#installedSnapshots.length,
+      performance.now() - installedStartedAt,
+      catalogState,
+    );
+
+    const pending = records.filter((record) =>
+      !record.uninstallPending &&
+      record.snapshot.enabled &&
+      record.snapshot.pendingVersion !== null &&
+      !this.#development.has(record.snapshot.id),
+    );
+    const pendingStartedAt = performance.now();
+    for (const record of pending) await this.#activatePending(record);
+    this.#syncInstalledSnapshots();
+    this.#startupPhase(
+      "pending_activation",
+      pending.length,
+      performance.now() - pendingStartedAt,
+    );
+  }
+
+  #syncInstalledSnapshots(): void {
+    this.#installedSnapshots = Object.freeze(
+      this.#catalog.records
+        .filter((record) => !this.#development.has(record.snapshot.id))
+        .map((record) => record.snapshot),
+    );
+  }
+
+  #startupPhase(
+    startupPhase: "development_scan" | "installed_snapshot" | "pending_activation",
+    itemCount: number,
+    durationMs: number,
+    catalogState?: "hit" | "rebuilt",
+  ): void {
+    this.#events({
+      code: "plugin_startup_phase_completed",
+      ...(catalogState === undefined ? {} : { catalogState }),
+      durationMs,
+      itemCount,
+      outcome: "success",
+      startupPhase,
+    });
   }
 
   async #loadDevelopmentProject(
@@ -840,52 +963,69 @@ export class PluginManager {
     return resolve(this.#dataRoot, "plugin-cache", pluginId);
   }
 
-  async #initializePlugin(
+  async #inspectInstalledPlugin(
     pluginId: string,
     pluginRoot: string,
-  ): Promise<InstalledPluginSnapshot> {
+  ): Promise<InstalledPluginCatalogRecord> {
     const disabled = await exists(resolve(pluginRoot, "disabled"));
     const current = await readVersionPointer(resolve(pluginRoot, "current"));
     const pending = await readVersionPointer(resolve(pluginRoot, "pending"));
     const quarantined = await readVersionPointer(resolve(pluginRoot, "quarantined"));
-    let descriptor = await this.#readDescriptor(pluginRoot, pending ?? current);
+    const uninstallPending = await exists(resolve(pluginRoot, "uninstall-pending"));
+    const descriptor = await this.#readDescriptor(pluginRoot, pending ?? current);
+    let snapshot: InstalledPluginSnapshot;
     if (disabled) {
-      return snapshotFrom(descriptor, pluginId, current, pending, false, "disabled");
+      snapshot = snapshotFrom(descriptor, pluginId, current, pending, false, "disabled");
+    } else if (current !== null && quarantined === current) {
+      snapshot = snapshotFrom(descriptor, pluginId, current, pending, false, "quarantined");
+    } else if (pending !== null) {
+      snapshot = snapshotFrom(descriptor, pluginId, current, pending, true, "pending");
+    } else if (current !== null) {
+      snapshot = snapshotFrom(descriptor, pluginId, current, null, true, "active");
+    } else if (quarantined !== null) {
+      snapshot = snapshotFrom(descriptor, pluginId, null, null, false, "quarantined");
+    } else {
+      snapshot = snapshotFrom(descriptor, pluginId, null, null, true, "damaged");
     }
+    return Object.freeze({ descriptor, snapshot, uninstallPending });
+  }
 
-    if (pending !== null) {
-      try {
-        const loaded = await this.#loadVersion(pluginId, pluginRoot, pending);
-        if (current !== null && current !== pending) {
-          await atomicWrite(resolve(pluginRoot, "previous"), `${current}\n`);
-        }
-        await atomicWrite(resolve(pluginRoot, "current"), `${pending}\n`);
-        await rm(resolve(pluginRoot, "pending"), { force: true });
-        await rm(resolve(pluginRoot, "quarantined"), { force: true });
-        this.#installedLoaded.set(pluginId, loaded);
-        descriptor = loaded.descriptor;
-        return snapshotFrom(descriptor, pluginId, pending, null, true, "active");
-      } catch {
-        await atomicWrite(resolve(pluginRoot, "failed"), `${pending}\n`);
-        await rm(resolve(pluginRoot, "pending"), { force: true });
-        if (current === null) {
-          await this.#quarantine(pluginId, pluginRoot, pending);
-          return snapshotFrom(descriptor, pluginId, null, null, false, "quarantined");
-        }
+  async #activatePending(record: InstalledPluginCatalogRecord): Promise<void> {
+    const { snapshot } = record;
+    const pending = snapshot.pendingVersion;
+    if (pending === null) return;
+    const pluginId = snapshot.id;
+    const pluginRoot = resolve(this.#dataRoot, "plugins", pluginId);
+    try {
+      const loaded = await this.#loadVersion(pluginId, pluginRoot, pending);
+      const activated = Object.freeze({
+        descriptor: loaded.descriptor,
+        snapshot: snapshotFrom(loaded.descriptor, pluginId, pending, null, true, "active"),
+        uninstallPending: false,
+      } satisfies InstalledPluginCatalogRecord);
+      await this.#catalog.activate(activated);
+      this.#installedLoaded.set(pluginId, loaded);
+    } catch {
+      const current = snapshot.activeVersion;
+      if (current === null) {
+        const quarantined = Object.freeze({
+          descriptor: record.descriptor,
+          snapshot: snapshotFrom(record.descriptor, pluginId, null, null, false, "quarantined"),
+          uninstallPending: false,
+        } satisfies InstalledPluginCatalogRecord);
+        await this.#catalog.quarantinePending(quarantined, pending);
+        this.#startupQuarantinedCount += 1;
+        this.#events({ code: "plugin_quarantined", outcome: "error", pluginId });
+        return;
       }
+      const descriptor = await this.#readDescriptor(pluginRoot, current);
+      const recovered = Object.freeze({
+        descriptor,
+        snapshot: snapshotFrom(descriptor, pluginId, current, null, true, "active"),
+        uninstallPending: false,
+      } satisfies InstalledPluginCatalogRecord);
+      await this.#catalog.recoverPending(recovered, pending);
     }
-
-    if (current !== null) {
-      if (quarantined === current) {
-        return snapshotFrom(descriptor, pluginId, current, null, false, "quarantined");
-      }
-      if (pending !== null) descriptor = await this.#readDescriptor(pluginRoot, current);
-      return snapshotFrom(descriptor, pluginId, current, null, true, "active");
-    }
-    if (quarantined !== null) {
-      return snapshotFrom(descriptor, pluginId, null, null, false, "quarantined");
-    }
-    return snapshotFrom(descriptor, pluginId, null, pending, true, pending ? "pending" : "damaged");
   }
 
   async #quarantine(
@@ -894,10 +1034,26 @@ export class PluginManager {
     version: string,
     countAsStartupRecovery = true,
   ): Promise<void> {
-    const marker = resolve(pluginRoot, "quarantined");
-    const alreadyQuarantined = await readVersionPointer(marker);
+    const alreadyQuarantined = await readVersionPointer(resolve(pluginRoot, "quarantined"));
     if (alreadyQuarantined === version) return;
-    await atomicWrite(marker, `${version}\n`);
+    const current = this.#catalog.record(pluginId);
+    const quarantined = current === undefined
+      ? undefined
+      : Object.freeze({
+          ...current,
+          snapshot: Object.freeze({
+            ...current.snapshot,
+            enabled: false,
+            pendingVersion: null,
+            status: "quarantined",
+          } satisfies InstalledPluginSnapshot),
+        } satisfies InstalledPluginCatalogRecord);
+    if (quarantined === undefined) {
+      throw new PluginManagerError("plugin_not_found");
+    } else {
+      await this.#catalog.quarantineCurrent(quarantined, version);
+      this.#syncInstalledSnapshots();
+    }
     if (countAsStartupRecovery) this.#startupQuarantinedCount += 1;
     this.#events({
       code: "plugin_quarantined",
@@ -1056,4 +1212,24 @@ export class PluginManager {
     }
   }
 
+}
+
+async function mapWithConcurrency<TInput, TResult>(
+  inputs: readonly TInput[],
+  concurrency: number,
+  operation: (input: TInput) => Promise<TResult>,
+): Promise<readonly TResult[]> {
+  const results = new Array<TResult>(inputs.length);
+  let nextIndex = 0;
+  const workers = Array.from(
+    { length: Math.min(Math.max(1, concurrency), inputs.length) },
+    async () => {
+      while (nextIndex < inputs.length) {
+        const index = nextIndex++;
+        results[index] = await operation(inputs[index]!);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return Object.freeze(results);
 }

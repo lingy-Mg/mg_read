@@ -12,7 +12,7 @@ final class _DesktopPluginArtifactIo {
     final materialized = await materializeArtifact(_offerFrom(artifact));
     final returned = materialized.artifact;
     if (returned.bytes != artifact.bytes ||
-        returned.sha256 != artifact.sha256) {
+        returned.checksum != artifact.checksum) {
       throw const PluginRuntimeException(
         'plugin_transfer_checksum_mismatch',
         'The Runtime transfer artifact identity did not match the request.',

@@ -1,7 +1,8 @@
 /// 临时扫码同步的 HTTP 传输实现。
 ///
-/// UDP 仅广播端点；配对确认、manifest、选择和完成状态使用 JSON HTTP API，
-/// 插件制品通过独立 GET 及标准 Range/ETag/If-Range 传输。
+/// 二维码交付一次性端点；配对确认、manifest 和选择使用 JSON HTTP API，
+/// 插件制品通过独立 GET 及标准 Range/ETag/If-Range 传输。最后一个制品响应
+/// 完成后发送端主动关闭，不等待接收端回报本地导入结果。
 library;
 
 import 'dart:async';
@@ -60,96 +61,37 @@ final class LanSyncTransportException implements Exception {
   String toString() => reason == null ? 'LanSyncTransportException($code)' : 'LanSyncTransportException($code, reason: $reason)';
 }
 
-final class LanSyncDiscoveryService {
-  LanSyncDiscoveryService._(this._socket, this._controller);
-  final RawDatagramSocket _socket;
-  final StreamController<LanSyncPeer> _controller;
-  final Map<String, DateTime> _seen = {};
-  Stream<LanSyncPeer> get peers => _controller.stream;
-  static Future<LanSyncDiscoveryService> start() async {
-    final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, lanSyncDiscoveryPort, reuseAddress: true);
-    final controller = StreamController<LanSyncPeer>.broadcast();
-    final result = LanSyncDiscoveryService._(socket, controller);
-    socket.listen(result._onEvent, onError: (_) {});
-    return result;
-  }
-
-  void _onEvent(RawSocketEvent event) {
-    if (event != RawSocketEvent.read) return;
-    Datagram? d;
-    while ((d = _socket.receive()) != null) {
-      try {
-        final raw = jsonDecode(utf8.decode(d!.data));
-        if (raw is! Map ||
-            raw['kind'] != 'mgread-lan-sync' ||
-            raw['protocolVersion'] != lanSyncProtocolVersion ||
-            raw['transport'] != 'http') {
-          continue;
-        }
-        final session = raw['sessionId'],
-            label = raw['label'],
-            port = raw['port'],
-            expires = DateTime.tryParse(raw['expiresAtUtc']?.toString() ?? '')?.toUtc();
-        if (session is! String ||
-            label is! String ||
-            port is! int ||
-            port < 1 ||
-            port > 65535 ||
-            expires == null ||
-            !expires.isAfter(DateTime.now().toUtc())) {
-          continue;
-        }
-        final key = '$session|${d.address.address}|$port';
-        final now = DateTime.now().toUtc();
-        if (_seen[key] case final last? when now.difference(last) < const Duration(seconds: 1)) continue;
-        _seen[key] = now;
-        _controller.add(LanSyncPeer(sessionId: session, label: label, address: d.address.address, port: port, expiresAtUtc: expires));
-      } on Object {
-        // Discovery packets are untrusted and malformed packets are ignored.
-      }
-    }
-  }
-
-  Future<void> close() async {
-    _socket.close();
-    await _controller.close();
-  }
-}
-
 final class LanSyncSenderService {
   LanSyncSenderService._({
     required this.sessionId,
     required this.manifest,
     required this.openPlugin,
     required this._server,
-    required RawDatagramSocket socket,
     required this._addresses,
-  }) : _announcementSocket = socket;
+  });
   final String sessionId;
   final LanSyncManifest manifest;
   final LanSyncPluginStreamOpener openPlugin;
   final HttpServer _server;
-  final RawDatagramSocket _announcementSocket;
   final List<String> _addresses;
   final StreamController<LanSyncSenderEvent> _events = StreamController<LanSyncSenderEvent>.broadcast();
   final Map<String, LanSyncHttpArtifact> _artifacts = {};
-  Timer? _announcementTimer, _expiryTimer;
+  final Set<String> _selectedPluginIds = <String>{};
+  final Set<String> _servedPluginIds = <String>{};
+  Timer? _expiryTimer;
   String? _pairingCode;
-  bool _closed = false, _active = false;
+  bool _closed = false, _active = false, _completionStarted = false;
   int _sent = 0, _total = 0;
   Stream<LanSyncSenderEvent> get events => _events.stream;
   int get port => _server.port;
   List<String> get addresses => List.unmodifiable(_addresses);
   static Future<LanSyncSenderService> start({required LanSyncManifest manifest, required LanSyncPluginStreamOpener openPlugin}) async {
     final server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
-    final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
-    socket.broadcastEnabled = true;
     final result = LanSyncSenderService._(
       sessionId: _randomToken(18),
       manifest: manifest,
       openPlugin: openPlugin,
       server: server,
-      socket: socket,
       addresses: await eligibleLanSyncAddresses(),
     );
     result._start();
@@ -159,33 +101,7 @@ final class LanSyncSenderService {
   void _start() {
     _events.add(LanSyncSenderReady(_addresses, port));
     _server.listen(_handle, onError: (Object e, StackTrace s) => _fail('lan_sync_listen_failed', e, s));
-    _announce();
-    _announcementTimer = Timer.periodic(const Duration(seconds: 1), (_) => _announce());
     _expiryTimer = Timer(lanSyncSessionLifetime, () => _fail('lan_sync_session_expired'));
-  }
-
-  void _announce() {
-    if (_closed) return;
-    final bytes = utf8.encode(
-      jsonEncode({
-        'kind': 'mgread-lan-sync',
-        'protocolVersion': lanSyncProtocolVersion,
-        'transport': 'http',
-        'sessionId': sessionId,
-        'label': Platform.isWindows
-            ? 'Windows 设备'
-            : Platform.isMacOS
-            ? 'Mac 设备'
-            : 'Android 设备',
-        'port': port,
-        'expiresAtUtc': DateTime.now().toUtc().add(lanSyncSessionLifetime).toIso8601String(),
-      }),
-    );
-    try {
-      _announcementSocket.send(bytes, InternetAddress('255.255.255.255'), lanSyncDiscoveryPort);
-    } on Object {
-      // Best-effort broadcast can be unavailable on a network adapter.
-    }
   }
 
   Future<void> _handle(HttpRequest request) async {
@@ -228,21 +144,24 @@ final class LanSyncSenderService {
           final artifact = await LanSyncHttpArtifact.materialize(plugin, await openPlugin(plugin));
           _artifacts[plugin.id] = artifact;
         }
-        return await _respond(request.response, HttpStatus.ok, {'plugins': selected.map((p) => p.toJson()).toList()});
+        _selectedPluginIds
+          ..clear()
+          ..addAll(selected.map((plugin) => plugin.id));
+        await _respond(request.response, HttpStatus.ok, {'plugins': selected.map((p) => p.toJson()).toList()});
+        if (selected.isEmpty) await _finishSending();
+        return;
       }
       final parts = request.uri.pathSegments;
       if (request.method == 'GET' && parts.length == 3 && parts[0] == 'v3' && parts[1] == 'artifacts') {
         final artifact = _artifacts[Uri.decodeComponent(parts[2])];
         if (artifact == null) throw const LanSyncTransportException('lan_sync_plugin_unexpected');
+        final completesArtifact = _requestCoversArtifact(request, artifact.descriptor.bytes, artifact.etag);
         await artifact.serve(request);
-        _sent += artifact.descriptor.bytes;
-        _events.add(LanSyncSenderProgress(_sent, _total));
-        return;
-      }
-      if (request.method == 'POST' && request.uri.path == '/v3/complete') {
-        _events.add(const LanSyncSenderDone());
-        await _respond(request.response, HttpStatus.noContent, null);
-        await close();
+        if (completesArtifact && _servedPluginIds.add(artifact.descriptor.id)) {
+          _sent += artifact.descriptor.bytes;
+          _events.add(LanSyncSenderProgress(_sent, _total));
+          if (_servedPluginIds.length == _selectedPluginIds.length) await _finishSending();
+        }
         return;
       }
       return await _respond(request.response, HttpStatus.notFound, {'error': 'not_found'});
@@ -264,6 +183,13 @@ final class LanSyncSenderService {
     _events.add(LanSyncSenderActivity(value));
   }
 
+  Future<void> _finishSending() async {
+    if (_closed || _completionStarted) return;
+    _completionStarted = true;
+    _events.add(const LanSyncSenderDone());
+    await close();
+  }
+
   void _fail(String code, [Object? error, StackTrace? stack]) {
     if (_closed) return;
     _events.add(LanSyncSenderFailed(code, error: error, stackTrace: stack));
@@ -274,9 +200,7 @@ final class LanSyncSenderService {
     if (_closed) return;
     _closed = true;
     _setActive(false);
-    _announcementTimer?.cancel();
     _expiryTimer?.cancel();
-    _announcementSocket.close();
     for (final artifact in _artifacts.values) {
       await artifact.close();
     }
@@ -341,6 +265,8 @@ final class LanSyncReceiverConnection {
     Set<String>? shelfItemIds,
     required Future<void> Function(LanSyncPluginDescriptor, Stream<List<int>>) importPlugin,
     void Function(int, int)? onProgress,
+    void Function(LanSyncPluginDescriptor, int, int)? onVerificationProgress,
+    void Function(LanSyncPluginDescriptor, int, int)? onWriteProgress,
     void Function()? onPluginBytesReceived,
   }) async {
     final manifest = _manifest;
@@ -358,24 +284,43 @@ final class LanSyncReceiverConnection {
     var done = 0;
     final total = plugins.fold(0, (n, p) => n + p.bytes);
     for (final plugin in plugins) {
+      final completedBeforePlugin = done;
       final stream = await const LanSyncHttpArtifactClient().download(
         _base.resolve('/v3/artifacts/${Uri.encodeComponent(plugin.id)}'),
         plugin,
         client: _client,
         authenticate: (request, _) => request.headers.set('x-mgread-session', pairingCode),
+        onVerificationProgress: (completed, pluginTotal) {
+          onVerificationProgress?.call(plugin, completedBeforePlugin + completed, total);
+        },
       );
-      await importPlugin(plugin, stream);
+      await importPlugin(plugin, _reportImportProgress(stream, plugin, completedBeforePlugin, total, onWriteProgress));
       done += plugin.bytes;
       onProgress?.call(done, total);
       onPluginBytesReceived?.call();
     }
-    await _request(_client, _base.resolve('/v3/complete'), const {}, pairingCode, allowEmpty: true);
+    await close();
   }
 
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
     _client.close(force: true);
+  }
+}
+
+Stream<List<int>> _reportImportProgress(
+  Stream<List<int>> source,
+  LanSyncPluginDescriptor plugin,
+  int completedBeforePlugin,
+  int totalBytes,
+  void Function(LanSyncPluginDescriptor, int, int)? onProgress,
+) async* {
+  var completed = 0;
+  await for (final chunk in source) {
+    completed += chunk.length;
+    onProgress?.call(plugin, completedBeforePlugin + completed, totalBytes);
+    yield chunk;
   }
 }
 
@@ -424,6 +369,19 @@ Future<void> _respond(HttpResponse response, int status, Map<String, Object?>? v
     response.add(bytes);
   }
   await response.close();
+}
+
+bool _requestCoversArtifact(HttpRequest request, int bytes, String etag) {
+  final range = request.headers.value(HttpHeaders.rangeHeader);
+  if (range == null) return true;
+  final ifRange = request.headers.value(HttpHeaders.ifRangeHeader);
+  if (ifRange != null && ifRange != etag) return true;
+  final match = RegExp(r'^bytes=(\d+)-(\d*)$').firstMatch(range);
+  if (match == null) return false;
+  final start = int.tryParse(match.group(1)!);
+  if (start == null || start >= bytes) return false;
+  final end = match.group(2);
+  return end == null || end.isEmpty || int.tryParse(end) == bytes - 1;
 }
 
 Future<List<String>> eligibleLanSyncAddresses() async {

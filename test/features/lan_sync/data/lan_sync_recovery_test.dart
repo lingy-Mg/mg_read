@@ -9,13 +9,14 @@ import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_network_environment.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
+import 'package:mg_read/features/lan_sync/domain/lan_sync_qr_payload.dart';
 
 const _plugin = LanSyncPluginDescriptor(
   id: 'source.recovery',
   version: '1.0.0',
   bytes: 3,
   artifactFormat: LanSyncPluginArtifactFormat.archive,
-  sha256: '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81',
+  checksum: '55bc801d',
   transferable: true,
 );
 
@@ -23,7 +24,15 @@ void main() {
   test('temporary transport reports an importer rejection without waiting for an unsubscribed stream', () async {
     final sender = await _sender();
     addTearDown(sender.close);
-    final receiver = await LanSyncReceiverConnection.connect(_peer(sender));
+    final receiver = await LanSyncReceiverConnection.connect(
+      LanSyncPeer(
+        sessionId: sender.sessionId,
+        label: 'test sender',
+        address: sender.addresses.first,
+        port: sender.port,
+        expiresAtUtc: DateTime.now().toUtc().add(const Duration(minutes: 1)),
+      ),
+    );
     addTearDown(receiver.close);
     await receiver.confirmAndReadManifest();
     final error = StateError('runtime_import_rejected');
@@ -33,7 +42,7 @@ void main() {
     );
   });
 
-  test('invalid manual input remains retryable and import cannot be entered twice', () async {
+  test('scanned QR offer remains retryable and import cannot be entered twice', () async {
     final sender = await _sender();
     addTearDown(sender.close);
     final gateway = _Gateway();
@@ -45,10 +54,8 @@ void main() {
     addTearDown(listener.close);
     final controller = container.read(lanSyncControllerProvider.notifier);
     await controller.startReceiving();
-    await controller.connectManual('not an address');
     expect(container.read(lanSyncControllerProvider).phase, LanSyncPhase.discovering);
-    expect(container.read(lanSyncControllerProvider).errorCode, 'lan_sync_manual_address_invalid');
-    await controller.connectPeer(_peer(sender));
+    await controller.connectOffer(_offer(sender));
     await controller.confirmReceiverPairing();
     final first = controller.beginImport();
     await gateway.started.future;
@@ -66,13 +73,8 @@ Future<LanSyncSenderService> _sender() => LanSyncSenderService.start(
   openPlugin: (_) async => Stream.value([1, 2, 3]),
 );
 
-LanSyncPeer _peer(LanSyncSenderService sender) => LanSyncPeer(
-  sessionId: sender.sessionId,
-  label: 'test sender',
-  address: sender.addresses.first,
-  port: sender.port,
-  expiresAtUtc: DateTime.now().toUtc().add(const Duration(minutes: 1)),
-);
+LanSyncConnectionOffer _offer(LanSyncSenderService sender) =>
+    LanSyncConnectionOffer(sessionId: sender.sessionId, port: sender.port, addresses: sender.addresses);
 
 final class _Network implements LanSyncNetworkEnvironment {
   @override

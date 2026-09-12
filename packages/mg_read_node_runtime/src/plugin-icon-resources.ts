@@ -14,7 +14,11 @@ import type {
   InstalledPluginSnapshot,
   PluginIconResource,
 } from "./plugin-manager-contract.js";
-import { readPluginProject, resolveInside } from "./plugin-package.js";
+import {
+  readPluginProject,
+  resolveInside,
+  type PluginPackageDescriptor,
+} from "./plugin-package.js";
 
 /** Owns bounded icon tokens independently from the PluginManager coordinator. */
 export class PluginIconResources {
@@ -28,15 +32,16 @@ export class PluginIconResources {
     snapshot: InstalledPluginSnapshot,
     development: ReadonlyMap<string, DevelopmentPlugin | DevelopmentPluginCandidate>,
     origin: string,
+    installedDescriptor?: PluginPackageDescriptor,
   ): Promise<InstalledPluginSnapshot> {
     const activeDevelopment = development.get(snapshot.id);
     const version = snapshot.activeVersion ?? snapshot.pendingVersion;
     let descriptor = activeDevelopment === undefined
-      ? undefined
+      ? installedDescriptor
       : "loaded" in activeDevelopment
         ? activeDevelopment.loaded.descriptor
         : activeDevelopment.descriptor;
-    let projectRoot = activeDevelopment?.projectRoot;
+    let projectRoot = activeDevelopment?.projectRoot ?? installedDescriptor?.projectRoot;
     if (descriptor === undefined && version !== null) {
       projectRoot = resolve(this.#dataRoot, "plugins", snapshot.id, "versions", version);
       try { descriptor = (await readPluginProject(projectRoot)).descriptor; }

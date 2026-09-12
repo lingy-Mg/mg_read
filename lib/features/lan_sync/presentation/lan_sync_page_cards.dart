@@ -63,7 +63,7 @@ class _DeviceSyncCard extends StatelessWidget {
             const SizedBox(height: AppSpacing.regular),
             FilledButton.icon(
               key: const Key('device-sync-add-device'),
-              onPressed: state.pairingBusy ? null : onAddDevice,
+              onPressed: onAddDevice,
               icon: const Icon(Icons.add_link_rounded),
               label: const Text('添加设备'),
             ),
@@ -226,7 +226,6 @@ class _TemporaryDataSheet extends StatelessWidget {
   const _TemporaryDataSheet({
     required this.state,
     required this.receiving,
-    required this.onGenerate,
     required this.onCancel,
     required this.onReset,
     required this.phaseContent,
@@ -234,46 +233,29 @@ class _TemporaryDataSheet extends StatelessWidget {
 
   final LanSyncViewState state;
   final bool receiving;
-  final VoidCallback onGenerate;
   final VoidCallback onCancel;
   final VoidCallback onReset;
   final List<Widget> Function(LanSyncViewState state) phaseContent;
 
   @override
-  Widget build(BuildContext context) => SafeArea(
-    top: false,
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(AppSpacing.comfortable, AppSpacing.compact, AppSpacing.comfortable, AppSpacing.comfortable),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Text(receiving ? '接收临时数据' : '临时发送数据', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: AppSpacing.unit),
-          Text(receiving ? '已识别传输二维码，正在建立连接。' : '本次会发送书架、阅读进度和可传输的插件数据。', style: Theme.of(context).textTheme.bodySmall),
+  Widget build(BuildContext context) => LanSyncSheetFrame(
+    title: receiving ? '接收临时数据' : '临时发送数据',
+    description: receiving ? '已识别传输二维码，正在建立连接。' : '本次会发送书架、阅读进度和可传输的插件数据。',
+    onClose: onCancel,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        if (state.phase == LanSyncPhase.idle || state.phase == LanSyncPhase.cancelled)
+          const Center(
+            child: Padding(padding: EdgeInsets.all(AppSpacing.regular), child: CircularProgressIndicator()),
+          )
+        else ...<Widget>[_StatusCard(state: state), const SizedBox(height: AppSpacing.regular), ...phaseContent(state)],
+        if (state.phase == LanSyncPhase.completed || state.phase == LanSyncPhase.failed) ...<Widget>[
           const SizedBox(height: AppSpacing.regular),
-          if (!receiving && (state.phase == LanSyncPhase.idle || state.phase == LanSyncPhase.cancelled)) ...<Widget>[
-            const Text('生成传输码后，对方扫码并在自己的设备上选择导入内容。'),
-            const SizedBox(height: AppSpacing.regular),
-            FilledButton.icon(
-              key: const Key('lan-sync-generate-transfer-code'),
-              onPressed: onGenerate,
-              icon: const Icon(Icons.qr_code_rounded),
-              label: const Text('生成传输码'),
-            ),
-          ] else if (receiving && (state.phase == LanSyncPhase.idle || state.phase == LanSyncPhase.cancelled))
-            const Center(
-              child: Padding(padding: EdgeInsets.all(AppSpacing.regular), child: CircularProgressIndicator()),
-            )
-          else ...<Widget>[_StatusCard(state: state), const SizedBox(height: AppSpacing.regular), ...phaseContent(state)],
-          if (state.phase == LanSyncPhase.completed || state.phase == LanSyncPhase.failed) ...<Widget>[
-            const SizedBox(height: AppSpacing.regular),
-            TextButton(onPressed: onReset, child: const Text('重新开始')),
-          ],
-          const SizedBox(height: AppSpacing.compact),
-          TextButton(onPressed: onCancel, child: const Text('关闭')),
+          TextButton(onPressed: onReset, child: const Text('重新开始')),
         ],
-      ),
+      ],
     ),
   );
 }

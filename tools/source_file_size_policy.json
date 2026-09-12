@@ -41,7 +41,7 @@
     ".mocks.dart"
   ],
   "legacyBaseline": {
-    "packages/mg_read_node_runtime/src/desktop-runtime.ts": 1365,
+    "packages/mg_read_node_runtime/src/desktop-runtime.ts": 1359,
     "packages/mobile_scanner/darwin/mobile_scanner/Sources/mobile_scanner/MobileScannerPlugin.swift": 1184
   },
   "legacyRationale": {

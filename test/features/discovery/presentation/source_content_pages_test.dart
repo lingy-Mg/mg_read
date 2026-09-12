@@ -125,6 +125,7 @@ void main() {
   });
 
   testWidgets('shows detailed discovery failure reason, location, and stable code', (tester) async {
+    String? copiedPayload;
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
@@ -137,6 +138,13 @@ void main() {
               '详细信息：Response validation failed at the inline payload budget.\n'
               '位置：source.discover.v1 / runtime.response.validation',
           contentFailureCode: 'invalid_format',
+          contentFailureCopyPayload:
+              '无法安全加载发现内容\n'
+              '数据源名称：示例数据源\n'
+              '插件 ID：org.example.source\n'
+              '错误码：invalid_format\n'
+              '诊断位置：source.discover.v1 / runtime.response.validation',
+          onCopyFailure: (payload) async => copiedPayload = payload,
           onDestinationRequested: (_) {},
           onSourcePressed: () {},
           onTabSelected: (_) {},
@@ -160,6 +168,15 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('稳定错误码：invalid_format'), findsOneWidget);
+
+    expect(find.byKey(const Key('discovery-failure-detail')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('discovery-failure-copy')));
+    await tester.pump();
+    expect(copiedPayload, contains('无法安全加载发现内容'));
+    expect(copiedPayload, contains('数据源名称：示例数据源'));
+    expect(copiedPayload, contains('插件 ID：org.example.source'));
+    expect(copiedPayload, contains('错误码：invalid_format'));
+    expect(copiedPayload, contains('诊断位置：source.discover.v1 / runtime.response.validation'));
   });
 
   testWidgets('removes page movement when reduce motion is enabled', (tester) async {

@@ -179,7 +179,7 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
     );
     if (confirmed != true || !mounted) return;
     try {
-      await ref.read(pluginRuntimeSourceActionProvider.notifier).uninstallAll();
+      await ref.read(pluginRuntimeSourceActionProvider.notifier).uninstallAll(totalItems: installedSourceCount);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已即时清理 $installedSourceCount 个本地数据源。')));
     } on Object {
@@ -193,6 +193,7 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     final Set<String> pendingSourceIds = ref.watch(pluginRuntimeSourceActionProvider);
     final bool isClearingAll = pendingSourceIds.contains('__all_installed_sources__');
+    final PluginSourceRemovalProgress removalProgress = ref.watch(pluginRuntimeSourceRemovalProgressProvider);
     final PluginSourceImportState importState = ref.watch(pluginRuntimeSourceImportProvider);
     final int enabledCount = widget.sources.where((DataSourceManagementRowData source) => source.enabled).length;
     final String normalizedQuery = _query.trim().toLowerCase();
@@ -225,6 +226,7 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
           importState: importState,
           onAddPressed: importState.isImporting ? null : _importDataSource,
           isClearingAll: isClearingAll,
+          removalProgress: removalProgress,
           onClearAllPressed: isClearingAll || widget.sources.every((source) => source.isDevelopment) ? null : _clearAllSources,
         ),
         const SizedBox(height: AppSpacing.section),
@@ -370,6 +372,7 @@ class _DataSourceOverviewCard extends StatelessWidget {
     required this.importState,
     required this.onAddPressed,
     required this.isClearingAll,
+    required this.removalProgress,
     required this.onClearAllPressed,
   });
 
@@ -379,6 +382,7 @@ class _DataSourceOverviewCard extends StatelessWidget {
   final PluginSourceImportState importState;
   final VoidCallback? onAddPressed;
   final bool isClearingAll;
+  final PluginSourceRemovalProgress removalProgress;
   final VoidCallback? onClearAllPressed;
 
   @override
@@ -440,7 +444,11 @@ class _DataSourceOverviewCard extends StatelessWidget {
             _AddDataSourceButton(isImporting: importState.isImporting, onPressed: onAddPressed),
             if (installedSourceCount > 0) ...<Widget>[
               const SizedBox(height: AppSpacing.regular),
-              _ClearAllDataSourcesButton(isClearing: isClearingAll, onPressed: onClearAllPressed),
+              _ClearAllDataSourcesButton(isClearing: isClearingAll, progress: removalProgress, onPressed: onClearAllPressed),
+              if (isClearingAll) ...<Widget>[
+                const SizedBox(height: AppSpacing.compact),
+                _DataSourceRemovalProgress(progress: removalProgress),
+              ],
             ],
             if (importState.isImporting) ...<Widget>[
               const SizedBox(height: AppSpacing.regular),
@@ -458,9 +466,10 @@ class _DataSourceOverviewCard extends StatelessWidget {
 }
 
 class _ClearAllDataSourcesButton extends StatelessWidget {
-  const _ClearAllDataSourcesButton({required this.isClearing, this.onPressed});
+  const _ClearAllDataSourcesButton({required this.isClearing, required this.progress, this.onPressed});
 
   final bool isClearing;
+  final PluginSourceRemovalProgress progress;
   final VoidCallback? onPressed;
 
   @override
@@ -480,6 +489,38 @@ class _ClearAllDataSourcesButton extends StatelessWidget {
           side: BorderSide(color: tokens.notification.withValues(alpha: 0.5)),
           shape: const RoundedRectangleBorder(borderRadius: AppRadii.detailControl),
         ),
+      ),
+    );
+  }
+}
+
+class _DataSourceRemovalProgress extends StatelessWidget {
+  const _DataSourceRemovalProgress({required this.progress});
+
+  final PluginSourceRemovalProgress progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final AppThemeTokens tokens = AppThemeTokens.of(context);
+    final fraction = progress.fraction;
+    final count = progress.totalItems == 0 ? '处理中' : '${progress.completedItems}/${progress.totalItems}';
+    return Semantics(
+      liveRegion: true,
+      label: '${progress.message}，$count',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(progress.message, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+              ),
+              Text(count, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.unit),
+          LinearProgressIndicator(value: fraction, minHeight: 4, backgroundColor: tokens.mutedSurface, color: tokens.notification),
+        ],
       ),
     );
   }

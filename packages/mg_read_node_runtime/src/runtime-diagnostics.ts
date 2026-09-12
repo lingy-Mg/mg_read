@@ -31,6 +31,7 @@ export type PluginDiagnosticCode =
   | "development_plugin_updated"
   | "plugin_disabled"
   | "plugin_enabled"
+  | "plugin_catalog_changed"
   | "plugin_invocation_completed"
   | "plugin_invocation_failed"
   | "plugin_invocation_started"
@@ -39,6 +40,8 @@ export type PluginDiagnosticCode =
   | "plugin_load_started"
   | "plugin_quarantined"
   | "plugin_runtime_initialized"
+  | "plugin_startup_phase_completed"
+  | "plugin_uninstall_started"
   | "plugin_uninstall_scheduled"
   | "plugin_uninstall_completed";
 
@@ -55,12 +58,18 @@ export interface RuntimeDiagnosticRecord {
   readonly component?: "runtime.plugin" | "runtime.supervisor";
   /** Terminal duration rounded to microseconds when the owner measured it. */
   readonly durationMicros?: number;
+  /** Path-free item count for a startup or catalog phase. */
+  readonly itemCount?: number;
+  /** Whether startup used the compact index or repaired it from version trees. */
+  readonly catalogState?: "hit" | "rebuilt";
   /** Non-fatal severity; fatal records are always projected as errors. */
   readonly level?: RuntimeDiagnosticLevel;
   /** Bounded diagnostic text. */
   readonly message: string;
   /** Stable lifecycle outcome; start is not mislabeled as success. */
   readonly outcome?: "error" | "started" | "success";
+  /** Stable startup phase; never contains a plugin-authored value. */
+  readonly startupPhase?: "development_scan" | "inbox" | "installed_snapshot" | "pending_activation" | "service_ready";
   /** Distinguishes ordinary lifecycle information from terminal startup errors. */
   readonly type: "diagnostic" | "fatal";
 }

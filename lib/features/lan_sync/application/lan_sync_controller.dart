@@ -8,7 +8,7 @@
 /// - 会话代际用于丢弃过期异步结果。
 /// - 网络和流资源释放必须是尽力操作，不能把清理异常泄漏到应用边界。
 /// - 扫码预览至清理完成持有共享网关会话，避免自动同步覆盖或取消当前导入。
-/// - 亮屏按实际异步操作持有至清理完成；等待发现、配对确认和内容选择时不占用。
+/// - 亮屏按实际异步操作持有至清理完成；等待扫码、配对确认和内容选择时不占用。
 ///
 library;
 
@@ -36,7 +36,6 @@ final class LanSyncViewState {
     this.message = '选择发送或接收开始同步',
     this.connectionOffer,
     this.pairingCode,
-    this.peers = const <LanSyncPeer>[],
     this.manifest,
     this.preview,
     this.transferredBytes = 0,
@@ -50,7 +49,6 @@ final class LanSyncViewState {
   final String message;
   final LanSyncConnectionOffer? connectionOffer;
   final String? pairingCode;
-  final List<LanSyncPeer> peers;
   final LanSyncManifest? manifest;
   final LanSyncImportPreview? preview;
   final int transferredBytes;
@@ -73,10 +71,8 @@ final class LanSyncViewState {
 
 final class LanSyncController extends Notifier<LanSyncViewState> {
   LanSyncSenderService? _sender;
-  LanSyncDiscoveryService? _discovery;
   LanSyncReceiverConnection? _receiver;
   StreamSubscription<LanSyncSenderEvent>? _senderSubscription;
-  StreamSubscription<LanSyncPeer>? _discoverySubscription;
   DiagnosticSpanHandle? _span;
   final Stopwatch _sessionStopwatch = Stopwatch();
   bool _senderTransferRecorded = false;
@@ -150,85 +146,33 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     await _disposeResources(completeSpan: true);
     if (!_isCurrent(generation)) return;
     if (!_acquireSession()) return;
-    state = const LanSyncViewState(role: LanSyncRole.receiver, phase: LanSyncPhase.discovering, message: '正在查找同一局域网内的发送设备');
+    state = const LanSyncViewState(role: LanSyncRole.receiver, phase: LanSyncPhase.discovering, message: '请扫描发送设备显示的二维码');
     _startSpan(LanSyncRole.receiver);
     if (!await _ensureLocalNetwork(generation)) return;
-    _recordStage('discovery_started');
-    try {
-      final discovery = await LanSyncDiscoveryService.start();
-      if (!_isCurrent(generation)) {
-        await discovery.close();
-        return;
-      }
-      _discovery = discovery;
-      _discoverySubscription = discovery.peers.listen(
-        _onPeer,
-        onError: (Object error, StackTrace stackTrace) => _onAsyncFailure('discovery', error, stackTrace),
-      );
-    } on Object catch (error, stackTrace) {
-      if (_isCurrent(generation)) {
-        _fail(_failureCodeFor('discovery', error), errorLocation: 'discovery', error: error, stackTrace: stackTrace);
-      }
-    }
-  }
-
-  void _onPeer(LanSyncPeer peer) {
-    if (state.role != LanSyncRole.receiver || state.phase != LanSyncPhase.discovering) {
-      return;
-    }
-    final now = DateTime.now().toUtc();
-    final peers = <LanSyncPeer>[
-      for (final item in state.peers)
-        if (item.expiresAtUtc.isAfter(now) && item.sessionId != peer.sessionId) item,
-      peer,
-    ]..sort((left, right) => left.label.compareTo(right.label));
-    state = LanSyncViewState(
-      role: LanSyncRole.receiver,
-      phase: LanSyncPhase.discovering,
-      message: '请选择发送设备',
-      peers: List.unmodifiable(peers),
-    );
-    _recordStage('receiver_connect_started');
-  }
-
-  Future<void> connectPeer(LanSyncPeer peer) async {
-    await _connectPeers(<LanSyncPeer>[peer]);
+    _recordStage('qr_scan_waiting');
   }
 
   Future<void> connectOffer(LanSyncConnectionOffer offer) async {
-    final expiresAt = DateTime.now().toUtc().add(lanSyncSessionLifetime);
-    await _connectPeers(<LanSyncPeer>[
-      for (final address in offer.addresses)
-        LanSyncPeer(sessionId: offer.sessionId, label: '二维码中的发送设备', address: address, port: offer.port, expiresAtUtc: expiresAt),
-    ]);
+    await _connectOffer(offer);
   }
 
-  Future<void> _connectPeers(List<LanSyncPeer> peers) => LanSyncScreenAwake.run(() => _connectPeersAwake(peers));
+  Future<void> _connectOffer(LanSyncConnectionOffer offer) => LanSyncScreenAwake.run(() => _connectOfferAwake(offer));
 
-  Future<void> _connectPeersAwake(List<LanSyncPeer> peers) async {
+  Future<void> _connectOfferAwake(LanSyncConnectionOffer offer) async {
     if (state.role != LanSyncRole.receiver || state.phase != LanSyncPhase.discovering) return;
     final generation = ++_generation;
-    try {
-      await _discoverySubscription?.cancel();
-      await _discovery?.close();
-    } on Object catch (error, stackTrace) {
-      if (_isCurrent(generation)) {
-        _fail(_failureCodeFor('discovery_close', error), errorLocation: 'discovery_close', error: error, stackTrace: stackTrace);
-      }
-      return;
-    }
-    _discoverySubscription = null;
-    _discovery = null;
     if (!_isCurrent(generation)) return;
     state = LanSyncViewState(
       role: LanSyncRole.receiver,
       phase: LanSyncPhase.preparing,
-      message: peers.length == 1 ? '正在连接发送设备' : '正在并发测试 ${peers.length} 个局域网地址',
+      message: offer.addresses.length == 1 ? '正在连接发送设备' : '正在测试二维码中的 ${offer.addresses.length} 个局域网地址',
     );
     try {
-      final receiver = peers.length == 1
-          ? await LanSyncReceiverConnection.connect(peers.single)
-          : await LanSyncReceiverConnection.connectAny(peers);
+      final expiresAt = DateTime.now().toUtc().add(lanSyncSessionLifetime);
+      final receiver = await LanSyncReceiverConnection.connectAny(<LanSyncPeer>[
+        for (final address in offer.addresses)
+          LanSyncPeer(sessionId: offer.sessionId, label: '二维码中的发送设备', address: address, port: offer.port, expiresAtUtc: expiresAt),
+      ]);
       if (!_isCurrent(generation)) {
         await receiver.close();
         return;
@@ -239,7 +183,6 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
         phase: LanSyncPhase.pairing,
         message: '请核对两台设备显示的确认码',
         pairingCode: receiver.pairingCode,
-        peers: <LanSyncPeer>[receiver.peer],
       );
       _recordStage('pairing_ready');
     } on Object catch (error, stackTrace) {
@@ -247,23 +190,6 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
         _fail(_failureCodeFor('connect', error), errorLocation: 'connect', error: error, stackTrace: stackTrace);
       }
     }
-  }
-
-  Future<void> connectManual(String value) async {
-    final offer = LanSyncConnectionOffer.tryParseManual(value);
-    if (offer == null) {
-      if (state.phase == LanSyncPhase.discovering) {
-        state = LanSyncViewState(
-          role: state.role,
-          phase: state.phase,
-          message: lanSyncFailureMessage('lan_sync_manual_address_invalid'),
-          errorCode: 'lan_sync_manual_address_invalid',
-          peers: state.peers,
-        );
-      }
-      return;
-    }
-    await connectOffer(offer);
   }
 
   Future<void> confirmReceiverPairing() => LanSyncScreenAwake.run(_confirmReceiverPairing);
@@ -277,7 +203,6 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
       phase: LanSyncPhase.previewing,
       message: '正在读取并检查同步清单',
       pairingCode: state.pairingCode,
-      peers: state.peers,
     );
     _recordStage('manifest_preview_started');
     try {
@@ -417,7 +342,6 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     message: state.message,
     connectionOffer: state.connectionOffer,
     pairingCode: state.pairingCode,
-    peers: state.peers,
     manifest: manifest,
     preview: preview,
     transferredBytes: state.transferredBytes,
@@ -438,6 +362,25 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     final selectedShelfItemIds = preview.selectedShelfItemIds;
     if (!preview.hasSelection) return;
     final selectedManifest = manifest.selectShelfItems(selectedShelfItemIds);
+    final progressClock = Stopwatch()..start();
+    var lastProgressAtMicros = -100000;
+    void updateTransferProgress(String message, int completed, int total) {
+      if (!_isCurrent(generation)) return;
+      final nowMicros = progressClock.elapsedMicroseconds;
+      final stageChanged = state.message != message;
+      if (!stageChanged && completed != total && nowMicros - lastProgressAtMicros < 100000) return;
+      lastProgressAtMicros = nowMicros;
+      state = LanSyncViewState(
+        role: LanSyncRole.receiver,
+        phase: LanSyncPhase.transferring,
+        message: message,
+        manifest: manifest,
+        preview: preview,
+        transferredBytes: completed,
+        totalBytes: total,
+      );
+    }
+
     state = LanSyncViewState(
       role: LanSyncRole.receiver,
       phase: LanSyncPhase.transferring,
@@ -459,30 +402,21 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
       await receiver.receivePlugins(
         pluginIds: selectedPluginIds,
         shelfItemIds: selectedShelfItemIds,
-        importPlugin: (plugin, bytes) => session.run((gateway) => gateway.importPluginArchive(plugin, bytes)),
+        importPlugin: (plugin, bytes) {
+          updateTransferProgress('正在写入${plugin.displayName ?? plugin.id}数据源', state.transferredBytes, state.totalBytes);
+          return session.run((gateway) => gateway.importPluginArchive(plugin, bytes));
+        },
+        onVerificationProgress: (plugin, completed, total) {
+          updateTransferProgress('正在校验${plugin.displayName ?? plugin.id}数据源', completed, total);
+        },
+        onWriteProgress: (plugin, completed, total) {
+          updateTransferProgress('正在写入${plugin.displayName ?? plugin.id}数据源', completed, total);
+        },
         onProgress: (completed, total) {
-          if (!_isCurrent(generation)) return;
-          state = LanSyncViewState(
-            role: LanSyncRole.receiver,
-            phase: LanSyncPhase.transferring,
-            message: '正在传输插件',
-            manifest: manifest,
-            preview: preview,
-            transferredBytes: completed,
-            totalBytes: total,
-          );
+          updateTransferProgress('正在传输插件', completed, total);
         },
         onPluginBytesReceived: () {
           if (!_isCurrent(generation)) return;
-          state = LanSyncViewState(
-            role: LanSyncRole.receiver,
-            phase: LanSyncPhase.transferring,
-            message: '正在校验并保存插件',
-            manifest: manifest,
-            preview: preview,
-            transferredBytes: state.transferredBytes,
-            totalBytes: state.totalBytes,
-          );
           _recordStage('plugin_bytes_received');
         },
       );
@@ -756,26 +690,10 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
       // 释放阶段不能覆盖同步会话本身的结果。
     }
 
-    final discoverySubscription = _discoverySubscription;
-    _discoverySubscription = null;
-    try {
-      await discoverySubscription?.cancel();
-    } on Object {
-      // 释放阶段不能覆盖同步会话本身的结果。
-    }
-
     final sender = _sender;
     _sender = null;
     try {
       await sender?.close();
-    } on Object {
-      // 释放阶段不能覆盖同步会话本身的结果。
-    }
-
-    final discovery = _discovery;
-    _discovery = null;
-    try {
-      await discovery?.close();
     } on Object {
       // 释放阶段不能覆盖同步会话本身的结果。
     }
@@ -812,11 +730,9 @@ bool _canSelectPlugin(LanSyncManifest manifest, LanSyncImportPreview preview, St
 /// Converts LAN failure codes into user-facing copy.
 String lanSyncFailureMessage(String code) => switch (code) {
   'lan_sync_peer_busy' => '另一项局域网同步正在进行，请完成或取消后重试',
-  'lan_sync_wifi_required' => '手机未连接 Wi-Fi，已停止局域网同步和广播',
+  'lan_sync_wifi_required' => '手机未连接 Wi-Fi，已停止局域网同步',
   'lan_sync_local_network_unavailable' => '未检测到可用局域网，请检查 Wi-Fi 或网线连接',
-  'lan_sync_manual_address_invalid' => '连接地址格式不正确',
   'lan_sync_address_not_private' => '只能连接同一私有局域网内的设备',
-  'lan_sync_discovery_failed' => '无法查找局域网设备，请尝试手动输入地址',
   'lan_sync_connect_failed' => '连接失败，请确认两台设备在同一网络',
   'lan_sync_manifest_invalid' => '同步清单内容无效或版本不兼容，请查看 Debug 控制台中的具体原因',
   'lan_sync_prepare_manifest_invalid' => '本机同步清单包含不兼容数据，请查看 Debug 控制台中的具体原因',

@@ -40,6 +40,9 @@ internal data class AndroidRuntimeProgress(
     val stage: String,
     val totalBytes: Long,
     val detail: String? = null,
+    val durationMicros: Long? = null,
+    val itemCount: Long? = null,
+    val catalogState: String? = null,
 )
 
 /** Owns one Javet NodeRuntime and all of its calls on one background thread. */
@@ -298,7 +301,7 @@ internal class AndroidRuntimeHost(
         pluginId: String,
         version: String,
         expectedBytes: Long,
-        expectedSha256: String,
+        expectedChecksum: String,
         format: String,
         callback: (AndroidRuntimeError?, String?) -> Unit,
     ) {
@@ -313,7 +316,7 @@ internal class AndroidRuntimeHost(
                     pluginId = pluginId,
                     version = version,
                     expectedBytes = expectedBytes,
-                    expectedSha256 = expectedSha256,
+                    expectedChecksum = expectedChecksum,
                     format = format,
                 )
                 callback(null, id)
@@ -681,8 +684,11 @@ internal class AndroidRuntimeHost(
                         val completed = event.optLong("completedBytes", -1L)
                         val total = event.optLong("totalBytes", -1L)
                         val detail = event.optString("detail").takeIf { it.isNotEmpty() }
+                        val durationMicros = event.optLong("durationMicros", -1L).takeIf { it >= 0L }
+                        val itemCount = event.optLong("itemCount", -1L).takeIf { it >= 0L }
+                        val catalogState = event.optString("catalogState").takeIf { it.isNotEmpty() }
                         if (stage.isEmpty() || completed < 0L || total < 0L) return@runCatching
-                        onProgress(AndroidRuntimeProgress(completed, stage, total, detail))
+                        onProgress(AndroidRuntimeProgress(completed, stage, total, detail, durationMicros, itemCount, catalogState))
                     }
                 }
             },

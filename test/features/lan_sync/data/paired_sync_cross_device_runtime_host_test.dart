@@ -4,11 +4,11 @@ library;
 import 'dart:async';
 import 'dart:io';
 
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
+import 'package:mg_read/features/lan_sync/data/lan_sync_checksum.dart';
 import 'package:mg_read/features/lan_sync/data/paired_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 import 'package:mg_read/features/lan_sync/domain/paired_device_models.dart';
@@ -71,7 +71,7 @@ final class _FilePluginSenderGateway implements LanSyncGateway, LanSyncPairedGat
               version: _pluginVersion,
               bytes: 0,
               artifactFormat: LanSyncPluginArtifactFormat.singleFile,
-              sha256: '0000000000000000000000000000000000000000000000000000000000000000',
+              checksum: '00000000',
               transferable: true,
               deferred: true,
               displayName: '发现组件演示',
@@ -112,7 +112,7 @@ final class _FilePluginSenderGateway implements LanSyncGateway, LanSyncPairedGat
         version: plugin.version,
         bytes: bytes.length,
         artifactFormat: plugin.artifactFormat,
-        sha256: sha256.convert(bytes).toString(),
+        checksum: lanSyncChecksum(bytes),
         transferable: true,
         displayName: plugin.displayName,
       ),

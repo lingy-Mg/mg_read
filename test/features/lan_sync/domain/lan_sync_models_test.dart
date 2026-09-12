@@ -22,7 +22,7 @@ void main() {
           version: '1.2.3',
           bytes: 128,
           artifactFormat: LanSyncPluginArtifactFormat.singleFile,
-          sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          checksum: 'aaaaaaaa',
           transferable: true,
         ),
       ],
@@ -131,7 +131,7 @@ void main() {
   test('rejects malformed hashes, inconsistent sizes and duplicate plugins', () {
     Map<String, Object?> plugin({
       String id = 'source.example',
-      String sha256 = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      String checksum = 'aaaaaaaa',
       int bytes = 1,
       bool transferable = true,
     }) => <String, Object?>{
@@ -139,11 +139,11 @@ void main() {
       'version': '1.0.0',
       'bytes': bytes,
       'artifactFormat': 'archive',
-      'sha256': sha256,
+      'checksum': checksum,
       'transferable': transferable,
     };
 
-    expect(() => LanSyncPluginDescriptor.fromJson(plugin(sha256: 'secret')), throwsFormatException);
+    expect(() => LanSyncPluginDescriptor.fromJson(plugin(checksum: 'secret')), throwsFormatException);
     expect(() => LanSyncPluginDescriptor.fromJson(plugin()..['artifactFormat'] = 'zip'), throwsFormatException);
     expect(() => LanSyncPluginDescriptor.fromJson(plugin(bytes: 0, transferable: true)), throwsFormatException);
     expect(
