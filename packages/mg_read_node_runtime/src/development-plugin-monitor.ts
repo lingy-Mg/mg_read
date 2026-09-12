@@ -16,7 +16,11 @@ import { watch, type FSWatcher } from "node:fs";
 import { access, readdir } from "node:fs/promises";
 import { delimiter, dirname, resolve } from "node:path";
 
-const DEFAULT_SETTLE_DELAY_MS = 1_500;
+// A source save is normally followed by more saves while an editor/AI is
+// writing a change set. Keep the quiet period short, but cap the total wait
+// from the first save so a continuously changing project still reloads.
+const DEFAULT_SETTLE_DELAY_MS = 2_000;
+const DEFAULT_MAX_SETTLE_DELAY_MS = 10_000;
 const DEFAULT_MAX_CONCURRENT_BUILDS = 2;
 const MAX_BUILD_OUTPUT_BYTES = 64 * 1024;
 
@@ -41,6 +45,7 @@ export interface DevelopmentPluginMonitorOptions {
   readonly buildRunner?: DevelopmentBuildRunner;
   readonly maxConcurrentBuilds?: number;
   readonly settleDelayMs?: number;
+  readonly maxSettleDelayMs?: number;
 }
 
 interface ProjectMonitorState {
@@ -49,6 +54,7 @@ interface ProjectMonitorState {
   queued: boolean;
   revision: number;
   suppressDistUntil: number;
+  debounceStartedAt: number | undefined;
   timer: NodeJS.Timeout | undefined;
 }
 
@@ -61,6 +67,7 @@ export class DevelopmentPluginMonitor {
   readonly #buildRunner: DevelopmentBuildRunner;
   readonly #maxConcurrentBuilds: number;
   readonly #settleDelayMs: number;
+  readonly #maxSettleDelayMs: number;
   readonly #states = new Map<string, ProjectMonitorState>();
   readonly #queue: string[] = [];
   readonly #activeBuilds = new Set<Promise<void>>();
@@ -74,6 +81,7 @@ export class DevelopmentPluginMonitor {
     this.#onRemoved = options.onRemoved;
     this.#maxConcurrentBuilds = options.maxConcurrentBuilds ?? DEFAULT_MAX_CONCURRENT_BUILDS;
     this.#settleDelayMs = options.settleDelayMs ?? DEFAULT_SETTLE_DELAY_MS;
+    this.#maxSettleDelayMs = options.maxSettleDelayMs ?? DEFAULT_MAX_SETTLE_DELAY_MS;
     this.#buildRunner = options.buildRunner ?? createNpmBuildRunner(options.npmCliPath);
   }
 
@@ -183,6 +191,7 @@ export class DevelopmentPluginMonitor {
         queued: false,
         revision: 0,
         suppressDistUntil: 0,
+        debounceStartedAt: undefined,
         timer: undefined,
       };
       this.#states.set(projectRoot, state);
@@ -192,11 +201,18 @@ export class DevelopmentPluginMonitor {
 
   #schedule(projectRoot: string, state: ProjectMonitorState): void {
     state.revision += 1;
+    const now = Date.now();
+    state.debounceStartedAt ??= now;
     if (state.timer !== undefined) clearTimeout(state.timer);
+    const remainingMaxDelay = Math.max(
+      0,
+      state.debounceStartedAt + this.#maxSettleDelayMs - now,
+    );
     state.timer = setTimeout(() => {
       state.timer = undefined;
+      state.debounceStartedAt = undefined;
       this.#enqueue(projectRoot, state);
-    }, this.#settleDelayMs);
+    }, Math.min(this.#settleDelayMs, remainingMaxDelay));
   }
 
   #enqueue(projectRoot: string, state: ProjectMonitorState): void {

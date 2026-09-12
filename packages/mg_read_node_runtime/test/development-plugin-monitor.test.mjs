@@ -116,6 +116,53 @@ test(
 );
 
 test(
+  "continuous saves reload at the maximum debounce delay",
+  { skip: process.platform !== "win32" },
+  async (t) => {
+  const root = await temporaryDirectory(t, "mgread-development-max-debounce-");
+  const project = await createProject(root, "source-a");
+  const started = [];
+  let signalStarted;
+  const firstStarted = new Promise((resolve) => { signalStarted = resolve; });
+  const monitor = new DevelopmentPluginMonitor({
+    developmentRoot: root,
+    npmCliPath: join(root, "unused-npm-cli.js"),
+    settleDelayMs: 250,
+    maxSettleDelayMs: 140,
+    buildRunner: async (projectRoot) => {
+      started.push(performance.now());
+      if (started.length === 1) signalStarted();
+      return true;
+    },
+    onBuilt: () => {},
+    onBuildFailed: () => assert.fail("build must succeed"),
+    onRemoved: () => assert.fail("project must remain present"),
+  });
+  await monitor.start();
+  t.after(() => monitor.close());
+
+  const source = join(project, "src", "index.ts");
+  const firstWriteAt = performance.now();
+  let writes = 0;
+  while (writes < 5) {
+    writes += 1;
+    await writeFile(source, `export const value = ${writes};\n`);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  await firstStarted;
+
+  assert.equal(writes, 5);
+  assert.ok(
+    started[0] - firstWriteAt < 250,
+    `maximum debounce was not applied: ${Math.round(started[0] - firstWriteAt)}ms`,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 130));
+  assert.equal(started.length, 1);
+  },
+);
+
+test(
   "development monitor reports project deletion and closes without retained work",
   { skip: process.platform !== "win32" },
   async (t) => {
