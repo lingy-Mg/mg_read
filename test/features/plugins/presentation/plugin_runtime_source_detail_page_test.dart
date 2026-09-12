@@ -105,6 +105,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final Image image = tester.widget<Image>(find.byKey(const Key('source-icon-network-org.example.with-icon')));
+    expect(tester.getSize(find.byKey(const Key('data-source-detail-icon'))), const Size.square(AppSpacing.dataSourceManagementMarkExtent));
     expect(
       image.image,
       isA<NetworkImage>().having((NetworkImage provider) => provider.url, 'url', 'http://127.0.0.1:1/v1/plugin-icon/detail-test-token'),

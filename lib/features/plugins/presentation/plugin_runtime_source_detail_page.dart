@@ -103,13 +103,14 @@ class _DetailContent extends ConsumerWidget {
                 Row(
                   children: <Widget>[
                     SourceIcon(
+                      key: const Key('data-source-detail-icon'),
                       sourceId: source.id,
                       displayName: source.displayName,
                       iconUrl: source.iconUrl,
-                      size: AppSpacing.dataSourceMarkExtent,
-                      borderRadius: 12,
+                      size: AppSpacing.dataSourceManagementMarkExtent,
+                      borderRadius: 14,
                     ),
-                    const SizedBox(width: AppSpacing.regular),
+                    const SizedBox(width: AppSpacing.comfortable),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
