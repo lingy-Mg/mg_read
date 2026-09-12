@@ -65,3 +65,45 @@ test('browser fixture covers search detail full catalog text and cover proxy', a
   assert.match(body.text, /Fixture text/u);
   assert.ok(calls.some(call => call.operation === 'open'));
 });
+
+test('protected challenge becomes a stable source access error when verification cannot start', async () => {
+  const plugin = await import(`../dist/index.mjs?blocked=${Date.now()}`);
+  const cacheDir = await mkdtemp(join(tmpdir(), 'bz-blocked-cache-'));
+  try {
+    const page = {
+      async navigate() {},
+      async getHtml() { return challenge; },
+      async fetch() { return { status: 403, url: origin, headers: {}, body: challenge }; },
+      async getUrl() { return origin; },
+      async show() { throw new Error('visible browser interaction is unavailable'); },
+      async hide() {},
+    };
+    const raised = [];
+    await plugin.activate({
+      dataDir: cacheDir,
+      cacheDir,
+      app: {},
+      plugin: {},
+      errors: { raise(error) {
+        raised.push(error);
+        const thrown = new Error(error.message);
+        thrown.name = 'PluginManagerError';
+        thrown.code = error.code;
+        thrown.detail = error.annotation === undefined ? error.message : `${error.message}\n注释：${error.annotation}`;
+        throw thrown;
+      } },
+      log: { debug() {}, info() {}, warn() {}, error() {} },
+      resource: { proxy() { return 'http://127.0.0.1/r/blocked'; } },
+      http: { async fetch() { return new Response(''); } },
+      webview: { async open() { return page; } },
+    });
+    await assert.rejects(
+      () => plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 10 }),
+      (error) => error?.code === 'source_access_blocked'
+        && error?.detail === '访问异常，请完成来源页面的浏览器验证后重试。\n注释：检测到来源的安全验证页面；请在来源页面完成验证，然后点击“刷新”。',
+    );
+    assert.equal(raised[0].code, 'source_access_blocked');
+  } finally {
+    await rm(cacheDir, { recursive: true, force: true });
+  }
+});

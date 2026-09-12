@@ -164,12 +164,14 @@ export class BzSource {
                 response = await this.#fetchWithDiagnostics(page, url, method, body, 'retry');
             }
             stage = 'response_validation';
+            if (needsVerification(response.status, response.body))
+                this.#raiseAccessBlocked();
             if (response.status >= 400)
                 throw new Error(`Browser request failed with status ${response.status}.`);
             if (typeof response.body !== 'string')
                 throw new Error('Browser returned a non-text response.');
             if (isChallenge(response.body))
-                throw new Error('Browser verification is incomplete.');
+                this.#raiseAccessBlocked();
             return response.body;
         }
         catch (error) {
@@ -202,18 +204,31 @@ export class BzSource {
         let html = await page.getHtml({ timeoutMs: browserTimeoutMs });
         if (isChallenge(html)) {
             this.context.log.warn('source_browser_challenge_detected');
-            await page.show({ timeoutMs: browserTimeoutMs });
-            this.context.log.info('source_browser_verification_wait_started');
-            await this.#waitForVerification(page);
+            try {
+                await page.show({ timeoutMs: browserTimeoutMs });
+                this.context.log.info('source_browser_verification_wait_started');
+                await this.#waitForVerification(page);
+            }
+            catch (error) {
+                this.#raiseAccessBlocked();
+                throw error;
+            }
             this.context.log.info('source_browser_verification_wait_completed');
             const current = new URL(await page.getUrl({ timeoutMs: browserTimeoutMs }));
             if (current.origin !== origin)
                 throw new Error('Browser verification left the source origin.');
             html = await page.getHtml({ timeoutMs: browserTimeoutMs });
             if (isChallenge(html))
-                throw new Error('Browser verification is incomplete.');
+                this.#raiseAccessBlocked();
             await page.hide({ timeoutMs: browserTimeoutMs });
         }
+    }
+    #raiseAccessBlocked() {
+        this.context.errors.raise({
+            code: 'source_access_blocked',
+            message: '访问异常，请完成来源页面的浏览器验证后重试。',
+            annotation: '检测到来源的安全验证页面；请在来源页面完成验证，然后点击“刷新”。',
+        });
     }
     async #waitForVerification(page) {
         const deadline = Date.now() + browserTimeoutMs;
