@@ -5,6 +5,7 @@
  */
 import { SourceTestFailure, causeSummary } from './diagnostics.js';
 import { createRuntimeLikeFetch } from './http.js';
+import { createDecipheriv } from 'node:crypto';
 
 export async function probeReachableResource({
   requests,
@@ -31,10 +32,7 @@ export async function probeReachableResource({
   for (let index = 0; index < candidates.length; index += 1) {
     const request = candidates[index];
     try {
-      const response = await runtimeFetch(request.url, {
-        headers: request.headers,
-        redirect: 'follow',
-      });
+      const response = await fetchRegisteredResource(request, runtimeFetch);
       const contentType = (response.headers.get('content-type') ?? '').slice(0, 80);
       const attempt = { index: index + 1, url: request.url, status: response.status, contentType };
       expectedContentType.lastIndex = 0;
@@ -61,6 +59,41 @@ export async function probeReachableResource({
     expectedKind,
     attempts: Object.freeze(attempts),
   });
+}
+
+async function fetchRegisteredResource(request, runtimeFetch) {
+  if (request.resourceTransform !== 'aes-cbc-split-image-v1') {
+    return runtimeFetch(request.url, { headers: request.headers, redirect: 'follow' });
+  }
+  const urls = Array.isArray(request.urls) ? request.urls : [];
+  if (urls.length < 2 || urls.length > 8 || !urls.every((url) => typeof url === 'string')) {
+    throw new Error('invalid transformed resource descriptor');
+  }
+  const parts = await Promise.all(urls.map((url) => runtimeFetch(url, {
+    headers: request.headers,
+    redirect: 'follow',
+  })));
+  const failed = parts.find((part) => !part.ok);
+  if (failed !== undefined) return failed;
+  const bodies = await Promise.all(parts.map(async (part) => {
+    const body = new Uint8Array(await part.arrayBuffer());
+    if (body.byteLength > 8 * 1024 * 1024) throw new Error('transformed resource part is too large');
+    const decipher = createDecipheriv('aes-128-cbc', Buffer.from('aaaaaaaaaaaaaaaa'), Buffer.from('0123456789aaaaaa'));
+    return Buffer.concat([decipher.update(body), decipher.final()]);
+  }));
+  const body = Buffer.concat(bodies);
+  const type = body[0];
+  const restored = type === 0
+    ? Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, ...body.subarray(12)])
+    : type === 1
+      ? Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...body.subarray(8)])
+      : type === 3
+        ? Buffer.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, ...body.subarray(6)])
+        : type === 4
+          ? Buffer.from([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66, ...body.subarray(12)])
+          : (() => { throw new Error('transformed resource format is invalid'); })();
+  const contentType = type === 1 ? 'image/png' : type === 3 ? 'image/gif' : type === 4 ? 'image/avif' : 'image/jpeg';
+  return new Response(restored, { status: 200, headers: { 'content-type': contentType } });
 }
 
 /**

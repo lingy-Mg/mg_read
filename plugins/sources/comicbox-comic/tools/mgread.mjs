@@ -28,7 +28,7 @@ export function buildPluginArtifact(options = {}) {
 
 if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
   if (process.argv[2] !== 'pack' || process.argv.length !== 3) throw new Error('Usage: mgread pack');
-  const artifact = await buildPluginArtifact();
+  const artifact = await buildPluginArtifactForProject(projectRoot);
   const artifactsRoot = resolve(projectRoot, 'artifacts');
   const target = resolve(artifactsRoot, artifact.fileName);
   await mkdir(artifactsRoot, { recursive: true });

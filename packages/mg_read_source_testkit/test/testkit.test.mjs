@@ -1,5 +1,6 @@
 /** 数据源测试库自身的离线行为测试；不访问任何真实来源。 */
 import assert from 'node:assert/strict';
+import { createCipheriv } from 'node:crypto';
 import { access } from 'node:fs/promises';
 import test from 'node:test';
 
@@ -152,6 +153,26 @@ test('resource failures expose statuses and request URLs', async () => {
       && error.summary.attempts[0].status === 404
       && error.message.includes('private-fixture.invalid'),
   );
+});
+
+test('resource probe verifies Node-side transformed image descriptors', async () => {
+  const encrypt = (body) => {
+    const cipher = createCipheriv('aes-128-cbc', Buffer.from('aaaaaaaaaaaaaaaa'), Buffer.from('0123456789aaaaaa'));
+    return Buffer.concat([cipher.update(body), cipher.final()]);
+  };
+  const parts = new Map([
+    ['https://fixture.invalid/image.b_0', new Response(encrypt(new Uint8Array([0, 0, 0, 1, 0, 0, 0, 1, 74, 70, 73, 70, 0, 1, 2])))],
+    ['https://fixture.invalid/image.b_1', new Response(encrypt(new Uint8Array([3, 4, 5])))],
+  ]);
+  const result = await probeReachableResource({
+    requests: [{
+      kind: 'image', url: 'https://fixture.invalid/image.b_0', urls: [...parts.keys()],
+      resourceTransform: 'aes-cbc-split-image-v1', headers: {},
+    }],
+    fetch: async (url) => parts.get(String(url)),
+  });
+  assert.equal(result.contentType, 'image/jpeg');
+  assert.ok(result.bytesRead > 0);
 });
 
 test('probes cover and comic image groups independently', async () => {

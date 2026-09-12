@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
+import { createCipheriv } from "node:crypto";
 import { createServer } from "node:http";
 import test from "node:test";
 
 import { serveSourceResource } from "../dist/loopback-resources.js";
+import { openSourceProxyResource } from "../dist/source-resource-proxy.js";
+
+const bmiKey = Buffer.from("aaaaaaaaaaaaaaaa", "ascii");
+const bmiIv = Buffer.from("0123456789aaaaaa", "ascii");
 
 test("source resources deliver the first chunk before the upstream body completes", async (t) => {
   const releaseTail = Promise.withResolvers();
@@ -51,6 +56,39 @@ test("source resources deliver the first chunk before the upstream body complete
   assert.deepEqual([...tail.value], [4, 5, 6]);
   assert.equal((await reader.read()).done, true);
   assert.deepEqual(await finished.promise, { status: 200, bytes: 6 });
+});
+
+test("source resource proxy decodes AES-CBC split images in the Node data plane", async () => {
+  const firstUrl = "https://images.example/page.b_0";
+  const secondUrl = "https://images.example/page.b_1";
+  const firstPlain = Buffer.from([0, 0, 0, 1, 0, 0, 0, 1, 74, 70, 73, 70, 0, 1, 2]);
+  const secondPlain = Buffer.from([3, 4, 5, 6]);
+  const encrypt = (plain) => {
+    const cipher = createCipheriv("aes-128-cbc", bmiKey, bmiIv);
+    return Buffer.concat([cipher.update(plain), cipher.final()]);
+  };
+  const responses = new Map([
+    [firstUrl, new Response(encrypt(firstPlain), { status: 200 })],
+    [secondUrl, new Response(encrypt(secondPlain), { status: 200 })],
+  ]);
+  const resource = await openSourceProxyResource({
+    request: {
+      kind: "image",
+      url: firstUrl,
+      urls: [firstUrl, secondUrl],
+      resourceTransform: "aes-cbc-split-image-v1",
+      headers: { Referer: "https://comicbox.example/" },
+    },
+    fetch: async (url) => responses.get(String(url)),
+    proxy() { return "unused"; },
+  }, {}, new AbortController().signal);
+  assert.notEqual(resource, undefined);
+  assert.equal(resource.response.status, 200);
+  assert.equal(resource.response.headers.get("content-type"), "image/jpeg");
+  assert.deepEqual(
+    [...new Uint8Array(await resource.response.arrayBuffer())],
+    [255, 216, 255, 224, 0, 16, 74, 70, 73, 70, 0, 1, 0, 1, 2, 3, 4, 5, 6],
+  );
 });
 
 test("source resource upstream failures return bad gateway", async (t) => {
