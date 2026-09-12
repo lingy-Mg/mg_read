@@ -141,3 +141,38 @@ test(
   assert.deepEqual(removed, [project]);
   },
 );
+
+test(
+  "development monitor ignores source directories without a package manifest",
+  { skip: process.platform !== "win32" },
+  async (t) => {
+    const root = await temporaryDirectory(t, "mgread-development-monitor-incomplete-");
+    const incompleteProject = join(root, "unfinished-source");
+    await mkdir(join(incompleteProject, "src"), { recursive: true });
+    const built = [];
+    const failures = [];
+    const removed = [];
+    const monitor = new DevelopmentPluginMonitor({
+      developmentRoot: root,
+      npmCliPath: join(root, "unused-npm-cli.js"),
+      settleDelayMs: 25,
+      buildRunner: async (projectRoot) => {
+        built.push(projectRoot);
+        return false;
+      },
+      onBuilt: () => assert.fail("incomplete project must not build"),
+      onBuildFailed: (projectRoot) => failures.push(projectRoot),
+      onRemoved: (projectRoot) => removed.push(projectRoot),
+    });
+    await monitor.start();
+    t.after(() => monitor.close());
+
+    await writeFile(join(incompleteProject, "src", "index.ts"), "export {};\n");
+    await waitFor(() => removed.length === 1);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+
+    assert.deepEqual(built, []);
+    assert.deepEqual(failures, []);
+    assert.deepEqual(removed, [incompleteProject]);
+  },
+);

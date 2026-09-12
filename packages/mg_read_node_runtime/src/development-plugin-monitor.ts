@@ -240,6 +240,15 @@ export class DevelopmentPluginMonitor {
       this.#states.delete(projectRoot);
       return;
     }
+    try {
+      await access(resolve(projectRoot, "package.json"));
+    } catch {
+      // A source collection can contain draft or leftover directories. Only a
+      // project manifest makes one eligible for build/reload work.
+      await this.#onRemoved(projectRoot);
+      this.#states.delete(projectRoot);
+      return;
+    }
 
     state.building = true;
     let result: DevelopmentBuildResult = {
