@@ -109,6 +109,38 @@ test('creates an isolated host and records bounded resource metadata', async (t)
   await assert.rejects(access(harness.root));
 });
 
+test('browser session retains host cookies between source requests', async (t) => {
+  const requestHeaders = [];
+  const harness = await createSourceTestHarness({
+    plugin: fakePlugin(),
+    pluginId: 'org.mgread.fixture',
+    version: '1.0.0',
+    async fetch(input, init) {
+      requestHeaders.push(new Headers(init?.headers));
+      return String(input).endsWith('/set-cookie')
+        ? new Response('session-started', { headers: { 'set-cookie': 'sid=fixture; Path=/' } })
+        : new Response('session-continued');
+    },
+  });
+  t.after(harness.cleanup);
+  const request = harness.context.browser.sessionV1.request;
+  const base = {
+    version: 1,
+    sessionKey: 'fixture-session',
+    method: 'GET',
+    headers: {},
+    body: null,
+    interaction: 'silent',
+    presentation: 'hidden',
+    transport: 'http',
+    timeoutMs: 5_000,
+    maxResponseBytes: 1_024,
+  };
+  await request({ ...base, url: 'https://fixture.invalid/set-cookie' });
+  await request({ ...base, url: 'https://fixture.invalid/session' });
+  assert.equal(requestHeaders[1].get('cookie'), 'sid=fixture');
+});
+
 test('resource probe skips a stale descriptor and reads only the first healthy chunk', async () => {
   const calls = [];
   const result = await probeReachableResource({

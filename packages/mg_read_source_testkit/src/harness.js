@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { Buffer } from 'node:buffer';
 
 import { SourceTestFailure, failureFromCause } from './diagnostics.js';
-import { createRuntimeLikeFetch } from './http.js';
+import { createRuntimeLikeFetch, defaultSourceTestUserAgent } from './http.js';
 
 const maximumLogEvents = 64;
 
@@ -37,6 +37,7 @@ export async function createSourceTestHarness({
   const logEvents = [];
   const runtimeFetch = createRuntimeLikeFetch(sourceFetch);
   const webview = createTestWebView(runtimeFetch);
+  const browserSessionRequest = createTestBrowserSession(runtimeFetch);
   let cleaned = false;
   const recordLog = (level, event) => {
     if (logEvents.length >= maximumLogEvents) return;
@@ -46,6 +47,9 @@ export async function createSourceTestHarness({
     dataDir: join(root, 'data'),
     cacheDir: join(root, 'cache'),
     http: Object.freeze({ fetch: runtimeFetch }),
+    browser: Object.freeze({
+      sessionV1: Object.freeze({ request: browserSessionRequest }),
+    }),
     webview,
     resource: Object.freeze({
       proxy(request) {
@@ -126,6 +130,53 @@ function defaultPublicErrorMessage(code) {
   if (code === 'source_access_blocked') return '访问异常，请稍后再试。';
   if (code === 'source_media_resolution_failed') return 'The source could not resolve an external media address.';
   return 'Plugin public error.';
+}
+
+function createTestBrowserSession(runtimeFetch) {
+  const sessions = new Map();
+  return async (request) => {
+    const input = request !== null && typeof request === 'object' ? request : {};
+    const sessionKey = typeof input.sessionKey === 'string' && input.sessionKey !== '' ? input.sessionKey : 'default';
+    const headers = new Headers(input.headers);
+    const cookies = sessions.get(sessionKey);
+    if (cookies !== undefined && cookies.size > 0 && !headers.has('cookie')) {
+      headers.set('cookie', [...cookies].map(([name, value]) => `${name}=${value}`).join('; '));
+    }
+    const response = await runtimeFetch(input.url, {
+      method: input.method === 'POST' ? 'POST' : 'GET',
+      headers,
+      body: typeof input.body === 'string' ? input.body : undefined,
+    });
+    rememberCookies(sessions, sessionKey, response.headers);
+    const body = await response.text();
+    const maximumBytes = Number(input.maxResponseBytes);
+    if (Number.isFinite(maximumBytes) && Buffer.byteLength(body) > maximumBytes) {
+      throw new SourceTestFailure('source_browser_response_too_large', 'browser.sessionV1', {});
+    }
+    return Object.freeze({
+      version: 1,
+      status: response.status,
+      body,
+      headers: Object.freeze(Object.fromEntries(response.headers)),
+      finalUrl: response.url,
+      sessionUserAgent: headers.get('user-agent') ?? defaultSourceTestUserAgent,
+    });
+  };
+}
+
+function rememberCookies(sessions, sessionKey, headers) {
+  const values = typeof headers.getSetCookie === 'function'
+    ? headers.getSetCookie()
+    : (headers.get('set-cookie') ?? '').split(/,(?=[^;,=\s]+=[^;,]*)/u).filter(Boolean);
+  if (values.length === 0) return;
+  const cookies = sessions.get(sessionKey) ?? new Map();
+  for (const value of values) {
+    const pair = String(value).split(';', 1)[0];
+    const separator = pair.indexOf('=');
+    if (separator <= 0) continue;
+    cookies.set(pair.slice(0, separator).trim(), pair.slice(separator + 1).trim());
+  }
+  sessions.set(sessionKey, cookies);
 }
 
 function freezeResourceRequest(request) {
