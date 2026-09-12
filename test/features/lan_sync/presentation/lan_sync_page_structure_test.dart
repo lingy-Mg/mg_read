@@ -34,6 +34,7 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const Key('lan-sync-unified-scan')), findsNothing);
+    expect(find.byKey(const Key('lan-sync-scan')), findsOneWidget);
     expect(find.text('设备同步'), findsOneWidget);
     expect(find.text('发送 App'), findsNWidgets(2));
     expect(find.text('临时发送'), findsOneWidget);

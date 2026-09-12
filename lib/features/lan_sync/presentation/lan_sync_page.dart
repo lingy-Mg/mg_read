@@ -105,16 +105,14 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
                     title: '局域网同步',
                     onBack: () => unawaited(_back()),
                     backButtonKey: const Key('lan-sync-back'),
-                    actions: _supportsQrScanner
-                        ? <Widget>[
-                            AppSecondaryPageIconButton(
-                              key: const Key('lan-sync-scan'),
-                              label: '扫码',
-                              icon: Icons.qr_code_scanner_rounded,
-                              onPressed: () => unawaited(_scanAndRoute()),
-                            ),
-                          ]
-                        : const <Widget>[],
+                    actions: <Widget>[
+                      AppSecondaryPageIconButton(
+                        key: const Key('lan-sync-scan'),
+                        label: '扫码',
+                        icon: Icons.qr_code_scanner_rounded,
+                        onPressed: () => unawaited(_scanAndRoute()),
+                      ),
+                    ],
                   ),
                   Expanded(
                     child: ListView(
