@@ -3,54 +3,6 @@
 /// 这些组件只呈现页面已经持有的状态和操作入口，不建立连接或修改传输协议。
 part of 'lan_sync_page.dart';
 
-class _UnifiedScanCard extends StatelessWidget {
-  const _UnifiedScanCard({required this.enabled, required this.onTap});
-
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppThemeTokens.of(context);
-    return Material(
-      color: const Color(0xFFFFF2E5),
-      shape: RoundedRectangleBorder(
-        borderRadius: const BorderRadius.all(Radius.circular(18)),
-        side: BorderSide(color: tokens.accent.withValues(alpha: 0.26)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        key: const Key('lan-sync-unified-scan'),
-        onTap: enabled ? onTap : null,
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.regular),
-          child: Row(
-            children: <Widget>[
-              DecoratedBox(
-                decoration: BoxDecoration(color: tokens.dataSourceAccent, borderRadius: AppRadii.detailControl),
-                child: const SizedBox.square(dimension: 48, child: Icon(Icons.qr_code_scanner_rounded, color: Colors.white)),
-              ),
-              const SizedBox(width: AppSpacing.regular),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text('扫码连接 / 接收', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                    const SizedBox(height: AppSpacing.unit),
-                    Text('自动识别配对、App 和临时数据传输', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
-                  ],
-                ),
-              ),
-              Text(enabled ? '立即扫码' : '暂不可用', style: Theme.of(context).textTheme.labelLarge?.copyWith(color: tokens.dataSourceAccent)),
-              const Icon(Icons.chevron_right_rounded),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _DeviceSyncCard extends StatelessWidget {
   const _DeviceSyncCard({required this.state, required this.onAddDevice, required this.onManage, required this.onShowAll});
 

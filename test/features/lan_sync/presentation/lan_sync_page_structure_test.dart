@@ -33,7 +33,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('扫码连接 / 接收'), findsOneWidget);
+    expect(find.byKey(const Key('lan-sync-unified-scan')), findsNothing);
     expect(find.text('设备同步'), findsOneWidget);
     expect(find.text('发送 App'), findsNWidgets(2));
     expect(find.text('临时发送'), findsOneWidget);

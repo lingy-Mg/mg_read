@@ -105,7 +105,7 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
                     title: '局域网同步',
                     onBack: () => unawaited(_back()),
                     backButtonKey: const Key('lan-sync-back'),
-                    actions: _supportsQrScanner && _canOpenUnifiedScanner(state, appState, deviceState)
+                    actions: _supportsQrScanner
                         ? <Widget>[
                             AppSecondaryPageIconButton(
                               key: const Key('lan-sync-scan'),
@@ -127,11 +127,6 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
                       ),
                       children: <Widget>[
                         LanSyncOverviewCard(networkReady: deviceState.started),
-                        const SizedBox(height: AppSpacing.section),
-                        _UnifiedScanCard(
-                          enabled: _supportsQrScanner && _canOpenUnifiedScanner(state, appState, deviceState),
-                          onTap: () => unawaited(_scanAndRoute()),
-                        ),
                         const SizedBox(height: AppSpacing.section),
                         _DeviceSyncCard(
                           state: deviceState,
@@ -284,9 +279,6 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
   }
 
   bool get _supportsQrScanner => defaultTargetPlatform == TargetPlatform.android;
-
-  bool _canOpenUnifiedScanner(LanSyncViewState syncState, AppTransferState appState, DeviceSyncState deviceState) =>
-      !syncState.busy && appState.phase == AppTransferPhase.idle && !deviceState.pairingBusy;
 
   Future<void> _scanAndRoute() async {
     final payload = await Navigator.of(
