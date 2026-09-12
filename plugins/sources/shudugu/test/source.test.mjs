@@ -11,6 +11,8 @@ function context(fetch, cacheDir = 'cache') {
 }
 
 const detail = `<div class="item"><a href="/51/"><img src="https://www.shudugu.org/cover.jpg"></a><div class="itemtxt"><h1><i>12.5万字</i><a href="/51/">测试书</a></h1><p><span>连载中</span><span>都市小说</span></p><p><a href="/zuozhe/?tag=作者">作者：作者甲</a></p><ul><li><a href="/51/101.html">第一章</a></li></ul></div></div><div class="des bb"><p>简介</p></div><h2 id="dir"><span>更新时间：2026-08-24 12:10:35</span></h2><div id="list"><ul><li><a href="/51/101.html">第一章</a></li><li><a href="/51/102.html">第二章</a></li></ul></div>`;
+const paginatedDetail = `${detail}<div class="pages"><a href="/51/p-2.html#dir">下一页</a></div>`;
+const detailPage2 = '<h2 id="dir">全文目录</h2><div id="list"><ul><li><a href="/51/102.html">第二章</a></li><li><a href="/51/103.html">第三章</a></li></ul></div>';
 const completedDetail = detail
   .replaceAll('/51/', '/53/')
   .replaceAll('测试书', '完结精品')
@@ -32,8 +34,9 @@ test('completes search, detail, catalog and content with opaque IDs', async (t) 
     }
     if (path === '/51/') {
       detailCalls += 1;
-      return new Response(detail);
+      return new Response(paginatedDetail);
     }
+    if (path === '/51/p-2.html') return new Response(detailPage2);
     if (path === '/53/') {
       completedDetailCalls += 1;
       return new Response(completedDetail);
@@ -69,9 +72,11 @@ test('completes search, detail, catalog and content with opaque IDs', async (t) 
   const book = await plugin.getDetail({ id: 'novel:51' });
   assert.equal(book.author, '作者甲');
   assert.equal(book.wordCount, 125000);
-  assert.equal(book.chapterCount, 2);
+  assert.equal(book.chapterCount, 3);
   const chapters = await plugin.getChapters({ id: book.id });
   assert.equal(chapters.items[0].id.startsWith('chapter:'), true);
+  assert.equal(chapters.items.length, 3);
+  assert.equal(chapters.items[2].title, '第三章');
   const content = await plugin.getContent({ id: book.id, chapterId: chapters.items[0].id });
   const suggestions = await plugin.searchSuggestions({ cursor: null, pageSize: 10 });
   const cachedSuggestions = await plugin.searchSuggestions({ cursor: null, pageSize: 10 });

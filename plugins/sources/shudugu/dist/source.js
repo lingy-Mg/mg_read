@@ -161,16 +161,15 @@ export class ShuduguSource {
             url: this.#sourceUrl(latestHref, url).toString(), updatedAt,
         });
         const coverUrl = this.#proxyCoverUrl(item.find('img').first().attr('src'), url);
-        const chapters = this.#parseCatalog($, url);
+        const chapters = await this.#loadCatalog(cheerio, cachedHtml.body, url, id, cachePolicy);
         const detail = Object.freeze({
             ...this.#summary({ id, title, author, category, coverUrl, description, status, wordCount,
                 chapterCount: chapters.length, latestChapter, updatedAt }),
             aliases: Object.freeze([]), catalogUrl: url.toString(),
         });
         const expiresAtMs = cachedHtml.storedAtMs + cachePolicy.staleAfterMs;
-        // The source places detail and catalog on one page. Discovery's hydration
-        // therefore satisfies both the later detail route and add-to-shelf catalog
-        // request without another HTTP fetch or HTML parse.
+        // Discovery's hydration satisfies both the later detail route and add-to-shelf
+        // catalog request after loading every catalog page once.
         const catalog = Object.freeze({ items: Object.freeze(chapters.map((chapter, index) => Object.freeze({
                 id: chapter.id, title: chapter.title, order: index, url: chapter.url.toString(), volumeTitle: null,
                 wordCount: null, updatedAt: null, isLocked: false, attributes: Object.freeze([]),
@@ -373,6 +372,46 @@ export class ShuduguSource {
             return []; const url = this.#sourceUrl(href, base); const id = this.#chapterId(url); if (seen.has(id))
             return []; seen.add(id); return [Object.freeze({ id, title, url })]; }));
     }
+    async #loadCatalog(cheerio, firstHtml, base, bookId, policy) {
+        const chapters = [];
+        const seen = new Set();
+        let pageUrl = base;
+        let pageHtml = firstHtml;
+        for (let page = 1; page <= 120; page += 1) {
+            const $ = cheerio.load(pageHtml);
+            for (const chapter of this.#parseCatalog($, pageUrl)) {
+                if (seen.has(chapter.id))
+                    continue;
+                seen.add(chapter.id);
+                chapters.push(chapter);
+            }
+            const nextPage = this.#nextCatalogPage($, pageUrl, bookId);
+            if (nextPage === null)
+                return Object.freeze(chapters);
+            if (page === 120)
+                throw new Error('Catalog pagination exceeds the safety limit.');
+            pageUrl = nextPage;
+            pageHtml = await this.#getHtml(pageUrl, policy);
+        }
+        throw new Error('Catalog pagination exceeds the safety limit.');
+    }
+    #nextCatalogPage($, current, bookId) {
+        const next = $('.pages a[href], a[rel="next"]').toArray().find((element) => {
+            const label = (textOrNull($(element).text()) ?? '').replace(/\s+/gu, '');
+            return label === '下一页';
+        });
+        if (next === undefined)
+            return null;
+        const href = $(next).attr('href');
+        if (href === undefined)
+            throw new Error('Catalog continuation is invalid.');
+        const candidate = this.#sourceUrl(href, current);
+        const currentPage = parseCatalogPage(current, bookId);
+        const candidatePage = parseCatalogPage(candidate, bookId);
+        if (currentPage === null || candidatePage === null || candidatePage !== currentPage + 1)
+            throw new Error('Catalog continuation is invalid.');
+        return candidate;
+    }
     #nextChapterPage($, current, firstPage) {
         const next = $('.prenext a[href], a[rel="next"]').toArray().find((element) => {
             const label = (textOrNull($(element).text()) ?? '').replace(/\s+/gu, '');
@@ -446,6 +485,9 @@ function decodeNovelId(id) { const value = /^novel:(\d+)$/u.exec(id)?.[1]; if (v
     throw new Error('Novel ID is invalid.'); return value; }
 function parseChapterPage(url) { const match = /^\/(\d+)\/(\d+)(?:-(\d+))?\.html$/u.exec(url.pathname); if (match === null)
     return null; const pageNumber = Number(match[3] ?? '1'); return Number.isSafeInteger(pageNumber) && pageNumber >= 1 ? Object.freeze({ bookId: match[1], chapterNumber: match[2], pageNumber }) : null; }
+function parseCatalogPage(url, bookId) { if (url.pathname === `/${bookId}/`)
+    return 1; const match = new RegExp(`^/${bookId}/p-(\\d+)\\.html$`, 'u').exec(url.pathname); if (match === null)
+    return null; const page = Number(match[1]); return Number.isSafeInteger(page) && page >= 2 ? page : null; }
 function decodePage(cursor, scope) { if (cursor === null)
     return 1; const value = Number(new RegExp(`^${scope}:(\\d+)$`, 'u').exec(cursor)?.[1] ?? Number.NaN); if (!Number.isSafeInteger(value) || value < 1)
     throw new Error('Cursor is invalid.'); return value; }
