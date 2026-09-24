@@ -107,6 +107,8 @@ test('Juzi TV source signs requests, keeps ep IDs and proxies HLS', async () => 
 
   const chapters = await plugin.getChapters({ id: item.id });
   assert.equal(chapters.items[0].id, 'vod:10:99');
+  assert.equal(chapters.groups[1].episodes[0].id, 'vod:10:100');
+  assert.equal(chapters.groups[1].episodes[0].order, 0);
 
   const content = await plugin.getContent({
     id: item.id,
@@ -153,6 +155,9 @@ function createContext({ onTopic, proxied = [] } = {}) {
               playerList: [{
                 playerName: '线路',
                 epList: [{ epId: 99, epName: '第一集' }],
+              }, {
+                playerName: '备用线路',
+                epList: [{ epId: 100, epName: '第一集' }],
               }],
             },
           });
