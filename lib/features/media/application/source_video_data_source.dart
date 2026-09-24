@@ -23,8 +23,8 @@ final class SourceVideoDataSource implements VideoEpisodeDataSource {
     this.initialDetail,
     this.initialCatalog,
     this.playbackGate,
-    this.maximumEpisodes = 200,
-  }) : assert(maximumEpisodes > 0 && maximumEpisodes <= 500);
+    this.maximumEpisodes = 2000,
+  }) : assert(maximumEpisodes > 0 && maximumEpisodes <= 2000);
 
   final SourceContentGateway gateway;
   final String pluginId;
@@ -45,8 +45,13 @@ final class SourceVideoDataSource implements VideoEpisodeDataSource {
     }
     final catalog = values[1] as PluginChaptersResult;
     final groups = _playableGroups(catalog);
-    final episodeCount = groups.fold<int>(0, (total, group) => total + group.episodes.length);
-    if (episodeCount == 0 || episodeCount > maximumEpisodes) {
+    // Groups represent alternate lines/editions. Count the safety limit per
+    // group so repeated episodes across multiple lines remain playable.
+    final largestGroupEpisodeCount = groups.fold<int>(
+      0,
+      (maximum, group) => group.episodes.length > maximum ? group.episodes.length : maximum,
+    );
+    if (largestGroupEpisodeCount == 0 || largestGroupEpisodeCount > maximumEpisodes) {
       throw const VideoPlayerLoadException(
         code: 'video_catalog_unavailable',
         location: '校验视频分组和选集',

@@ -99,6 +99,41 @@ void main() {
     expect(gateway.contentCalls, <String>['episode-2']);
   });
 
+  test('does not reject multi-line catalogs when each group stays within the limit', () async {
+    final groups = <PluginMediaGroup>[
+      for (var groupIndex = 0; groupIndex < 3; groupIndex += 1)
+        PluginMediaGroup(
+          id: 'line-$groupIndex',
+          title: '线路 ${groupIndex + 1}',
+          order: groupIndex,
+          episodes: <PluginChapterSummary>[
+            for (var episodeIndex = 0; episodeIndex < 100; episodeIndex += 1)
+              _episode(
+                id: 'line-$groupIndex-episode-$episodeIndex',
+                title: '第 ${episodeIndex + 1} 集',
+                order: episodeIndex,
+                group: '线路 ${groupIndex + 1}',
+              ),
+          ],
+        ),
+    ];
+    final gateway = _VideoGateway(
+      failEpisodeResource: false,
+      catalogOverride: PluginChaptersResult(
+        pluginId: _pluginId,
+        sourceName: '示例视频源',
+        items: <PluginChapterSummary>[for (final group in groups) ...group.episodes],
+        groups: groups,
+      ),
+    );
+    final source = SourceVideoDataSource(gateway: gateway, pluginId: _pluginId);
+
+    final content = await source.load('video-1');
+
+    expect(content.groups, hasLength(3));
+    expect(content.groups.every((group) => group.episodes.length == 100), isTrue);
+  });
+
   test('reports a selected video resource failure with a stable location', () async {
     final gateway = _VideoGateway(failEpisodeResource: true);
     final source = SourceVideoDataSource(gateway: gateway, pluginId: _pluginId);
@@ -135,13 +170,21 @@ void main() {
 const _pluginId = 'org.example.video';
 
 final class _VideoGateway implements SourceContentGateway {
-  _VideoGateway({required this.failEpisodeResource, this.episodeFailureCode, this.grouped = false, this.detailGate, this.catalogGate});
+  _VideoGateway({
+    required this.failEpisodeResource,
+    this.episodeFailureCode,
+    this.grouped = false,
+    this.detailGate,
+    this.catalogGate,
+    this.catalogOverride,
+  });
 
   final bool failEpisodeResource;
   final AppErrorCode? episodeFailureCode;
   final bool grouped;
   final Completer<void>? detailGate;
   final Completer<void>? catalogGate;
+  final PluginChaptersResult? catalogOverride;
   final List<String> contentCalls = <String>[];
   int detailCalls = 0;
   int catalogCalls = 0;
@@ -182,6 +225,8 @@ final class _VideoGateway implements SourceContentGateway {
   Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async {
     catalogCalls++;
     await catalogGate?.future;
+    final override = catalogOverride;
+    if (override != null) return override;
     final first = _episode(id: 'episode-1', title: '第 1 集', order: 0, group: grouped ? 'Laoz' : null);
     final second = _episode(id: 'episode-2', title: '第 2 集', order: 0, group: 'Diff');
     return PluginChaptersResult(

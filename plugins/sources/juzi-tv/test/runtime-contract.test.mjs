@@ -56,6 +56,9 @@ test('fixture outputs pass the current Runtime source validators', async () => {
               playerList: [{
                 playerName: '线路',
                 epList: [{ epId: 99, epName: '第一集' }],
+              }, {
+                playerName: '备用线路',
+                epList: [{ epId: 100, epName: '第一集' }],
               }],
             },
           });
