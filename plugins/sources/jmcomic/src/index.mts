@@ -86,7 +86,7 @@ export async function getDetail(request: { id: string }) {
   const tags = stringList(data.tags);
   const description = clean(text(data.description));
   return frozen({ ...item, description: description || null, tags, categories: tags, chapterCount: series.length || 1,
-    aliases: [], catalogUrl: `https://${apiHost}/album?id=${id}` });
+    aliases: [], catalogUrl: albumUrl(id) });
 }
 
 export async function getChapters(request: { id: string }) {
@@ -220,7 +220,7 @@ function summaryOrNull(value: Json) { const id = sourceId(value.id); return id =
 function summary(value: Json, id: string) {
   const title = text(value.name) || id;
   const result = frozen({ id: `manga:${id}`, title, contentKind: 'manga' as const, coverOrientation: 'portrait' as const,
-    author: stringList(value.author).join(', ') || null, url: `https://${apiHost}/album?id=${id}`,
+    author: stringList(value.author).join(', ') || null, url: albumUrl(id),
     coverUrl: requireContext().resource.proxy({ kind: 'image', url: `https://${imageDomain}/media/albums/${id}_3x4.jpg`, headers: imageHeaders() }),
     description: clean(text(value.description)) || null, language: 'zh-CN', status: 'unknown' as const,
     access: 'unknown' as const, wordCount: null, chapterCount: null, publishedAt: null,
@@ -230,6 +230,7 @@ function summary(value: Json, id: string) {
   return result;
 }
 function imageHeaders() { return { Accept: 'image/*', 'X-Requested-With': 'com.JMComic3.app', Referer: `https://${apiHost}/`, 'User-Agent': agent }; }
+function albumUrl(id: string) { return `https://18comic.vip/album/${id}`; }
 function safePhotoUrl(value: string) { try { const url = new URL(value); return url.protocol === 'https:' && imageHosts.has(url.hostname) &&
   url.username === '' && url.password === '' && url.port === '' &&
   /^\/media\/photos\/\d+\/[A-Za-z0-9_-]{1,80}\.(?:jpe?g|png|webp)$/iu.test(url.pathname) && url.search === '' && url.hash === '';

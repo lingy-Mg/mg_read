@@ -3238,7 +3238,7 @@ async function getDetail(request) {
     categories: tags,
     chapterCount: series.length || 1,
     aliases: [],
-    catalogUrl: `https://${apiHost}/album?id=${id}`
+    catalogUrl: albumUrl(id)
   });
 }
 async function getChapters(request) {
@@ -3402,7 +3402,7 @@ function summary(value, id) {
     contentKind: "manga",
     coverOrientation: "portrait",
     author: stringList(value.author).join(", ") || null,
-    url: `https://${apiHost}/album?id=${id}`,
+    url: albumUrl(id),
     coverUrl: requireContext().resource.proxy({ kind: "image", url: `https://${imageDomain}/media/albums/${id}_3x4.jpg`, headers: imageHeaders() }),
     description: clean(text(value.description)) || null,
     language: "zh-CN",
@@ -3423,6 +3423,9 @@ function summary(value, id) {
 }
 function imageHeaders() {
   return { Accept: "image/*", "X-Requested-With": "com.JMComic3.app", Referer: `https://${apiHost}/`, "User-Agent": agent };
+}
+function albumUrl(id) {
+  return `https://18comic.vip/album/${id}`;
 }
 function safePhotoUrl(value) {
   try {
