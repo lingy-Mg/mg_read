@@ -7,7 +7,7 @@
 export const nodeVersionByBackend = Object.freeze({
   androidJavet: "26.9.0",
   androidProcess: "24.21.0",
-  macos: "24.16.0",
+  macos: "26.10.0",
   windows: "26.10.0",
 });
 
@@ -86,7 +86,7 @@ export const runtimeCompatibility: RuntimeCompatibilityMatrix = Object.freeze({
     macos: Object.freeze({
       architectures: Object.freeze(["arm64", "x64"] as const),
       node: nodeVersionByBackend.macos,
-      npm: "11.13.0",
+      npm: "11.19.1",
     }),
     windows: Object.freeze({
       architectures: Object.freeze(["x64"] as const),

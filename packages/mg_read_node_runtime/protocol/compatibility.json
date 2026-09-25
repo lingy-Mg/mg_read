@@ -16,6 +16,6 @@
   },
   "desktop": {
     "windows": {"node": "26.10.0", "npm": "11.19.1", "architectures": ["x64"]},
-    "macos": {"node": "24.16.0", "npm": "11.13.0", "architectures": ["arm64", "x64"]}
+    "macos": {"node": "26.10.0", "npm": "11.19.1", "architectures": ["arm64", "x64"]}
   }
 }

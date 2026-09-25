@@ -10,7 +10,7 @@
 | Android 默认 Javet | `com.caoccao.javet:javet-node-android:6.0.1`；Node `26.9.0` |
 | Android 独立进程 | Node `24.21.0`；arm64-v8a `libnode.so` 来自 nodejs-mobile Android 24.21.0-0 |
 | Windows bundled Node/npm | `26.10.0` / `11.19.1` |
-| macOS bundled Node/npm | `24.16.0` / `11.13.0` |
+| macOS bundled Node/npm | `26.10.0` / `11.19.1` |
 | TypeScript | `5.9.3` |
 | `@types/node` | `24.13.3` |
 | protocol marker | `1.0` |
@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | Android | 默认 Javet Node 26.9.0，arm64-v8a/x86_64；构建期开关 `MGREAD_ANDROID_NODE_PROCESS=true` 选择 Node 24.21.0 私有进程，仅 arm64-v8a；minSdk 24 | 新后端 `libnode.so` 是基于 Node.js 源码的移动端第三方构建，非 Node.js 官方 Android 二进制；模拟器集成验证与最终安装包验收分别记录 |
 | Windows | bundled Node 26.10.0 x64 child process | Windows 测试不证明 Android、macOS 或最终安装包 |
-| macOS | bundled Node 24.16.0；当前产物为 arm64 | arm64 验证执行、签名和启动；x64、hardened runtime 与公证待发布验证 |
+| macOS | bundled Node 26.10.0；当前产物为 arm64 | arm64 验证执行、签名和启动；x64、hardened runtime 与公证待发布验证 |
 
 Android Javet adapter 只在专用后台线程上创建一个 Node-mode `NodeRuntime`；进程后端只在私有 Service 的
 专用线程调用 `node::Start`。构建选择一次只能启用一个后端，WebView 仍由主进程持有；不得引入 VM Pool、

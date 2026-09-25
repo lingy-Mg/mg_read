@@ -168,15 +168,12 @@ jobs:
     needs: debounce
     runs-on: macos-latest
     timeout-minutes: 45
-    env:
-      NODE_VERSION: "24.16.0"
-      NPM_VERSION: "11.13.0"
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
       - name: Fetch macOS Node Runtime from Git LFS
-        run: git lfs pull --include="packages/mg_read_node_runtime/tools/node-v24.16.0-darwin-arm64/bin/node" --exclude=""
+        run: git lfs pull --include="packages/mg_read_node_runtime/tools/node-v26.10.0-darwin-arm64/bin/node" --exclude=""
 
       - name: Set up Node.js
         uses: actions/setup-node@v7

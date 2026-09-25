@@ -9,7 +9,7 @@ import { PluginManager } from "../dist/index.js";
 
 const npmCli = fileURLToPath(new URL(
   process.platform === "darwin"
-    ? "../tools/node-v24.16.0-darwin-arm64/lib/node_modules/npm/bin/npm-cli.js"
+    ? "../tools/node-v26.10.0-darwin-arm64/lib/node_modules/npm/bin/npm-cli.js"
     : "../tools/node-v26.10.0-win-x64/node_modules/npm/bin/npm-cli.js",
   import.meta.url,
 ));

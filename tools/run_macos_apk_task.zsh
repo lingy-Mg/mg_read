@@ -17,7 +17,7 @@ fi
 script_root=${0:A:h}
 workspace_root=${script_root:h}
 runtime_root="$workspace_root/packages/mg_read_node_runtime"
-node_root="$runtime_root/tools/node-v24.16.0-darwin-arm64"
+node_root="$runtime_root/tools/node-v26.10.0-darwin-arm64"
 node="$node_root/bin/node"
 npm_cli="$node_root/lib/node_modules/npm/bin/npm-cli.js"
 

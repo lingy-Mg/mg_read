@@ -17,7 +17,7 @@ test("macOS staging uses the pinned Node executable and Runtime entrypoint", asy
   );
   const source = resolve(
     runtimeRoot,
-    "tools/node-v24.16.0-darwin-arm64/bin/node",
+    "tools/node-v26.10.0-darwin-arm64/bin/node",
   );
   const staged = resolve(
     runtimeRoot,
@@ -49,7 +49,7 @@ test("macOS staging uses the pinned Node executable and Runtime entrypoint", asy
   if (process.platform === "darwin") {
     assert.notEqual(stagedStat.mode & 0o111, 0);
     const { stdout } = await executeFile(staged, ["--version"]);
-    assert.equal(stdout.trim(), "v24.16.0");
+    assert.equal(stdout.trim(), "v26.10.0");
   }
   await assert.rejects(access(stagedNpmPackage), { code: "ENOENT" });
 });

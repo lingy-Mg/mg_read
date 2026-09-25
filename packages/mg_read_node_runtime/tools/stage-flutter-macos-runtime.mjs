@@ -16,7 +16,7 @@ const runtimePackagesRoot = resolve(nodeRuntimeRoot, "..");
 const sourceNodeDirectory = resolve(
   nodeRuntimeRoot,
   "tools",
-  "node-v24.16.0-darwin-arm64",
+  "node-v26.10.0-darwin-arm64",
 );
 const sourceNodeExecutable = resolve(sourceNodeDirectory, "bin", "node");
 const sourceNodeLicense = resolve(sourceNodeDirectory, "LICENSE");

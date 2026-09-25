@@ -1,10 +1,10 @@
 // @ts-check
 
 /** Exact Node executable version approved for this Runtime repository. */
-const expectedNodeVersion = process.platform === "darwin" ? "24.16.0" : "26.10.0";
+const expectedNodeVersion = "26.10.0";
 
 /** Exact npm version that generated and validates the locked dependency tree. */
-const expectedNpmVersion = process.platform === "darwin" ? "11.13.0" : "11.19.1";
+const expectedNpmVersion = "11.19.1";
 
 // Keep this probe independent from compiled Runtime files: it must also catch a
 // wrong PATH before TypeScript compilation or staging can begin.
