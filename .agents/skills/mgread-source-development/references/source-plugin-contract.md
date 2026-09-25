@@ -17,7 +17,7 @@
 
 ## 实现边界
 
-- 来源是 Node.js 24 ESM 项目，`package.json.mgread` 是唯一 MgRead 元数据。
+- Node 来源是兼容固定后端版本的 ESM 项目，`package.json.mgread` 是其唯一 MgRead 元数据。
 - 在 `.ts`/`.mts` 中从 `@mgread/source-api` 使用 `import type`；来源可以声明自己的内容结果类型，但不能复制
   `MgReadPluginContext`、`PluginWebViewPage`、`PluginWebViewApi` 或其字段子集。
 - 模块导入不得访问未注入 Context；`activate(ctx)` 只保存公开上下文，不创建 Worker、子进程、native addon、
@@ -37,11 +37,14 @@
 
 ## Artifact 与开发生命周期
 
-- 数据源代码强制构建为单个 Node 24 ESM JS。`single-file` 发布 `.mgplugin.js`；`archive` 发布 `.mgplugin`
+- Node 数据源代码强制构建为单个兼容固定后端版本的 ESM JS。`single-file` 发布 `.mgplugin.js`；`archive` 发布 `.mgplugin`
   压缩包，内部同样是单个 JS 入口及元数据、图标。压缩包没有 npm 依赖恢复语义。
 - Rust/Wasm 二进制内核模式使用 `@mgread/source-wasm` ABI v1，并把 `.wasm` 字节与适配器内嵌到同一 JS。
   来源路由、解析与公开结果在 Rust 内实现，IO 通过公开 Context 继续执行；参考 `aisishuwu-wasm`，验证时必须
   分列 Rust/ABI 测试、冷安装、Windows Facade/EXE 与 Android 真正执行结果，不能以编译成功替代平台验收。
+- 独立原生模式的 C ABI 由 `packages/mg_read_native_runtime/abi` 定义，`engine=native` 归档包含
+  manifest 与预编译 DLL/SO；来源拥有解析与缓存策略，Rust 宿主拥有 HTTP/文件/资源/取消。参考
+  `aisishuwu-native`，使用 Cargo 构建及真实 native-only App 验收，既有单 JS 打包要求只适用于 Node 引擎。
 - 开发项目可用 npm 管理构建工具和源码依赖，但构建必须启用 bundle、禁用 splitting，并内联所有使用的
   第三方包；仅 Node.js 内置模块可外置。不得用 external 或 packages: external 绕过打包。
 - 产物不得包含源码、lock、本地依赖目录或 `node_modules`；descriptor、图标、大小、SHA-256 和包内容必须可复核。

@@ -1,0 +1,24 @@
+[package]
+name = "aisishuwu-native"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+base64 = "=0.22.1"
+mgread-native-abi = { path = "../../../packages/mg_read_native_runtime/abi" }
+scraper = { version = "=0.27.0", default-features = false }
+serde_json = "=1.0.151"
+sha2 = "=0.10.9"
+url = "=2.5.8"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "unwind"
+strip = true

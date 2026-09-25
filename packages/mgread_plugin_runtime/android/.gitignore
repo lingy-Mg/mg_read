@@ -1,2 +1,5 @@
 # Android Gradle Plugin CMake intermediates for the private Node JNI bridge.
 .cxx/
+
+# Built by the root Rust Android host task; keep generated ABI libraries out of Git.
+/src/native/jniLibs/

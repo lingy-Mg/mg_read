@@ -66,7 +66,7 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
                   if (onRuntimeStatusRequested != null)
                     AppSecondaryPageIconButton(
                       key: const Key('data-source-runtime-status'),
-                      label: 'Node 状态',
+                      label: const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME') ? '运行状态' : 'Node 状态',
                       icon: Icons.monitor_heart_outlined,
                       onPressed: onRuntimeStatusRequested!,
                     ),

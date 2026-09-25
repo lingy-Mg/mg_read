@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
+import 'package:mg_read/app/app_startup.dart';
 import 'package:mg_read/app/mg_read_app.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/settings/settings.dart';
@@ -30,12 +31,23 @@ Widget testMgReadApp(
   DiagnosticsManager? diagnostics,
   SourceContentGateway sourceGateway = const _EmptySourceContentGateway(),
   PluginRuntimeGateway runtimeGateway = const TestReadyPluginRuntimeGateway(),
+  AppStartupController? startupController,
+  PluginRuntimeConnection? runtimeConnection,
+  Future<PluginRuntimeConnection> Function(Ref ref)? runtimeConnectionLoader,
 }) {
+  final projectedConnection = runtimeConnection;
   return ProviderScope(
     overrides: [
       appSettingsProvider.overrideWithValue(settings),
       sourceContentGatewayProvider.overrideWithValue(sourceGateway),
       pluginRuntimeGatewayProvider.overrideWithValue(runtimeGateway),
+      if (startupController != null) appStartupControllerProvider.overrideWithValue(startupController),
+      if (runtimeConnectionLoader != null) pluginRuntimeConnectionProvider.overrideWith(runtimeConnectionLoader),
+      if (runtimeConnectionLoader == null && projectedConnection != null)
+        pluginRuntimeConnectionProvider.overrideWith((ref) async {
+          ref.watch(pluginRuntimeCatalogChangeProvider);
+          return projectedConnection;
+        }),
       if (diagnostics != null) diagnosticsManagerProvider.overrideWithValue(diagnostics),
     ],
     child: const MgReadApp(),

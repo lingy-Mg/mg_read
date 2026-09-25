@@ -1,14 +1,16 @@
 # 真实数据源增量规则
 
 根规则始终适用。本目录只拥有各来源的请求、解析、稳定身份、fixture 和私有缓存；来源名称、版本、能力和
-artifact 模式以各自 `package.json.mgread` 为准，文件局部边界写入口源码头。
+artifact 模式以 Node 来源 `package.json.mgread` 或原生来源构建生成的 `manifest.json` 为准，文件局部边界写入口源码头。
 
-- 所有来源构建必须输出单个 JS 并内联使用的全部第三方 npm 包，仅 Node.js 内置模块可外置。
+- Node 来源构建必须输出单个 JS 并内联使用的全部第三方 npm 包，仅 Node.js 内置模块可外置。
   `.mgplugin.js` 和 `.mgplugin` 压缩包共用此要求；后者只包装单个 JS、元数据与图标，不恢复 npm 依赖。
   开发用 package/lock/node_modules 留在项目中，不进入 artifact 或 Runtime generation。
   禁止新增依赖引用扫描、动态导入检查或自定义 loader；通过构建配置落实 bundle 和禁用 splitting。
 - 二进制内核模式可使用 `@mgread/source-wasm`，把 Rust Wasm 与适配器打包进同一 JS；Rust 工具链与依赖精确
   固定，提交 Cargo.lock。发布和设备端不要求 Rust/JVM，不生成 Windows/Android 专用动态库。
+- 独立原生来源使用 `mgread-native-abi` crate 的公开 ABI，Windows DLL/Android SO 分目标构建，在
+  `engine=native` 归档分发；参考 `aisishuwu-native`。原生构建与验证使用 Cargo/原生工具，不经过 Node Context。
 - 先读目标来源入口、最近的来源 `AGENTS.md`、公开类型和直接测试。需要数据源契约或 WebView 专项流程时，
   只加载 `mgread-source-development` 技能路由到的一个首选参考。
 - 普通来源修复只修改该来源目录；不联动 Runtime、Flutter 或模板，除非用户明确要求改变公开 Source 边界。

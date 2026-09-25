@@ -1,7 +1,7 @@
 # 独立数据源运行时重新规划
 
-日期：2026-09-25。状态：设计方案，尚未实现或完成平台验收。
-所有者：Runtime Facade 与平台宿主；本文记录候选决策、接入顺序和验收门槛，不代替现行生产契约。
+日期：2026-09-25。状态：原生实现已接入，平台验收结果见爱丽丝原生来源的效果报告。
+所有者：Runtime Facade 与平台宿主；本文记录路线决策和验收门槛，实际 ABI 由原生 runtime 与 Source API 共同拥有。
 需求依据：用户明确要求独立于 Node，支持 Windows 和 Android，以爱丽丝验证二进制数据源。
 
 ## 1. 目标与路线决策
@@ -47,8 +47,9 @@ Job Object 生命周期             APK 内置 JNI / Rust 宿主 SO
 ```
 
 - 来源路由、HTML 解析、发现组合、分页和结果投影属于插件；宿主不含爱丽丝站点知识。
-- HTTP 在原生 Runtime 内执行。Rust SDK 把插件的异步调用绑定到原生 HTTP 服务，统一处理代理、超时、
-  取消、重定向和会话。普通请求不绕道 Dart、Kotlin 或 JS；平台代理配置和浏览器会话属于明确的平台边界。
+- HTTP 在原生 Runtime 内执行。插件在阻塞工作线程调用宿主函数，宿主使用 Tokio/reqwest 异步执行真实 I/O，
+  统一处理代理、超时、取消和重定向。普通请求不绕道 Dart、Kotlin 或 JS；v1 只实现爱丽丝所需的 HTTPS GET，
+  Cookie 会话、POST 和浏览器会话未纳入本版 SDK。
 - 文件在原生 Runtime 管理的插件 `data/cache` 目录内读写，SDK 提供相对路径、原子写入和配额接口；
   支持进程重启后读取。主应用数据库仍由 Flutter 拥有。
 - 这些 SDK 能力是管理约定，不是恶意原生代码的安全沙箱。原生插件可以绕过 SDK；v1 只承载可信插件。
@@ -61,24 +62,25 @@ Android 采用 `android:process` 将 Service 与 Flutter 分开；Service 方法
 Service 主线程，见 [Android 进程与线程](https://developer.android.com/guide/components/processes-and-threads)。
 Android 10 对应用可写目录中的 `execve` 有限制，所以不把“复制一个 Rust 可执行文件再启动”作为 Android
 方案，见 [执行权限说明](https://developer.android.com/about/versions/10/behavior-changes-10#execute-permission)。
-APK 内置宿主不代表外部插件 SO 已经验证可用；后者必须在阶段 0 单独通过真实安装路径验收。
+APK 内置宿主与外部插件 SO 的证据分开记录；不能只凭 APK 内库存在就推断动态插件可用。
 
 ## 3. ABI、生命周期与故障边界
 
-以下名称是拟定设计，不是现有 API：
+以下为已实现的 v1；相对初稿，简化了任务 ABI，并统一两端控制传输：
 
 - 单一导出入口 `mg_source_get_api_v1` 返回带版本及结构大小的 C 函数表；宿主在执行来源能力前验证版本。
-- 表包含实例创建、任务提交、结果轮询、任务取消、结果释放和实例关闭。执行任务以不透明 ID 关联，
-  不跨动态库传递 Rust `String`、`Vec`、trait、Future 或运行时对象。
-- 创建实例时注入同样带版本/结构大小的宿主函数表；HTTP、存储、日志和资源登记通过该表调用，异步 I/O
-  返回任务句柄并由 SDK 轮询完成或取消。函数表只是进程内原生 ABI，不经过 Node 或额外 JS 调度。
+- 来源表只有 `invoke/release`，每次调用借用 `HostApi`；来源无常驻实例。运行时在工作线程上执行同步 C ABI，
+  不跨动态库传递 Rust `String`、`Vec`、trait、Future 或运行时对象。避免在 v1 同时维护两套任务调度系统。
+- 宿主函数表同样带版本/结构大小；HTTP、文件和取消查询通过 `call` 执行，结果用 `release` 释放。调度和
+  真实网络取消属于宿主；同步 C 边界不会把 HTTP 放到 Flutter 或 Android Service 主线程。
 - 数据使用 UTF-8 JSON 和 `(pointer, length)` 缓冲区；分配者释放自己的内存。宿主复制完成后才通知释放，
   回调和任务生命周期必须在关闭前结束，错误及 panic 不得跨 C 边界展开。
 - 内容语义复用 `discover/search/searchSuggestions/getDetail/getChapters/getContent`。JSON 约束及
   conformance fixture 由 `mg_read_source_api` 拥有，Rust SDK 与 Dart Facade 共同验证，避免两套公开内容协议。
   现有包含 `nodeVersion`、JS `Response` 的 Context 继续服务 JS；原生 SDK 不伪造这些字段。
-- Windows 用私有命名管道控制；Android 用 Binder 小消息控制，超过约定阈值的结果走文件描述符/有界流。
-  禁止把大目录或长正文一次塞入 Binder 事务。两端共享逻辑 envelope、错误及取消语义，不强求相同传输库。
+- 两端都由 Rust 拥有随机端口的 loopback HTTP 控制服务，用每次启动随机 token 鉴权并拒绝带 Origin 的请求。
+  Windows stdout / Android Binder 只返回启动端口与 token。目录和长正文直接经有界 HTTP，不通过 Binder，
+  不在 Dart 再建服务器。封面使用不可猜测的资源 URL，Rust 直接流式代取。
 - v1 每个应用运行一个原生 worker，插件按需加载；HTTP 可并发。原生崩溃会影响该 worker 的全部在途调用，
   但不应结束 Flutter 主进程。先完成在途调用的确定性失败，再允许重新启动；不自动重放插件请求。
 - 普通取消应停止排队和真实网络 I/O。CPU 死循环等无法合作取消的任务由 Supervisor 超时后终止 worker；
@@ -88,15 +90,14 @@ APK 内置宿主不代表外部插件 SO 已经验证可用；后者必须在阶
 
 ## 4. 安装与交付
 
-拟使用一个 `engine=native` 的 `.mgplugin` 归档，包含 manifest、图标和目标二进制；命名与字段在阶段 0
-冻结前不得对外宣称兼容已有安装器。包体不含源码、Cargo/npm 依赖目录或设备端编译步骤。
+使用 `format=mgread-native, engine=native, abi=1` 的 `.mgplugin` ZIP，包含 manifest 与目标二进制。
+它由新原生安装器处理；不兼容旧 Node 安装器。包体不含源码、Cargo/npm 依赖目录或设备端编译步骤。
 
 ```text
 manifest.json                 id / version / engine / ABI / targets / capabilities / hashes
 windows-x86_64/source.dll
 android-arm64-v8a/libsource.so
 android-x86_64/libsource.so    当前模拟器验证目标
-icon.png
 ```
 
 - 允许完整多平台包或只含一个目标的精简包；安装器只装载当前目标，缺少目标时返回清晰错误。
@@ -110,14 +111,14 @@ icon.png
 
 | 位置 | 计划职责 |
 | --- | --- |
-| `packages/mg_read_native_runtime/`（拟新增） | Rust Core、C ABI/SDK、Windows 宿主、Android 宿主库、原生安装器与资源服务 |
+| `packages/mg_read_native_runtime/` | Rust Core、C ABI/SDK、Windows 宿主、Android 宿主库、原生安装器与资源服务 |
 | `packages/mgread_plugin_runtime/` | 现有唯一 Facade 增加 Native Supervisor；选择器、进程管理、内部 IPC、平台 WebView 接口 |
 | `packages/mg_read_source_api/` | 共享内容语义、版本和契约 fixture；保留现有 JS 类型，避免来源自行复制公共定义 |
-| `plugins/sources/aisishuwu-native/`（拟新增） | 爱丽丝原生来源、构建、fixture、双平台效果报告 |
+| `plugins/sources/aisishuwu-native/` | 爱丽丝原生来源、构建、fixture、双平台效果报告 |
 | 根构建及测试工具 | 同一 Flutter App 的 native-only 构建、包内容审计、定向 EXE 与 Android 验收 |
 
-当前 `plugin_runtime.dart` 工厂直接选择 Node Supervisor，初次调用也会启动 Node；仅替换插件入口无法独立。
-原生模式必须同时接管初始化、安装列表、启停、传输和资源调用，不能调用旧 Node manager 获取基础信息。
+`PluginRuntime()` 工厂通过编译时 `MGREAD_NATIVE_RUNTIME=true` 选择 Native Supervisor，接管初始化、
+安装列表、启停、传输和资源调用，不调用旧 Node manager 获取基础信息。
 
 先在同一个 App 增加 native-only 构建配置：Windows 排除 Node 资产，Android 用明确的构建变体排除
 Javet/libnode、JS 资产及直接引用它们的 Kotlin 源码。仅设置运行时布尔开关或没有 Node 子进程不算独立证据。
@@ -161,7 +162,6 @@ v1 用显式引擎配置选择原生或旧 Node 后端，不同时启动两套�
 6. **性能**：与原 JS 在相同输入、缓存状态、代理及设备上比较；分别测空 App、宿主启动、首次来源加载、
    冷/热请求、总进程内存、宿主体积及单 ABI/完整插件包体。线上网络与离线解析分列，不预设更快更省内存。
 
-最终报告须包含：可安装产物和 SHA-256、完整操作路径、Node 缺席证据、Windows/Android 功能结果、HTTP 与
-文件持久化证据、故障恢复结果、公平基准和所有未验证项。实现期间再固定新增依赖版本；本轮规划未新增依赖。
-
-本轮仅完成重新规划及纠正旧报告的推荐范围。新 ABI、原生宿主、原生爱丽丝和上述阶段测试均尚未实现。
+最终报告包含可安装产物和 SHA-256、操作路径、Node 缺席证据、Windows/Android 功能结果、HTTP 与文件持久化、
+故障恢复、性能条件和未验证项。新增 Rust 依赖在 Cargo.toml 精确固定并提交 Cargo.lock；结果以
+[爱丽丝原生效果报告](../../plugins/sources/aisishuwu-native/EFFECT_REPORT.md) 为准。

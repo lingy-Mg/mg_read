@@ -9,6 +9,14 @@ plugins {
 val isReleaseBuild = gradle.startParameter.taskNames.any {
     it.contains("Release", ignoreCase = true)
 }
+val isNativeRuntimeBuild = (findProperty("dart-defines") as? String)
+    ?.split(',')
+    ?.any { encoded ->
+        runCatching {
+            String(Base64.getDecoder().decode(encoded), Charsets.UTF_8) ==
+                "MGREAD_NATIVE_RUNTIME=true"
+        }.getOrDefault(false)
+    } == true
 val isAndroidNodeProcessBuild = (findProperty("dart-defines") as? String)
     ?.split(',')
     ?.any { encoded ->
@@ -17,6 +25,10 @@ val isAndroidNodeProcessBuild = (findProperty("dart-defines") as? String)
                 "MGREAD_ANDROID_NODE_PROCESS=true"
         }.getOrDefault(false)
     } == true
+
+check(!(isNativeRuntimeBuild && isAndroidNodeProcessBuild)) {
+    "MGREAD_NATIVE_RUNTIME and MGREAD_ANDROID_NODE_PROCESS select incompatible Android Runtime backends."
+}
 
 android {
     namespace = "com.mgread.mg_read"
@@ -37,6 +49,13 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // The Runtime Android library exposes mutually exclusive Javet and
+        // native-only variants. Normal builds continue to select Javet.
+        missingDimensionStrategy(
+            "mgreadRuntimeBackend",
+            if (isNativeRuntimeBuild) "nativeRuntime" else "javet",
+        )
 
         // The Android runtime and production devices are arm64-v8a only.
         // Keeping this in defaultConfig applies it to both debug and release.
@@ -59,6 +78,11 @@ android {
                 if (!isAndroidNodeProcessBuild) {
                     add("**/libnode.so")
                     add("**/libmgread_node_bridge.so")
+                }
+                if (isNativeRuntimeBuild) {
+                    add("**/libnode.so")
+                    add("**/libmgread_node_bridge.so")
+                    add("**/libjavet*.so")
                 }
                 add("**/libVkLayer_khronos_validation.so")
             }
@@ -89,6 +113,9 @@ tasks.withType<org.gradle.api.tasks.Copy>().configureEach {
         exclude(
             "flutter_assets/packages/mgread_plugin_runtime/assets/runtime/windows-x64/**",
         )
+        if (isNativeRuntimeBuild) {
+            exclude("flutter_assets/packages/mgread_plugin_runtime/assets/runtime/**")
+        }
     }
 }
 

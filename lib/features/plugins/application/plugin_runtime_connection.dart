@@ -589,7 +589,7 @@ String _initializationMessage(RuntimeInitializationStage stage) {
     RuntimeInitializationStage.assetsCopying => '正在准备 Runtime 文件',
     RuntimeInitializationStage.assetsCopied => 'Runtime 文件准备完成',
     RuntimeInitializationStage.assetsReused => '正在复用 Runtime 文件',
-    RuntimeInitializationStage.nodeStarting => '正在启动 Node Runtime',
+    RuntimeInitializationStage.nodeStarting => const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME') ? '正在启动原生数据源引擎' : '正在启动 Node Runtime',
     RuntimeInitializationStage.pluginCopying => '正在复制数据源插件文件',
     RuntimeInitializationStage.pluginCopied => '数据源插件文件复制完成',
     RuntimeInitializationStage.pluginInboxScanned => '数据源收件箱扫描完成',

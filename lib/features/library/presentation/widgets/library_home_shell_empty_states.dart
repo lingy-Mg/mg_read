@@ -7,6 +7,7 @@
 /// 注意：
 /// - 本文件是 [LibraryHomeShell] 的私有 part，不持有页面状态或执行持久化。
 /// - 所有操作意图由书架壳传入，不在展示组件内导航。
+/// - 欢迎图使用最小高度，窄屏文字换行后可增高，避免真实手机视口溢出。
 part of 'library_home_shell.dart';
 
 class _ActionFeedbackBanner extends StatelessWidget {
@@ -153,20 +154,22 @@ class _FirstRunHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    return SizedBox(
-      height: 214,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 214),
       child: Stack(
+        fit: StackFit.passthrough,
         clipBehavior: Clip.hardEdge,
         children: <Widget>[
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: <Color>[tokens.featureSurface, tokens.accentSoft, tokens.surface],
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: <Color>[tokens.featureSurface, tokens.accentSoft, tokens.surface],
+                ),
               ),
             ),
-            child: const SizedBox.expand(),
           ),
           Positioned(
             left: -42,
@@ -186,6 +189,7 @@ class _FirstRunHero extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(AppSpacing.section, AppSpacing.section, 150, AppSpacing.section),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[

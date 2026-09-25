@@ -4,8 +4,22 @@
  * Owns Android API and JVM compatibility for the Flutter-facing Runtime.
  * Uses AGP 9 built-in Kotlin; the host must keep android.builtInKotlin enabled.
  */
+import java.util.Base64
+
 plugins {
     id 'com.android.library'
+}
+
+def encodedDartDefines = findProperty('dart-defines') ?: rootProject.findProperty('dart-defines')
+def isNativeRuntimeBuild = false
+if (encodedDartDefines instanceof String) {
+    isNativeRuntimeBuild = encodedDartDefines.split(',').any { encoded ->
+        try {
+            new String(Base64.decoder.decode(encoded), 'UTF-8') == 'MGREAD_NATIVE_RUNTIME=true'
+        } catch (IllegalArgumentException ignored) {
+            false
+        }
+    }
 }
 
 group = 'com.mgread.mgread_plugin_runtime'
@@ -17,17 +31,50 @@ android {
 
     defaultConfig {
         minSdk = 24
-        consumerProguardFiles 'consumer-rules.pro'
+    }
+
+    flavorDimensions += 'mgreadRuntimeBackend'
+
+    productFlavors {
+        javet {
+            dimension 'mgreadRuntimeBackend'
+            consumerProguardFiles 'consumer-rules.pro'
+        }
+        nativeRuntime {
+            dimension 'mgreadRuntimeBackend'
+        }
+    }
+
+    if (!isNativeRuntimeBuild) {
+        defaultConfig {
+            externalNativeBuild {
+                cmake {
+                    arguments '-DANDROID_STL=c++_shared'
+                }
+            }
+        }
+
         externalNativeBuild {
             cmake {
-                arguments '-DANDROID_STL=c++_shared'
+                path 'src/main/cpp/CMakeLists.txt'
             }
         }
     }
 
-    externalNativeBuild {
-        cmake {
-            path 'src/main/cpp/CMakeLists.txt'
+    if (isNativeRuntimeBuild) {
+        sourceSets {
+            main {
+                java.setSrcDirs([])
+                jniLibs.setSrcDirs([])
+            }
+            test {
+                java.setSrcDirs([])
+            }
+            nativeRuntime {
+                kotlin.setSrcDirs(['src/nativeRuntime/kotlin'])
+                jniLibs.srcDirs = ['src/native/jniLibs']
+                jniLibs.excludes += ['**/libnode.so', '**/libmgread_node_bridge.so']
+            }
         }
     }
 
@@ -44,7 +91,22 @@ kotlin {
 }
 
 dependencies {
-    implementation 'androidx.webkit:webkit:1.17.0'
-    implementation 'com.caoccao.javet:javet-node-android:6.0.1'
+    // Backend dependencies are variant-specific: nativeRuntime has neither
+    // WebKit's legacy adapter nor Javet in its dependency graph.
+    javetImplementation 'androidx.webkit:webkit:1.17.0'
+    javetImplementation 'com.caoccao.javet:javet-node-android:6.0.1'
     testImplementation 'junit:junit:4.13.2'
+}
+
+if (isNativeRuntimeBuild) {
+    def verifyNativeRuntimeLibraries = tasks.register('verifyNativeRuntimeLibraries') {
+        doLast {
+            ['arm64-v8a', 'x86_64'].each { abi ->
+                if (!file("src/native/jniLibs/${abi}/libmgread_native_runtime.so").isFile()) {
+                    throw new GradleException('Build the Rust hosts with tools/build_native_runtime.ps1 -Platform android before building the native app.')
+                }
+            }
+        }
+    }
+    tasks.named('preBuild').configure { dependsOn(verifyNativeRuntimeLibraries) }
 }

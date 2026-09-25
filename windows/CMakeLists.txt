@@ -6,6 +6,27 @@ project(mg_read LANGUAGES CXX)
 # the on-disk name of your application.
 set(BINARY_NAME "mg_read")
 
+# Native-only packaging stages the Rust host beside the app and removes the
+# legacy Runtime assets from the installed Flutter asset tree. Flutter encodes
+# Dart defines as base64 in generated_config.cmake, so derive this mode from the
+# same --dart-define used by the Facade instead of retaining a CMake cache flag.
+set(MGREAD_NATIVE_RUNTIME OFF)
+set(MGREAD_NATIVE_RUNTIME_DEFINE "TUdSRUFEX05BVElWRV9SVU5USU1FPXRydWU=")
+set(MGREAD_GENERATED_CONFIG
+  "${CMAKE_CURRENT_SOURCE_DIR}/flutter/ephemeral/generated_config.cmake")
+if(EXISTS "${MGREAD_GENERATED_CONFIG}")
+  file(STRINGS "${MGREAD_GENERATED_CONFIG}" MGREAD_NATIVE_DEFINE_LINES
+    REGEX "DART_DEFINES=.*${MGREAD_NATIVE_RUNTIME_DEFINE}")
+  if(MGREAD_NATIVE_DEFINE_LINES)
+    set(MGREAD_NATIVE_RUNTIME ON)
+  endif()
+endif()
+get_filename_component(MGREAD_REPOSITORY_ROOT
+  "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+set(MGREAD_NATIVE_HOST_EXECUTABLE
+  "${MGREAD_REPOSITORY_ROOT}/packages/mg_read_native_runtime/dist/windows-x86_64/mgread-native-host.exe"
+  CACHE FILEPATH "Built native Runtime host executable")
+
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
 cmake_policy(VERSION 3.14...3.25)
@@ -101,6 +122,25 @@ install(CODE "
   " COMPONENT Runtime)
 install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime)
+
+if(MGREAD_NATIVE_RUNTIME)
+  if(NOT EXISTS "${MGREAD_NATIVE_HOST_EXECUTABLE}")
+    message(FATAL_ERROR
+      "MGREAD_NATIVE_RUNTIME requires the Rust host at "
+      "${MGREAD_NATIVE_HOST_EXECUTABLE}. Build it before packaging.")
+  endif()
+  install(FILES "${MGREAD_NATIVE_HOST_EXECUTABLE}"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}/native"
+    RENAME "mgread-native-host.exe"
+    COMPONENT Runtime)
+  install(CODE
+    "file(REMOVE_RECURSE \"${INSTALL_BUNDLE_DATA_DIR}/${FLUTTER_ASSET_DIR_NAME}/packages/mgread_plugin_runtime/assets/runtime\")"
+    COMPONENT Runtime)
+else()
+  install(CODE
+    "file(REMOVE \"${INSTALL_BUNDLE_LIB_DIR}/native/mgread-native-host.exe\")"
+    COMPONENT Runtime)
+endif()
 
 # Install the AOT library on non-Debug builds only.
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"

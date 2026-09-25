@@ -60,6 +60,7 @@ final class PluginRuntime {
 
   static PluginRuntime? _bundledInstance;
   static PluginRuntime? _androidInstance;
+  static PluginRuntime? _nativeInstance;
 
   /// Creates or returns the process-scoped production Facade.
   ///
@@ -67,6 +68,11 @@ final class PluginRuntime {
   /// Javet by default or the build-selected private Node process; neither leaks
   /// file-system details to the host application.
   factory PluginRuntime() {
+    if (const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME')) {
+      return _nativeInstance ??= PluginRuntime._(
+        _NativeRuntimeSupervisor.forCurrentPlatform(),
+      );
+    }
     if (Platform.isAndroid) {
       return _androidInstance ??= PluginRuntime._(
         const bool.fromEnvironment('MGREAD_ANDROID_NODE_PROCESS')
@@ -199,7 +205,9 @@ final class PluginRuntime {
       acceptedTypeGroups: <XTypeGroup>[
         XTypeGroup(
           label: 'MgRead 数据源',
-          extensions: <String>['mgplugin.js', 'mgplugin'],
+          extensions: const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME')
+              ? <String>['mgplugin']
+              : <String>['mgplugin.js', 'mgplugin'],
         ),
       ],
       confirmButtonText: '导入',
@@ -207,9 +215,13 @@ final class PluginRuntime {
     if (file == null) return false;
     final path = file.path;
     final lowerPath = path.toLowerCase();
+    final nativeRuntime = const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME');
     if (path.isEmpty ||
-        (!lowerPath.endsWith('.mgplugin.js') &&
-            !lowerPath.endsWith('.mgplugin'))) {
+        (nativeRuntime
+            ? !lowerPath.endsWith('.mgplugin') ||
+                  lowerPath.endsWith('.mgplugin.js')
+            : !lowerPath.endsWith('.mgplugin.js') &&
+                  !lowerPath.endsWith('.mgplugin'))) {
       throw const PluginRuntimeException(
         'invalid_request',
         'The selected file is not a MgRead plugin artifact.',
@@ -217,6 +229,21 @@ final class PluginRuntime {
     }
     await _supervisor.importLocalPlugin(path);
     return true;
+  }
+
+  /// Imports a package-owned fixture by path for native Runtime tests.
+  ///
+  /// Product flows keep path selection inside this package; only package
+  /// acceptance tests use this helper to exercise the production Supervisor.
+  @visibleForTesting
+  Future<void> importLocalPluginForTesting(String sourcePath) {
+    if (!const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME')) {
+      throw const PluginRuntimeException(
+        'unsupported',
+        'Direct-path plugin imports are available to native Runtime tests only.',
+      );
+    }
+    return _supervisor.importLocalPlugin(sourcePath);
   }
 
   /// Streams one Runtime-owned artifact without exposing a path, handle, port,
@@ -302,6 +329,30 @@ final class PluginRuntime {
     );
   }
 
+  /// Creates a native Rust Facade for package-owned tests.
+  ///
+  /// Tests may use an isolated fake control endpoint or launch a package-owned
+  /// helper executable from an isolated data root. Production applications
+  /// cannot inject either value.
+  @visibleForTesting
+  factory PluginRuntime.nativeForTesting({
+    required String executablePath,
+    required String dataRoot,
+    bool testMode = false,
+    Uri? testControlUri,
+    String? testToken,
+  }) {
+    return PluginRuntime._(
+      _NativeRuntimeSupervisor.forTesting(
+        executablePath: executablePath,
+        dataRoot: dataRoot,
+        testMode: testMode,
+        testControlUri: testControlUri,
+        testToken: testToken,
+      ),
+    );
+  }
+
   /// Emits bounded Runtime lifecycle diagnostics.
   ///
   /// This is intentionally not a raw stderr or transport stream. Consumers can
@@ -339,6 +390,11 @@ final class PluginRuntime {
   /// supervisor owns its child and Android owns the selected backend.
   @visibleForTesting
   Future<void> debugDispose() async {
+    if (const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME')) {
+      await _supervisor.dispose();
+      if (identical(_nativeInstance, this)) _nativeInstance = null;
+      return;
+    }
     // The Android bridge owns the native Runtime lifecycle. Local imports use
     // its controlled cold restart path; test disposal must not detach the
     // selected backend from the Flutter plugin.

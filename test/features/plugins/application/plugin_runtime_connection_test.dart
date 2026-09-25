@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
+import 'package:mg_read/app/app_startup.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/errors/app_error.dart';
@@ -279,12 +280,10 @@ void main() {
   });
 
   testWidgets('data-source page renders the Runtime source projection', (WidgetTester tester) async {
-    final diagnostics = DiagnosticsTestkit();
-    addTearDown(diagnostics.dispose);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
+          pluginRuntimeConnectionProvider.overrideWith((ref) async => _connected),
           pluginRuntimeGatewayProvider.overrideWithValue(_FakePluginRuntimeGateway(_connected)),
           configuredFlutterNetworkProxyManagerProvider.overrideWithValue(_testProxyManager()),
         ],
@@ -305,13 +304,11 @@ void main() {
   });
 
   testWidgets('add data source imports through the Runtime application port', (WidgetTester tester) async {
-    final diagnostics = DiagnosticsTestkit();
-    addTearDown(diagnostics.dispose);
     final gateway = _MutablePluginRuntimeGateway();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
+          pluginRuntimeConnectionProvider.overrideWith((ref) async => _connected),
           pluginRuntimeGatewayProvider.overrideWithValue(gateway),
           configuredFlutterNetworkProxyManagerProvider.overrideWithValue(_testProxyManager()),
         ],
@@ -334,15 +331,7 @@ void main() {
     await _setViewport(tester, const Size(390, 900));
     final settings = await createTestAppSettings();
     addTearDown(settings.close);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          pluginRuntimeGatewayProvider.overrideWithValue(_FakePluginRuntimeGateway(_connected)),
-          configuredFlutterNetworkProxyManagerProvider.overrideWithValue(_testProxyManager()),
-        ],
-        child: testMgReadApp(settings),
-      ),
-    );
+    await tester.pumpWidget(testMgReadApp(settings, runtimeGateway: _FakePluginRuntimeGateway(_connected), runtimeConnection: _connected));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('app-nav-profile')));
@@ -379,10 +368,33 @@ void main() {
     final settings = await createTestAppSettings();
     addTearDown(settings.close);
     final gateway = _FakePluginRuntimeGateway(_connected);
+    final startup = AppStartupController(
+      diagnostics: DiagnosticsManager(
+        sink: const NoopDiagnosticEventSink(),
+        registry: AppDiagnosticEvents.registry,
+        source: DiagnosticSource.app,
+      ),
+      openResources: () async => const AppStartupResources(),
+    );
+    await startup.start();
+    addTearDown(startup.close);
 
-    await tester.pumpWidget(testMgReadApp(settings, runtimeGateway: gateway));
+    await tester.pumpWidget(
+      testMgReadApp(
+        settings,
+        runtimeGateway: gateway,
+        startupController: startup,
+        runtimeConnectionLoader: (ref) async {
+          ref.watch(pluginRuntimeCatalogChangeProvider);
+          return ref.read(pluginRuntimeGatewayProvider).inspect();
+        },
+      ),
+    );
+    expect(startup.hasLibraryTerminalFrame, isFalse);
+    expect(gateway.calls, 0);
     await tester.pumpAndSettle();
 
+    expect(startup.hasLibraryTerminalFrame, isTrue);
     expect(gateway.calls, 1);
   });
 }

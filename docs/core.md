@@ -47,12 +47,16 @@ plugins/sources/                    真实数据源及其他能力参考实现
 
 ## Runtime 与平台宿主
 
-- Android 构建期选择默认 Javet 或私有 Service 中的 Node 进程；一次运行只启动一个后端、一个 Node Runtime
-  和一个 V8 VM。禁止 Worker、插件子进程、第二 VM、Engine Pool、native addon 和自定义 loader。
+- 数据源构建期选择一个引擎。默认 Node 引擎在 Android 选择 Javet 或私有 Service 中的 Node 进程；Node 模式
+  一次只启动一个 Node Runtime/V8，禁止来源创建 Worker、子进程、第二 VM、native addon 或自定义 loader。
+- `MGREAD_NATIVE_RUNTIME=true` 在 Windows/Android 选择独立 Rust Runtime；Windows EXE 与 Android 私有
+  Service 中的原生宿主加载 C ABI v1 DLL/SO。原生构建不包含 Node/Javet/V8 和 Runtime JS 资产，网络、安装、
+  私有存储及资源代理均由 Rust 拥有。原生可信插件按目标 ABI 发布；动态库更新和卸载经 worker 冷重启完成。
 - Runtime 独立拥有 Node Core、Android Javet/进程后端、desktop Node launcher、Supervisor、内部控制/数据面、Plugin
   API、安装、私有数据根、瞬时诊断和 Flutter Facade。
-- `packages/mg_read_source_api` 是数据源宿主上下文和 WebView 类型的唯一公开声明包；Runtime 实现与所有
-  数据源必须引用或同步它，来源不得复制 Context/WebView 子集。
+- `packages/mg_read_source_api` 拥有共享内容语义及 JS 宿主 Context/WebView 声明；来源不得复制 Context 子集。
+  原生 C ABI 由 `packages/mg_read_native_runtime/abi` 唯一定义，使用相同内容投影和强类型 Flutter Facade；
+  不用虚构 Node 版本或 JS 对象模拟原生上下文，未实现的媒体/WebView 能力明确返回 `unsupported`。
 - Runtime 数据只包含不可变安装版本、插件私有 data/cache、Cookie、临时资源和运行状态，不包含主应用
   业务权威。installed pending 版本只在冷启动激活并提交或回滚；已确认的 current 与 development 项目启动时
   只建立元数据快照，首次能力调用或传输时在唯一 VM 内单飞加载。development 构建变化先激活候选 generation，
@@ -81,14 +85,17 @@ plugins/sources/                    真实数据源及其他能力参考实现
 
 ## 标准插件项目、artifact 与安装
 
-- 数据源是可信 Node.js ESM 项目；各后端精确 Node 版本见 Runtime 版本矩阵，`package.json.mgread` 是唯一 MgRead 元数据。
+- Node 数据源是可信 ESM 项目；各后端精确 Node 版本见 Runtime 版本矩阵，`package.json.mgread` 是其唯一元数据。
 - 仓库不维护空白官方模板；新数据源默认参考 `plugins/sources/aisishuwu/`，漫画、WebView、音频或视频
   按能力参考现有同类真实数据源。公共契约仍以 Runtime 类型和直接测试为准，不以某个来源副本为权威。
-- 数据源执行代码必须是一个已打包的兼容全部固定后端版本的 ESM JS 文件。`single-file` 发布 `.mgplugin.js`；
+- Node 数据源执行代码必须是一个已打包的兼容全部固定后端版本的 ESM JS 文件。`single-file` 发布 `.mgplugin.js`；
   `archive` 发布 `.mgplugin` 压缩容器，内部同样只有单个 JS 入口及元数据、图标，不是 npm 安装包。
 - 二进制内核模式可将 Rust `wasm32-unknown-unknown` 产物内嵌到该单文件，通过
   `packages/mg_read_source_wasm` 的 ABI v1 适配器在当前 V8 执行。来源逻辑由 Wasm 拥有，HTTP 与资源代理仍走
   公开 Context；不引入 WASI、原生库、第二 VM 或安装期编译。参考 `plugins/sources/aisishuwu-wasm/`。
+- 独立原生来源参考 `plugins/sources/aisishuwu-native/`；`.mgplugin` 归档的 `manifest.json` 使用
+  `format=mgread-native`、`engine=native` 和 ABI/目标/SHA-256 元数据，承载预编译 DLL/SO。该格式与 Node
+  archive 独立识别，不含 JS 外壳、源码或设备端编译，不能把 Node/Wasm 验证记录当作原生引擎证据。
 - npm 只用于开发和构建；构建必须将所有使用的第三方包内联到单个 JS，仅 Node.js 内置模块可外置。
   不发布源码、lock、本地依赖目录或 `node_modules`，也不支持发布后恢复、下载或安装外部 npm 依赖。
 - 不增加依赖引用扫描、动态导入检查或自定义模块拦截器；由构建配置落实打包要求，模块执行交给 Node。

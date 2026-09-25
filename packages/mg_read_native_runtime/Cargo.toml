@@ -1,0 +1,36 @@
+[package]
+name = "mgread-native-runtime"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "mgread_native_runtime"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "mgread-native-host"
+path = "src/main.rs"
+
+[dependencies]
+mgread-native-abi = { path = "abi" }
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.151"
+semver = "=1.0.27"
+base64 = "=0.22.1"
+sha2 = "=0.10.9"
+libloading = "=0.8.9"
+zip = { version = "=2.4.2", default-features = false, features = ["deflate"] }
+tokio = { version = "=1.50.0", features = ["rt-multi-thread", "macros", "net", "sync", "time", "fs", "io-util"] }
+tokio-util = { version = "=0.7.18", features = ["rt"] }
+axum = { version = "=0.8.8", default-features = false, features = ["json", "http1", "tokio"] }
+reqwest = { version = "=0.12.28", default-features = false, features = ["rustls-tls", "gzip", "brotli", "deflate", "stream", "socks", "system-proxy"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "=0.21.1"
+
+[profile.release]
+opt-level = "s"
+lto = "thin"
+strip = true
+codegen-units = 1

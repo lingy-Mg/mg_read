@@ -5,7 +5,8 @@ Run Android integration tests against the selected Runtime backend.
 .DESCRIPTION
 Builds and installs a test APK on an explicitly selected connected device.
 Javet remains the default; the private Node process requires arm64-v8a and
-uses Core CLI's private import inbox. Results are saved per target.
+uses Core CLI's private import inbox. The native backend runs its dedicated
+Rust source test without requiring Node or npm. Results are saved per target.
 #>
 [CmdletBinding(DefaultParameterSetName = 'Single')]
 param(
@@ -26,7 +27,7 @@ param(
     [ValidateSet('debug', 'profile')]
     [string]$BuildMode = 'debug',
 
-    [ValidateSet('javet', 'node-process')]
+    [ValidateSet('javet', 'node-process', 'native')]
     [string]$AndroidBackend = 'javet',
 
     # Optional explicit proxy for tests that read MGREAD_TEST_HTTP_PROXY.
@@ -40,6 +41,17 @@ $androidApplicationId = 'com.mgread.mg_read'
 $runtimeNodeRoot = Join-Path $projectRoot 'packages/mg_read_node_runtime/tools/node-v26.10.0-win-x64'
 $runtimeNpm = Join-Path $runtimeNodeRoot 'npm.cmd'
 $runtimeNode = Join-Path $runtimeNodeRoot 'node.exe'
+$nativeTestTarget = 'integration_test/android_native_source_test.dart'
+$nativePluginArtifact = Join-Path $projectRoot 'plugins/sources/aisishuwu-native/dist/aisishuwu-native-0.1.0.mgplugin'
+
+if ($AndroidBackend -eq 'native') {
+    if ($All -or $Target.Replace('\', '/') -ne $nativeTestTarget) {
+        throw "The native backend is isolated to '$nativeTestTarget'. Select that target and omit -All. No test was started."
+    }
+}
+elseif ($Target.Replace('\', '/') -eq $nativeTestTarget) {
+    throw "'$nativeTestTarget' requires -AndroidBackend native. No test was started."
+}
 
 $deviceStateOutput = & $adb.Source -s $DeviceId get-state 2>$null | Out-String
 $deviceStateExitCode = $LASTEXITCODE
@@ -95,8 +107,11 @@ if ($targets.Count -eq 0) {
     throw 'No Integration Test targets were found. No test was started.'
 }
 
-if (-not (Test-Path -LiteralPath $runtimeNpm -PathType Leaf)) {
+if ($AndroidBackend -ne 'native' -and -not (Test-Path -LiteralPath $runtimeNpm -PathType Leaf)) {
     throw 'The pinned Runtime npm toolchain is unavailable. No Android test was started.'
+}
+if ($AndroidBackend -eq 'native' -and -not (Test-Path -LiteralPath $nativePluginArtifact -PathType Leaf)) {
+    throw "The native Android test plugin '$nativePluginArtifact' is unavailable. Build the package artifact first. No test was started."
 }
 
 $runId = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -105,16 +120,17 @@ New-Item -ItemType Directory -Force -Path $artifactDirectory | Out-Null
 
 $developmentPluginArtifacts = @()
 $pluginSourceDirectories = @()
-if ($All -or $targets -contains 'integration_test/android_plugin_runtime_test.dart') {
+if ($AndroidBackend -ne 'native' -and ($All -or $targets -contains 'integration_test/android_plugin_runtime_test.dart')) {
     $pluginSourceDirectories += Join-Path $projectRoot 'plugins/sources/aisishuwu'
 }
-if ($All -or $targets -contains 'integration_test/android_wasm_source_test.dart') {
+if ($AndroidBackend -ne 'native' -and ($All -or $targets -contains 'integration_test/android_wasm_source_test.dart')) {
     $pluginSourceDirectories += Join-Path $projectRoot 'plugins/sources/aisishuwu-wasm'
 }
 $originalPath = $env:PATH
-try {
-    $env:PATH = "$runtimeNodeRoot;$env:PATH"
-    foreach ($pluginSourceDirectory in $pluginSourceDirectories) {
+if ($AndroidBackend -ne 'native') {
+    try {
+        $env:PATH = "$runtimeNodeRoot;$env:PATH"
+        foreach ($pluginSourceDirectory in $pluginSourceDirectories) {
         $packageJsonPath = Join-Path $pluginSourceDirectory 'package.json'
         $packageJson = Get-Content -LiteralPath $packageJsonPath -Raw | ConvertFrom-Json
         $packageMode = [string]$packageJson.mgread.packageMode
@@ -139,14 +155,15 @@ try {
             throw "Android test plugin artifact '$artifactName' was not created."
         }
         $developmentPluginArtifacts += Get-Item -LiteralPath $artifactPath
+        }
+    }
+    finally {
+        $env:PATH = $originalPath
     }
 }
-finally {
-    $env:PATH = $originalPath
-}
 
-if ($All -or $targets -contains 'integration_test/android_browser_session_test.dart' -or
-    $targets -contains 'integration_test/android_plugin_runtime_test.dart') {
+if ($AndroidBackend -ne 'native' -and ($All -or $targets -contains 'integration_test/android_browser_session_test.dart' -or
+    $targets -contains 'integration_test/android_plugin_runtime_test.dart')) {
     $fixturePath = Join-Path $artifactDirectory 'org.mgread.android-runtime-fixture-1.0.0.mgplugin.js'
     & $runtimeNode (Join-Path $projectRoot 'tools/build_android_runtime_fixture.mjs') $fixturePath
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $fixturePath -PathType Leaf)) {
@@ -156,6 +173,12 @@ if ($All -or $targets -contains 'integration_test/android_browser_session_test.d
 }
 $originalOutputDirectory = $env:FLUTTER_TEST_OUTPUTS_DIR
 $testExitCode = 0
+$nativeRunSuffix = "$runId-$PID"
+$nativeInboxRelativePath = "files/mgread-native/inbox/integration-tests/$nativeRunSuffix"
+$nativePackageName = [IO.Path]::GetFileName($nativePluginArtifact)
+$nativePackageRelativePath = "$nativeInboxRelativePath/$nativePackageName"
+$nativePackagePath = $null
+$nativeDeviceTemporaryPath = $null
 
 try {
     Push-Location $projectRoot
@@ -183,6 +206,16 @@ try {
         if ($AndroidBackend -eq 'node-process') {
             $buildArguments += @('--target-platform', 'android-arm64', '--dart-define=MGREAD_ANDROID_NODE_PROCESS=true')
         }
+        elseif ($AndroidBackend -eq 'native') {
+            $nativeImportPath = "/data/user/0/$androidApplicationId/$nativePackageRelativePath"
+            $buildArguments += @(
+                '--dart-define=MGREAD_NATIVE_RUNTIME=true',
+                "--dart-define=MGREAD_TEST_NATIVE_IMPORT_PATH=$nativeImportPath"
+            )
+            if ($BuildMode -eq 'profile') {
+                $buildArguments += @('--target-platform', 'android-arm64')
+            }
+        }
         & flutter @buildArguments
         if ($LASTEXITCODE -ne 0) {
             throw "Android Integration Test APK build failed for '$testTarget'."
@@ -192,33 +225,55 @@ try {
         if ($LASTEXITCODE -ne 0) {
             throw "Android Integration Test APK installation failed for '$testTarget'."
         }
-        $inboxPath = if ($AndroidBackend -eq 'node-process') {
-            'files/mgread-runtime/data/import-inbox'
-        } else {
-            'files/mgread-runtime/import-inbox'
+        if ($AndroidBackend -eq 'native') {
+            $nativePackagePath = "/data/user/0/$androidApplicationId/$nativePackageRelativePath"
+            $nativeDeviceTemporaryPath = "/data/local/tmp/mgread-native-$nativeRunSuffix.mgplugin"
+            & $adb.Source -s $DeviceId shell run-as $androidApplicationId mkdir -p $nativeInboxRelativePath
+            if ($LASTEXITCODE -ne 0) {
+                throw 'The private native test inbox could not be created.'
+            }
+            & $adb.Source -s $DeviceId push $nativePluginArtifact $nativeDeviceTemporaryPath
+            if ($LASTEXITCODE -ne 0) {
+                throw 'ADB could not stage the native test package.'
+            }
+            & $adb.Source -s $DeviceId shell run-as $androidApplicationId cp $nativeDeviceTemporaryPath $nativePackagePath
+            if ($LASTEXITCODE -ne 0) {
+                throw 'The Android application could not receive the native test package.'
+            }
+            & $adb.Source -s $DeviceId shell rm -f $nativeDeviceTemporaryPath
+            if ($LASTEXITCODE -ne 0) {
+                throw 'The temporary ADB native package could not be removed.'
+            }
         }
-        & $adb.Source -s $DeviceId shell run-as $androidApplicationId mkdir -p $inboxPath
-        if ($LASTEXITCODE -ne 0) {
-            throw 'The debug application plugin inbox could not be created.'
-        }
-        foreach ($pluginArtifact in $developmentPluginArtifacts) {
-            $deviceTemporaryPath = "/data/local/tmp/$($pluginArtifact.Name)"
-            $applicationInboxPath = "$inboxPath/$($pluginArtifact.Name)"
-            & $adb.Source -s $DeviceId push $pluginArtifact.FullName $deviceTemporaryPath
-            if ($LASTEXITCODE -ne 0) {
-                throw "ADB could not push '$($pluginArtifact.Name)'."
+        else {
+            $inboxPath = if ($AndroidBackend -eq 'node-process') {
+                'files/mgread-runtime/data/import-inbox'
+            } else {
+                'files/mgread-runtime/import-inbox'
             }
-            & $adb.Source -s $DeviceId shell run-as $androidApplicationId rm -f $applicationInboxPath
+            & $adb.Source -s $DeviceId shell run-as $androidApplicationId mkdir -p $inboxPath
             if ($LASTEXITCODE -ne 0) {
-                throw "The previous Android test plugin '$($pluginArtifact.Name)' could not be cleared."
+                throw 'The debug application plugin inbox could not be created.'
             }
-            & $adb.Source -s $DeviceId shell run-as $androidApplicationId cp $deviceTemporaryPath $applicationInboxPath
-            if ($LASTEXITCODE -ne 0) {
-                throw "The Android application could not receive '$($pluginArtifact.Name)'."
-            }
-            & $adb.Source -s $DeviceId shell rm -f $deviceTemporaryPath
-            if ($LASTEXITCODE -ne 0) {
-                throw "The temporary ADB plugin '$($pluginArtifact.Name)' could not be removed."
+            foreach ($pluginArtifact in $developmentPluginArtifacts) {
+                $deviceTemporaryPath = "/data/local/tmp/$($pluginArtifact.Name)"
+                $applicationInboxPath = "$inboxPath/$($pluginArtifact.Name)"
+                & $adb.Source -s $DeviceId push $pluginArtifact.FullName $deviceTemporaryPath
+                if ($LASTEXITCODE -ne 0) {
+                    throw "ADB could not push '$($pluginArtifact.Name)'."
+                }
+                & $adb.Source -s $DeviceId shell run-as $androidApplicationId rm -f $applicationInboxPath
+                if ($LASTEXITCODE -ne 0) {
+                    throw "The previous Android test plugin '$($pluginArtifact.Name)' could not be cleared."
+                }
+                & $adb.Source -s $DeviceId shell run-as $androidApplicationId cp $deviceTemporaryPath $applicationInboxPath
+                if ($LASTEXITCODE -ne 0) {
+                    throw "The Android application could not receive '$($pluginArtifact.Name)'."
+                }
+                & $adb.Source -s $DeviceId shell rm -f $deviceTemporaryPath
+                if ($LASTEXITCODE -ne 0) {
+                    throw "The temporary ADB plugin '$($pluginArtifact.Name)' could not be removed."
+                }
             }
         }
         $driveArguments = @(
@@ -228,7 +283,8 @@ try {
             '--driver', 'test_driver/android_integration_test.dart',
             '--use-application-binary', $testApk,
             '--timeout', $TimeoutSeconds,
-            '--no-pub'
+            '--no-pub',
+            '--keep-app-running'
         )
         if ($BuildMode -eq 'profile') {
             $driveArguments += '--profile'
@@ -247,6 +303,23 @@ try {
     }
 }
 finally {
+    if ($null -ne $nativePackagePath) {
+        try {
+            & $adb.Source -s $DeviceId shell run-as $androidApplicationId rm -f $nativePackageRelativePath
+            & $adb.Source -s $DeviceId shell run-as $androidApplicationId rmdir $nativeInboxRelativePath
+        }
+        catch {
+            Write-Warning 'The unique native test inbox cleanup did not complete.'
+        }
+    }
+    if ($null -ne $nativeDeviceTemporaryPath) {
+        try {
+            & $adb.Source -s $DeviceId shell rm -f $nativeDeviceTemporaryPath
+        }
+        catch {
+            Write-Warning 'The temporary ADB native package cleanup did not complete.'
+        }
+    }
     Pop-Location
     $env:FLUTTER_TEST_OUTPUTS_DIR = $originalOutputDirectory
 }
