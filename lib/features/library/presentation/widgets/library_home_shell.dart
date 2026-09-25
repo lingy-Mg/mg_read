@@ -9,6 +9,7 @@
 /// - 不在 build() 中执行持久化；删除由显式回调在动画后提交。
 /// - 当前滚动控制器只由本壳持有并在销毁时释放。
 /// - 分区筛选局部更新；顶部封面背景覆盖状态栏，交互内容仍按安全区下沿布局。
+/// - 首次空书架没有继续阅读卡片，顶部只保留操作栏和分区前的标准间距。
 /// - 首页内容跟随可用窗口全宽伸展，不参与其他主入口的最大内容宽度约束。
 ///
 library;
@@ -194,7 +195,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
             pagePadding,
             MediaQuery.paddingOf(context).top + AppSpacing.pageHeaderTopPaddingFor(context),
             pagePadding,
-            AppSpacing.comfortable,
+            _isFirstRunEmpty ? 0 : AppSpacing.comfortable,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -249,7 +250,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                         },
                       ),
                     ],
-                    const SizedBox(height: AppSpacing.regular),
+                    if (!_isFirstRunEmpty) const SizedBox(height: AppSpacing.regular),
                   ],
                 ),
               ),

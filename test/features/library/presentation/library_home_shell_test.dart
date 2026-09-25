@@ -714,6 +714,17 @@ void main() {
     expect(find.byKey(const Key('library-first-run-welcome')), findsOneWidget);
   });
 
+  testWidgets('keeps the first-run section close to the top actions', (WidgetTester tester) async {
+    await _setViewport(tester, const Size(390, 900));
+    await tester.pumpWidget(_host(data: LibraryHomeViewData.empty(), topInset: 24));
+    await tester.pumpAndSettle();
+
+    final Rect topBar = tester.getRect(find.byType(LibraryHomeTopBar));
+    final Rect heading = tester.getRect(find.byKey(const Key('library-list-heading-row')));
+    expect(topBar.top, 24);
+    expect(heading.top - topBar.bottom, AppSpacing.comfortable);
+  });
+
   testWidgets('uses the compact reference font-size and weight hierarchy', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(_host());
