@@ -30,6 +30,12 @@ check(!(isNativeRuntimeBuild && isAndroidNodeProcessBuild)) {
     "MGREAD_NATIVE_RUNTIME and MGREAD_ANDROID_NODE_PROCESS select incompatible Android Runtime backends."
 }
 
+val androidApplicationId = when {
+    isNativeRuntimeBuild -> "com.mgread.mg_read.native"
+    isAndroidNodeProcessBuild -> "com.mgread.mg_read.node"
+    else -> "com.mgread.mg_read"
+}
+
 android {
     namespace = "com.mgread.mg_read"
     compileSdk = flutter.compileSdkVersion
@@ -41,8 +47,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.mgread.mg_read"
+        // Keep independently packaged runtime variants installable side-by-side.
+        applicationId = androidApplicationId
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
