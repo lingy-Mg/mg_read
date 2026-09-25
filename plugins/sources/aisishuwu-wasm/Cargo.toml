@@ -1,0 +1,22 @@
+[package]
+name = "aisishuwu-wasm"
+version = "0.1.2"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "rust/lib.rs"
+
+[dependencies]
+scraper = { version = "=0.27.0", default-features = false }
+serde_json = "=1.0.151"
+base64 = "=0.22.1"
+url = "=2.5.8"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

@@ -39,6 +39,9 @@
 
 - 数据源代码强制构建为单个 Node 24 ESM JS。`single-file` 发布 `.mgplugin.js`；`archive` 发布 `.mgplugin`
   压缩包，内部同样是单个 JS 入口及元数据、图标。压缩包没有 npm 依赖恢复语义。
+- Rust/Wasm 二进制内核模式使用 `@mgread/source-wasm` ABI v1，并把 `.wasm` 字节与适配器内嵌到同一 JS。
+  来源路由、解析与公开结果在 Rust 内实现，IO 通过公开 Context 继续执行；参考 `aisishuwu-wasm`，验证时必须
+  分列 Rust/ABI 测试、冷安装、Windows Facade/EXE 与 Android 真正执行结果，不能以编译成功替代平台验收。
 - 开发项目可用 npm 管理构建工具和源码依赖，但构建必须启用 bundle、禁用 splitting，并内联所有使用的
   第三方包；仅 Node.js 内置模块可外置。不得用 external 或 packages: external 绕过打包。
 - 产物不得包含源码、lock、本地依赖目录或 `node_modules`；descriptor、图标、大小、SHA-256 和包内容必须可复核。

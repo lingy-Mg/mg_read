@@ -1,0 +1,11 @@
+{
+  "name": "@mgread/source-wasm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": { "types": "./index.d.ts", "import": "./index.mjs" } },
+  "scripts": { "test": "node --test test/*.test.mjs", "typecheck": "tsc --noEmit --strict --module nodenext test/usage.ts" },
+  "dependencies": { "@mgread/source-api": "file:../mg_read_source_api" },
+  "devDependencies": { "typescript": "5.9.3" },
+  "engines": { "node": "24.16.0 || 24.21.0 || 26.9.0 || 26.10.0" }
+}

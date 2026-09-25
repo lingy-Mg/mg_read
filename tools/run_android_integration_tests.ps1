@@ -27,7 +27,10 @@ param(
     [string]$BuildMode = 'debug',
 
     [ValidateSet('javet', 'node-process')]
-    [string]$AndroidBackend = 'javet'
+    [string]$AndroidBackend = 'javet',
+
+    # Optional explicit proxy for tests that read MGREAD_TEST_HTTP_PROXY.
+    [string]$HttpProxy = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -105,6 +108,9 @@ $pluginSourceDirectories = @()
 if ($All -or $targets -contains 'integration_test/android_plugin_runtime_test.dart') {
     $pluginSourceDirectories += Join-Path $projectRoot 'plugins/sources/aisishuwu'
 }
+if ($All -or $targets -contains 'integration_test/android_wasm_source_test.dart') {
+    $pluginSourceDirectories += Join-Path $projectRoot 'plugins/sources/aisishuwu-wasm'
+}
 $originalPath = $env:PATH
 try {
     $env:PATH = "$runtimeNodeRoot;$env:PATH"
@@ -171,6 +177,9 @@ try {
         Write-Host "Running Android Integration Test on user-provided $DeviceId ($avdName): $testTarget"
         $buildModeFlag = "--$BuildMode"
         $buildArguments = @('build', 'apk', $buildModeFlag, '--target', $testTarget, '--no-pub')
+        if (-not [string]::IsNullOrWhiteSpace($HttpProxy)) {
+            $buildArguments += "--dart-define=MGREAD_TEST_HTTP_PROXY=$HttpProxy"
+        }
         if ($AndroidBackend -eq 'node-process') {
             $buildArguments += @('--target-platform', 'android-arm64', '--dart-define=MGREAD_ANDROID_NODE_PROCESS=true')
         }

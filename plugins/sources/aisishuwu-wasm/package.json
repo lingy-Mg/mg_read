@@ -1,0 +1,28 @@
+{
+  "name": "@mgread-plugin/aisishuwu-wasm",
+  "version": "0.1.2",
+  "private": true,
+  "description": "Alice source implemented in a portable Rust WebAssembly binary.",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "engines": { "node": "24.16.0 || 24.21.0 || 26.9.0 || 26.10.0", "npm": "11.19.1" },
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "typecheck": "cargo check --locked --target wasm32-unknown-unknown",
+    "test": "node --test test/*.test.mjs",
+    "test:live": "node --use-env-proxy tools/live.mjs",
+    "pack:plugin": "node tools/build.mjs --pack",
+    "verify": "npm run typecheck && npm run build && npm test && npm run pack:plugin"
+  },
+  "dependencies": { "@mgread/source-wasm": "file:../../../packages/mg_read_source_wasm" },
+  "devDependencies": { "esbuild": "0.28.2" },
+  "mgread": {
+    "schemaVersion": 1,
+    "id": "org.mgread.aisishuwu.wasm",
+    "displayName": "爱丽丝书屋 · Rust/Wasm",
+    "description": "Rust WebAssembly 二进制数据源，支持 Windows 与 Android；发现、搜索、详情、完整目录与正文。",
+    "pluginApi": 1,
+    "packageMode": "single-file",
+    "contentKinds": ["novel"]
+  }
+}
