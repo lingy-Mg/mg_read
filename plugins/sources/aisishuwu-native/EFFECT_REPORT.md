@@ -155,14 +155,15 @@ Android 模拟器的实际 ABI、页大小及转译结果须单列；ARM64 转�
 
 交付目录为 `artifacts/native-delivery/0.10.0/`。Windows ZIP 已包含来源包及 app-local MSVC CRT；Android
 APK 同时包含 arm64-v8a 和 x86_64 宿主，需要另外导入同目录的来源包。APK 使用正常 `lib/main.dart`
-Release 入口，已通过覆盖安装和启动验证，设备选择 arm64-v8a，主进程与原生 Service 同时存活。
+Release 入口，已通过指定 x86_64 的覆盖安装和启动验证，主进程与原生 Service 同时存活。
+最终审计逐项核对两个 ABI 的 Rust 宿主、Flutter 引擎和 Dart AOT 文件，避免沿用旧 Release 规则裁掉 x86_64。
 完整页面流程的证据来自前述 Debug/Profile 集成测试，不能把它写成 Release 全链路自动化。
 APK 沿用仓库现有本地调试签名配置，不是应用商店正式签名包。
 
 | 文件 | 字节数 | SHA-256 |
 | --- | ---: | --- |
 | MgRead-0.10.0-native-windows-x64.zip | 70,012,692 | `cbe88facf466b99a80ee78316f765797b610f429668f6664ef2b2328c7d8cb47` |
-| MgRead-0.10.0-native-android.apk | 51,935,921 | `071c7707d376d44c6f115ff18f988bd604102b511ae10489b8e5adaef0425642` |
+| MgRead-0.10.0-native-android.apk | 74,510,877 | `82fc03f1704ef59e5e5d818c25fd97febec3f04887d58d2f212010ea8def537b` |
 | aisishuwu-native-0.1.0.mgplugin | 5,118,979 | `b2c6ce34360e09948f52f7331857056dc9d81b6e8b96e29849aae86ce35b503b` |
 
 `evidence/` 收录计数、哈希、状态、配对性能记录及经过检查的运行状态截图；不收录正文和失败日志。

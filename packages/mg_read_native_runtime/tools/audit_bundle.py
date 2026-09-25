@@ -59,6 +59,14 @@ def run(args):
             libs = {name: {**digest(archive.read(name)), **elf(archive.read(name))} for name in names
                 if name.startswith("lib/") and name.endswith("/libmgread_native_runtime.so")}
             assert libs, "APK lacks native Rust host"
+            if args.require_android_abis:
+                expected = set(args.require_android_abis.split(","))
+                actual = {name.split("/")[1] for name in libs}
+                assert actual == expected, f"APK host ABI mismatch: {actual} != {expected}"
+                for abi in expected:
+                    assert f"lib/{abi}/libflutter.so" in names, f"APK lacks Flutter for {abi}"
+                    if any(name.endswith("/libapp.so") for name in names):
+                        assert f"lib/{abi}/libapp.so" in names, f"APK lacks AOT Dart for {abi}"
             for name in names:
                 if name.endswith(".dex"):
                     data = archive.read(name)
@@ -78,5 +86,6 @@ if __name__ == "__main__":
     parser.add_argument("--windows")
     parser.add_argument("--apk", action="append", default=[])
     parser.add_argument("--plugin", required=True)
+    parser.add_argument("--require-android-abis", help="Exact comma-separated host ABIs required in every APK")
     parser.add_argument("--output", required=True)
     run(parser.parse_args())

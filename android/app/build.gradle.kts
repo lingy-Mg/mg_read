@@ -57,10 +57,11 @@ android {
             if (isNativeRuntimeBuild) "nativeRuntime" else "javet",
         )
 
-        // The Android runtime and production devices are arm64-v8a only.
-        // Keeping this in defaultConfig applies it to both debug and release.
+        // The legacy production runtime is arm64-only. The independent native
+        // distribution also ships x86_64 for Android emulators/devices.
         ndk {
             abiFilters.add("arm64-v8a")
+            if (isNativeRuntimeBuild) abiFilters.add("x86_64")
         }
     }
 
@@ -74,7 +75,7 @@ android {
             excludes += buildSet {
                 add("**/armeabi-v7a/**")
                 add("**/x86/**")
-                if (isReleaseBuild || isAndroidNodeProcessBuild) add("**/x86_64/**")
+                if ((isReleaseBuild && !isNativeRuntimeBuild) || isAndroidNodeProcessBuild) add("**/x86_64/**")
                 if (!isAndroidNodeProcessBuild) {
                     add("**/libnode.so")
                     add("**/libmgread_node_bridge.so")
