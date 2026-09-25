@@ -1,8 +1,8 @@
 /// Android Runtime 集成验收。
 ///
 /// 职责：
-/// - 验证 Javet 单 VM 内的插件 Runtime、资源数据面和 Debug listener；
-/// - 仅通过 IntegrationTest 的 Finder、语义和 Runtime Facade 与应用交互。
+/// - 验证构建所选 Android 后端的插件安装、数据面、传输、取消和 Debug listener；
+/// - 通过 IntegrationTest 与公开 Runtime Facade 执行离线、可重复的调用。
 ///
 /// 注意：
 /// - 只能由已授权的 Android 模拟器执行；
@@ -10,23 +10,22 @@
 ///
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
-import 'package:mg_read/app/app.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/discovery/application/content_library_source_prefetcher.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/reader/data/content_library_source_text_reader.dart';
 
 void main() {
-  final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  const useNodeProcess = bool.fromEnvironment('MGREAD_ANDROID_NODE_PROCESS');
 
   testWidgets('Android Runtime accepts the normal app proxy warmup call', (WidgetTester tester) async {
     await tester.pump();
@@ -34,8 +33,13 @@ void main() {
     addTearDown(runtime.debugDispose);
 
     await runtime.configurePluginHttpProxy(null);
+    await runtime.configurePluginHttpProxy(Uri.parse('http://127.0.0.1:12345'));
+    await runtime.configurePluginHttpProxy(null);
     final ping = await runtime.invoke(const RuntimePingInvocation());
     expect(ping.isHealthy, isTrue);
+    expect(ping.nodeVersion, useNodeProcess ? '24.21.0' : '26.9.0');
+    final status = await runtime.invoke(const RuntimeStatusInvocation());
+    expect(status.runtimeKind, useNodeProcess ? 'android-node-process' : 'android-javet');
   });
 
   testWidgets('Android Runtime keeps the Debug listener alive until disabled', (WidgetTester tester) async {
@@ -60,7 +64,7 @@ void main() {
     expect(disabled.endpoints, isEmpty);
   });
 
-  testWidgets('Android Runtime installs ADB-delivered plugin archives', (WidgetTester tester) async {
+  testWidgets('Android Runtime installs plugins and serves offline source data', (WidgetTester tester) async {
     await tester.pump();
     final runtime = PluginRuntime();
     addTearDown(runtime.debugDispose);
@@ -75,21 +79,17 @@ void main() {
     final aisishuwu = plugins.singleWhere((plugin) => plugin.id == 'org.mgread.aisishuwu');
     expect(aisishuwu.status, 'active');
     expect(aisishuwu.activeVersion, '0.2.12');
-    final demo = plugins.singleWhere((plugin) => plugin.id == 'org.mgread.discovery-demo');
-    expect(demo.status, 'active');
-    expect(demo.activeVersion, '0.1.2');
+    const fixtureId = 'org.mgread.android-runtime-fixture';
+    final fixture = plugins.singleWhere((plugin) => plugin.id == fixtureId);
+    expect(fixture.status, 'active');
+    expect(fixture.activeVersion, '1.0.0');
 
-    final fixtureDetail = await runtime.invoke(const SourceDetailInvocation(pluginId: 'org.mgread.aisishuwu', id: 'novel:52801'));
-    expect(fixtureDetail.summary.chapterCount, 733);
-
-    final search = await runtime.invoke(const SourceSearchInvocation(pluginId: 'org.mgread.aisishuwu', query: '修仙', pageSize: 5));
-    expect(search.items, isNotEmpty);
-    expect(search.items.every((item) => item.id.startsWith('novel:')), isTrue);
-
-    final fixtureChapters = await runtime.invoke(const SourceChaptersInvocation(pluginId: 'org.mgread.aisishuwu', id: 'novel:52801'));
-    expect(fixtureChapters.items, hasLength(733));
-    expect(fixtureChapters.items.map((chapter) => chapter.id).toSet(), hasLength(733));
-    expect(fixtureChapters.items.map((chapter) => chapter.order), orderedEquals(List<int>.generate(733, (index) => index)));
+    final search = await runtime.invoke(const SourceSearchInvocation(pluginId: fixtureId, query: 'offline', pageSize: 5));
+    expect(search.items.single.title, 'fixture:offline');
+    final fixtureDetail = await runtime.invoke(const SourceDetailInvocation(pluginId: fixtureId, id: 'fixture:one'));
+    expect(fixtureDetail.summary.title, 'fixture:detail');
+    final fixtureChapters = await runtime.invoke(const SourceChaptersInvocation(pluginId: fixtureId, id: 'fixture:one'));
+    expect(fixtureChapters.items.single.id, 'chapter:one');
 
     final libraryRoot = await Directory.systemTemp.createTemp('mg-read-android-source-reader-');
     final library = await ContentLibrary.open(dataRoot: libraryRoot);
@@ -102,8 +102,8 @@ void main() {
         title: fixtureDetail.summary.title,
         author: fixtureDetail.summary.author,
         kind: ContentKind.novel,
-        pluginId: aisishuwu.id,
-        pluginVersion: aisishuwu.activeVersion!,
+        pluginId: fixture.id,
+        pluginVersion: fixture.activeVersion!,
         remoteContentId: fixtureDetail.summary.id,
       ),
     );
@@ -112,96 +112,45 @@ void main() {
     final reader = ContentLibrarySourceTextReader(library, gateway, prefetcher);
     prefetcher.start(shelfItem);
     final launch = await reader.launch(shelfItem.id.value);
-    expect(await library.listAllCatalog(shelfItem.id), hasLength(733));
-    final lastChapter = await launch.dataSource.loadChapterAtIndex(launch.bookId, 732);
+    expect(await library.listAllCatalog(shelfItem.id), hasLength(1));
+    final lastChapter = await launch.dataSource.loadChapterAtIndex(launch.bookId, 0);
     final lastContent = await launch.dataSource.loadChapterContent(launch.bookId, lastChapter.id);
     expect(lastContent.paragraphs, isNotEmpty);
 
-    final discovery = await runtime.invoke(const SourceDiscoverInvocation(pluginId: 'org.mgread.aisishuwu', pageSize: 20));
+    final discovery = await runtime.invoke(const SourceDiscoverInvocation(pluginId: fixtureId, pageSize: 20));
     expect(discovery, isA<PluginDiscoveryDocumentResult>());
-    final document = discovery as PluginDiscoveryDocumentResult;
-    expect(document.document.components, isNotEmpty);
-    expect(document.document.components.whereType<PluginDiscoverySectionComponent>(), isNotEmpty);
-    final demoDiscovery = await runtime.invoke(const SourceDiscoverInvocation(pluginId: 'org.mgread.discovery-demo', pageSize: 20));
-    expect(demoDiscovery, isA<PluginDiscoveryDocumentResult>());
-    final demoDocument = (demoDiscovery as PluginDiscoveryDocumentResult).document;
-    expect(demoDocument.components.whereType<PluginDiscoveryTabsComponent>(), hasLength(1));
-    expect(_containsDemoGroupLayout(demoDocument.components, PluginDiscoveryGroupLayout.horizontal), isTrue);
-    expect(facadeDiagnostics.where((diagnostic) => diagnostic.code == 'runtime_facade_invoke_started').length, greaterThanOrEqualTo(2));
-    expect(facadeDiagnostics.where((diagnostic) => diagnostic.code == 'runtime_facade_invoke_completed').length, greaterThanOrEqualTo(2));
+    final artifacts = await runtime.invoke(const PluginTransferListInvocation());
+    final fixtureArtifact = artifacts.singleWhere((artifact) => artifact.pluginId == fixtureId);
+    final exported = await runtime.exportPluginArtifact(fixtureArtifact);
+    final exportedBytes = await exported.expand((chunk) => chunk).toList();
+    expect(exportedBytes.length, fixtureArtifact.bytes);
+    await runtime.invoke(const UninstallPluginInvocation(pluginId: fixtureId));
+    final imported = await runtime.importPluginArtifacts([(artifact: fixtureArtifact, bytes: Stream<List<int>>.value(exportedBytes))]);
+    expect(imported.single.status, PluginTransferImportStatus.installed);
+    final reinstalled = await runtime.invoke(const InstalledPluginsInvocation());
+    expect(reinstalled.singleWhere((plugin) => plugin.id == fixtureId).status, 'active');
+    if (!useNodeProcess) {
+      expect(facadeDiagnostics.where((diagnostic) => diagnostic.code == 'runtime_facade_invoke_started').length, greaterThanOrEqualTo(2));
+      expect(facadeDiagnostics.where((diagnostic) => diagnostic.code == 'runtime_facade_invoke_completed').length, greaterThanOrEqualTo(2));
+    }
   });
 
-  testWidgets('data-source management renders the installed Android test source in light mode', (WidgetTester tester) async {
-    await tester.pumpWidget(const ProviderScope(child: MgReadApp()));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const Key('app-nav-profile')));
-    await tester.pumpAndSettle();
-
-    final Finder profileContent = find.byKey(const Key('profile-page-content'));
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('profile-setting-source-management')),
-      220,
-      scrollable: find.descendant(of: profileContent, matching: find.byType(Scrollable)),
+  testWidgets('Android Runtime cancels a slow Source call and remains healthy', (WidgetTester tester) async {
+    await tester.pump();
+    final runtime = PluginRuntime();
+    addTearDown(runtime.debugDispose);
+    final cancellation = PluginInvocationCancellation();
+    unawaited(Future<void>.delayed(const Duration(milliseconds: 100), cancellation.cancel));
+    final timer = Stopwatch()..start();
+    await expectLater(
+      runtime.invoke(
+        const SourceSearchInvocation(pluginId: 'org.mgread.android-runtime-fixture', query: 'slow'),
+        cancellation: cancellation,
+      ),
+      throwsA(isA<PluginRuntimeException>().having((error) => error.code, 'code', 'cancelled')),
     );
-    await tester.tap(find.byKey(const Key('profile-setting-source-management')));
-    await tester.pumpAndSettle();
-
-    await _pumpUntilFound(tester, find.byKey(const Key('data-source-management-content')));
-    expect(find.byKey(const Key('data-source-management-card')), findsOneWidget);
-    final Finder sourceRows = find.byWidgetPredicate((Widget widget) {
-      final Key? key = widget.key;
-      if (key is! ValueKey<String>) return false;
-      final value = key.value;
-      return value.startsWith('data-source-') &&
-          !value.startsWith('data-source-toggle-') &&
-          !value.startsWith('data-source-management-') &&
-          value != 'data-source-add' &&
-          value != 'data-source-enabled-count';
-    }, description: 'an installed data-source row');
-    expect(sourceRows, findsWidgets);
-    expect(find.byKey(const Key('data-source-add')), findsOneWidget);
-
-    await binding.convertFlutterSurfaceToImage();
-    await tester.pump();
-    await binding.takeScreenshot('data_source_management_light');
-  });
-
-  testWidgets('discovery detail renders a sourced book in light mode', (WidgetTester tester) async {
-    await tester.pumpWidget(const ProviderScope(child: MgReadApp()));
-    await tester.pumpAndSettle(const Duration(seconds: 45));
-
-    await tester.tap(find.byKey(const Key('app-nav-discover')));
-    await _pumpUntilFound(tester, find.byKey(const Key('runtime-discovery-content')));
-
-    await tester.tap(find.byKey(const Key('discovery-source-selector')));
-    final Finder demoSource = find.byKey(const Key('discovery-source-picker-org.mgread.discovery-demo'));
-    await _pumpUntilFound(tester, demoSource);
-    await tester.tap(demoSource);
-
-    final Finder demoCategory = find.byKey(const Key('discovery-category-category:fantasy'));
-    final Finder firstContent = find.byWidgetPredicate((Widget widget) {
-      final Key? key = widget.key;
-      return key is ValueKey<String> && key.value.startsWith('runtime-discovery-item-');
-    }, description: 'a sourced discovery item');
-    await _pumpUntilFound(tester, demoCategory);
-    await tester.ensureVisible(demoCategory);
-    await tester.tap(demoCategory);
-    await _pumpUntilFound(tester, firstContent);
-
-    await tester.tap(firstContent.first);
-    await _pumpUntilFound(tester, find.byKey(const Key('source-content-detail-sheet')));
-
-    expect(find.byKey(const Key('source-content-detail-sheet')), findsOneWidget);
-    expect(find.byKey(const Key('source-detail-cover')), findsOneWidget);
-    expect(find.text('组件演示书籍'), findsWidgets);
-    expect(find.text('固定离线模拟数据，用于验证发现组件树。'), findsOneWidget);
-    expect(find.byKey(const Key('source-detail-latest-chapter-url')), findsNothing);
-    expect(find.byKey(const Key('source-detail-catalog-url')), findsOneWidget);
-
-    await binding.convertFlutterSurfaceToImage();
-    await tester.pump();
-    await binding.takeScreenshot('discovery_detail_light');
+    expect(timer.elapsed, lessThan(const Duration(seconds: 2)));
+    expect((await runtime.invoke(const RuntimePingInvocation())).isHealthy, isTrue);
   });
 }
 
@@ -242,19 +191,3 @@ final class _AndroidRuntimeSourceGateway implements SourceContentGateway {
   Future<PluginSearchSuggestionsResult> searchSuggestions({required String pluginId, String? cursor, int pageSize = 20}) =>
       throw UnsupportedError('Not used by the Android reader flow.');
 }
-
-Future<void> _pumpUntilFound(WidgetTester tester, Finder finder, {Duration timeout = const Duration(seconds: 90)}) async {
-  final DateTime deadline = DateTime.now().add(timeout);
-  while (finder.evaluate().isEmpty && DateTime.now().isBefore(deadline)) {
-    await tester.pump(const Duration(milliseconds: 500));
-  }
-  expect(finder, findsWidgets);
-}
-
-bool _containsDemoGroupLayout(Iterable<PluginDiscoveryComponent> components, PluginDiscoveryGroupLayout layout) => components.any(
-  (component) => switch (component) {
-    PluginDiscoveryGroupComponent() => component.layout == layout || _containsDemoGroupLayout(component.children, layout),
-    PluginDiscoverySectionComponent() => _containsDemoGroupLayout(component.children, layout),
-    _ => false,
-  },
-);

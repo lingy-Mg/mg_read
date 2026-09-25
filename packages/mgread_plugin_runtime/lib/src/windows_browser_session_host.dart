@@ -31,6 +31,17 @@ final class WindowsBrowserSessionException implements Exception {
   final String code;
 }
 
+/// Private reverse request surface shared by desktop and Android Node hosts.
+abstract interface class RuntimeBrowserSessionHost {
+  Future<Map<String, Object?>> request({
+    required String jobId,
+    required int deadlineUnixMs,
+    required Map<String, Object?> raw,
+  });
+  Future<void> cancel(String jobId);
+  Future<void> dispose();
+}
+
 /// Narrow native WebView2 surface. CDP commands are passed through only after
 /// Runtime JSON validation.
 abstract interface class WindowsBrowserPlatform {
@@ -213,7 +224,7 @@ final class MethodChannelWindowsBrowserPlatform
 }
 
 /// Bounded Windows browser-session host used only by the desktop Supervisor.
-final class WindowsBrowserSessionHost {
+final class WindowsBrowserSessionHost implements RuntimeBrowserSessionHost {
   WindowsBrowserSessionHost(
     this._dataRoot, {
     WindowsBrowserPlatform platform =

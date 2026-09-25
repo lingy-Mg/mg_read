@@ -376,7 +376,7 @@ String _joinPath(List<String> parts) => parts.join(Platform.pathSeparator);
 
 Directory? _findDevelopmentRuntimeRepository(List<Directory> starts) {
   final toolchain = Platform.isWindows
-      ? 'node-v24.16.0-win-x64'
+      ? 'node-v26.10.0-win-x64'
       : 'node-v24.16.0-darwin-arm64';
   final nodeParts = Platform.isWindows
       ? <String>['tools', toolchain, 'node.exe']
@@ -463,6 +463,7 @@ final class _RuntimeReady {
   const _RuntimeReady({
     required this.bootId,
     required this.host,
+    required this.nodeVersion,
     required this.port,
   });
 
@@ -472,11 +473,14 @@ final class _RuntimeReady {
   /// Required loopback host, validated to reject accidental network exposure.
   final String host;
 
+  /// Exact Node version selected by the platform backend.
+  final String nodeVersion;
+
   /// Validated ephemeral TCP port in the unsigned 16-bit TCP range.
   final int port;
 
   /// Parses and validates the fixed ready-record schema from child stdout.
-  factory _RuntimeReady.parse(String line) {
+  factory _RuntimeReady.parse(String line, {String? expectedNodeVersion}) {
     final value = _jsonObject(jsonDecode(line), 'Runtime ready signal');
     final type = value['type'];
     final bootId = value['bootId'];
@@ -492,11 +496,17 @@ final class _RuntimeReady {
         port is! int ||
         port <= 0 ||
         port > 65535 ||
-        nodeVersion != _expectedNodeVersion ||
+        nodeVersion is! String ||
+        nodeVersion != (expectedNodeVersion ?? _expectedNodeVersion) ||
         protocolVersion != _protocolVersion) {
       throw const FormatException('Invalid Runtime ready signal.');
     }
 
-    return _RuntimeReady(bootId: bootId, host: host, port: port);
+    return _RuntimeReady(
+      bootId: bootId,
+      host: host,
+      nodeVersion: nodeVersion,
+      port: port,
+    );
   }
 }

@@ -47,9 +47,9 @@ plugins/sources/                    真实数据源及其他能力参考实现
 
 ## Runtime 与平台宿主
 
-- 每个应用进程只有一个 Node Runtime 和一个 V8 VM；禁止 Worker、插件子进程、第二 VM、Engine Pool、
-  native addon 和自定义 loader。
-- Runtime 独立拥有 Node Core、Android Javet、desktop Node launcher、Supervisor、内部控制/数据面、Plugin
+- Android 构建期选择默认 Javet 或私有 Service 中的 Node 进程；一次运行只启动一个后端、一个 Node Runtime
+  和一个 V8 VM。禁止 Worker、插件子进程、第二 VM、Engine Pool、native addon 和自定义 loader。
+- Runtime 独立拥有 Node Core、Android Javet/进程后端、desktop Node launcher、Supervisor、内部控制/数据面、Plugin
   API、安装、私有数据根、瞬时诊断和 Flutter Facade。
 - `packages/mg_read_source_api` 是数据源宿主上下文和 WebView 类型的唯一公开声明包；Runtime 实现与所有
   数据源必须引用或同步它，来源不得复制 Context/WebView 子集。

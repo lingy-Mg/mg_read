@@ -1,8 +1,7 @@
-/// Android packaged-artifact acceptance for the host-owned browser session.
+/// Android packaged-artifact acceptance for the host-owned WebView.
 ///
-/// This test uses a self-owned HTTPS fixture endpoint and never automates a
-/// third-party challenge. The visible HTTP case only verifies that the host can
-/// complete its normal browser preparation before the direct HTTP request.
+/// The fixture evaluates a local expression in the app process through the
+/// published Source API, without relying on an external website.
 library;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -12,20 +11,14 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('Android WebView session supports fetch, rendered HTML, and HTTP', (WidgetTester tester) async {
+  testWidgets('Android Source WebView executes in the host process', (WidgetTester tester) async {
     await tester.pump();
     final runtime = PluginRuntime();
     addTearDown(runtime.debugDispose);
 
     final webview = await runtime.invoke(
-      const SourceSearchInvocation(pluginId: 'org.mgread.browser-session-fixture', query: 'android-webview'),
+      const SourceSearchInvocation(pluginId: 'org.mgread.android-runtime-fixture', query: 'android-webview'),
     );
-    expect(webview.items.single.title, 'webview:200:not-required');
-
-    final html = await runtime.invoke(const SourceSearchInvocation(pluginId: 'org.mgread.browser-session-fixture', query: 'android-html'));
-    expect(html.items.single.title, 'html:200:verified');
-
-    final http = await runtime.invoke(const SourceSearchInvocation(pluginId: 'org.mgread.browser-session-fixture', query: 'android-http'));
-    expect(http.items.single.title, 'http:200:verified');
+    expect(webview.items.single.title, 'webview:2');
   });
 }

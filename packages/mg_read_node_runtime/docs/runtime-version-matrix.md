@@ -8,7 +8,7 @@
 | 项目 | 精确版本 |
 | --- | --- |
 | Android 默认 Javet | `com.caoccao.javet:javet-node-android:6.0.1`；Node `26.9.0` |
-| Android 独立进程预留 | Node `24.21.0`；此处只记录兼容版本，不代表后端已接线 |
+| Android 独立进程 | Node `24.21.0`；arm64-v8a `libnode.so` 来自 nodejs-mobile Android 24.21.0-0 |
 | Windows bundled Node/npm | `26.10.0` / `11.19.1` |
 | macOS bundled Node/npm | `24.16.0` / `11.13.0` |
 | TypeScript | `5.9.3` |
@@ -22,12 +22,13 @@
 
 | 平台 | 选择 | 证据边界 |
 | --- | --- | --- |
-| Android | 默认 Javet Node 26.9.0；独立进程 Node 24.21.0 预留；minSdk 24；arm64-v8a 生产、x86_64 emulator/CI | Javet AAR 只有 arm64-v8a、x86_64 native 库；仍需真实宿主 build 与生命周期证据 |
+| Android | 默认 Javet Node 26.9.0，arm64-v8a/x86_64；构建期开关 `MGREAD_ANDROID_NODE_PROCESS=true` 选择 Node 24.21.0 私有进程，仅 arm64-v8a；minSdk 24 | 新后端 `libnode.so` 是基于 Node.js 源码的移动端第三方构建，非 Node.js 官方 Android 二进制；模拟器集成验证与最终安装包验收分别记录 |
 | Windows | bundled Node 26.10.0 x64 child process | Windows 测试不证明 Android、macOS 或最终安装包 |
 | macOS | bundled Node 24.16.0；当前产物为 arm64 | arm64 验证执行、签名和启动；x64、hardened runtime 与公证待发布验证 |
 
-Android adapter 只能在一个专用后台线程上创建一个 Node-mode `NodeRuntime`。事件循环、停止、低内存通知和
-关闭必须在拥有线程上验证；不得引入 VM Pool、Worker 或未经当前版本公开类型证明的 lifecycle API。
+Android Javet adapter 只在专用后台线程上创建一个 Node-mode `NodeRuntime`；进程后端只在私有 Service 的
+专用线程调用 `node::Start`。构建选择一次只能启用一个后端，WebView 仍由主进程持有；不得引入 VM Pool、
+Worker 或未经当前版本公开类型证明的 lifecycle API。
 
 ## 升级单元
 
@@ -37,8 +38,8 @@ Javet artifact、各后端 Node、npm、协议兼容记录、锁文件、Facade 
 
 ## 待验证项
 
-- Android API 24+：单 NodeRuntime、`process.versions.node`、ESM parity、事件循环和安全关闭。
-- Android 独立进程：Node 24.21.0 预留记录需由进程后端接线和设备运行验证。
+- Android API 24+：两后端在真实 arm64 设备上的安装、插件数据面、取消、浏览器转发、代理、异常退出与安全关闭。
+- Android 独立进程：已接线 Node 24.21.0；模拟器通过后仍需真实 arm64 设备及最终安装包验收。
 - Android 包：真实解析 Javet AAR 的 arm64-v8a/x86_64 内容并排除未支持 ABI。
 - Windows 包：从最终 bundle 启动固定 Node，并验证 ready、取消和 shutdown。
 - Node 26 的 SOCKS5 HTTPS IP 地址目标：固定 Undici 仍将 IP 当作 TLS SNI，Node 26 拒绝；Runtime 在开隧道前

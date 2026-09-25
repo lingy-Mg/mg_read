@@ -1,7 +1,7 @@
 // Stages the built Node Runtime for Flutter Android and fingerprints its files
 // so an updated APK replaces stale extracted Runtime assets on the device.
 import { createHash } from "node:crypto";
-import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -48,8 +48,26 @@ await rm(assetNodeModules, { force: true, recursive: true });
 await rm(defaultPluginsRoot, { force: true, recursive: true });
 await mkdir(assetRoot, { recursive: true });
 await cp(distRoot, assetDist, { recursive: true });
+// The Android process launches dist/cli.js outside this source package.
+// Keep Node's ESM loader contract explicit after the Flutter asset copy.
+await writeFile(resolve(assetDist, "package.json"), '{"type":"module"}\n');
 const assetFingerprint = await directoryFingerprint(assetDist);
 const runtimeAssetVersion = `${packageJson.version}-${assetFingerprint}`;
-await writeFile(resolve(assetRoot, "runtime-version.txt"), `${runtimeAssetVersion}\n`);
+const marker = resolve(assetRoot, "runtime-version.txt");
+const temporaryMarker = resolve(assetRoot, `.runtime-version-${process.pid}.next`);
+try {
+  await writeFile(temporaryMarker, `${runtimeAssetVersion}\n`);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rename(temporaryMarker, marker);
+      break;
+    } catch (error) {
+      if (attempt === 9 || !["EBUSY", "EPERM", "UNKNOWN"].includes(error?.code)) throw error;
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 50 * (attempt + 1)));
+    }
+  }
+} finally {
+  await rm(temporaryMarker, { force: true });
+}
 
 process.stdout.write(`Staged Android Runtime assets for ${runtimeAssetVersion}.\n`);

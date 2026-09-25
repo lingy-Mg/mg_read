@@ -19,6 +19,7 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
     EventChannel.StreamHandler, ActivityAware {
     private companion object {
         const val IMPORT_FILE_REQUEST = 48271
+        val backendGate = AndroidRuntimeBackendGate()
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -27,6 +28,7 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
     private var progressChannel: EventChannel? = null
     private var progressSink: EventChannel.EventSink? = null
     private var runtime: AndroidRuntimeHost? = null
+    private var nodeBridge: AndroidNodeFlutterBridge? = null
     private var activityBinding: ActivityPluginBinding? = null
     private var pendingPickerResult: MethodChannel.Result? = null
     private val activityResultListener = object : PluginRegistry.ActivityResultListener {
@@ -82,6 +84,7 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                 )
             }
         }
+        nodeBridge = AndroidNodeFlutterBridge(context, binding.binaryMessenger, assetRoot, backendGate)
         channel = MethodChannel(
             binding.binaryMessenger,
             "mgread_plugin_runtime/android",
@@ -95,6 +98,10 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         if (call.method == "readSystemProxyEnvironment") {
             result.success(readSystemProxyEnvironment())
+            return
+        }
+        if (!backendGate.claim(AndroidRuntimeBackend.JAVET)) {
+            result.error("runtime_backend_conflict", "Android Runtime backend is already selected.", null)
             return
         }
         val host = runtime
@@ -262,12 +269,15 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
         progressSink = null
         runtime?.dispose()
         runtime = null
+        nodeBridge?.dispose()
+        nodeBridge = null
         applicationContext = null
     }
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activityBinding = binding
         runtime?.attachActivity(binding.activity)
+        nodeBridge?.attachActivity(binding)
         binding.addActivityResultListener(activityResultListener)
     }
 
@@ -275,11 +285,13 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
         activityBinding?.removeActivityResultListener(activityResultListener)
         activityBinding = null
         runtime?.attachActivity(null)
+        nodeBridge?.attachActivity(null)
     }
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
         activityBinding = binding
         runtime?.attachActivity(binding.activity)
+        nodeBridge?.attachActivity(binding)
         binding.addActivityResultListener(activityResultListener)
     }
 
@@ -287,6 +299,7 @@ class MgReadPluginRuntimePlugin : FlutterPlugin, MethodChannel.MethodCallHandler
         activityBinding?.removeActivityResultListener(activityResultListener)
         activityBinding = null
         runtime?.attachActivity(null)
+        nodeBridge?.attachActivity(null)
         pendingPickerResult?.error(
             "runtime_unavailable",
             "The Android file picker was detached.",

@@ -22,6 +22,7 @@ import 'package:file_selector/file_selector.dart';
 
 import 'src/windows_job_object.dart';
 import 'src/windows_browser_session_host.dart';
+import 'src/android_node_browser_session_host.dart';
 
 part 'src/windows_system_proxy.dart';
 part 'src/system_proxy.dart';
@@ -34,6 +35,7 @@ part 'src/desktop_supervisor_support.dart';
 part 'src/desktop_supervisor_http.dart';
 part 'src/development_plugin_change.dart';
 part 'src/android_supervisor.dart';
+part 'src/android_node_process_supervisor.dart';
 part 'src/plugin_content_summary.dart';
 part 'src/plugin_content_invocation.dart';
 part 'src/plugin_content_decoder.dart';

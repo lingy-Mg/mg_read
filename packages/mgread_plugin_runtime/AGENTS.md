@@ -5,18 +5,19 @@
 ## 按任务读取
 
 - Facade 与 Supervisor：先读 `lib/mgread_plugin_runtime.dart`、目标 part 和相邻测试。
-- Android Javet/WebView：读目标 Kotlin 实现、公开 provider 类型和直接 contract。
+- Android Javet 或私有 Node 进程/WebView：读所选后端的 Kotlin、Dart Supervisor、公开 provider 类型和直接 contract。
 - Windows WebView2/Job：读目标 C++ 或 Dart host、reverse-wire fixture 和直接测试。
 - Node.js Core、安装、artifact 或内部协议变化：转到同级 `../mg_read_node_runtime/`，读取其最近
   `AGENTS.md`、公开类型与直接测试。
 
 ## Package 所有权
 
-- 本 package 独立拥有唯一 Flutter Facade、Supervisor、Android Javet 和桌面平台宿主；Node.js Core
+- 本 package 独立拥有唯一 Flutter Facade、Supervisor、Android 两个互斥后端和桌面平台宿主；Node.js Core
   位于同级 `mg_read_node_runtime`，构建后只以 package asset 形式进入本 package。
 - 主应用只调用版本化 `PluginRuntime.invoke`；不得获得 executable、PID、端口、ready、bootId、内部 URL、
   wire envelope、Runtime 数据根或平台对象。
-- 每个应用进程只有一个 Node Runtime/VM。Runtime 私有数据不得承载主应用持久化权威。
+- Android 默认使用 Javet；`MGREAD_ANDROID_NODE_PROCESS=true` 在构建期选择 arm64-v8a 私有 Service 中的
+  Node 24.21.0。一次应用运行只能启动所选后端，WebView 仍由主进程持有。Runtime 私有数据不得承载主应用持久化权威。
 
 ## 验证
 

@@ -15,6 +15,7 @@ import java.util.zip.CRC32
 
 internal class AndroidPluginArtifactTransfer(
     private val context: Context,
+    private val inboxDirectory: File = File(context.filesDir, "mgread-runtime/import-inbox"),
 ) {
     private data class ImportSession(
         val target: File,
@@ -42,7 +43,7 @@ internal class AndroidPluginArtifactTransfer(
         check(expectedBytes in 1..MAX_ARTIFACT_BYTES) { "file_too_large" }
         check(expectedChecksum.matches(Regex("[a-f0-9]{8}"))) { "invalid_request" }
         check(importSessions.size < MAX_TRANSFER_BATCH) { "transfer_batch_too_large" }
-        val inbox = File(context.filesDir, "mgread-runtime/import-inbox").apply { mkdirs() }
+        val inbox = inboxDirectory.apply { mkdirs() }
         val id = UUID.randomUUID().toString().replace("-", "")
         val target = File(inbox, "transfer-$pluginId-$version-$id${artifactSuffix(format)}")
         val temporary = File(target.path + ".part")

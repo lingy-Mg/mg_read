@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android plugin.
@@ -7,6 +9,14 @@ plugins {
 val isReleaseBuild = gradle.startParameter.taskNames.any {
     it.contains("Release", ignoreCase = true)
 }
+val isAndroidNodeProcessBuild = (findProperty("dart-defines") as? String)
+    ?.split(',')
+    ?.any { encoded ->
+        runCatching {
+            String(Base64.getDecoder().decode(encoded), Charsets.UTF_8) ==
+                "MGREAD_ANDROID_NODE_PROCESS=true"
+        }.getOrDefault(false)
+    } == true
 
 android {
     namespace = "com.mgread.mg_read"
@@ -45,7 +55,11 @@ android {
             excludes += buildSet {
                 add("**/armeabi-v7a/**")
                 add("**/x86/**")
-                if (isReleaseBuild) add("**/x86_64/**")
+                if (isReleaseBuild || isAndroidNodeProcessBuild) add("**/x86_64/**")
+                if (!isAndroidNodeProcessBuild) {
+                    add("**/libnode.so")
+                    add("**/libmgread_node_bridge.so")
+                }
                 add("**/libVkLayer_khronos_validation.so")
             }
         }

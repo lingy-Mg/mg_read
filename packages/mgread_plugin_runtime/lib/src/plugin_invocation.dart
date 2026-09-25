@@ -82,7 +82,9 @@ final class RuntimeStatusInvocation
     if (ok is! bool ||
         nodeVersion is! String ||
         runtimeVersion is! String ||
-        (runtimeKind != 'android-javet' && runtimeKind != 'desktop-node') ||
+        (runtimeKind != 'android-javet' &&
+            runtimeKind != 'android-node-process' &&
+            runtimeKind != 'desktop-node') ||
         platform is! String ||
         arch is! String ||
         uptimeMs is! int ||

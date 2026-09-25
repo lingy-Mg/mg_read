@@ -64,11 +64,15 @@ final class PluginRuntime {
   /// Creates or returns the process-scoped production Facade.
   ///
   /// The Runtime package resolves its own Windows or macOS bundle layout. Android uses
-  /// the package-owned Javet bridge; neither platform leaks its launcher or
+  /// Javet by default or the build-selected private Node process; neither leaks
   /// file-system details to the host application.
   factory PluginRuntime() {
     if (Platform.isAndroid) {
-      return _androidInstance ??= PluginRuntime._(_AndroidRuntimeSupervisor());
+      return _androidInstance ??= PluginRuntime._(
+        const bool.fromEnvironment('MGREAD_ANDROID_NODE_PROCESS')
+            ? _AndroidNodeProcessSupervisor()
+            : _AndroidRuntimeSupervisor(),
+      );
     }
     if (!Platform.isWindows && !Platform.isMacOS) {
       throw const PluginRuntimeException(
@@ -332,12 +336,12 @@ final class PluginRuntime {
   /// Closes the test-owned Runtime process and its internal connection.
   ///
   /// Production callers do not manage the Runtime's lifecycle: the desktop
-  /// supervisor owns its child and Android owns the embedded engine.
+  /// supervisor owns its child and Android owns the selected backend.
   @visibleForTesting
   Future<void> debugDispose() async {
     // The Android bridge owns the native Runtime lifecycle. Local imports use
-    // its controlled cold restart path; test disposal must not detach that
-    // engine from the Flutter plugin.
+    // its controlled cold restart path; test disposal must not detach the
+    // selected backend from the Flutter plugin.
     if (Platform.isAndroid) return;
     await _supervisor.dispose();
     if (identical(_bundledInstance, this)) {

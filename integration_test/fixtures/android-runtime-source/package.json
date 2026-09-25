@@ -1,0 +1,18 @@
+{
+  "name": "@mgread-plugin/android-runtime-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.mjs",
+  "engines": {
+    "node": "24.16.0 || 24.21.0 || 26.9.0 || 26.10.0"
+  },
+  "mgread": {
+    "schemaVersion": 1,
+    "id": "org.mgread.android-runtime-fixture",
+    "displayName": "Android Runtime 测试数据源",
+    "packageMode": "single-file",
+    "pluginApi": 1,
+    "contentKinds": ["novel"]
+  }
+}
