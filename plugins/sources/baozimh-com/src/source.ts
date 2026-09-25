@@ -11,7 +11,7 @@ import * as cheerio from 'cheerio/slim';
 import type { ContentDetail, ContentSummary, MgReadPluginContext } from './contracts.js';
 import { ProjectionCache } from './projection-cache.js';
 
-const entryUrl = 'https://cn.bzmgcn.com';
+const entryUrl = 'https://www.baozimh.com';
 export const categories = Object.freeze([
   ['china', '國漫', '/classify?type=all&region=cn&state=all&filter=*'],
   ['japan', '日本', '/classify?type=all&region=jp&state=all&filter=*'],
@@ -126,9 +126,28 @@ export class BaozimhSource {
 
   async #html(url: URL): Promise<{ readonly body: string; readonly url: URL }> {
     const response = await this.context.http.fetch(url, { redirect: 'follow', headers: { accept: 'text/html,application/xhtml+xml', 'accept-language': 'zh-TW,zh;q=0.9', referer: new URL('/', url).toString() } });
-    const body = await response.text(); if (!response.ok || isChallenge(body)) throw new Error('Source page is unavailable.');
-    return Object.freeze({ body, url: new URL(response.url || url.toString()) });
+    const body = await response.text();
+    if (response.ok && !isChallenge(body)) return Object.freeze({ body, url: new URL(response.url || url.toString()) });
+    if (isChallengeResponse(response.status, body)) return this.#htmlFromWebView(url);
+    return this.#accessBlocked();
   }
+
+  async #htmlFromWebView(url: URL): Promise<{ readonly body: string; readonly url: URL }> {
+    const page = await this.context.webview.open({ visible: true, timeoutMs: 30_000 });
+    await page.navigate(url.toString(), { timeoutMs: 45_000 });
+    const body = await page.getHtml({ timeoutMs: 20_000 });
+    if (isChallenge(body)) return this.#accessBlocked();
+    const finalUrl = await page.getUrl({ timeoutMs: 5_000 });
+    return Object.freeze({ body, url: new URL(finalUrl || url.toString()) });
+  }
+
+  #accessBlocked(): never {
+    if (this.context.errors !== undefined) {
+      return this.context.errors.raise({ code: 'source_access_blocked', message: '包子漫画需要在浏览器会话中完成站点验证。', annotation: '请在应用中打开该数据源后重试。' });
+    }
+    throw new Error('Source page is unavailable.');
+  }
+
   #proxyImage(url: URL, referer: URL): string { return this.context.resource.proxy({ kind: 'image', url: imageOrigin(url).toString(), headers: { Accept: 'image/avif,image/webp,image/*,*/*;q=0.8', Referer: referer.toString() } }); }
 }
 
@@ -158,4 +177,5 @@ function unique(values: readonly string[]): readonly string[] { return Object.fr
 function decodeEntities(value: string): string { return value.replaceAll('&amp;', '&').replaceAll('&quot;', '"').replaceAll('&#39;', "'").replaceAll('&#x27;', "'"); }
 function clean(value: string | undefined): string | null { const result = value?.replace(/\s+/gu, ' ').trim() ?? ''; return result === '' ? null : result; }
 function parseStatus(value: string | null): ContentSummary['status'] { if (value === null) return 'unknown'; if (/(?:完結|完本|已完結)/u.test(value)) return 'completed'; if (/(?:連載|更新中)/u.test(value)) return 'ongoing'; if (/(?:停更|暫停)/u.test(value)) return 'hiatus'; return 'unknown'; }
-function isChallenge(body: string): boolean { return /(?:cf-challenge|cf-turnstile|Just a moment|Checking your browser|challenge-platform)/iu.test(body); }
+function isChallenge(body: string): boolean { return /(?:cf-challenge|cf-turnstile|Just a moment|Checking your browser|challenge-platform|challenge_required|challenge_url)/iu.test(body); }
+function isChallengeResponse(status: number, body: string): boolean { return status === 403 && /(?:challenge_required|challenge_url)/iu.test(body); }
