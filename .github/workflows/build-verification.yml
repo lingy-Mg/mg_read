@@ -20,8 +20,8 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: "24.16.0"
-  NPM_VERSION: "11.13.0"
+  NODE_VERSION: "26.10.0"
+  NPM_VERSION: "11.19.1"
 
 jobs:
   debounce:
@@ -110,7 +110,7 @@ jobs:
 
       - name: Fetch Windows Node Runtime from Git LFS
         shell: pwsh
-        run: git lfs pull --include="packages/mg_read_node_runtime/tools/node-v24.16.0-win-x64/node.exe" --exclude=""
+        run: git lfs pull --include="packages/mg_read_node_runtime/tools/node-v26.10.0-win-x64/node.exe" --exclude=""
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -168,6 +168,9 @@ jobs:
     needs: debounce
     runs-on: macos-latest
     timeout-minutes: 45
+    env:
+      NODE_VERSION: "24.16.0"
+      NPM_VERSION: "11.13.0"
     steps:
       - name: Checkout
         uses: actions/checkout@v7

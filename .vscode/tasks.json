@@ -111,16 +111,16 @@
         "prepare-runtime"
       ],
       "windows": {
-        "command": "${workspaceFolder}/packages/mg_read_node_runtime/tools/node-v24.16.0-win-x64/node.exe",
+        "command": "${workspaceFolder}/packages/mg_read_node_runtime/tools/node-v26.10.0-win-x64/node.exe",
         "args": [
-          "${workspaceFolder}/packages/mg_read_node_runtime/tools/node-v24.16.0-win-x64/node_modules/npm/bin/npm-cli.js",
+          "${workspaceFolder}/packages/mg_read_node_runtime/tools/node-v26.10.0-win-x64/node_modules/npm/bin/npm-cli.js",
           "run",
           "build"
         ],
         "options": {
           "cwd": "${workspaceFolder}/packages/mg_read_node_runtime",
           "env": {
-            "PATH": "${workspaceFolder}/packages/mg_read_node_runtime/tools/node-v24.16.0-win-x64;${env:PATH}"
+            "PATH": "${workspaceFolder}/packages/mg_read_node_runtime/tools/node-v26.10.0-win-x64;${env:PATH}"
           }
         }
       },
@@ -148,7 +148,7 @@
         "collect-apk"
       ],
       "windows": {
-        "command": "${workspaceFolder}/packages/mg_read_node_runtime/tools/node-v24.16.0-win-x64/node.exe",
+        "command": "${workspaceFolder}/packages/mg_read_node_runtime/tools/node-v26.10.0-win-x64/node.exe",
         "args": [
           "${workspaceFolder}/tools/collect_release_apk.mjs"
         ]
@@ -222,14 +222,18 @@
     {
       "label": "准备：Windows Runtime 资源",
       "type": "process",
-      "command": "powershell",
+      "command": "${workspaceFolder}/packages/mg_read_node_runtime/tools/node-v26.10.0-win-x64/node.exe",
       "args": [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        "$ErrorActionPreference = 'Stop'; $runtimeRoot = Join-Path '${workspaceFolder}' 'packages/mg_read_node_runtime'; $nodeBin = Join-Path $runtimeRoot 'tools/node-v24.16.0-win-x64'; $env:PATH = $nodeBin + ';' + $env:PATH; Push-Location $runtimeRoot; try { & (Join-Path $nodeBin 'npm.cmd') run stage:flutter-windows; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } } finally { Pop-Location }"
+        "${workspaceFolder}/packages/mg_read_node_runtime/tools/node-v26.10.0-win-x64/node_modules/npm/bin/npm-cli.js",
+        "run",
+        "stage:flutter-windows"
       ],
+      "options": {
+        "cwd": "${workspaceFolder}/packages/mg_read_node_runtime",
+        "env": {
+          "PATH": "${workspaceFolder}/packages/mg_read_node_runtime/tools/node-v26.10.0-win-x64;${env:PATH}"
+        }
+      },
       "presentation": {
         "reveal": "always",
         "panel": "dedicated",
