@@ -123,9 +123,6 @@ $pluginSourceDirectories = @()
 if ($AndroidBackend -ne 'native' -and ($All -or $targets -contains 'integration_test/android_plugin_runtime_test.dart')) {
     $pluginSourceDirectories += Join-Path $projectRoot 'plugins/sources/aisishuwu'
 }
-if ($AndroidBackend -ne 'native' -and ($All -or $targets -contains 'integration_test/android_wasm_source_test.dart')) {
-    $pluginSourceDirectories += Join-Path $projectRoot 'plugins/sources/aisishuwu-wasm'
-}
 $originalPath = $env:PATH
 if ($AndroidBackend -ne 'native') {
     try {

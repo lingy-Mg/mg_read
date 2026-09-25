@@ -43,7 +43,7 @@ description: Develop, migrate, repair, retire, audit, or batch-test MgRead real 
   所有使用的第三方包在构建时内联，仅 Node.js 内置模块可外置。不得恢复 Runtime npm 依赖管理，
   不得新增依赖引用扫描、动态导入检查或模块拦截器；完整规则见项目契约参考。
 - 独立原生模式用 `mgread-native-abi`、Rust Runtime 和按平台编译的 DLL/SO；参考 `aisishuwu-native`。
-  它与 Node/Wasm 内核模式分别验收，原生代码不得通过 JS 或 Node 执行 I/O。
+  它与 Node 来源分别验收，原生代码不得通过 JS 或 Node 执行 I/O。
 - Node 来源只依赖 `@mgread/source-api` 的公开 `MgReadPluginContext`；不得复制 Context/WebView 类型，也不得依赖
   Runtime 私有端口、wire、PID、主应用数据库、宿主路径或原生对象。
 - 来源拥有真实数据和稳定不透明的 `id/target/cursor/chapterId`；Runtime 负责校验，Flutter 负责组件实现、

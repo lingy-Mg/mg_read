@@ -90,12 +90,9 @@ plugins/sources/                    真实数据源及其他能力参考实现
   按能力参考现有同类真实数据源。公共契约仍以 Runtime 类型和直接测试为准，不以某个来源副本为权威。
 - Node 数据源执行代码必须是一个已打包的兼容全部固定后端版本的 ESM JS 文件。`single-file` 发布 `.mgplugin.js`；
   `archive` 发布 `.mgplugin` 压缩容器，内部同样只有单个 JS 入口及元数据、图标，不是 npm 安装包。
-- 二进制内核模式可将 Rust `wasm32-unknown-unknown` 产物内嵌到该单文件，通过
-  `packages/mg_read_source_wasm` 的 ABI v1 适配器在当前 V8 执行。来源逻辑由 Wasm 拥有，HTTP 与资源代理仍走
-  公开 Context；不引入 WASI、原生库、第二 VM 或安装期编译。参考 `plugins/sources/aisishuwu-wasm/`。
 - 独立原生来源参考 `plugins/sources/aisishuwu-native/`；`.mgplugin` 归档的 `manifest.json` 使用
   `format=mgread-native`、`engine=native` 和 ABI/目标/SHA-256 元数据，承载预编译 DLL/SO。该格式与 Node
-  archive 独立识别，不含 JS 外壳、源码或设备端编译，不能把 Node/Wasm 验证记录当作原生引擎证据。
+  archive 独立识别，不含 JS 外壳、源码或设备端编译，不能把 Node 验证记录当作原生引擎证据。
 - npm 只用于开发和构建；构建必须将所有使用的第三方包内联到单个 JS，仅 Node.js 内置模块可外置。
   不发布源码、lock、本地依赖目录或 `node_modules`，也不支持发布后恢复、下载或安装外部 npm 依赖。
 - 不增加依赖引用扫描、动态导入检查或自定义模块拦截器；由构建配置落实打包要求，模块执行交给 Node。

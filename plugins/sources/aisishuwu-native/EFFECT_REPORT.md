@@ -118,10 +118,8 @@ RSS 是具体时点的 worker 内存，不是峰值或整个 Flutter App 内存�
 | --- | --- | --- |
 | Rust 原生（已实现） | EXE + DLL / 私有 Service + SO；来源按目标架构编译 | 不需要另装语言运行时，适合可信二进制来源；承担 ABI 和多目标构建成本 |
 | Java（方案评估） | Windows JVM + JAR / Android ART + DEX | 可共享业务源码，但普通 JAR 不能直接等同于 Android 可加载 DEX；Windows 仍要分发或依赖 JVM |
-| 独立 Wasm（未实现） | 每平台原生 Wasm 引擎 + 同一份 Wasm 来源 | 可以不依赖 Node；HTTP/文件由 WASI 或自定义宿主接口提供。字节码统一，但仍需实现并维护这些 I/O 绑定 |
 
-因此，Wasm 调用宿主 API 本身不等于重复 Node 路线；先前依附 Node 的实验才不满足这次独立要求。
-本次选择 Rust，把执行和 I/O 所有权直接放进原生引擎。Java 和独立 Wasm 没有做同条件实测，不给出速度排名。
+本次选择 Rust，把执行和 I/O 所有权直接放进原生引擎。Java 没有做同条件实测，不给出速度排名。
 
 ## 构建与使用
 

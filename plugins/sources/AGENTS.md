@@ -7,8 +7,6 @@ artifact 模式以 Node 来源 `package.json.mgread` 或原生来源构建生成
   `.mgplugin.js` 和 `.mgplugin` 压缩包共用此要求；后者只包装单个 JS、元数据与图标，不恢复 npm 依赖。
   开发用 package/lock/node_modules 留在项目中，不进入 artifact 或 Runtime generation。
   禁止新增依赖引用扫描、动态导入检查或自定义 loader；通过构建配置落实 bundle 和禁用 splitting。
-- 二进制内核模式可使用 `@mgread/source-wasm`，把 Rust Wasm 与适配器打包进同一 JS；Rust 工具链与依赖精确
-  固定，提交 Cargo.lock。发布和设备端不要求 Rust/JVM，不生成 Windows/Android 专用动态库。
 - 独立原生来源使用 `mgread-native-abi` crate 的公开 ABI，Windows DLL/Android SO 分目标构建，在
   `engine=native` 归档分发；参考 `aisishuwu-native`。原生构建与验证使用 Cargo/原生工具，不经过 Node Context。
 - 先读目标来源入口、最近的来源 `AGENTS.md`、公开类型和直接测试。需要数据源契约或 WebView 专项流程时，

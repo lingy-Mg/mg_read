@@ -39,9 +39,6 @@
 
 - Node 数据源代码强制构建为单个兼容固定后端版本的 ESM JS。`single-file` 发布 `.mgplugin.js`；`archive` 发布 `.mgplugin`
   压缩包，内部同样是单个 JS 入口及元数据、图标。压缩包没有 npm 依赖恢复语义。
-- Rust/Wasm 二进制内核模式使用 `@mgread/source-wasm` ABI v1，并把 `.wasm` 字节与适配器内嵌到同一 JS。
-  来源路由、解析与公开结果在 Rust 内实现，IO 通过公开 Context 继续执行；参考 `aisishuwu-wasm`，验证时必须
-  分列 Rust/ABI 测试、冷安装、Windows Facade/EXE 与 Android 真正执行结果，不能以编译成功替代平台验收。
 - 独立原生模式的 C ABI 由 `packages/mg_read_native_runtime/abi` 定义，`engine=native` 归档包含
   manifest 与预编译 DLL/SO；来源拥有解析与缓存策略，Rust 宿主拥有 HTTP/文件/资源/取消。参考
   `aisishuwu-native`，使用 Cargo 构建及真实 native-only App 验收，既有单 JS 打包要求只适用于 Node 引擎。
