@@ -6,7 +6,11 @@
 
 已实现可安装的 Rust → WebAssembly 二进制内核模式，并在 Windows 和 Android 的真实 Runtime 中执行。
 两个平台复用同一个安装文件和 Wasm 字节。爱丽丝的发现、分类、搜索、详情、733 章完整目录、首/中/末正文及
-详情封面代理均已通过定向平台验证。建议继续采用 Rust/Wasm 作为当前架构的二进制插件路线。
+详情封面代理均已通过定向平台验证。本方案依赖 Node/V8，只证明二进制内核可行，不满足独立运行时要求。
+
+2026-09-25 规划修订：用户明确要求独立于 Node 后，后续主线调整为 Rust 原生宿主与 DLL/SO 数据源；见
+[独立数据源重新规划](../../../packages/mgread_plugin_runtime/INDEPENDENT_SOURCE_PLAN.md)。本文保留原实验事实，
+其中平台通过项均不能作为新独立运行时已经实现或通过验收的证据。
 
 这是可运行的试验版。原 JS 来源继续保留；新来源尚未移植持久化缓存和原首页的轮播/原创专区细分编排。
 Windows EXE 自动检查仍暴露宿主已有的超长正文限制，因此本报告不宣称所有书籍、所有显示表面全链路通过。
@@ -105,8 +109,9 @@ base64 内嵌还有约 33% 编码增量。原 JS 文件含图标，两个安装�
 | Java | Windows JVM/JAR；Android 经 D8 转为 DEX、接入 ART | JVM 生态成熟，Android 原生集成自然，解析库选择多 | 标准 JAR 与 Android DEX 不同；Windows 要提供/依赖 JVM；与现有 Node Context 另做桥接及异常/取消/生命周期管理；本次未实测性能 |
 | 现有 JS | 现有 Node/Javet | 开发更新快、包体更小、当前缓存和页面编排完整 | 代码以 JS 分发；计算密集逻辑缺少 Rust 的编译期约束；继续适合一般来源 |
 
-结合当前 MgRead 已在两个平台拥有 V8 的事实，优先 Rust/Wasm 是接入成本判断，而不是“所有场景 Rust
-都比 Java 快”的语言排名。Rust 的该 target 默认没有宿主系统能力，需要由调用方提供网络等服务，正好
+在复用现有 Node/V8 的前提下，优先 Rust/Wasm 是原实验的接入成本判断；该前提不适用于新的独立性要求，
+也不是“所有场景 Rust 都比 Java 快”的语言排名。Rust 的该 target 默认没有宿主系统能力，需要由调用方
+提供网络等服务，正好
 对应这里的公开 Context 桥接。[Rust target 文档](https://doc.rust-lang.org/rustc/platform-support/wasm32-unknown-unknown.html)
 与 [Node WebAssembly 文档](https://nodejs.org/learn/getting-started/nodejs-with-webassembly)。
 
