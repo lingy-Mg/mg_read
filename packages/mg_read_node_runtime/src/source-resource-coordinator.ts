@@ -20,15 +20,18 @@ export class SourceResourceCoordinator {
   readonly #http: PluginRuntimeHttpClient;
   readonly #events: PluginManagerEventSink;
   readonly #debugLogEnabled: () => boolean;
+  readonly #resolveImage: (pluginId: string, request: JsonObject, signal: AbortSignal) => Promise<Response | undefined>;
 
   constructor(
     http: PluginRuntimeHttpClient,
     events: PluginManagerEventSink,
     debugLogEnabled: () => boolean,
+    resolveImage: (pluginId: string, request: JsonObject, signal: AbortSignal) => Promise<Response | undefined>,
   ) {
     this.#http = http;
     this.#events = events;
     this.#debugLogEnabled = debugLogEnabled;
+    this.#resolveImage = resolveImage;
     this.#warmup = new HlsManifestWarmup((event) => this.#logWarmup(event));
   }
 
@@ -52,6 +55,18 @@ export class SourceResourceCoordinator {
   ): Promise<SourceProxyResource | undefined> {
     const decoded = decodeSourceResourceToken(token);
     if (decoded === undefined) return openSourceProxyResource(undefined, requestHeaders, signal);
+    if (decoded.request.handler !== undefined) {
+      if (decoded.request.kind !== "image" || typeof decoded.request.handler !== "string" ||
+          !/^[a-z][a-z0-9-]{0,63}$/u.test(decoded.request.handler)) return undefined;
+      const response = await this.#resolveImage(decoded.pluginId, decoded.request, signal);
+      if (response === undefined) return undefined;
+      return Object.freeze({
+        proxy: (request: JsonObject) => proxy(decoded.pluginId, request),
+        request: decoded.request,
+        response,
+        responseUrl: typeof decoded.request.url === "string" ? decoded.request.url : "",
+      });
+    }
     const entry: SourceProxyEntry = {
       fetch: this.#http.fetch.bind(this.#http),
       proxy: (request) => proxy(decoded.pluginId, request),

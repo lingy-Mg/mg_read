@@ -311,6 +311,16 @@ test("installed manga fixture exposes catalog, page manifests, policies, and bou
   assert.deepEqual([...body.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
   assert.equal(calls[0].input, `https://fixture.invalid/${chapters.items[0].id}/page-0.png`);
   assert.deepEqual(calls[0].init.headers, { Accept: "image/png", Referer: "https://example.invalid/manga/fixture-book" });
+  const processedUrl = manager.createResourceUrl("org.mgread.runtime.manga-fixture", {
+    kind: "image", url: "https://fixture.invalid/processed.png", handler: "fixture-image", params: { segments: 2 },
+  });
+  const processedToken = new URL(processedUrl).pathname.split("/").at(-1);
+  const processed = await manager.openSourceResource(processedToken, {}, signal);
+  assert.equal(processed.response.headers.get("content-type"), "image/png");
+  assert.deepEqual(Buffer.from(await processed.response.arrayBuffer()), png);
+  assert.equal(calls.length, 1);
+  await manager.setEnabled("org.mgread.runtime.manga-fixture", false);
+  assert.equal(await manager.openSourceResource(processedToken, {}, signal), undefined);
 });
 
 test("complete chapter catalogs enforce count, byte, uniqueness, and shape limits", () => {

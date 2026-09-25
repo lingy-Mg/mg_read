@@ -86,3 +86,8 @@ export function getContent(request) {
     pages,
   };
 }
+
+export function getResource(request) {
+  if (request.handler !== "fixture-image" || request.params?.segments !== 2) throw new Error("Invalid image request");
+  return { bytes: Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64")), mimeType: "image/png" };
+}

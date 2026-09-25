@@ -136,7 +136,10 @@ async function runProject(project, options) {
     const mainPath = resolve(project.root, project.packageJson.main);
     await access(mainPath);
     const plugin = await import(`${pathToFileURL(mainPath).href}?source-test=${Date.now()}`);
-    const optionalExports = typeof plugin.searchSuggestions === 'function' ? ['searchSuggestions'] : [];
+    const optionalExports = [
+      ...(typeof plugin.searchSuggestions === 'function' ? ['searchSuggestions'] : []),
+      ...(typeof plugin.getResource === 'function' ? ['getResource'] : []),
+    ];
     assertStandardSourceContract({
       plugin,
       packageJson: project.packageJson,
@@ -230,6 +233,7 @@ async function runProject(project, options) {
       contents: flow.contents,
       contentKind: flow.summary.contentKind,
       fetch: globalThis.fetch,
+      plugin,
     });
     const resourceStatus = aggregateResourceStatus(resourceGroups);
     const resourceFailure = resourceGroupFailure(resourceGroups);

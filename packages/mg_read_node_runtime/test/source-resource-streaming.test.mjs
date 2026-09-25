@@ -5,10 +5,34 @@ import test from "node:test";
 
 import { serveSourceResource } from "../dist/loopback-resources.js";
 import { openSourceProxyResource } from "../dist/source-resource-proxy.js";
+import { SourceResourceCoordinator } from "../dist/source-resource-coordinator.js";
+import { encodeSourceResourceToken } from "../dist/source-resource-token.js";
 
 const bmiKey = Buffer.from("aaaaaaaaaaaaaaaa", "ascii");
 const bmiIv = Buffer.from("0123456789aaaaaa", "ascii");
 const prefixedIvKey = Buffer.from("0123456789abcdef0123456789abcdef", "ascii");
+
+test("source image proxy forwards a bounded handler descriptor to the owning plugin", async () => {
+  let calls = 0;
+  const coordinator = new SourceResourceCoordinator({ fetch() { throw new Error("unexpected upstream fetch"); } },
+    () => {}, () => false, async (pluginId, request) => {
+      calls += 1;
+      assert.equal(pluginId, "org.mgread.jmcomic");
+      assert.equal(request.handler, "jm-stripes-v1");
+      assert.deepEqual(request.params, { segments: 2 });
+      return new Response(Uint8Array.from([137, 80, 78, 71]), { headers: { "content-type": "image/png" } });
+    });
+  const request = { kind: "image", url: "https://images.example/photo.png", handler: "jm-stripes-v1", params: { segments: 2 } };
+  const token = encodeSourceResourceToken("org.mgread.jmcomic", request);
+  const resource = await coordinator.open(token, {}, new AbortController().signal, () => "unused");
+  assert.equal(calls, 1);
+  assert.equal(resource.response.headers.get("content-type"), "image/png");
+  assert.deepEqual([...new Uint8Array(await resource.response.arrayBuffer())], [137, 80, 78, 71]);
+  const invalid = await coordinator.open(encodeSourceResourceToken("org.mgread.jmcomic", { ...request, kind: "hls" }),
+    {}, new AbortController().signal, () => "unused");
+  assert.equal(invalid, undefined);
+  assert.equal(calls, 1);
+});
 
 test("source resources deliver the first chunk before the upstream body completes", async (t) => {
   const releaseTail = Promise.withResolvers();

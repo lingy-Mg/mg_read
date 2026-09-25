@@ -127,6 +127,7 @@ async function buildBundledCode(root, toolingRoot, entry) {
       external: [...NODE_BUILTINS],
       format: 'esm',
       legalComments: 'none',
+      loader: { '.wasm': 'base64' },
       logLevel: 'silent',
       mainFields: ['module', 'main'],
       packages: 'bundle',

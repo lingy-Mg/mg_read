@@ -38,13 +38,13 @@ mock 或单独 build 替代主程序 EXE CLI。两层都可访问真站，“快
 从仓库根目录使用当前平台对应的仓库固定 Node，不回退系统 Node。Windows 单源：
 
 ```text
-packages\mg_read_node_runtime\tools\node-v24.16.0-win-x64\node.exe --use-env-proxy packages\mg_read_source_testkit\bin\mgread-source-test.mjs --source aisishuwu --report artifacts\source-tests\quick-aisishuwu.json
+packages\mg_read_node_runtime\tools\node-v26.10.0-win-x64\node.exe --use-env-proxy packages\mg_read_source_testkit\bin\mgread-source-test.mjs --source aisishuwu --report artifacts\source-tests\quick-aisishuwu.json
 ```
 
 全源：
 
 ```text
-packages\mg_read_node_runtime\tools\node-v24.16.0-win-x64\node.exe --use-env-proxy packages\mg_read_source_testkit\bin\mgread-source-test.mjs --all --report artifacts\source-tests\quick-all.json
+packages\mg_read_node_runtime\tools\node-v26.10.0-win-x64\node.exe --use-env-proxy packages\mg_read_source_testkit\bin\mgread-source-test.mjs --all --report artifacts\source-tests\quick-all.json
 ```
 
 `--source` 接受来源目录、package 名或 pluginId。默认先执行来源声明的 build，然后从 `dist` 装载。
@@ -58,7 +58,7 @@ CLI 退出码：`0` 所有来源严格通过、`1` 已完成但存在 `failed/pa
 testkit 自身变化时运行固定 Node 的离线直接测试：
 
 ```text
-packages\mg_read_node_runtime\tools\node-v24.16.0-win-x64\node.exe --test packages\mg_read_source_testkit\test\*.test.mjs
+packages\mg_read_node_runtime\tools\node-v26.10.0-win-x64\node.exe --test packages\mg_read_source_testkit\test\*.test.mjs
 ```
 
 ## 实际检查：真实主程序 EXE CLI

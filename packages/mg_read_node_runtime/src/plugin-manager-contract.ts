@@ -211,6 +211,7 @@ export interface LoadedPluginModule {
   getDetail: PluginContentFunction;
   search: PluginContentFunction;
   searchSuggestions: PluginContentFunction;
+  getResource?: (request: JsonObject) => Promise<unknown> | unknown;
 }
 
 export interface LoadedPlugin {

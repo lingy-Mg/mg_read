@@ -40,3 +40,16 @@ test('image MIME sniffing reuses one response and keeps signature validation str
   assert.equal(result.contentType, 'image/webp');
   assert.equal(result.bytesRead, first.byteLength);
 });
+
+test('source image handler is probed through its decoded response', async () => {
+  let invoked = 0;
+  const bytes = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1]);
+  const result = await probeReachableResource({
+    requests: [{ kind: 'image', url: 'https://images.example/scrambled.webp', handler: 'stripes', params: { segments: 2 } }],
+    plugin: { async getResource(request) { invoked += 1; assert.equal(request.params.segments, 2); return { bytes, mimeType: 'image/png' }; } },
+    fetch() { throw new Error('direct fetch would bypass image decoding'); },
+    validatePrefix(prefix) { return Buffer.from(prefix.subarray(0, 8)).equals(Buffer.from(bytes.subarray(0, 8))); },
+  });
+  assert.equal(invoked, 1);
+  assert.equal(result.contentType, 'image/png');
+});

@@ -13,6 +13,7 @@ description: Develop, migrate, repair, retire, audit, or batch-test MgRead real 
 | 当前任务 | 只读这个主参考 |
 | --- | --- |
 | 新建或修改单个来源、项目结构、缓存、资源代理、artifact、开发加载 | [source-plugin-contract.md](references/source-plugin-contract.md) |
+| 封面或正文图片需要来源专用解码、重排或实时拼接 | [source-image-proxy.md](references/source-image-proxy.md) |
 | 修复失效来源、搜索/分页/解析或资源链路 | [source-repair-workflow.md](references/source-repair-workflow.md) |
 | 批量健康检查、同类来源整顿、全源回归、简介审计 | [source-batch-audit.md](references/source-batch-audit.md) |
 | 从旧格式或第三方仓库迁移来源 | [source-migration-workflow.md](references/source-migration-workflow.md) |
@@ -48,8 +49,8 @@ description: Develop, migrate, repair, retire, audit, or batch-test MgRead real 
   Runtime 私有端口、wire、PID、主应用数据库、宿主路径或原生对象。
 - 来源拥有真实数据和稳定不透明的 `id/target/cursor/chapterId`；Runtime 负责校验，Flutter 负责组件实现、
   主题、尺寸、导航和交互。不得伪造缺失字段、热门词、简介或线上证据。
-- 封面、漫画页图和音视频只登记经来源校验的资源描述；媒体主体、HLS、Range 和取消由 Runtime 数据面处理，
-  插件不得整体缓冲或导出字节。
+- 普通封面、漫画页图和音视频登记经来源校验的资源描述，由 Runtime 数据面处理。来源专用的图片解码与拼接
+  使用代理 URL 和可选 `getResource`；Flutter 请求时 Runtime 再转给来源，具体边界见图片代理参考。音视频仍不进入来源字节回调。
 - 浏览器会话不得让来源读取、记录、导出或手写 Cookie、验证令牌和伪造 UA；需要同 Profile HTTP 时使用
   当前公开 session API，页面必须执行脚本时才保留最小 WebView 操作。
 - 本技能中“快速检查”仅指仓库固定 Node 直接调用 `mgread-source-test.mjs`；“实际检查”仅指当前真实

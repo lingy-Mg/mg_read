@@ -29,7 +29,8 @@
 ## 内容与资源
 
 小说返回 `text`，漫画返回有序 `pages`，音频/视频返回资源描述。封面和内容资源先校验协议、origin、路径和
-必要 headers，再交给 `ctx.resource.proxy`；loopback URL 中的描述是可逆编码，不提供加密或认证。
+必要 headers，再交给 `ctx.resource.proxy`；loopback URL 中的描述是可逆编码，不提供加密或认证。图片若需来源
+专用解码或拼接，改读 [source-image-proxy.md](source-image-proxy.md)，通过代理 URL 和可选 `getResource` 在读取时处理。
 
 若当前来源涉及发现组合、媒体或 WebView，只增加入口中对应的一个条件参考。实现后按
 [content-validation-matrix.md](content-validation-matrix.md)选择该 `contentKind` 的验证，不把“返回非空对象”

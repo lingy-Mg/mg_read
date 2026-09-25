@@ -7,7 +7,7 @@
 import { access, lstat, readFile } from "node:fs/promises";
 import { isAbsolute, resolve, sep } from "node:path";
 
-import { nodeVersionByBackend, supportedPluginNodeRange } from "./runtime-version.js";
+import { supportedPluginNodeRange } from "./runtime-version.js";
 
 /** MgRead metadata schema supported by this Runtime release. */
 export const pluginPackageSchemaVersion = 1;
@@ -233,7 +233,7 @@ function isSupportedNodeRange(value: unknown): boolean {
   return (
     value === supportedPluginNodeRange ||
     // Preserve installed artifacts created by the previous Node 24 host.
-    value === nodeVersionByBackend.macos ||
+    value === "24.16.0" ||
     value === ">=24 <25" ||
     value === ">=24.0.0 <25.0.0"
   );

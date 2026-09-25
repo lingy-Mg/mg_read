@@ -176,7 +176,10 @@ export class PluginManager {
     });
     this.#debugLogEnabled = options.debugLogEnabled ?? (() => false);
     this.#http = options.http ?? { fetch: (input, init) => fetch(input, init) };
-    this.#sourceResources = new SourceResourceCoordinator(this.#http, this.#events, this.#debugLogEnabled);
+    this.#sourceResources = new SourceResourceCoordinator(
+      this.#http, this.#events, this.#debugLogEnabled,
+      (pluginId, request, signal) => this.#resolveImageResource(pluginId, request, signal),
+    );
     this.#browserSession = options.browserSession;
     this.#cacheClearTimeoutMs = positiveMilliseconds(
       options.cacheClearTimeoutMs,
@@ -253,6 +256,42 @@ export class PluginManager {
 
   openSourceResource(token: string, requestHeaders: Readonly<Record<string, string>>, signal: AbortSignal) {
     return this.#sourceResources.open(token, requestHeaders, signal, (pluginId, request) => this.createResourceUrl(pluginId, request));
+  }
+
+  /** Invokes an optional source image handler under the same per-plugin lease and HTTP scope as content calls. */
+  async #resolveImageResource(pluginId: string, request: JsonObject, signal: AbortSignal): Promise<Response | undefined> {
+    await this.initialize();
+    if (this.#combinedSnapshots().find((snapshot) => snapshot.id === pluginId)?.enabled !== true) return undefined;
+    const deadlineUnixMs = String(Date.now() + 30_000);
+    const scopedSignal = AbortSignal.any([signal, AbortSignal.timeout(30_000)]);
+    const release = await this.#pluginOperations.acquireInvocation(pluginId, scopedSignal, deadlineUnixMs);
+    let development: DevelopmentPlugin | undefined;
+    try {
+      development = await this.#development.ensureLoaded(pluginId);
+      if (development !== undefined) this.#development.retain(development);
+      const installed = development === undefined ? await this.#ensureInstalledLoaded(pluginId) : undefined;
+      const plugin = development?.loaded ?? installed;
+      if (plugin?.module.getResource === undefined) return undefined;
+      const value: unknown = await this.#invocationScope.run(
+        Object.freeze({ deadlineUnixMs, signal: scopedSignal }),
+        () => plugin.module.getResource!(request),
+      );
+      if (scopedSignal.aborted || this.#combinedSnapshots().find((snapshot) => snapshot.id === pluginId)?.enabled !== true ||
+          (development !== undefined && this.#development.getLoaded(pluginId) !== development)) return undefined;
+      if (value === null || typeof value !== "object") return undefined;
+      const resource = value as { readonly bytes?: unknown; readonly mimeType?: unknown };
+      if (!(resource.bytes instanceof Uint8Array) || resource.bytes.byteLength === 0 || resource.bytes.byteLength > 24 * 1024 * 1024 ||
+          !["image/jpeg", "image/png", "image/webp", "image/gif"].includes(String(resource.mimeType))) return undefined;
+      return new Response(Buffer.from(resource.bytes), {
+        headers: { "content-type": String(resource.mimeType), "content-length": String(resource.bytes.byteLength), "cache-control": "no-store" },
+      });
+    } finally {
+      try {
+        if (development !== undefined) await this.#development.release(development);
+      } finally {
+        release();
+      }
+    }
   }
 
 

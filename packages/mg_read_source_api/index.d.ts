@@ -120,7 +120,19 @@ export type PluginResourceTransform =
 export type PluginResourceProxyRequest = PluginJsonObject & {
   readonly proxyMode?: "direct";
   readonly resourceTransform?: PluginResourceTransform;
+  /** Optional source-owned image handler invoked when the loopback URL is read. */
+  readonly handler?: string;
+  readonly params?: PluginJsonObject;
 };
+
+/** A decoded image returned by an optional source getResource export. */
+export interface PluginImageResourceResponse {
+  readonly bytes: Uint8Array;
+  readonly mimeType: "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+}
+
+/** Optional source module export for source-specific image decoding or assembly. */
+export type PluginImageResourceHandler = (request: PluginResourceProxyRequest) => Promise<PluginImageResourceResponse> | PluginImageResourceResponse;
 
 export interface MgReadPluginContext {
   readonly app: {

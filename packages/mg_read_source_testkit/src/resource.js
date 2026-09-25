@@ -14,6 +14,7 @@ export async function probeReachableResource({
   expectedContentType = /^image\//u,
   validatePrefix = null,
   maximumAttempts = 3,
+  plugin,
 }) {
   if (!Number.isSafeInteger(maximumAttempts) || maximumAttempts < 1 || maximumAttempts > 8) {
     throw new SourceTestFailure('source_resource_attempt_limit_invalid', 'resource', {});
@@ -36,7 +37,7 @@ export async function probeReachableResource({
   for (let index = 0; index < candidates.length; index += 1) {
     const request = candidates[index];
     try {
-      const response = await fetchRegisteredResource(request, runtimeFetch);
+      const response = await fetchRegisteredResource(request, runtimeFetch, plugin);
       const contentType = (response.headers.get('content-type') ?? '').slice(0, 80);
       const attempt = { index: index + 1, url: request.url, status: response.status, contentType };
       expectedContentType.lastIndex = 0;
@@ -66,7 +67,15 @@ export async function probeReachableResource({
   });
 }
 
-async function fetchRegisteredResource(request, runtimeFetch) {
+async function fetchRegisteredResource(request, runtimeFetch, plugin) {
+  if (request.handler !== undefined) {
+    if ((request.resourceKind !== 'image' && request.kind !== 'image') || typeof request.handler !== 'string' ||
+        typeof plugin?.getResource !== 'function') throw new Error('invalid source image handler');
+    const result = await plugin.getResource(request);
+    if (!(result?.bytes instanceof Uint8Array) || result.bytes.byteLength < 1 || result.bytes.byteLength > 24 * 1024 * 1024 ||
+        !['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(result.mimeType)) throw new Error('invalid source image response');
+    return new Response(result.bytes, { headers: { 'content-type': result.mimeType } });
+  }
   if (request.resourceTransform === 'sniff-image-content-type-v1') {
     const response = await runtimeFetch(request.url, { headers: request.headers, redirect: 'follow' });
     if (!response.ok || response.body === null) return response;
@@ -194,6 +203,7 @@ export async function probeResourceGroups({
   contents = [],
   contentKind,
   fetch: sourceFetch = globalThis.fetch,
+  plugin,
 }) {
   const records = Array.isArray(requests) ? requests : [];
   const allContents = Array.isArray(contents) ? contents : [];
@@ -231,30 +241,34 @@ export async function probeResourceGroups({
       })),
       records,
       fetch: sourceFetch,
+      plugin,
     }),
     comicImages: await probeResourceSurfaces({
       applicable: kind === 'manga',
       surfaces: comicPageSurfaces(allContents),
       records,
       fetch: sourceFetch,
+      plugin,
     }),
     audio: await probeResourceSurfaces({
       applicable: kind === 'audio',
       surfaces: mediaSurfaces(allContents, 'audio'),
       records,
       fetch: sourceFetch,
+      plugin,
     }),
     video: await probeResourceSurfaces({
       applicable: kind === 'video',
       surfaces: mediaSurfaces(allContents, 'video'),
       records,
       fetch: sourceFetch,
+      plugin,
     }),
   };
   return Object.freeze(groups);
 }
 
-async function probeResourceSurfaces({ applicable, surfaces, records, fetch }) {
+async function probeResourceSurfaces({ applicable, surfaces, records, fetch, plugin }) {
   if (!applicable) {
     return Object.freeze({ status: 'notTested', applicable: false, candidates: 0, surfaces: Object.freeze([]) });
   }
@@ -275,6 +289,7 @@ async function probeResourceSurfaces({ applicable, surfaces, records, fetch }) {
       },
       records,
       fetch,
+      plugin,
     });
     const itemCount = Array.isArray(surface.items) ? surface.items.length : surface.items;
     results.push(Object.freeze({ name: surface.name, items: itemCount, declared: surface.values.length, ...result }));
@@ -333,7 +348,7 @@ function mediaSurfaces(contents, contentKind) {
   });
 }
 
-async function probeResourceGroup({ definition, records, fetch }) {
+async function probeResourceGroup({ definition, records, fetch, plugin }) {
   if (!definition.applicable) {
     return Object.freeze({ status: 'notTested', applicable: false, candidates: 0 });
   }
@@ -353,6 +368,7 @@ async function probeResourceGroup({ definition, records, fetch }) {
     const result = await probeReachableResource({
       requests: candidates.map((request) => ({ ...request, resourceKind: request.kind, kind: 'candidate' })),
       fetch,
+      plugin,
       expectedKind: 'candidate',
       expectedContentType: definition.mime,
       validatePrefix: definition.validatePrefix,
