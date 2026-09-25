@@ -377,7 +377,7 @@ function decodeDescriptor(value: unknown, pluginId: string, dataRoot: string): P
   }
   const projectRoot = resolve(dataRoot, "plugins", pluginId, "versions", value.version);
   return parsePluginPackageDescriptor({
-    engines: { node: ">=24 <25" },
+    engines: { node: "24.16.0 || 24.21.0 || 26.9.0 || 26.10.0" },
     main: value.entry,
     mgread: {
       contentKinds: value.contentKinds,

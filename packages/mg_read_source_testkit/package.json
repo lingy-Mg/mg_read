@@ -18,6 +18,6 @@
     "test:sources": "node --use-env-proxy ./bin/mgread-source-test.mjs"
   },
   "engines": {
-    "node": ">=24 <25"
+    "node": "24.16.0 || 24.21.0 || 26.9.0 || 26.10.0"
   }
 }

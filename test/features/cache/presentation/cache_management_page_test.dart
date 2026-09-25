@@ -37,7 +37,7 @@ void main() {
           pluginRuntimeConnectionProvider.overrideWith(
             (ref) async => const PluginRuntimeConnection(
               isHealthy: true,
-              nodeVersion: '24.16.0',
+              nodeVersion: '26.10.0',
               runtimeVersion: 'test',
               plugins: <PluginRuntimePlugin>[
                 PluginRuntimePlugin(
@@ -142,7 +142,7 @@ void main() {
           pluginRuntimeConnectionProvider.overrideWith(
             (ref) async => const PluginRuntimeConnection(
               isHealthy: true,
-              nodeVersion: '24.16.0',
+              nodeVersion: '26.10.0',
               runtimeVersion: 'test',
               plugins: <PluginRuntimePlugin>[],
             ),
@@ -179,7 +179,7 @@ void main() {
           pluginRuntimeConnectionProvider.overrideWith(
             (ref) async => const PluginRuntimeConnection(
               isHealthy: true,
-              nodeVersion: '24.16.0',
+              nodeVersion: '26.10.0',
               runtimeVersion: 'test',
               plugins: <PluginRuntimePlugin>[],
             ),
@@ -213,7 +213,7 @@ void main() {
           pluginRuntimeConnectionProvider.overrideWith(
             (ref) async => const PluginRuntimeConnection(
               isHealthy: true,
-              nodeVersion: '24.16.0',
+              nodeVersion: '26.10.0',
               runtimeVersion: 'test',
               plugins: <PluginRuntimePlugin>[],
             ),

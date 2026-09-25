@@ -158,7 +158,7 @@ void main() {
   testWidgets('marks a development source as live and keeps it immutable', (WidgetTester tester) async {
     const developmentSource = PluginRuntimeConnection(
       isHealthy: true,
-      nodeVersion: '24.16.0',
+      nodeVersion: '26.10.0',
       runtimeVersion: '0.2.0-standard.2',
       plugins: <PluginRuntimePlugin>[
         PluginRuntimePlugin(
@@ -196,7 +196,7 @@ void main() {
   testWidgets('uses Runtime icon URL and keeps the brand fallback on failure', (WidgetTester tester) async {
     const connection = PluginRuntimeConnection(
       isHealthy: true,
-      nodeVersion: '24.16.0',
+      nodeVersion: '26.10.0',
       runtimeVersion: '0.2.0-standard.2',
       plugins: <PluginRuntimePlugin>[
         PluginRuntimePlugin(

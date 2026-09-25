@@ -24,6 +24,7 @@ import {
   readPluginProject,
   resolveInside,
 } from "./plugin-package.js";
+import { supportedPluginNodeRange } from "./runtime-version.js";
 
 export const MAX_PLUGIN_ARTIFACT_BYTES = 32 * 1024 * 1024;
 export const MAX_PLUGIN_SINGLE_FILE_HEADER_BYTES = 512 * 1024;
@@ -44,7 +45,7 @@ export class PluginSingleFileError extends Error {
 }
 
 export interface SingleFilePluginDescriptor {
-  readonly engines: { readonly node: ">=24 <25" };
+  readonly engines: { readonly node: typeof supportedPluginNodeRange | ">=24 <25" };
   readonly main: "dist/index.mjs";
   readonly mgread: {
     readonly contentKinds: readonly PluginContentKind[];
@@ -192,7 +193,7 @@ function descriptorForEnvelope(
   version: string,
 ): SingleFilePluginDescriptor {
   return Object.freeze({
-    engines: Object.freeze({ node: ">=24 <25" }),
+    engines: Object.freeze({ node: supportedPluginNodeRange }),
     main: "dist/index.mjs",
     mgread: Object.freeze({
       contentKinds: Object.freeze([...descriptor.contentKinds]),
@@ -242,7 +243,8 @@ function parseEnvelopeDescriptor(value: Record<string, unknown>): SingleFilePlug
   const allowed = new Set(["engines", "main", "mgread", "name", "type", "version"]);
   if (Object.keys(value).some((key) => !allowed.has(key)) || value.type !== "module" ||
       value.main !== "dist/index.mjs" || !isRecord(value.engines) ||
-      Object.keys(value.engines).length !== 1 || value.engines.node !== ">=24 <25" ||
+      Object.keys(value.engines).length !== 1 ||
+      (value.engines.node !== supportedPluginNodeRange && value.engines.node !== ">=24 <25") ||
       !isRecord(value.mgread)) {
     throw new PluginSingleFileError("plugin_artifact_invalid");
   }

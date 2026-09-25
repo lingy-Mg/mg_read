@@ -68,7 +68,7 @@ Future<void> _writeSlowDevelopmentPlugin(Directory developmentRoot) async {
       'type': 'module',
       'main': 'dist/index.mjs',
       'scripts': <String, String>{'build': 'node -e ""'},
-      'engines': <String, String>{'node': '>=24 <25'},
+      'engines': <String, String>{'node': '24.16.0 || 24.21.0 || 26.9.0 || 26.10.0'},
       'mgread': <String, Object?>{
         'schemaVersion': 1,
         'id': 'org.example.slow-export',

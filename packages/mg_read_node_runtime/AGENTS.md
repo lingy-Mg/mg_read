@@ -30,8 +30,8 @@
 
 ## 固定工具链与验证
 
-Windows 将 `tools/node-v24.16.0-win-x64` 放到 `PATH` 最前，macOS arm64 将
-`tools/node-v24.16.0-darwin-arm64/bin` 放到 `PATH` 最前；两者都使用 Node 24.16.0/npm 11.13.0，
+Windows 将 `tools/node-v26.10.0-win-x64` 放到 `PATH` 最前，使用 Node 26.10.0/npm 11.19.1；
+macOS arm64 将 `tools/node-v24.16.0-darwin-arm64/bin` 放到 `PATH` 最前，使用 Node 24.16.0/npm 11.13.0，
 不回退全局 Node/npm。按受影响边界运行 package scripts 和直接测试；不要机械执行无关平台矩阵。
 
 - Node Core：固定 npm 运行 `typecheck`、直接 Node 测试、`check:no-native-addons`。

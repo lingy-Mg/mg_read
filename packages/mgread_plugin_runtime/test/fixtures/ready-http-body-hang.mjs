@@ -23,7 +23,7 @@ server.listen(0, '127.0.0.1', () => {
     bootId: 'test-http-body-hang',
     host: '127.0.0.1',
     port: address.port,
-    nodeVersion: '24.16.0',
+    nodeVersion: '26.10.0',
     protocolVersion: '1.2',
   })}\n`);
 });

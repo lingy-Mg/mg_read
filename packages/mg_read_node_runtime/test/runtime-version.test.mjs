@@ -6,8 +6,11 @@ import test from "node:test";
 
 import {
   expectedNodeVersion,
+  nodeVersionByBackend,
+  parsePluginPackageDescriptor,
   protocolVersion,
   runtimeCompatibility,
+  supportedPluginNodeRange,
 } from "../dist/index.js";
 
 const runtimeRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -30,7 +33,7 @@ const desktopFixture = JSON.parse(
   ),
 );
 
-test("loads Runtime metadata through Node 24 ESM", () => {
+test("loads backend-specific Runtime metadata through pinned Node ESM", async () => {
   assert.equal(process.versions.node, expectedNodeVersion);
   assert.equal(process.version, "v" + expectedNodeVersion);
   assert.equal(protocolVersion, desktopFixture.protocolVersion);
@@ -39,6 +42,28 @@ test("loads Runtime metadata through Node 24 ESM", () => {
     "arm64-v8a",
     "x86_64",
   ]);
+  assert.equal(runtimeCompatibility.android.javetNode, nodeVersionByBackend.androidJavet);
+  assert.equal(runtimeCompatibility.android.processNode, nodeVersionByBackend.androidProcess);
+  assert.equal(runtimeCompatibility.desktop.windows.node, nodeVersionByBackend.windows);
+  assert.equal(runtimeCompatibility.desktop.macos.node, nodeVersionByBackend.macos);
+  const recorded = JSON.parse(await readFile(new URL("../protocol/compatibility.json", import.meta.url), "utf8"));
+  assert.equal(recorded.runtime.javetAndroid.node, nodeVersionByBackend.androidJavet);
+  assert.equal(recorded.runtime.processNode, nodeVersionByBackend.androidProcess);
+  assert.equal(recorded.desktop.windows.node, nodeVersionByBackend.windows);
+  assert.equal(recorded.desktop.macos.node, nodeVersionByBackend.macos);
+});
+
+test("plugin node declaration pins every backend and retains old artifacts", async () => {
+  const source = JSON.parse(await readFile(
+    new URL("./fixtures/standard-plugin/package.json", import.meta.url), "utf8"));
+  assert.equal(source.engines.node, supportedPluginNodeRange);
+  for (const node of [supportedPluginNodeRange, "24.16.0", ">=24 <25", ">=24.0.0 <25.0.0"]) {
+    assert.equal(parsePluginPackageDescriptor({ ...source, engines: { node } }, runtimeRoot).id,
+      source.mgread.id);
+  }
+  assert.throws(() => parsePluginPackageDescriptor({
+    ...source, engines: { node: ">=24 <27" },
+  }, runtimeRoot));
 });
 
 test("Flutter package declares Runtime assets and excludes development npm", async () => {

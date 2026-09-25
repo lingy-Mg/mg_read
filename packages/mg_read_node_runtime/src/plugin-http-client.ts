@@ -13,7 +13,11 @@
  * Notes:
  * - the app supplies the upstream HTTP, HTTPS or SOCKS5 URL;
  * - existing requests retain the dispatcher sampled when they started.
+ * - undici 7's SOCKS5 agent passes IP literals as TLS SNI; Node 26 rejects
+ *   those requests before a TLS handshake, so reject them without opening a
+ *   proxy tunnel until upstream supports omitting SNI for IP destinations.
  */
+import { isIP } from "node:net";
 import {
   Agent,
   EnvHttpProxyAgent,
@@ -87,6 +91,16 @@ export class ConfigurablePluginHttpClient implements PluginRuntimeHttpClient {
     _trace?: PluginRuntimeTraceContext,
     proxyMode?: PluginRuntimeHttpProxyMode,
   ): Promise<Response> {
+    if (this.#proxyUrl?.startsWith("socks5:") &&
+        process.versions.node.startsWith("26.")) {
+      const url = input instanceof URL ? input : URL.canParse(input) ? new URL(input) : undefined;
+      const hostname = url?.hostname.replace(/^\[|\]$/g, "");
+      if (url?.protocol === "https:" && hostname !== undefined && isIP(hostname) !== 0) {
+        return Promise.reject(new TypeError(
+          "SOCKS5 HTTPS requests to IP-address hosts are unavailable with the pinned Node 26 transport.",
+        ));
+      }
+    }
     const requestInit = withDefaultUserAgent(init);
     const dispatcher = proxyMode === "direct"
       ? this.#directAgent

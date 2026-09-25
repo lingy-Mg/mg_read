@@ -207,7 +207,7 @@ Future<void> _setViewport(WidgetTester tester, Size size) async {
 
 const _developmentConnection = PluginRuntimeConnection(
   isHealthy: true,
-  nodeVersion: '24.16.0',
+  nodeVersion: '26.10.0',
   runtimeVersion: 'test',
   plugins: <PluginRuntimePlugin>[
     PluginRuntimePlugin(
@@ -226,7 +226,7 @@ const _developmentConnection = PluginRuntimeConnection(
 
 const _installedConnection = PluginRuntimeConnection(
   isHealthy: true,
-  nodeVersion: '24.16.0',
+  nodeVersion: '26.10.0',
   runtimeVersion: 'test',
   plugins: <PluginRuntimePlugin>[
     PluginRuntimePlugin(
@@ -245,7 +245,7 @@ const _installedConnection = PluginRuntimeConnection(
 
 const _longMetadataConnection = PluginRuntimeConnection(
   isHealthy: true,
-  nodeVersion: '24.16.0',
+  nodeVersion: '26.10.0',
   runtimeVersion: 'test',
   plugins: <PluginRuntimePlugin>[
     PluginRuntimePlugin(
@@ -264,7 +264,7 @@ const _longMetadataConnection = PluginRuntimeConnection(
 
 const _iconConnection = PluginRuntimeConnection(
   isHealthy: true,
-  nodeVersion: '24.16.0',
+  nodeVersion: '26.10.0',
   runtimeVersion: 'test',
   plugins: <PluginRuntimePlugin>[
     PluginRuntimePlugin(
@@ -284,7 +284,7 @@ const _iconConnection = PluginRuntimeConnection(
 
 const _mediaConnection = PluginRuntimeConnection(
   isHealthy: true,
-  nodeVersion: '24.16.0',
+  nodeVersion: '26.10.0',
   runtimeVersion: 'test',
   plugins: <PluginRuntimePlugin>[
     PluginRuntimePlugin(

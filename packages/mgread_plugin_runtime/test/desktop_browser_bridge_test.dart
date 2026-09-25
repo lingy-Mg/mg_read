@@ -69,23 +69,43 @@ void main() {
         'mgread-desktop-browser-bridge-',
       );
       addTearDown(() => dataRoot.delete(recursive: true));
+      final developmentRoot = await Directory.systemTemp.createTemp(
+        'mgread-browser-bridge-source-',
+      );
+      addTearDown(() => developmentRoot.delete(recursive: true));
+      final fixture = Directory.fromUri(
+        repositoryRoot.uri.resolve('test/fixtures/standard-plugin/'),
+      );
+      final project = Directory.fromUri(
+        developmentRoot.uri.resolve('standard-plugin/'),
+      );
+      await project.create();
+      await File.fromUri(
+        fixture.uri.resolve('package.json'),
+      ).copy(File.fromUri(project.uri.resolve('package.json')).path);
+      final dist = Directory.fromUri(project.uri.resolve('dist/'));
+      await dist.create();
+      final entry = await File.fromUri(
+        fixture.uri.resolve('dist/index.mjs'),
+      ).copy(File.fromUri(dist.uri.resolve('index.mjs')).path);
+      await entry.setLastModified(
+        DateTime.now().add(const Duration(seconds: 1)),
+      );
       final runtime = PluginRuntime.desktopForTesting(
         runtimeRepositoryRoot: repositoryRoot,
         runtimeDataRoot: dataRoot,
-        developmentPluginRoot: Directory(
-          '${pluginRuntimeRepositoryRoot.path}${Platform.pathSeparator}test${Platform.pathSeparator}fixtures',
-        ),
+        developmentPluginRoot: developmentRoot,
       );
       addTearDown(runtime.debugDispose);
 
       final result = await runtime.invoke(
         const SourceSearchInvocation(
-          pluginId: 'org.mgread.browser-bridge-fixture',
+          pluginId: 'org.mgread.runtime.fixture',
           query: 'browser-session',
         ),
       );
 
-      expect(result.items.single.title, 'browser-200');
+      expect(result.items.single.title, '标准插件：browser-200');
       expect(createCalls, 1);
     },
     skip: !Platform.isWindows,

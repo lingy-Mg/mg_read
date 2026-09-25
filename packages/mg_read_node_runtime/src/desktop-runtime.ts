@@ -35,7 +35,7 @@ import {
   type RuntimeProtocolError,
   type RuntimeRequest,
 } from "./protocol.js";
-import { expectedNodeVersion, protocolVersion, runtimeVersion } from "./runtime-version.js";
+import { runtimeNodeVersion, protocolVersion, runtimeVersion } from "./runtime-version.js";
 import { developmentPluginBuildFailureDebugLog, developmentPluginChangeFromManagerEvent, emitPluginManagerDiagnostic } from "./plugin-manager-events.js";
 import {
   maxWebSocketControlFrameBytes,
@@ -324,9 +324,9 @@ export class DesktopRuntime {
 
   /** Performs the single Core launch after `start` has claimed the promise. */
   async #start(): Promise<DesktopRuntimeReady> {
-    if (process.versions.node !== expectedNodeVersion) {
+    if (process.versions.node !== runtimeNodeVersion(this.#embedded)) {
       throw new Error(
-        `Runtime requires Node ${expectedNodeVersion}, received ${process.versions.node}.`,
+        `Runtime requires Node ${runtimeNodeVersion(this.#embedded)}, received ${process.versions.node}.`,
       );
     }
 
@@ -799,7 +799,7 @@ export class DesktopRuntime {
           platform: process.platform,
           plugins: plugins ?? [],
           runtimeVersion,
-          runtimeKind: process.platform === "android" ? "android-javet" : "desktop-node",
+          runtimeKind: process.platform !== "android" ? "desktop-node" : this.#embedded ? "android-javet" : "android-node-process",
           uptimeMs: Math.max(0, Math.floor(process.uptime() * 1000)),
         };
         return { result: status };

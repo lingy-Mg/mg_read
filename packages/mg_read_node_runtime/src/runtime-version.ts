@@ -1,10 +1,33 @@
 /**
- * The only Node binary version that may execute the desktop Runtime Core.
+ * Exact Node versions selected for each Runtime backend.
  *
  * The Flutter launcher stages this exact binary with the application. It must
  * never fall back to a user's PATH or a globally installed Node executable.
  */
-export const expectedNodeVersion = "24.16.0";
+export const nodeVersionByBackend = Object.freeze({
+  androidJavet: "26.9.0",
+  androidProcess: "24.21.0",
+  macos: "24.16.0",
+  windows: "26.10.0",
+});
+
+/** Desktop tooling uses the selected platform bundle, never ambient Node. */
+export const expectedNodeVersion =
+  process.platform === "darwin"
+    ? nodeVersionByBackend.macos
+    : nodeVersionByBackend.windows;
+
+/** Selects the exact Node build for the active platform and Android host. */
+export function runtimeNodeVersion(embedded: boolean): string {
+  if (process.platform === "android") {
+    return embedded ? nodeVersionByBackend.androidJavet : nodeVersionByBackend.androidProcess;
+  }
+  return process.platform === "darwin" ? nodeVersionByBackend.macos : nodeVersionByBackend.windows;
+}
+
+/** Published plugins declare only the precise backend versions they support. */
+export const supportedPluginNodeRange =
+  "24.16.0 || 24.21.0 || 26.9.0 || 26.10.0";
 
 /** The version of the Runtime-owned loopback control protocol. */
 export const protocolVersion = "1.2";
@@ -25,15 +48,23 @@ export type DesktopArchitecture = "arm64" | "x64";
 export interface RuntimeCompatibilityMatrix {
   readonly android: {
     readonly javetArtifact: string;
+    readonly javetNode: string;
+    readonly processNode: string;
     readonly minSdk: number;
     readonly nodeAbis: readonly AndroidNodeAbi[];
   };
   readonly desktop: {
-    readonly macos: readonly DesktopArchitecture[];
-    readonly node: string;
-    readonly windows: readonly DesktopArchitecture[];
+    readonly macos: {
+      readonly architectures: readonly DesktopArchitecture[];
+      readonly node: string;
+      readonly npm: string;
+    };
+    readonly windows: {
+      readonly architectures: readonly DesktopArchitecture[];
+      readonly node: string;
+      readonly npm: string;
+    };
   };
-  readonly npm: string;
   readonly protocol: string;
   readonly runtime: string;
 }
@@ -45,16 +76,24 @@ export interface RuntimeCompatibilityMatrix {
  */
 export const runtimeCompatibility: RuntimeCompatibilityMatrix = Object.freeze({
   android: Object.freeze({
-    javetArtifact: "com.caoccao.javet:javet-android:5.0.8",
+    javetArtifact: "com.caoccao.javet:javet-node-android:6.0.1",
+    javetNode: nodeVersionByBackend.androidJavet,
+    processNode: nodeVersionByBackend.androidProcess,
     minSdk: 24,
     nodeAbis: Object.freeze(["arm64-v8a", "x86_64"] as const),
   }),
   desktop: Object.freeze({
-    macos: Object.freeze(["arm64", "x64"] as const),
-    node: expectedNodeVersion,
-    windows: Object.freeze(["x64"] as const),
+    macos: Object.freeze({
+      architectures: Object.freeze(["arm64", "x64"] as const),
+      node: nodeVersionByBackend.macos,
+      npm: "11.13.0",
+    }),
+    windows: Object.freeze({
+      architectures: Object.freeze(["x64"] as const),
+      node: nodeVersionByBackend.windows,
+      npm: "11.19.1",
+    }),
   }),
-  npm: "11.13.0",
   protocol: protocolVersion,
   runtime: runtimeVersion,
 });

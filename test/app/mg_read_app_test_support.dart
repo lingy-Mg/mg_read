@@ -83,7 +83,7 @@ final class TestReadyPluginRuntimeGateway implements PluginRuntimeGateway {
   @override
   Future<PluginRuntimeConnection> inspect() async => PluginRuntimeConnection(
     isHealthy: true,
-    nodeVersion: '24.16.0',
+    nodeVersion: '26.10.0',
     runtimeVersion: 'test-runtime',
     plugins: const <PluginRuntimePlugin>[],
     startupRecovery: startupRecovery,

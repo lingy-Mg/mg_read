@@ -45,7 +45,7 @@ function emptyDebugHost() {
     logs: () => ({ droppedCount: 0, items: [], nextSequence: 0 }),
     plugins: async () => [],
     search: async () => ({ items: [], nextCursor: null, totalCount: 0 }),
-    status: async () => ({ nodeVersion: "24.16.0", runtimeVersion: "test", status: "ready" }),
+    status: async () => ({ nodeVersion: "26.10.0", runtimeVersion: "test", status: "ready" }),
   };
 }
 
@@ -76,7 +76,7 @@ test("Debug inspector is transient, isolates control routes, and preserves proje
       nextCursor: null,
       totalCount: 1,
     }),
-    status: async () => ({ nodeVersion: "24.16.0", runtimeVersion: "test", status: "ready" }),
+    status: async () => ({ nodeVersion: "26.10.0", runtimeVersion: "test", status: "ready" }),
   });
   t.after(async () => {
     await inspector.dispose();

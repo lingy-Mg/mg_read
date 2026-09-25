@@ -37,7 +37,7 @@ async function createProbeProject(root, pluginId, recorderKey, options = {}) {
     version: "1.0.0",
     type: "module",
     main: "dist/index.mjs",
-    engines: { node: ">=24 <25" },
+    engines: { node: "24.16.0 || 24.21.0 || 26.9.0 || 26.10.0" },
     mgread: {
       schemaVersion: 1,
       id: pluginId,

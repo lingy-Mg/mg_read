@@ -6,9 +6,11 @@
  */
 export {
   expectedNodeVersion,
+  nodeVersionByBackend,
   protocolVersion,
   runtimeVersion,
   runtimeCompatibility,
+  supportedPluginNodeRange,
 } from "./runtime-version.js";
 export { DesktopRuntime } from "./desktop-runtime.js";
 export { RuntimeDebugHttpServer } from "./debug-http.js";

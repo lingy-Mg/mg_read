@@ -3,24 +3,19 @@
   "protocolVersion": "1.2",
   "runtime": {
     "javetAndroid": {
-      "coordinate": "com.caoccao.javet:javet-android",
-      "version": "5.0.8",
+      "coordinate": "com.caoccao.javet:javet-node-android",
+      "version": "6.0.1",
+      "node": "26.9.0",
       "minSdk": 24,
       "nodeAbis": [
         "arm64-v8a",
         "x86_64"
       ]
     },
-    "node": "24.16.0",
-    "npm": "11.13.0"
+    "processNode": "24.21.0"
   },
   "desktop": {
-    "windows": [
-      "x64"
-    ],
-    "macos": [
-      "arm64",
-      "x64"
-    ]
+    "windows": {"node": "26.10.0", "npm": "11.19.1", "architectures": ["x64"]},
+    "macos": {"node": "24.16.0", "npm": "11.13.0", "architectures": ["arm64", "x64"]}
   }
 }

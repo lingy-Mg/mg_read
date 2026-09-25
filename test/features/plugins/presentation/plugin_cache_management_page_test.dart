@@ -47,7 +47,7 @@ void main() {
           pluginRuntimeConnectionProvider.overrideWith(
             (ref) async => const PluginRuntimeConnection(
               isHealthy: true,
-              nodeVersion: '24.16.0',
+              nodeVersion: '26.10.0',
               runtimeVersion: '0.2.0-standard.2',
               plugins: <PluginRuntimePlugin>[
                 PluginRuntimePlugin(
@@ -121,7 +121,7 @@ void main() {
 }
 
 PluginRuntimeConnection _connection(List<PluginRuntimePlugin> plugins) =>
-    PluginRuntimeConnection(isHealthy: true, nodeVersion: '24.16.0', runtimeVersion: 'test-runtime', plugins: plugins);
+    PluginRuntimeConnection(isHealthy: true, nodeVersion: '26.10.0', runtimeVersion: 'test-runtime', plugins: plugins);
 
 PluginRuntimePlugin _plugin(String id, String displayName) => PluginRuntimePlugin(
   activeVersion: '1.0.0',

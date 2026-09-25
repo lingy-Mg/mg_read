@@ -18,7 +18,7 @@ void main() {
   test('projects audio and video sources into the management list', () {
     const connection = PluginRuntimeConnection(
       isHealthy: true,
-      nodeVersion: '24.16.0',
+      nodeVersion: '26.10.0',
       runtimeVersion: 'test',
       plugins: <PluginRuntimePlugin>[
         PluginRuntimePlugin(

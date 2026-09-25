@@ -4,7 +4,7 @@ import 'package:mg_read/features/plugins/application/plugin_runtime_connection.d
 const PluginRuntimeConnection dataSourceManagementFixture =
     PluginRuntimeConnection(
       isHealthy: true,
-      nodeVersion: '24.16.0',
+      nodeVersion: '26.10.0',
       runtimeVersion: '0.2.0-standard.2',
       plugins: <PluginRuntimePlugin>[
         PluginRuntimePlugin(

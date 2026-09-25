@@ -28,7 +28,7 @@ test("Windows staging uses the pinned Node executable and Runtime entrypoint", a
   await access(staged);
   await access(stagedEntrypoint);
   const [source, stagedBytes, sourceDist, stagedDist] = await Promise.all([
-    readFile(resolve(runtimeRoot, "tools/node-v24.16.0-win-x64/node.exe")),
+    readFile(resolve(runtimeRoot, "tools/node-v26.10.0-win-x64/node.exe")),
     readFile(staged),
     readFile(resolve(runtimeRoot, "dist/cli.js")),
     readFile(stagedEntrypoint),

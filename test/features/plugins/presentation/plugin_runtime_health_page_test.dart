@@ -28,7 +28,7 @@ void main() {
     expect(find.text('Node 状态'), findsOneWidget);
     expect(find.text('运行正常'), findsOneWidget);
     expect(find.text('Node.js'), findsOneWidget);
-    expect(find.text('24.16.0'), findsOneWidget);
+    expect(find.text('26.10.0'), findsOneWidget);
     expect(find.byKey(const Key('runtime-health-memory-card')), findsOneWidget);
     expect(find.text('进程占用 RSS'), findsOneWidget);
     expect(find.text('数据源插件'), findsOneWidget);
@@ -73,7 +73,7 @@ const PluginRuntimeStatus _statusFixture = PluginRuntimeStatus(
     heapUsed: 8 * 1024 * 1024,
     rss: 64 * 1024 * 1024,
   ),
-  nodeVersion: '24.16.0',
+  nodeVersion: '26.10.0',
   platform: 'win32',
   plugins: <PluginRuntimePlugin>[
     PluginRuntimePlugin(

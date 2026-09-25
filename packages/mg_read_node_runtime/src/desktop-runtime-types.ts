@@ -82,7 +82,7 @@ export interface RuntimeStatusResponse extends JsonObject {
   readonly platform: string;
   readonly plugins: readonly JsonObject[];
   readonly runtimeVersion: string;
-  readonly runtimeKind: "android-javet" | "desktop-node";
+  readonly runtimeKind: "android-javet" | "android-node-process" | "desktop-node";
   readonly uptimeMs: number;
 }
 

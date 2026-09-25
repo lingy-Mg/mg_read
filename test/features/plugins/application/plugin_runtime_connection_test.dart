@@ -402,7 +402,7 @@ Future<void> _setViewport(WidgetTester tester, Size size) async {
 
 const _connected = PluginRuntimeConnection(
   isHealthy: true,
-  nodeVersion: '24.16.0',
+  nodeVersion: '26.10.0',
   runtimeVersion: '0.2.0-standard.2',
   plugins: <PluginRuntimePlugin>[
     PluginRuntimePlugin(
@@ -548,7 +548,7 @@ final class _FailingPluginRuntimeGateway implements PluginRuntimeGateway {
 final class _MutablePluginRuntimeGateway implements PluginRuntimeGateway {
   PluginRuntimeConnection _connection = const PluginRuntimeConnection(
     isHealthy: true,
-    nodeVersion: '24.16.0',
+    nodeVersion: '26.10.0',
     runtimeVersion: 'test-runtime',
     plugins: <PluginRuntimePlugin>[
       PluginRuntimePlugin(

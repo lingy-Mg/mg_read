@@ -10,7 +10,7 @@ const runtimePackagesRoot = resolve(nodeRuntimeRoot, "..");
 const sourceNodeDirectory = resolve(
   nodeRuntimeRoot,
   "tools",
-  "node-v24.16.0-win-x64",
+  "node-v26.10.0-win-x64",
 );
 const sourceNodeExecutable = resolve(sourceNodeDirectory, "node.exe");
 const sourceNodeLicense = resolve(sourceNodeDirectory, "LICENSE");

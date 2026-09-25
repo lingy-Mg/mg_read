@@ -109,7 +109,7 @@ final class _DesktopRuntimeBundle {
         : null;
     final runtimeRoot = developmentRuntimeRoot ?? bundleRoot;
     final platformToolchain = Platform.isWindows
-        ? 'node-v24.16.0-win-x64'
+        ? 'node-v26.10.0-win-x64'
         : 'node-v24.16.0-darwin-arm64';
     final developmentNpmCli = developmentRuntimeRoot == null
         ? null
@@ -177,7 +177,7 @@ final class _DesktopRuntimeBundle {
   }) {
     final platformToolchain = Platform.isMacOS
         ? 'node-v24.16.0-darwin-arm64'
-        : 'node-v24.16.0-win-x64';
+        : 'node-v26.10.0-win-x64';
     return _DesktopRuntimeBundle(
       dataRoot:
           runtimeDataRoot ??

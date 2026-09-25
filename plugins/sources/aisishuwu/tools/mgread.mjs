@@ -257,7 +257,7 @@ function validatePackage(value, mode, versionOverride) {
   if (
     typeof value?.name !== 'string' || value.name.trim().length === 0 ||
     typeof version !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(version) ||
-    value?.type !== 'module' || value?.main !== 'dist/index.mjs' || value?.engines?.node !== '>=24 <25' ||
+    value?.type !== 'module' || value?.main !== 'dist/index.mjs' || value?.engines?.node !== '24.16.0 || 24.21.0 || 26.9.0 || 26.10.0' ||
     value?.mgread?.schemaVersion !== 1 || value?.mgread?.pluginApi !== 1 ||
     typeof value?.mgread?.id !== 'string' || !/^[a-z0-9]+(?:[.-][a-z0-9]+)+$/u.test(value.mgread.id) ||
     typeof value?.mgread?.displayName !== 'string' || value.mgread.displayName.trim().length === 0 ||

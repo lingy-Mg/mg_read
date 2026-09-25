@@ -81,10 +81,10 @@ plugins/sources/                    真实数据源及其他能力参考实现
 
 ## 标准插件项目、artifact 与安装
 
-- 数据源是可信 Node.js 24 ESM 项目，`package.json.mgread` 是唯一 MgRead 元数据。
+- 数据源是可信 Node.js ESM 项目；各后端精确 Node 版本见 Runtime 版本矩阵，`package.json.mgread` 是唯一 MgRead 元数据。
 - 仓库不维护空白官方模板；新数据源默认参考 `plugins/sources/aisishuwu/`，漫画、WebView、音频或视频
   按能力参考现有同类真实数据源。公共契约仍以 Runtime 类型和直接测试为准，不以某个来源副本为权威。
-- 数据源执行代码必须是一个已打包的 Node 24 ESM JS 文件。`single-file` 发布 `.mgplugin.js`；
+- 数据源执行代码必须是一个已打包的兼容全部固定后端版本的 ESM JS 文件。`single-file` 发布 `.mgplugin.js`；
   `archive` 发布 `.mgplugin` 压缩容器，内部同样只有单个 JS 入口及元数据、图标，不是 npm 安装包。
 - npm 只用于开发和构建；构建必须将所有使用的第三方包内联到单个 JS，仅 Node.js 内置模块可外置。
   不发布源码、lock、本地依赖目录或 `node_modules`，也不支持发布后恢复、下载或安装外部 npm 依赖。

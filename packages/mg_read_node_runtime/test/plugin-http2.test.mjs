@@ -75,10 +75,20 @@ test("plugin HTTP negotiates h2 directly and through proxies with HTTP/1.1 fallb
   });
   let socksProxyTunnels = 0;
   const socksProxy = createSocks5Proxy(() => socksProxyTunnels += 1);
+  const sockets = new Set();
+  for (const server of [h2Server, h1Server, httpProxy, socksProxy]) {
+    server.on("connection", (socket) => {
+      sockets.add(socket);
+      socket.once("close", () => sockets.delete(socket));
+    });
+  }
   await Promise.all([listen(h2Server), listen(h1Server), listen(httpProxy), listen(socksProxy)]);
   t.after(async () => {
     await client.close();
     await getGlobalDispatcher().close();
+    // Node 26 keeps upgraded HTTP/2 and CONNECT sockets alive after the
+    // dispatcher closes. Tear down the test's own sockets before server.close.
+    for (const socket of sockets) socket.destroy();
     await Promise.all([close(h2Server), close(h1Server), close(httpProxy), close(socksProxy)]);
     if (previousTlsSetting === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
     else process.env.NODE_TLS_REJECT_UNAUTHORIZED = previousTlsSetting;
@@ -89,7 +99,14 @@ test("plugin HTTP negotiates h2 directly and through proxies with HTTP/1.1 fallb
   client.configure(proxyUrlFor("http", httpProxy));
   assert.equal(await (await client.fetch(urlFor(h2Server), {})).text(), "h2");
   client.configure(proxyUrlFor("socks5", socksProxy));
-  assert.equal(await (await client.fetch(urlFor(h2Server), {})).text(), "h2");
+  if (process.versions.node.startsWith("26.")) {
+    await assert.rejects(client.fetch(urlFor(h2Server), {}),
+      /SOCKS5 HTTPS requests to IP-address hosts are unavailable/);
+  }
+  const socksTarget = process.versions.node.startsWith("26.")
+    ? urlFor(h2Server).replace("127.0.0.1", "localhost")
+    : urlFor(h2Server);
+  assert.equal(await (await client.fetch(socksTarget, {})).text(), "h2");
 
   assert.deepEqual(protocols, ["2.0", "1.1", "2.0", "2.0"]);
   assert.equal(httpProxyTunnels, 1);
@@ -156,7 +173,7 @@ function createSocks5Proxy(onTunnel) {
       const trailing = buffered.subarray(requestLength);
       downstream.off("data", read);
       onTunnel();
-      const upstream = net.connect(port, host, () => {
+      const upstream = net.connect(port, host === "localhost" ? "127.0.0.1" : host, () => {
         downstream.write(Buffer.from([5, 0, 0, 1, 0, 0, 0, 0, 0, 0]));
         if (trailing.length > 0) upstream.write(trailing);
         downstream.pipe(upstream);

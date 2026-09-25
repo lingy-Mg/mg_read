@@ -1,7 +1,7 @@
 part of mgread_plugin_runtime;
 
-/// Exact Node version required by both the staged bundle and ready record.
-const _expectedNodeVersion = '24.16.0';
+/// Exact Node version required by the current desktop bundle and ready record.
+final String _expectedNodeVersion = Platform.isMacOS ? '24.16.0' : '26.10.0';
 
 /// Version of the internal Runtime control protocol negotiated during hello.
 const _protocolVersion = '1.2';
@@ -446,6 +446,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       await _terminateOwnedProcessTree(force: true);
       await _disposeMonitor();
     }, allowDisposed: true);
+    await _preBootFallbackWrites;
     await _diagnosticController.close();
     await _initializationController.close();
     await _developmentChangeController.close();
