@@ -1,11 +1,13 @@
 /// 局域网同步页的 App 扫码与安装确认动作。
 ///
-/// 保持弹窗上下文属于页面；传输和安装状态仍由两个应用控制器持有。
+/// 发送与接收共用持续可见的面板，覆盖确认、权限返回、下载与失败重试；
+/// 关闭面板即取消本次会话，传输和安装状态仍由应用控制器持有。
 part of 'lan_sync_page.dart';
 
 extension _LanSyncAppTransferActions on _LanSyncPageState {
-  Future<void> _showAppTransferSheet() async {
-    unawaited(ref.read(appTransferControllerProvider.notifier).startSending());
+  Future<void> _showAppTransferSheet({AppTransferConnectionOffer? offer}) async {
+    final controller = ref.read(appTransferControllerProvider.notifier);
+    unawaited(offer == null ? controller.startSending() : controller.connectOffer(offer));
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -14,8 +16,8 @@ extension _LanSyncAppTransferActions on _LanSyncPageState {
         builder: (context, ref, _) {
           final appState = ref.watch(appTransferControllerProvider);
           return LanSyncSheetFrame(
-            title: '发送 App',
-            description: '生成二维码后，对方使用“扫码连接 / 接收”即可继续。',
+            title: offer == null ? '发送 App' : '接收 App',
+            description: offer == null ? '生成二维码后，对方使用 MgRead 内的“扫码”即可继续。' : '核对双方版本和确认码后安装，传输进度和安装结果会显示在这里。',
             closeLabel: appState.active ? '取消 App 传输' : '关闭',
             onClose: () {
               if (appState.active) unawaited(ref.read(appTransferControllerProvider.notifier).cancel());
@@ -49,38 +51,10 @@ extension _LanSyncAppTransferActions on _LanSyncPageState {
         },
       ),
     );
-    if (mounted && ref.read(appTransferControllerProvider).active) await ref.read(appTransferControllerProvider.notifier).cancel();
+    if (mounted) await ref.read(appTransferControllerProvider.notifier).cancel();
   }
 
-  Future<void> _connectScannedAppOffer(AppTransferConnectionOffer offer) async {
-    final notifier = ref.read(appTransferControllerProvider.notifier);
-    await notifier.connectOffer(offer);
-    if (mounted && ref.read(appTransferControllerProvider).phase == AppTransferPhase.ready) {
-      await _showTemporaryAppUpdatePrompt();
-    }
-  }
-
-  Future<void> _showTemporaryAppUpdatePrompt() async {
-    final appState = ref.read(appTransferControllerProvider);
-    final accepted = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(appState.remoteIsUpgrade ? '发现可升级版本' : '安装此 App 版本？'),
-        content: AppVersionComparisonCard(local: appState.localVersion, remote: appState.offeredVersion, pairingCode: appState.pairingCode),
-        actions: <Widget>[
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('暂不安装')),
-          FilledButton(
-            key: const Key('app-transfer-dialog-confirm'),
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(appState.remoteIsUpgrade ? '升级' : '强制安装'),
-          ),
-        ],
-      ),
-    );
-    if (accepted == true && mounted) {
-      await ref.read(appTransferControllerProvider.notifier).install(force: !appState.remoteIsUpgrade);
-    }
-  }
+  Future<void> _connectScannedAppOffer(AppTransferConnectionOffer offer) => _showAppTransferSheet(offer: offer);
 
   Future<void> _confirmPairedAppUpdate(String deviceId, bool force) async {
     final deviceState = ref.read(deviceSyncControllerProvider);

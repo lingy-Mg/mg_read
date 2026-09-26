@@ -7,6 +7,7 @@
 ///
 /// 注意：App 包不会进入书架/插件 manifest；普通升级只接受更高版本，显式
 /// force 才允许相同或更低版本。跨平台包由发送端可用目录和接收端平台共同决定。
+/// 控制请求与下载空闲时间有界；取消连接后不得继续进入系统安装边界。
 library;
 
 import 'dart:async';
@@ -26,6 +27,10 @@ import 'package:mg_read/features/lan_sync/domain/app_update_models.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_endpoint_policy.dart';
 
 const Duration appTransferSessionLifetime = Duration(minutes: 10);
+const Duration appTransferControlTimeout = Duration(minutes: 2);
+const Duration appTransferDownloadIdleTimeout = Duration(seconds: 30);
+
+enum AppTransferReceiveStage { preparingPackage, downloading, verifying, launchingInstaller }
 
 sealed class AppTransferSenderEvent {
   const AppTransferSenderEvent();
@@ -185,14 +190,20 @@ final class AppTransferSenderService {
 }
 
 final class AppTransferReceiverConnection {
-  AppTransferReceiverConnection._(this.remoteOffer, this.pairingCode, this._base, this._client);
+  AppTransferReceiverConnection._(this.remoteOffer, this.pairingCode, this._base, this._client, this._controlTimeout);
 
   final AppPackageOffer remoteOffer;
   final String pairingCode;
   final Uri _base;
   final HttpClient _client;
+  final Duration _controlTimeout;
+  bool _closed = false;
 
-  static Future<AppTransferReceiverConnection> connectAny(AppTransferConnectionOffer offer, AppVersionInfo localVersion) async {
+  static Future<AppTransferReceiverConnection> connectAny(
+    AppTransferConnectionOffer offer,
+    AppVersionInfo localVersion, {
+    Duration controlTimeout = appTransferControlTimeout,
+  }) async {
     Object? last;
     for (final address in offer.addresses) {
       final client = createLanSyncHttpClient();
@@ -212,7 +223,7 @@ final class AppTransferReceiverConnection {
         final remote = AppPackageOffer.fromJson(
           (value['offer'] as Map).map<String, Object?>((key, value) => MapEntry(key as String, value)),
         );
-        return AppTransferReceiverConnection._(remote, code! as String, base, client);
+        return AppTransferReceiverConnection._(remote, code! as String, base, client, controlTimeout);
       } on Object catch (error) {
         last = error;
         client.close(force: true);
@@ -226,25 +237,47 @@ final class AppTransferReceiverConnection {
     AppVersionInfo localVersion, {
     required bool force,
     void Function(int, int)? onProgress,
+    void Function(AppTransferReceiveStage)? onStage,
   }) async {
+    _ensureOpen();
     if (!force && !isRemoteAppUpgrade(remoteOffer.version, localVersion)) {
       throw const LanSyncTransportException('app_update_not_newer');
     }
-    final prepared = await _request(_client, _base.resolve('/v1/package'), const <String, Object?>{}, pairingCode);
+    onStage?.call(AppTransferReceiveStage.preparingPackage);
+    final prepared = await _request(
+      _client,
+      _base.resolve('/v1/package'),
+      const <String, Object?>{},
+      pairingCode,
+      timeout: _controlTimeout,
+    );
+    _ensureOpen();
     if (prepared['package'] is! Map) throw const LanSyncTransportException('app_update_package_invalid');
     final descriptor = AppPackageDescriptor.fromJson(
       (prepared['package'] as Map).map<String, Object?>((key, value) => MapEntry(key as String, value)),
     );
     _verifyPreparedOffer(descriptor, remoteOffer);
+    onStage?.call(AppTransferReceiveStage.downloading);
     final file = await downloadAppPackage(
       _base.resolve('/v1/package'),
       descriptor,
       client: _client,
       authenticate: (request, _) => request.headers.set('x-mgread-session', pairingCode),
       onProgress: onProgress,
+      onVerifying: () => onStage?.call(AppTransferReceiveStage.verifying),
     );
     try {
-      await _request(_client, _base.resolve('/v1/complete'), const <String, Object?>{}, pairingCode, allowEmpty: true);
+      _ensureOpen();
+      await _request(
+        _client,
+        _base.resolve('/v1/complete'),
+        const <String, Object?>{},
+        pairingCode,
+        allowEmpty: true,
+        timeout: _controlTimeout,
+      );
+      _ensureOpen();
+      onStage?.call(AppTransferReceiveStage.launchingInstaller);
       await service.launchInstaller(file, descriptor);
     } on Object {
       if (await file.exists()) await file.delete();
@@ -252,7 +285,14 @@ final class AppTransferReceiverConnection {
     }
   }
 
-  void close() => _client.close(force: true);
+  void _ensureOpen() {
+    if (_closed) throw const LanSyncTransportException('app_update_cancelled');
+  }
+
+  void close() {
+    _closed = true;
+    _client.close(force: true);
+  }
 }
 
 Future<void> serveAppPackage(HttpRequest request, File file, AppPackageDescriptor descriptor) async {
@@ -296,6 +336,8 @@ Future<File> downloadAppPackage(
   HttpClient? client,
   void Function(HttpClientRequest request, String contentChecksum)? authenticate,
   void Function(int, int)? onProgress,
+  void Function()? onVerifying,
+  Duration idleTimeout = appTransferDownloadIdleTimeout,
 }) async {
   final ownedClient = client == null;
   final http = client ?? createLanSyncHttpClient();
@@ -310,14 +352,20 @@ Future<File> downloadAppPackage(
   try {
     for (var attempt = 0; attempt < 4 && offset < descriptor.bytes; attempt++) {
       try {
-        final request = await http.getUrl(uri);
+        final request = await http.getUrl(uri).timeout(idleTimeout);
         authenticate?.call(request, lanSyncChecksum(const <int>[]));
         if (offset > 0) {
           request.headers
             ..set(HttpHeaders.rangeHeader, 'bytes=$offset-')
             ..set(HttpHeaders.ifRangeHeader, etag!);
         }
-        final response = await request.close();
+        final response = await request.close().timeout(
+          idleTimeout,
+          onTimeout: () {
+            request.abort();
+            throw const LanSyncTransportException('app_update_download_timeout');
+          },
+        );
         if (response.statusCode == HttpStatus.requestedRangeNotSatisfiable) {
           offset = 0;
           etag = null;
@@ -336,7 +384,7 @@ Future<File> downloadAppPackage(
         etag = responseEtag;
         final sink = file.openWrite(mode: offset == 0 ? FileMode.write : FileMode.append);
         try {
-          await for (final chunk in response) {
+          await for (final chunk in response.timeout(idleTimeout)) {
             sink.add(chunk);
             offset += chunk.length;
             if (offset > descriptor.bytes) throw const LanSyncTransportException('app_update_size_mismatch');
@@ -349,12 +397,15 @@ Future<File> downloadAppPackage(
         }
       } on LanSyncTransportException {
         rethrow;
+      } on TimeoutException {
+        throw const LanSyncTransportException('app_update_download_timeout');
       } on Object {
         offset = await file.exists() ? await file.length() : 0;
         if (attempt == 3) rethrow;
       }
     }
     if (offset != descriptor.bytes) throw const LanSyncTransportException('app_update_transfer_incomplete');
+    onVerifying?.call();
     if (await _checksumFile(file) != descriptor.checksum) {
       throw const LanSyncTransportException('app_update_hash_mismatch');
     }
@@ -405,6 +456,22 @@ Future<Map<String, Object?>> _request(
   Map<String, Object?> body,
   String? code, {
   bool allowEmpty = false,
+  Duration timeout = appTransferControlTimeout,
+}) async {
+  try {
+    return await _requestBody(client, uri, body, code, allowEmpty: allowEmpty).timeout(timeout);
+  } on TimeoutException {
+    client.close(force: true);
+    throw const LanSyncTransportException('app_update_request_timeout');
+  }
+}
+
+Future<Map<String, Object?>> _requestBody(
+  HttpClient client,
+  Uri uri,
+  Map<String, Object?> body,
+  String? code, {
+  required bool allowEmpty,
 }) async {
   final bytes = utf8.encode(jsonEncode(body));
   final request = await client.postUrl(uri);

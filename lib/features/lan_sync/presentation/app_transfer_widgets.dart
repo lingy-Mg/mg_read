@@ -111,8 +111,16 @@ class AppTransferPanel extends StatelessWidget {
             label: Text(state.remoteIsUpgrade ? '确认升级' : '强制安装此版本'),
           ),
         ],
-      ] else if (state.phase == AppTransferPhase.downloading || state.phase == AppTransferPhase.launchingInstaller) ...<Widget>[
-        LinearProgressIndicator(value: state.progress, key: const Key('app-transfer-progress')),
+      ] else if (state.phase == AppTransferPhase.preparing ||
+          state.phase == AppTransferPhase.requestingPermission ||
+          state.phase == AppTransferPhase.preparingPackage ||
+          state.phase == AppTransferPhase.downloading ||
+          state.phase == AppTransferPhase.verifying ||
+          state.phase == AppTransferPhase.launchingInstaller) ...<Widget>[
+        LinearProgressIndicator(
+          value: state.phase == AppTransferPhase.downloading ? state.progress : null,
+          key: const Key('app-transfer-progress'),
+        ),
       ],
       if (showActions) ...<Widget>[
         const SizedBox(height: AppSpacing.regular),
