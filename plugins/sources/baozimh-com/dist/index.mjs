@@ -6597,7 +6597,7 @@ function filterSections(current) {
 }
 
 // src/source.ts
-var entryUrl = "https://cn.bzmgcn.com";
+var entryUrl = "https://www.baozimh.com";
 var categories = Object.freeze([
   ["china", "國漫", "/classify?type=all&region=cn&state=all&filter=*"],
   ["japan", "日本", "/classify?type=all&region=jp&state=all&filter=*"],
@@ -6797,8 +6797,32 @@ var BaozimhSource = class {
   async #html(url) {
     const response = await this.context.http.fetch(url, { redirect: "follow", headers: { accept: "text/html,application/xhtml+xml", "accept-language": "zh-TW,zh;q=0.9", referer: new URL("/", url).toString() } });
     const body = await response.text();
-    if (!response.ok || isChallenge(body)) throw new Error("Source page is unavailable.");
-    return Object.freeze({ body, url: new URL(response.url || url.toString()) });
+    if (response.ok && !isChallenge(body)) return Object.freeze({ body, url: new URL(response.url || url.toString()) });
+    if (isChallengeResponse(response.status, body)) return this.#htmlFromWebView(url, getChallengeUrl(body, url));
+    return this.#accessBlocked();
+  }
+  async #htmlFromWebView(url, verificationUrl) {
+    const page = await this.context.webview.open({ visible: false, timeoutMs: 3e4 });
+    if (verificationUrl !== null) {
+      await page.navigate(verificationUrl.toString(), { timeoutMs: 45e3 });
+      const challengePage = await page.getHtml({ timeoutMs: 2e4 });
+      const currentUrl = new URL(await page.getUrl({ timeoutMs: 5e3 }));
+      if (currentUrl.pathname.includes("/__gatekeeper_challenge/")) {
+        const challenge = parseChallenge(challengePage, currentUrl);
+        if (challenge === null || !await solveChallenge(page, challenge)) return this.#accessBlocked();
+      }
+    }
+    await page.navigate(url.toString(), { timeoutMs: 45e3 });
+    const body = await page.getHtml({ timeoutMs: 2e4 });
+    if (isChallenge(body)) return this.#accessBlocked();
+    const finalUrl = await page.getUrl({ timeoutMs: 5e3 });
+    return Object.freeze({ body, url: new URL(finalUrl || url.toString()) });
+  }
+  #accessBlocked() {
+    if (this.context.errors !== void 0) {
+      return this.context.errors.raise({ code: "source_access_blocked", message: "包子漫画需要在浏览器会话中完成站点验证。", annotation: "请在应用中打开该数据源后重试。" });
+    }
+    throw new Error("Source page is unavailable.");
   }
   #proxyImage(url, referer) {
     return this.context.resource.proxy({ kind: "image", url: imageOrigin(url).toString(), headers: { Accept: "image/avif,image/webp,image/*,*/*;q=0.8", Referer: referer.toString() } });
@@ -6911,7 +6935,48 @@ function parseStatus(value) {
   return "unknown";
 }
 function isChallenge(body) {
-  return /(?:cf-challenge|cf-turnstile|Just a moment|Checking your browser|challenge-platform)/iu.test(body);
+  return /(?:cf-challenge|cf-turnstile|Just a moment|Checking your browser|challenge-platform|challenge_required|challenge_url)/iu.test(body);
+}
+function isChallengeResponse(status, body) {
+  return status === 403 && /(?:challenge_required|challenge_url)/iu.test(body);
+}
+function getChallengeUrl(body, base) {
+  try {
+    const value = JSON.parse(body);
+    if (typeof value !== "object" || value === null || !("challenge_url" in value) || typeof value.challenge_url !== "string") return null;
+    const url = new URL(value.challenge_url, base);
+    return url.origin === base.origin ? url : null;
+  } catch {
+    return null;
+  }
+}
+function parseChallenge(body, base) {
+  const challengeId = /challengeId:"([^"]+)"/u.exec(body)?.[1];
+  const ticket = /ticket:"([^"]+)"/u.exec(body)?.[1];
+  const verifyRaw = /verifyUrl:"([^"]+)"/u.exec(body)?.[1];
+  const difficultyBits = Number(/difficultyBits:(\d+)/u.exec(body)?.[1]);
+  if (challengeId === void 0 || ticket === void 0 || verifyRaw === void 0 || !Number.isSafeInteger(difficultyBits) || difficultyBits < 1 || difficultyBits > 24) return null;
+  const verifyUrl = new URL(verifyRaw, base);
+  return verifyUrl.origin === base.origin ? Object.freeze({ challengeId, ticket, verifyUrl, difficultyBits }) : null;
+}
+async function solveChallenge(page, challenge) {
+  const nonce = findProofOfWork(challenge.challengeId, challenge.difficultyBits);
+  const result = await page.executeJavaScript(`return (async()=>{const response=await fetch(${JSON.stringify(challenge.verifyUrl.toString())},{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({challenge_id:${JSON.stringify(challenge.challengeId)},ticket:${JSON.stringify(challenge.ticket)},nonce:${JSON.stringify(nonce)}})});return {status:response.status,body:await response.text()};})()`, { timeoutMs: 3e4 });
+  return result.status === 200 && /"status"\s*:\s*"passed"/u.test(result.body);
+}
+function findProofOfWork(challengeId, difficultyBits) {
+  for (let nonce = 0; nonce <= 1e7; nonce += 1) {
+    if (leadingZeroBits(createHash("sha256").update(`gatekeeper-pow-v1:${challengeId}:${nonce}`).digest()) >= difficultyBits) return String(nonce);
+  }
+  throw new Error("Gatekeeper verification computation exceeded the safe limit.");
+}
+function leadingZeroBits(bytes) {
+  let count = 0;
+  for (const byte of bytes) for (let bit = 7; bit >= 0; bit -= 1) {
+    if ((byte >> bit & 1) === 0) count += 1;
+    else return count;
+  }
+  return count;
 }
 
 // src/index.mts
