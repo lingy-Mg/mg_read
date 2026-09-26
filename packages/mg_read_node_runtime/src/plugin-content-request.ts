@@ -83,11 +83,14 @@ export function parseDetailParams(
 export function parseChaptersParams(
   params: JsonObject,
 ): ParsedPluginRequest<PluginChaptersRequest> {
-  assertOnlyKeys(params, ["pluginId", "id"]);
+  assertOnlyKeys(params, ["pluginId", "id", "groupId", "refresh"]);
+  if (Object.hasOwn(params, "refresh") && typeof params.refresh !== "boolean") fail();
   return Object.freeze({
     pluginId: readPluginId(params, "pluginId"),
     request: Object.freeze({
       id: readRequiredString(params, "id", MAX_ID_CHARACTERS),
+      ...(Object.hasOwn(params, "groupId") ? { groupId: readRequiredString(params, "groupId", MAX_ID_CHARACTERS) } : {}),
+      ...(Object.hasOwn(params, "refresh") ? { refresh: params.refresh as boolean } : {}),
     }),
   });
 }

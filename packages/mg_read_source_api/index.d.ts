@@ -15,6 +15,19 @@ export type PluginJsonValue =
 
 export type PluginJsonObject = { readonly [key: string]: PluginJsonValue };
 
+/** Optional whole-group catalog loading. Export `deferredGroups = true` to opt in.
+ * Runtime negotiates support; without supportsDeferredGroups return the legacy
+ * complete catalog. groupId requests one complete group, never an episode page.
+ * A deferred group has deferred:true and episodes:[]; omitted deferred means loaded.
+ * refresh bypasses the source's catalog cache. Group IDs must survive reordering.
+ */
+export interface PluginChaptersRequest {
+  readonly id: string;
+  readonly groupId?: string;
+  readonly supportsDeferredGroups?: boolean;
+  readonly refresh?: boolean;
+}
+
 export interface PluginWebViewCallOptions {
   readonly timeoutMs?: number;
 }

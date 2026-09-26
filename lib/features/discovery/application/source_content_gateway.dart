@@ -19,6 +19,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
+import 'source_chapter_group_cache.dart';
 
 // The adapter keeps its implementation field private while exposing a named
 // dependency for the composition root.
@@ -79,6 +80,12 @@ abstract interface class CancellableSourceContentGateway {
   Future<T> runCancellable<T>(PluginInvocationCancellation cancellation, Future<T> Function() request);
 }
 
+/// Optional whole-group loading; legacy gateways need no new implementation.
+abstract interface class SourceChapterGroupGateway {
+  Future<PluginChaptersResult> getChapterGroup({required String pluginId, required String id, required String groupId});
+  void invalidateChapterGroups(String pluginId, String id);
+}
+
 Future<T> runCancellableSourceRequest<T>(
   SourceContentGateway gateway,
   PluginInvocationCancellation cancellation,
@@ -94,7 +101,7 @@ final Object _sourceInvocationCancellationZoneKey = Object();
 
 /// Production adapter. Runtime owns execution and transport; this adapter owns
 /// only application error normalization and the main-app Facade span.
-final class MgReadSourceContentGateway implements SourceContentGateway, CancellableSourceContentGateway {
+final class MgReadSourceContentGateway implements SourceContentGateway, CancellableSourceContentGateway, SourceChapterGroupGateway {
   const MgReadSourceContentGateway(this._runtime, this._diagnostics, this._loadRuntimeConnection);
 
   final PluginRuntime _runtime;
@@ -202,13 +209,35 @@ final class MgReadSourceContentGateway implements SourceContentGateway, Cancella
     return _invoke(
       capability: 'source.getChapters.v1',
       pluginId: pluginId,
-      action: () => _runtime.invoke(
-        SourceChaptersInvocation(pluginId: pluginId, id: id),
-        cancellation: _activeCancellation,
-      ),
+      action: () async {
+        final result = await _runtime.invoke(
+          SourceChaptersInvocation(pluginId: pluginId, id: id, refresh: _groupCache.takeRefresh(pluginId, id)),
+          cancellation: _activeCancellation,
+        );
+        if (result.groups.any((group) => group.deferred)) _groupCache.remember(pluginId, id);
+        return result;
+      },
       resultCount: (result) => result.items.length,
     );
   }
+
+  SourceChapterGroupCache get _groupCache => _sourceGroupCaches[this] ??= SourceChapterGroupCache();
+
+  @override
+  void invalidateChapterGroups(String pluginId, String id) => _groupCache.invalidate(pluginId, id);
+
+  @override
+  Future<PluginChaptersResult> getChapterGroup({required String pluginId, required String id, required String groupId}) => _groupCache.load(
+    pluginId,
+    id,
+    groupId,
+    () => _invoke(
+      capability: 'source.getChapters.v1',
+      pluginId: pluginId,
+      action: () => _runtime.invoke(SourceChaptersInvocation(pluginId: pluginId, id: id, groupId: groupId)),
+      resultCount: (result) => result.items.length,
+    ),
+  );
 
   @override
   Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) {
@@ -335,6 +364,7 @@ int _componentItemCount(PluginDiscoveryComponent component) => switch (component
 };
 
 final sourceContentGatewayProvider = Provider<SourceContentGateway>((Ref ref) {
+  ref.watch(pluginRuntimeCatalogChangeProvider);
   return MgReadSourceContentGateway(
     ref.watch(pluginRuntimeFacadeProvider),
     ref.watch(diagnosticsManagerProvider),
@@ -367,3 +397,8 @@ PluginContentKind _contentKind(String value) => switch (value) {
   'video' => PluginContentKind.video,
   _ => throw StateError('Runtime returned a non-content plugin kind.'),
 };
+
+// Shared by detail and player for this gateway lifetime; at most four whole
+// groups, five minutes each. Failures are never cached. Refresh fences pending
+// requests; their callers cannot publish a stale result after invalidation.
+final _sourceGroupCaches = Expando<SourceChapterGroupCache>();

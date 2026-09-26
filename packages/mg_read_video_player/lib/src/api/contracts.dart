@@ -45,6 +45,13 @@ abstract interface class VideoPlaybackStateStore {
   Future<void> save(VideoPlaybackProgress progress);
 }
 
+/// Optional metadata-only whole-group loading. Existing sources remain eager.
+abstract interface class VideoGroupDataSource
+    implements VideoEpisodeDataSource {
+  /// Resolves every episode in one deferred group without opening its media.
+  Future<VideoEpisodeGroup> loadGroup(String contentId, String groupId);
+}
+
 /// Optional host notifications for session events and platform intents.
 class VideoPlayerObserver {
   /// Creates a no-op observer.

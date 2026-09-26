@@ -13,6 +13,34 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read_video_player/mg_read_video_player.dart';
 
 void main() {
+  testWidgets('restores a deferred line before resolving the saved episode', (
+    tester,
+  ) async {
+    final source = _DeferredSource();
+    final backend = _Backend();
+    await tester.pumpWidget(
+      _app(
+        contentId: 'lazy-show',
+        backend: backend,
+        source: source,
+        store: _Store(
+          restored: const VideoPlaybackProgress(
+            contentId: 'lazy-show',
+            groupId: 'route-b',
+            episodeId: 'b2',
+            position: Duration(seconds: 12),
+            duration: Duration(minutes: 2),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(source.groupsLoaded, ['route-b']);
+    expect(source.episodesLoaded, ['b2']);
+    expect(backend.opened.single.id, 'b2');
+    expect(backend.state.value.position, const Duration(seconds: 12));
+  });
+
   testWidgets('resolves only the restored metadata episode for playback', (
     tester,
   ) async {
@@ -238,4 +266,53 @@ final class _Backend implements VideoPlaybackBackend {
 
   @override
   Future<void> dispose() async => state.dispose();
+}
+
+final class _DeferredSource implements VideoGroupDataSource {
+  final groupsLoaded = <String>[];
+  final episodesLoaded = <String>[];
+  @override
+  Future<VideoContent> load(String id) async => VideoContent(
+    id: id,
+    title: '延迟目录',
+    groups: [
+      VideoEpisodeGroup(
+        id: 'route-a',
+        title: '线路 A',
+        episodes: [VideoEpisode(id: 'a1', title: 'A1')],
+      ),
+      VideoEpisodeGroup(
+        id: 'route-b',
+        title: '线路 B',
+        deferred: true,
+        episodes: [],
+      ),
+    ],
+  );
+  @override
+  Future<VideoEpisodeGroup> loadGroup(String contentId, String groupId) async {
+    groupsLoaded.add(groupId);
+    return VideoEpisodeGroup(
+      id: groupId,
+      title: '线路 B',
+      episodes: [
+        VideoEpisode(id: 'b1', title: 'B1'),
+        VideoEpisode(id: 'b2', title: 'B2'),
+      ],
+    );
+  }
+
+  @override
+  Future<VideoEpisode> loadEpisode(
+    String contentId, {
+    required String groupId,
+    required String episodeId,
+  }) async {
+    episodesLoaded.add(episodeId);
+    return VideoEpisode(
+      id: episodeId,
+      title: episodeId,
+      uri: 'https://example.test/$episodeId.m3u8',
+    );
+  }
 }

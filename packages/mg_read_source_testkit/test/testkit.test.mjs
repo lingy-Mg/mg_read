@@ -636,3 +636,23 @@ test('checks inline JSON bytes without serializing a full diagnostic', () => {
       && error.code === 'source_inline_result_oversized',
   );
 });
+
+test('verification negotiates and traverses deferred lines without treating grouped order as flat', async () => {
+  const requests = [];
+  const a = { id: 'a1', order: 0 };
+  const b = { id: 'b1', order: 0 };
+  const plugin = fakePlugin({ deferredGroups: true,
+    async getDetail({ id }) { return { id, title: 'fixture', contentKind: 'video' }; },
+    async getChapters(request) {
+      requests.push(request);
+      return { items: request.groupId ? [b] : [a], groups: [
+        { id: 'a', order: 0, episodes: request.groupId ? [] : [a], deferred: !!request.groupId },
+        { id: 'b', order: 1, episodes: request.groupId ? [b] : [], deferred: !request.groupId },
+      ] };
+    },
+    async getContent({ chapterId }) { return { chapterId, contentKind: 'video', text: null, pages: [], media: { resourceType: 'hls' } }; },
+  });
+  const result = await runReadingSourceFlow({ plugin, contentId: 'novel:1' });
+  assert.equal(result.summary.chapterItems, 2);
+  assert.deepEqual(requests, [{ id: 'novel:1', supportsDeferredGroups: true }, { id: 'novel:1', groupId: 'b', supportsDeferredGroups: true }]);
+});

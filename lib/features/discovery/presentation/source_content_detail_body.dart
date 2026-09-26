@@ -277,17 +277,19 @@ class _SourceDetailBody extends StatelessWidget {
         ],
         _DetailCatalogSection(
           catalog: bundle.chapters,
+          gateway: gateway,
+          contentId: content.id,
           contentKind: content.contentKind,
           isRefreshing: isRefreshing,
           chapterTotal: chapterTotal,
           visibleChapterCount: visibleChapterCount,
           onLoadMore: onLoadMore,
-          onChapterSelected: (chapter) => unawaited(
+          onChapterSelected: (chapter, catalog) => unawaited(
             _openTextChapter(
               context,
               gateway: gateway,
               detail: detail,
-              firstCatalogPage: bundle.chapters,
+              firstCatalogPage: catalog,
               chapter: chapter,
               onTextChapterRequested: onTextChapterRequested,
               onComicChapterRequested: onComicChapterRequested,

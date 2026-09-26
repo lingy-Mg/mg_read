@@ -25,6 +25,8 @@ extension _SourceDetailScreenRefresh on _SourceDetailScreenState {
 class _DetailCatalogSection extends StatelessWidget {
   const _DetailCatalogSection({
     required this.catalog,
+    required this.gateway,
+    required this.contentId,
     required this.contentKind,
     required this.isRefreshing,
     required this.chapterTotal,
@@ -35,12 +37,14 @@ class _DetailCatalogSection extends StatelessWidget {
   });
 
   final PluginChaptersResult catalog;
+  final SourceContentGateway gateway;
+  final String contentId;
   final PluginContentKind contentKind;
   final bool isRefreshing;
   final int? chapterTotal;
   final int visibleChapterCount;
   final VoidCallback? onLoadMore;
-  final ValueChanged<PluginChapterSummary> onChapterSelected;
+  final void Function(PluginChapterSummary, PluginChaptersResult) onChapterSelected;
   final Future<void> Function(BuildContext context, Uri? url) onOpenUrl;
 
   @override
@@ -65,7 +69,9 @@ class _DetailCatalogSection extends StatelessWidget {
           const SizedBox(height: AppSpacing.unit),
           Text(
             hasGroups
-                ? '共 ${catalog.items.length} 集 · ${catalog.groups.length} 个分组'
+                ? catalog.groups.any((group) => group.deferred)
+                      ? '共 ${catalog.groups.length} 个分组'
+                      : '共 ${catalog.items.length} 集 · ${catalog.groups.length} 个分组'
                 : chapterTotal == null
                 ? '暂无章节'
                 : '共 $chapterTotal ${isVideo ? '集' : '章'}',
@@ -73,10 +79,16 @@ class _DetailCatalogSection extends StatelessWidget {
             style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
           ),
           if (hasGroups)
-            _GroupedDetailCatalog(groups: catalog.groups, onEpisodeSelected: onChapterSelected)
+            _GroupedDetailCatalog(
+              key: ValueKey(contentId),
+              catalog: catalog,
+              gateway: gateway,
+              contentId: contentId,
+              onEpisodeSelected: onChapterSelected,
+            )
           else ...<Widget>[
             for (final chapter in catalog.items.take(visibleChapterCount))
-              _ChapterRow(chapter: chapter, onRead: () => onChapterSelected(chapter), onOpenUrl: onOpenUrl),
+              _ChapterRow(chapter: chapter, onRead: () => onChapterSelected(chapter, catalog), onOpenUrl: onOpenUrl),
             if (onLoadMore != null)
               Padding(
                 padding: const EdgeInsets.only(top: AppSpacing.regular),
@@ -94,10 +106,19 @@ class _DetailCatalogSection extends StatelessWidget {
 }
 
 class _GroupedDetailCatalog extends StatefulWidget {
-  const _GroupedDetailCatalog({required this.groups, required this.onEpisodeSelected});
+  const _GroupedDetailCatalog({
+    super.key,
+    required this.catalog,
+    required this.gateway,
+    required this.contentId,
+    required this.onEpisodeSelected,
+  });
 
-  final List<PluginMediaGroup> groups;
-  final ValueChanged<PluginChapterSummary> onEpisodeSelected;
+  final PluginChaptersResult catalog;
+  List<PluginMediaGroup> get groups => catalog.groups;
+  final SourceContentGateway gateway;
+  final String contentId;
+  final void Function(PluginChapterSummary, PluginChaptersResult) onEpisodeSelected;
 
   @override
   State<_GroupedDetailCatalog> createState() => _GroupedDetailCatalogState();
@@ -108,10 +129,57 @@ class _GroupedDetailCatalogState extends State<_GroupedDetailCatalog> {
 
   late String? _selectedGroupId = widget.groups.firstOrNull?.id;
   var _visibleEpisodeCount = _pageSize;
+  final _loaded = <String, PluginMediaGroup>{};
+  final _loading = <String>{};
+  final _failed = <String>{};
+  int _generation = 0;
+  PluginChaptersResult get _catalog {
+    final groups = [for (final group in widget.groups) _loaded[group.id] ?? group];
+    return PluginChaptersResult(
+      pluginId: widget.catalog.pluginId,
+      sourceName: widget.catalog.sourceName,
+      groups: groups,
+      items: groups.expand((group) => group.episodes).toList(),
+    );
+  }
+
+  Future<void> _loadGroup(String id) async {
+    if (_selectedGroup?.deferred != true || !_loading.add(id)) return;
+    setState(() => _failed.remove(id));
+    final generation = _generation;
+    try {
+      final gateway = widget.gateway;
+      if (gateway is! SourceChapterGroupGateway) throw StateError('Group loader unavailable.');
+      final result = await (gateway as SourceChapterGroupGateway).getChapterGroup(
+        pluginId: widget.catalog.pluginId,
+        id: widget.contentId,
+        groupId: id,
+      );
+      final group = result.groups.firstWhere((group) => group.id == id && !group.deferred);
+      if (mounted && generation == _generation)
+        setState(() {
+          _loaded[id] = group;
+          while (_loaded.length > 3) {
+            _loaded.remove(_loaded.keys.first);
+          }
+        });
+    } on Object {
+      if (mounted && generation == _generation) setState(() => _failed.add(id));
+    } finally {
+      if (mounted && generation == _generation) setState(() => _loading.remove(id));
+    }
+  }
 
   @override
   void didUpdateWidget(covariant _GroupedDetailCatalog oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.groups.length != widget.groups.length ||
+        List.generate(widget.groups.length, (index) => index).any((index) => !identical(widget.groups[index], oldWidget.groups[index]))) {
+      _generation++;
+      _loaded.clear();
+      _loading.clear();
+      _failed.clear();
+    }
     if (widget.groups.any((group) => group.id == _selectedGroupId)) return;
     _selectedGroupId = widget.groups.firstOrNull?.id;
     _visibleEpisodeCount = _pageSize;
@@ -119,17 +187,21 @@ class _GroupedDetailCatalogState extends State<_GroupedDetailCatalog> {
 
   PluginMediaGroup? get _selectedGroup {
     for (final group in widget.groups) {
-      if (group.id == _selectedGroupId) return group;
+      if (group.id == _selectedGroupId) return _loaded[group.id] ?? group;
     }
     return null;
   }
 
   void _selectGroup(String groupId) {
-    if (groupId == _selectedGroupId) return;
+    if (groupId == _selectedGroupId) {
+      unawaited(_loadGroup(groupId));
+      return;
+    }
     setState(() {
       _selectedGroupId = groupId;
       _visibleEpisodeCount = _pageSize;
     });
+    unawaited(_loadGroup(groupId));
   }
 
   @override
@@ -149,13 +221,24 @@ class _GroupedDetailCatalogState extends State<_GroupedDetailCatalog> {
               for (final item in widget.groups)
                 Padding(
                   padding: const EdgeInsets.only(right: AppSpacing.compact),
-                  child: _DetailGroupTab(group: item, selected: item.id == _selectedGroupId, onTap: () => _selectGroup(item.id)),
+                  child: _DetailGroupTab(
+                    group: _loaded[item.id] ?? item,
+                    selected: item.id == _selectedGroupId,
+                    onTap: () => _selectGroup(item.id),
+                  ),
                 ),
             ],
           ),
         ),
         const SizedBox(height: AppSpacing.regular),
-        if (group == null || episodes.isEmpty)
+        if (group?.deferred == true)
+          Padding(
+            padding: const EdgeInsets.all(AppSpacing.regular),
+            child: _loading.contains(group!.id)
+                ? const Center(child: CircularProgressIndicator())
+                : TextButton(onPressed: () => _loadGroup(group.id), child: Text(_failed.contains(group.id) ? '加载失败，点击重试' : '加载该线路')),
+          )
+        else if (group == null || episodes.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.section),
             child: Text(
@@ -188,7 +271,7 @@ class _GroupedDetailCatalogState extends State<_GroupedDetailCatalog> {
                   final episode = visibleEpisodes[index];
                   return OutlinedButton(
                     key: ValueKey<String>('source-detail-episode-${group.id}-${episode.id}'),
-                    onPressed: () => widget.onEpisodeSelected(episode),
+                    onPressed: () => widget.onEpisodeSelected(episode, _catalog),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.compact),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -261,7 +344,7 @@ class _DetailGroupTab extends StatelessWidget {
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                       child: Text(
-                        '${group.episodes.length}',
+                        group.deferred ? '待加载' : '${group.episodes.length}',
                         style: theme.textTheme.labelSmall?.copyWith(color: selected ? tokens.accent : tokens.mutedText),
                       ),
                     ),

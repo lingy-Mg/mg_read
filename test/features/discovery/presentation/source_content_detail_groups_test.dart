@@ -21,6 +21,43 @@ void main() {
     await Future.wait(<Future<void>>[miSans.load(), materialIcons.load()]);
   });
 
+  testWidgets('deferred detail line retries and reuses the complete loaded line', (tester) async {
+    final gateway = _DeferredVideoGateway();
+    PluginChaptersResult? forwarded;
+    await tester.binding.setSurfaceSize(const Size(390, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: _GroupedVideoDetailHost(
+          gateway: gateway,
+          onVideoEpisodeRequested: ({required detail, required firstCatalogPage, required chapter}) async {
+            forwarded = firstCatalogPage;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final scroll = find.descendant(of: find.byKey(const Key('source-content-detail-sheet')), matching: find.byType(Scrollable)).first;
+    await tester.scrollUntilVisible(find.byKey(const Key('source-detail-group-tabs')), 240, scrollable: scroll);
+    await tester.tap(find.byKey(const Key('source-detail-group-diff')));
+    await tester.pumpAndSettle();
+    expect(find.text('加载失败，点击重试'), findsOneWidget);
+    gateway.fail = false;
+    await tester.tap(find.text('加载失败，点击重试'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('source-detail-episode-diff-diff-1')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('source-detail-group-laoz')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('source-detail-group-diff')));
+    await tester.pumpAndSettle();
+    expect(gateway.calls, 2);
+    await tester.tap(find.byKey(const Key('source-detail-episode-diff-diff-1')));
+    await tester.pumpAndSettle();
+    expect(forwarded!.groups.last.deferred, isFalse);
+    expect(forwarded!.groups.last.episodes, hasLength(2));
+  });
+
   testWidgets('detail switches source groups and forwards them to video playback', (tester) async {
     PluginChaptersResult? forwardedCatalog;
     PluginChapterSummary? forwardedEpisode;
@@ -69,7 +106,8 @@ void main() {
 }
 
 class _GroupedVideoDetailHost extends StatefulWidget {
-  const _GroupedVideoDetailHost({required this.onVideoEpisodeRequested});
+  const _GroupedVideoDetailHost({required this.onVideoEpisodeRequested, this.gateway = const _GroupedVideoGateway()});
+  final SourceContentGateway gateway;
 
   final SourceVideoEpisodeRequested onVideoEpisodeRequested;
 
@@ -85,7 +123,7 @@ class _GroupedVideoDetailHostState extends State<_GroupedVideoDetailHost> {
       if (!mounted) return;
       showSourceContentDetailSheet(
         context,
-        gateway: const _GroupedVideoGateway(),
+        gateway: widget.gateway,
         pluginId: _pluginId,
         id: _contentId,
         onVideoEpisodeRequested: widget.onVideoEpisodeRequested,
@@ -97,7 +135,7 @@ class _GroupedVideoDetailHostState extends State<_GroupedVideoDetailHost> {
   Widget build(BuildContext context) => const Scaffold();
 }
 
-final class _GroupedVideoGateway implements SourceContentGateway {
+class _GroupedVideoGateway implements SourceContentGateway {
   const _GroupedVideoGateway();
 
   @override
@@ -193,3 +231,27 @@ PluginChapterSummary _episode({required String id, required String title, requir
       isLocked: false,
       attributes: const <PluginContentAttribute>[],
     );
+
+final class _DeferredVideoGateway extends _GroupedVideoGateway implements SourceChapterGroupGateway {
+  bool fail = true;
+  int calls = 0;
+  @override
+  Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async => PluginChaptersResult(
+    pluginId: pluginId,
+    sourceName: 'Source',
+    items: _laozEpisodes,
+    groups: [
+      _catalog.groups.first,
+      PluginMediaGroup(id: 'diff', title: 'Diff', order: 1, deferred: true, episodes: []),
+    ],
+  );
+  @override
+  Future<PluginChaptersResult> getChapterGroup({required String pluginId, required String id, required String groupId}) async {
+    calls++;
+    if (fail) throw StateError('Retry');
+    return _catalog;
+  }
+
+  @override
+  void invalidateChapterGroups(String pluginId, String id) {}
+}

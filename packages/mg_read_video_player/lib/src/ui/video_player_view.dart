@@ -273,6 +273,14 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     _activeContentId = contentId;
     _activeStateStore = stateStore;
     final restoredProgress = progress?.contentId == contentId ? progress : null;
+    final restoredContent = await _actionRestoreGroup(
+      content,
+      dataSource,
+      restoredProgress,
+      generation,
+    );
+    if (restoredContent == null || !_isCurrentLoad(generation)) return;
+    content = restoredContent;
     final selection =
         restoredVideoSelection(content.groups, restoredProgress) ??
         firstPlayableVideoSelection(content.groups);
@@ -470,41 +478,6 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
       return;
     }
     _rebuildAndPublish();
-  }
-
-  Future<VideoPlaybackProgress?> _loadProgress(
-    VideoPlaybackStateStore stateStore,
-    String contentId,
-    int generation,
-  ) async {
-    try {
-      final progress = await stateStore.load(contentId);
-      if (_isCurrentLoad(generation)) {
-        _notifyStartup(
-          VideoStartupPhase.progressReady,
-          state: VideoStartupState.ready,
-          resourceRole: VideoStartupResourceRole.progress,
-        );
-      }
-      return progress;
-    } on Object {
-      if (_isCurrentLoad(generation)) {
-        _notifyStartup(
-          VideoStartupPhase.progressReady,
-          state: VideoStartupState.failed,
-          resourceRole: VideoStartupResourceRole.progress,
-        );
-        _notifyFailure(
-          const VideoPlayerFailure(
-            VideoPlayerFailureKind.persistence,
-            '播放进度恢复失败，将从头开始',
-            code: 'progress_load_failed',
-            location: '恢复播放进度',
-          ),
-        );
-      }
-      return null;
-    }
   }
 
   void _notifyStartup(

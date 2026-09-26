@@ -44,6 +44,10 @@ final class ContentLibraryBookRefresher implements LibraryBookRefresher, Library
     final item = await _library.getLibraryItem(LibraryItemId(bookId));
     if (item == null) throw StateError('The bookshelf item no longer exists.');
     final source = item.source;
+    final gateway = _gateway;
+    if (gateway is SourceChapterGroupGateway) {
+      (gateway as SourceChapterGroupGateway).invalidateChapterGroups(source.pluginId, source.remoteContentId);
+    }
     // The persisted source identity is the durable refresh key. A source URL
     // remains optional because pluginId and remoteContentId are sufficient.
 

@@ -15,7 +15,8 @@ export interface SourcePlugin {
   search(request: Record<string, unknown>): Promise<unknown>;
   searchSuggestions?(request: Record<string, unknown>): Promise<unknown>;
   getDetail(request: { readonly id: string }): Promise<unknown>;
-  getChapters(request: { readonly id: string }): Promise<unknown>;
+  deferredGroups?: true;
+  getChapters(request: { readonly id: string; readonly groupId?: string; readonly supportsDeferredGroups?: boolean }): Promise<unknown>;
   getContent(request: { readonly id: string; readonly chapterId: string }): Promise<unknown>;
 }
 

@@ -3,6 +3,8 @@
 /// Responsibilities:
 /// - Decode neutral Runtime media groups into the video player model.
 /// - Resolve only proxy URLs and source-supplied request headers for playback.
+/// - Load explicitly deferred groups on demand; retain three recent additional
+///   whole-group catalogs and reuse the gateway's bounded shared cache.
 ///
 /// Notes:
 /// - A group is not interpreted as a season, line, or edition by this host.
@@ -16,15 +18,15 @@ import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 
 /// Converts one video source item into the video player's host port.
-final class SourceVideoDataSource implements VideoEpisodeDataSource {
+final class SourceVideoDataSource implements VideoGroupDataSource {
   SourceVideoDataSource({
     required this.gateway,
     required this.pluginId,
     this.initialDetail,
     this.initialCatalog,
     this.playbackGate,
-    this.maximumEpisodes = 200,
-  }) : assert(maximumEpisodes > 0 && maximumEpisodes <= 500);
+    this.maximumEpisodes = 5000,
+  }) : assert(maximumEpisodes > 0 && maximumEpisodes <= 5000);
 
   final SourceContentGateway gateway;
   final String pluginId;
@@ -35,6 +37,7 @@ final class SourceVideoDataSource implements VideoEpisodeDataSource {
   String? _cachedContentId;
   PluginContentDetail? _cachedDetail;
   PluginChaptersResult? _cachedCatalog;
+  final _recentGroups = <String>{};
 
   @override
   Future<VideoContent> load(String contentId) async {
@@ -46,7 +49,7 @@ final class SourceVideoDataSource implements VideoEpisodeDataSource {
     final catalog = values[1] as PluginChaptersResult;
     final groups = _playableGroups(catalog);
     final episodeCount = groups.fold<int>(0, (total, group) => total + group.episodes.length);
-    if (episodeCount == 0 || episodeCount > maximumEpisodes) {
+    if (episodeCount == 0 || groups.any((group) => group.episodes.length > maximumEpisodes)) {
       throw const VideoPlayerLoadException(
         code: 'video_catalog_unavailable',
         location: '校验视频分组和选集',
@@ -61,6 +64,7 @@ final class SourceVideoDataSource implements VideoEpisodeDataSource {
           VideoEpisodeGroup(
             id: group.id,
             title: group.title,
+            deferred: group.deferred,
             episodes: <VideoEpisode>[for (final episode in group.episodes) VideoEpisode(id: episode.id, title: episode.title)],
           ),
       ],
@@ -68,13 +72,62 @@ final class SourceVideoDataSource implements VideoEpisodeDataSource {
   }
 
   @override
+  Future<VideoEpisodeGroup> loadGroup(String contentId, String groupId) async {
+    var catalog = await _loadCatalog(contentId);
+    var group = catalog.groups.where((value) => value.id == groupId).firstOrNull;
+    if (group?.deferred == true) {
+      final loader = gateway;
+      if (loader is! SourceChapterGroupGateway) throw StateError('Source does not support deferred groups.');
+      final result = await (loader as SourceChapterGroupGateway).getChapterGroup(pluginId: pluginId, id: contentId, groupId: groupId);
+      group = result.groups.where((value) => value.id == groupId && !value.deferred).firstOrNull;
+      if (group == null) throw StateError('Requested group was not returned.');
+      if (_cachedContentId != contentId) throw StateError('Video content changed.');
+      _recentGroups.remove(groupId);
+      _recentGroups.add(groupId);
+      final evicted = _recentGroups.length > 3 ? _recentGroups.first : null;
+      if (evicted != null) _recentGroups.remove(evicted);
+      final groups = [
+        for (final old in (_cachedCatalog ?? catalog).groups)
+          if (old.id == groupId)
+            group
+          else if (old.id == evicted)
+            PluginMediaGroup(id: old.id, title: old.title, order: old.order, deferred: true, episodes: [])
+          else
+            old,
+      ];
+      catalog = PluginChaptersResult(
+        pluginId: catalog.pluginId,
+        sourceName: catalog.sourceName,
+        groups: groups,
+        items: groups.expand((value) => value.episodes).toList(),
+      );
+      _cachedCatalog = catalog;
+    }
+    if (group == null || group.episodes.length > maximumEpisodes) throw StateError('Video group is unavailable.');
+    return VideoEpisodeGroup(
+      id: group.id,
+      title: group.title,
+      episodes: [
+        for (final episode in group.episodes)
+          if (episode.isLocked != true) VideoEpisode(id: episode.id, title: episode.title),
+      ],
+    );
+  }
+
+  @override
   Future<VideoEpisode> loadEpisode(String contentId, {required String groupId, required String episodeId}) async {
+    if ((await _loadCatalog(contentId)).groups.any((group) => group.id == groupId && group.deferred)) {
+      await loadGroup(contentId, groupId);
+    }
     final catalog = await _loadCatalog(contentId);
     PluginChapterSummary? selected;
-    for (final group in _playableGroups(catalog)) {
+    for (final group
+        in (catalog.groups.isEmpty
+            ? [PluginMediaGroup(id: 'default', title: '默认分组', order: 0, episodes: catalog.items)]
+            : catalog.groups)) {
       if (group.id != groupId) continue;
       for (final episode in group.episodes) {
-        if (episode.id == episodeId) {
+        if (episode.id == episodeId && episode.isLocked != true) {
           selected = episode;
           break;
         }
@@ -132,6 +185,7 @@ final class SourceVideoDataSource implements VideoEpisodeDataSource {
     _cachedContentId = contentId;
     _cachedDetail = null;
     _cachedCatalog = null;
+    _recentGroups.clear();
   }
 
   bool _containsPlayableCatalogEntry(PluginChaptersResult catalog) =>
@@ -143,11 +197,12 @@ final class SourceVideoDataSource implements VideoEpisodeDataSource {
         : catalog.groups;
     return <PluginMediaGroup>[
       for (final group in groups)
-        if (group.episodes.any((episode) => episode.isLocked != true))
+        if (group.deferred || group.episodes.any((episode) => episode.isLocked != true))
           PluginMediaGroup(
             id: group.id,
             title: group.title,
             order: group.order,
+            deferred: group.deferred,
             episodes: group.episodes.where((episode) => episode.isLocked != true).toList(growable: false),
           ),
     ];

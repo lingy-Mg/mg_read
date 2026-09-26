@@ -43,7 +43,7 @@ export function assertStandardSourceContract({
     });
   }
   for (const exportName of expectedExports) {
-    if (typeof plugin[exportName] !== 'function') {
+    if ((exportName === 'deferredGroups' ? plugin[exportName] !== true : typeof plugin[exportName] !== 'function')) {
       throw new SourceTestFailure('source_contract_export_type', 'contract.exports', {
         exportName,
         actualType: typeof plugin[exportName],

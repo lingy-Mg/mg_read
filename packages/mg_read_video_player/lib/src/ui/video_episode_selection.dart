@@ -60,17 +60,33 @@ VideoEpisodeSelection? adjacentVideoSelection(
   if (direction != -1 && direction != 1) {
     throw ArgumentError.value(direction, 'direction', 'Must be -1 or 1.');
   }
-  final ordered = <VideoEpisodeSelection>[
-    for (final group in groups)
-      for (final episode in group.episodes) (group: group, episode: episode),
-  ];
-  final currentIndex = ordered.indexWhere(
-    (selection) =>
-        selection.group.id == groupId && selection.episode.id == episodeId,
+  final groupIndex = groups.indexWhere((group) => group.id == groupId);
+  if (groupIndex < 0) return null;
+  final group = groups[groupIndex];
+  final episodeIndex = group.episodes.indexWhere(
+    (episode) => episode.id == episodeId,
   );
-  if (currentIndex < 0) return null;
-  final target = currentIndex + direction;
-  return target < 0 || target >= ordered.length ? null : ordered[target];
+  if (episodeIndex < 0) return null;
+  final target = episodeIndex + direction;
+  if (target >= 0 && target < group.episodes.length) {
+    return (group: group, episode: group.episodes[target]);
+  }
+  for (
+    var index = groupIndex + direction;
+    index >= 0 && index < groups.length;
+    index += direction
+  ) {
+    final next = groups[index];
+    // A deferred group is not an empty group: never silently skip it.
+    if (next.deferred) return null;
+    if (next.episodes.isNotEmpty) {
+      return (
+        group: next,
+        episode: direction > 0 ? next.episodes.first : next.episodes.last,
+      );
+    }
+  }
+  return null;
 }
 
 Duration restorableVideoPosition(VideoPlaybackProgress? progress) {

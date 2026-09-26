@@ -649,10 +649,17 @@ final class PluginContentDetail {
 @immutable
 final class SourceChaptersInvocation
     extends PluginInvocation<PluginChaptersResult> {
-  const SourceChaptersInvocation({required this.pluginId, required this.id});
+  const SourceChaptersInvocation({
+    required this.pluginId,
+    required this.id,
+    this.groupId,
+    this.refresh = false,
+  });
 
   final String pluginId;
   final String id;
+  final String? groupId;
+  final bool refresh;
 
   @override
   Duration get _timeout => _contentTimeout;
@@ -664,6 +671,8 @@ final class SourceChaptersInvocation
   Map<String, Object?> get _wireParams => <String, Object?>{
     'pluginId': pluginId,
     'id': id,
+    if (groupId != null) 'groupId': groupId,
+    if (refresh) 'refresh': true,
   };
 
   @override
@@ -692,11 +701,16 @@ final class SourceChaptersInvocation
         .expand((group) => group.episodes)
         .map((episode) => episode.id)
         .toList(growable: false);
+    final itemIds = items.map((item) => item.id).toSet();
     if (groups.isNotEmpty &&
         (episodeIds.length != items.length ||
             episodeIds.toSet().length != episodeIds.length ||
-            !episodeIds.every((id) => items.any((item) => item.id == id)))) {
+            !episodeIds.every(itemIds.contains))) {
       _contentInvalid('Source media groups do not match the episode catalog.');
+    }
+    if (groupId != null &&
+        !groups.any((group) => group.id == groupId && !group.deferred)) {
+      _contentInvalid('Requested media group was not loaded.');
     }
     return PluginChaptersResult(
       pluginId: pluginId,
@@ -734,12 +748,14 @@ final class PluginMediaGroup {
     required this.title,
     required this.order,
     required List<PluginChapterSummary> episodes,
+    this.deferred = false,
   }) : episodes = List<PluginChapterSummary>.unmodifiable(episodes);
 
   final String id;
   final String title;
   final int order;
   final List<PluginChapterSummary> episodes;
+  final bool deferred;
 }
 
 @immutable

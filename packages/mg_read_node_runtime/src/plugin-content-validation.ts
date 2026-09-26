@@ -138,7 +138,8 @@ export function validateChaptersResult(
   assertUnique(groups.map((group) => group.id));
   for (const [index, group] of groups.entries()) if (group.order !== index) fail();
   const groupedIds = groups.flatMap((group) => group.episodes.map((episode) => episode.id));
-  if (groups.length !== 0 && (groupedIds.length !== items.length || new Set(groupedIds).size !== groupedIds.length || !groupedIds.every((id) => items.some((item) => item.id === id)))) fail();
+  const itemIds = new Set(items.map((item) => item.id));
+  if (groups.length !== 0 && (groupedIds.length !== items.length || new Set(groupedIds).size !== groupedIds.length || !groupedIds.every((id) => itemIds.has(id)))) fail();
   const result = Object.freeze({ groups, items, pluginId, sourceName });
   assertInlineBudget(result, MAX_INLINE_CHAPTER_CATALOG_BYTES);
   return result;
@@ -274,11 +275,14 @@ function validateMangaPage(value: unknown): PluginMangaPage {
 
 function validateMediaGroup(value: unknown): PluginMediaGroup {
   const raw = readRecord(value);
+  if (Object.hasOwn(raw, "deferred") && typeof raw.deferred !== "boolean") fail();
+  const deferred = raw.deferred === true;
   const episodes = Object.freeze(readArray(raw, "episodes", MAX_CHAPTER_ITEMS).map(validateChapterSummary));
-  if (episodes.length === 0) fail();
+  if (deferred ? episodes.length !== 0 : episodes.length === 0) fail();
   assertUnique(episodes.map((episode) => episode.id));
   for (const [index, episode] of episodes.entries()) if (episode.order !== index) fail();
   return Object.freeze({
+    ...(deferred ? { deferred: true } : {}),
     episodes,
     id: readRequiredString(raw, "id", MAX_ID_CHARACTERS),
     order: readNonNegativeInteger(raw, "order"),

@@ -12,6 +12,30 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/media/application/source_video_data_source.dart';
 
 void main() {
+  test('deferred lines load on selection, cache metadata, and resolve only the selected media', () async {
+    final gateway = _VideoGateway(failEpisodeResource: false, grouped: true, deferred: true);
+    final source = SourceVideoDataSource(gateway: gateway, pluginId: _pluginId);
+    final initial = await source.load('video-1');
+    expect(initial.groups.last.deferred, isTrue);
+    expect(gateway.groupCalls, 0);
+    expect(gateway.contentCalls, isEmpty);
+    final group = await source.loadGroup('video-1', 'diff');
+    expect(group.episodes.length, 3000);
+    await source.loadGroup('video-1', 'diff');
+    expect(gateway.groupCalls, 1);
+    await source.loadEpisode('video-1', groupId: 'diff', episodeId: 'diff-2999');
+    expect(gateway.contentCalls, ['diff-2999']);
+  });
+  test('failed deferred line remains retryable without losing the default line', () async {
+    final gateway = _VideoGateway(failEpisodeResource: false, grouped: true, deferred: true)..groupFailure = true;
+    final source = SourceVideoDataSource(gateway: gateway, pluginId: _pluginId);
+    await source.load('video-1');
+    await expectLater(source.loadGroup('video-1', 'diff'), throwsStateError);
+    gateway.groupFailure = false;
+    expect((await source.loadGroup('video-1', 'diff')).episodes, hasLength(3000));
+    expect((await source.load('video-1')).groups.first.episodes, hasLength(1));
+  });
+
   test('loads missing detail and catalog concurrently', () async {
     final detailGate = Completer<void>();
     final catalogGate = Completer<void>();
@@ -134,12 +158,37 @@ void main() {
 
 const _pluginId = 'org.example.video';
 
-final class _VideoGateway implements SourceContentGateway {
-  _VideoGateway({required this.failEpisodeResource, this.episodeFailureCode, this.grouped = false, this.detailGate, this.catalogGate});
+final class _VideoGateway implements SourceContentGateway, SourceChapterGroupGateway {
+  _VideoGateway({
+    required this.failEpisodeResource,
+    this.episodeFailureCode,
+    this.grouped = false,
+    this.deferred = false,
+    this.detailGate,
+    this.catalogGate,
+  });
 
   final bool failEpisodeResource;
   final AppErrorCode? episodeFailureCode;
   final bool grouped;
+  final bool deferred;
+  int groupCalls = 0;
+  bool groupFailure = false;
+  @override
+  void invalidateChapterGroups(String pluginId, String id) {}
+  @override
+  Future<PluginChaptersResult> getChapterGroup({required String pluginId, required String id, required String groupId}) async {
+    groupCalls++;
+    if (groupFailure) throw StateError("unavailable");
+    final items = List.generate(3000, (i) => _episode(id: "diff-$i", title: "第 $i 集", order: i, group: "Diff"));
+    return PluginChaptersResult(
+      pluginId: pluginId,
+      sourceName: "Source",
+      items: items,
+      groups: [PluginMediaGroup(id: "diff", title: "Diff", order: 1, episodes: items)],
+    );
+  }
+
   final Completer<void>? detailGate;
   final Completer<void>? catalogGate;
   final List<String> contentCalls = <String>[];
@@ -187,11 +236,17 @@ final class _VideoGateway implements SourceContentGateway {
     return PluginChaptersResult(
       pluginId: pluginId,
       sourceName: '示例视频源',
-      items: <PluginChapterSummary>[first, if (grouped) second],
+      items: <PluginChapterSummary>[first, if (grouped && !deferred) second],
       groups: grouped
           ? <PluginMediaGroup>[
               PluginMediaGroup(id: 'laoz', title: 'Laoz', order: 0, episodes: <PluginChapterSummary>[first]),
-              PluginMediaGroup(id: 'diff', title: 'Diff', order: 1, episodes: <PluginChapterSummary>[second]),
+              PluginMediaGroup(
+                id: 'diff',
+                title: 'Diff',
+                order: 1,
+                deferred: deferred,
+                episodes: <PluginChapterSummary>[if (!deferred) second],
+              ),
             ]
           : const <PluginMediaGroup>[],
     );

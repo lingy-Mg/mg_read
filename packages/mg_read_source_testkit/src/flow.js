@@ -130,7 +130,23 @@ export async function runReadingSourceFlow({
       hasTitle: typeof detail?.title === 'string' && detail.title.length > 0,
     });
   }
-  const chapters = await runStage('chapters', () => plugin.getChapters({ id: selectedId }));
+  const chapters = await runStage('chapters', async () => {
+    const options = plugin.deferredGroups === true ? { supportsDeferredGroups: true } : {};
+    const initial = await plugin.getChapters({ id: selectedId, ...options });
+    if (!initial.groups?.some(group => group.deferred)) return initial;
+    if (plugin.deferredGroups !== true || initial.groups.length > 128) throw new SourceTestFailure('source_media_groups_invalid', 'chapters', {});
+    // Verification intentionally visits every line. Normal UI never does this.
+    const groups = [];
+    for (const group of initial.groups) {
+      if (!group.deferred) { groups.push(group); continue; }
+      if (group.episodes.length !== 0) throw new SourceTestFailure('source_media_groups_invalid', 'chapters', {});
+      const result = await plugin.getChapters({ id: selectedId, groupId: group.id, ...options });
+      const loaded = result.groups?.find(candidate => candidate.id === group.id && !candidate.deferred);
+      if (!loaded || loaded.episodes.length === 0) throw new SourceTestFailure('source_media_groups_invalid', 'chapters', {});
+      groups.push(loaded);
+    }
+    return { ...initial, groups, items: groups.flatMap(group => group.episodes) };
+  });
   const chapterItems = chapters?.items ?? [];
   requireNonEmpty(chapterItems, 'source_chapters_empty', 'chapters');
   const chapterIds = chapterItems
@@ -143,12 +159,14 @@ export async function runReadingSourceFlow({
     });
   }
 
-  for (let index = 1; index < chapterItems.length; index += 1) {
-    const previous = chapterItems[index - 1]?.order;
-    const current = chapterItems[index]?.order;
+  for (const ordered of chapters.groups?.length ? chapters.groups.map(group => group.episodes) : [chapterItems]) {
+  for (let index = 1; index < ordered.length; index += 1) {
+    const previous = ordered[index - 1]?.order;
+    const current = ordered[index]?.order;
     if (Number.isFinite(previous) && Number.isFinite(current) && current < previous) {
       throw new SourceTestFailure('source_chapters_unordered', 'chapters', { index });
     }
+  }
   }
   validateMediaGroups(detail, chapters, chapterIds);
 

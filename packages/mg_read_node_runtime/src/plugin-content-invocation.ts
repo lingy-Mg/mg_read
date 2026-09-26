@@ -68,13 +68,24 @@ export async function invokeLoadedPluginContent<TResult extends JsonObject>(opti
   if (debugLogEnabled()) events({ code: "plugin_log_emitted", logCategory: "runtime.plugin.invocation", logLevel: "info", logMessage: `能力请求：操作=${operation}，参数=${JSON.stringify(request)}`, outcome: "success", pluginId });
   try {
     throwIfPluginOperationUnavailable(signal, deadlineUnixMs);
+    const deferredCatalog = operation === "getChapters" && plugin.module.deferredGroups === true;
+    if (operation === "getChapters" && request.groupId !== undefined && !deferredCatalog) {
+      throw new PluginManagerError("unsupported");
+    }
     const value = await invocationScope.run(
       Object.freeze({ deadlineUnixMs, signal, ...(trace === undefined ? {} : { trace }) }),
-      () => plugin.module[operation](request),
+      () => plugin.module[operation](deferredCatalog ? Object.freeze({ ...request, supportsDeferredGroups: true }) : request),
     );
     if (developmentIsCurrent?.() === false) throw new PluginManagerError("plugin_execution_failed");
     throwIfPluginOperationUnavailable(signal, deadlineUnixMs);
     const result = validate(pluginId, plugin.descriptor.displayName, value);
+    if (operation === "getChapters") {
+      const groups = result.groups as readonly { id: string; deferred?: boolean }[] | undefined;
+      if ((!deferredCatalog && groups?.some((group) => group.deferred)) ||
+          (request.groupId !== undefined && !groups?.some((group) => group.id === request.groupId && !group.deferred))) {
+        throw new PluginContentValidationError("Invalid deferred catalog or requested group is not loaded.");
+      }
+    }
     if (validateCorrelation !== undefined && !validateCorrelation(result)) {
       throw new PluginContentValidationError("Response validation failed at request correlation: the returned identifiers do not match the request.");
     }

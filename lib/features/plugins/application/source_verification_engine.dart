@@ -12,6 +12,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'source_verification_catalog.dart';
 
 import 'source_verification_models.dart';
 import 'source_verification_video_playback.dart';
@@ -153,7 +154,7 @@ final class SourceVerificationEngine {
       );
       final chapters = await context.stage<PluginChaptersResult>(
         'chapters',
-        () => _gateway.getChapters(pluginId: source.id, id: selected.id),
+        () => loadVerificationCatalog(_gateway, source.id, selected.id),
         validate: (value) => _validateChapters(detail, value),
         summary: (value) => <String, Object?>{'items': value.items.length, 'groups': value.groups.length},
         debugData: _debugChapters,
@@ -427,9 +428,9 @@ void _validateChapters(PluginContentDetail detail, PluginChaptersResult chapters
   if (ids.any((id) => id.trim().isEmpty) || ids.toSet().length != ids.length) {
     throw const _VerificationFailure('chapters_invalid');
   }
-  for (var index = 1; index < chapters.items.length; index += 1) {
-    if (chapters.items[index].order < chapters.items[index - 1].order) {
-      throw const _VerificationFailure('chapters_unordered');
+  for (final ordered in chapters.groups.isEmpty ? [chapters.items] : chapters.groups.map((group) => group.episodes)) {
+    for (var index = 1; index < ordered.length; index++) {
+      if (ordered[index].order < ordered[index - 1].order) throw const _VerificationFailure('chapters_unordered');
     }
   }
   final expected = detail.summary.chapterCount;

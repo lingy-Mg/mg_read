@@ -17,8 +17,16 @@
 | 宿主选择 | 队列与当前章节 | `groupId + episodeId` |
 
 音频和视频分别实现、分别验证，不抽成通用媒体模型。视频 group 可表示季、线路或版本，Runtime/UI 不写死语义；
-存在 groups 时，全部 episode 与扁平 items 一一对应。宿主中间投影不能丢失 groups，仅在来源确实无分组时使用
+存在 groups 时，本次已加载的 episode 与扁平 items 一一对应。宿主中间投影不能丢失 groups，仅在来源确实无分组时使用
 扁平兼容。
+
+视频源可选导出 `deferredGroups = true`。新 Node Runtime 仅向声明该能力的源传入
+`supportsDeferredGroups: true`；未协商时仍返回旧的完整目录。初次返回默认分组的完整章节，其他分组可用
+`deferred: true, episodes: []` 表示待加载；缺省/false 仍表示完整非空分组。`getChapters` 可选 `groupId`
+请求目标分组全部章节，返回完整分组索引和该组元数据；可选 `refresh: true` 绕过来源目录缓存。
+不使用占位章节、不做组内分页、不提前解析视频资源。稳定分组 ID 不依赖排序；旧的小目录行为须有回归。
+宿主缓存共享于详情/播放器且有容量和过期边界，失败不缓存、并发单飞、刷新拒绝旧结果；续播先加载保存的分组。
+正式自检和 testkit 显式遍历延迟分组，普通 UI/书架预取不得自动补全。
 
 ## 播放资源
 

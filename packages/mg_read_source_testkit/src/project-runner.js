@@ -137,6 +137,7 @@ async function runProject(project, options) {
     await access(mainPath);
     const plugin = await import(`${pathToFileURL(mainPath).href}?source-test=${Date.now()}`);
     const optionalExports = [
+      ...(plugin.deferredGroups === true ? ['deferredGroups'] : []),
       ...(typeof plugin.searchSuggestions === 'function' ? ['searchSuggestions'] : []),
       ...(typeof plugin.getResource === 'function' ? ['getResource'] : []),
     ];

@@ -248,7 +248,12 @@ PluginMediaGroup _decodeMediaGroup(Object? value) {
     'episodes',
     context,
   ).map(_decodeChapterSummary).toList(growable: false);
-  if (episodes.isEmpty) _contentInvalid('$context cannot be empty.');
+  final deferred = item.containsKey('deferred')
+      ? _contentNullableBool(item, 'deferred', context)
+      : false;
+  if (deferred == null || (deferred ? episodes.isNotEmpty : episodes.isEmpty)) {
+    _contentInvalid('$context has an invalid deferred state.');
+  }
   _requireUnique(episodes.map((episode) => episode.id), context);
   for (var index = 0; index < episodes.length; index += 1) {
     if (episodes[index].order != index)
@@ -259,6 +264,7 @@ PluginMediaGroup _decodeMediaGroup(Object? value) {
     title: _contentString(item, 'title', context),
     order: _contentInt(item, 'order', context),
     episodes: episodes,
+    deferred: deferred,
   );
 }
 

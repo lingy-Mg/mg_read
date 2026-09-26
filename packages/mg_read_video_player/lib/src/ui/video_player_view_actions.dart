@@ -2,6 +2,82 @@
 part of 'video_player_view.dart';
 
 extension _VideoPlayerViewActions on _VideoPlayerViewState {
+  Future<VideoPlaybackProgress?> _loadProgress(
+    VideoPlaybackStateStore stateStore,
+    String contentId,
+    int generation,
+  ) async {
+    try {
+      final progress = await stateStore.load(contentId);
+      if (_isCurrentLoad(generation)) {
+        _notifyStartup(
+          VideoStartupPhase.progressReady,
+          state: VideoStartupState.ready,
+          resourceRole: VideoStartupResourceRole.progress,
+        );
+      }
+      return progress;
+    } on Object {
+      if (_isCurrentLoad(generation)) {
+        _notifyStartup(
+          VideoStartupPhase.progressReady,
+          state: VideoStartupState.failed,
+          resourceRole: VideoStartupResourceRole.progress,
+        );
+        _notifyFailure(
+          const VideoPlayerFailure(
+            VideoPlayerFailureKind.persistence,
+            '播放进度恢复失败，将从头开始',
+            code: 'progress_load_failed',
+            location: '恢复播放进度',
+          ),
+        );
+      }
+      return null;
+    }
+  }
+
+  Future<VideoContent?> _actionRestoreGroup(
+    VideoContent content,
+    VideoDataSource dataSource,
+    VideoPlaybackProgress? restoredProgress,
+    int generation,
+  ) async {
+    if (restoredProgress != null &&
+        dataSource is VideoGroupDataSource &&
+        content.groups.any(
+          (group) => group.id == restoredProgress.groupId && group.deferred,
+        )) {
+      try {
+        final loaded = await dataSource.loadGroup(
+          content.id,
+          restoredProgress.groupId,
+        );
+        if (!_isCurrentLoad(generation)) return null;
+        content = VideoContent(
+          id: content.id,
+          title: content.title,
+          groups: [
+            for (final group in content.groups)
+              if (group.id == loaded.id) loaded else group,
+          ],
+        );
+      } on Object {
+        if (!_isCurrentLoad(generation)) return null;
+        _setFailure(
+          const VideoPlayerFailure(
+            VideoPlayerFailureKind.data,
+            '续播线路加载失败，请重试',
+            code: 'group_load_failed',
+            location: '加载续播线路',
+          ),
+        );
+        return null;
+      }
+    }
+    return content;
+  }
+
   int? _actionBeginEpisodeOpening(int? loadGeneration) {
     if (_disposed ||
         (loadGeneration != null && !_isCurrentLoad(loadGeneration))) {
@@ -395,6 +471,28 @@ extension _VideoPlayerViewActions on _VideoPlayerViewState {
       activeGroupId: _group?.id,
       activeEpisodeId: _episode?.id,
       playbackState: _backend.state,
+      loadGroup: widget.dataSource is VideoGroupDataSource
+          ? (groupId) async {
+              final generation = _loadGeneration;
+              final loaded = await (widget.dataSource as VideoGroupDataSource)
+                  .loadGroup(content.id, groupId);
+              if (!_isCurrentLoad(generation)) {
+                throw StateError('Video session changed.');
+              }
+              final current = _content!;
+              _update(
+                () => _content = VideoContent(
+                  id: current.id,
+                  title: current.title,
+                  groups: [
+                    for (final group in current.groups)
+                      if (group.id == loaded.id) loaded else group,
+                  ],
+                ),
+              );
+              return loaded;
+            }
+          : null,
     );
     if (!mounted || selected == null) return;
     await _actionSelectEpisode(selected.groupId, selected.episodeId);

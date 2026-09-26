@@ -322,6 +322,8 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
   }
 
   void _retryDetail() {
+    final gateway = widget.gateway;
+    if (gateway is SourceChapterGroupGateway) (gateway as SourceChapterGroupGateway).invalidateChapterGroups(widget.pluginId, widget.id);
     setState(() {
       _detailFuture = _startDetailLoad();
     });

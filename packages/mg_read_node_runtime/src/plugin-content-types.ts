@@ -315,6 +315,8 @@ export interface PluginContentDetail extends PluginContentSummary {
 
 export interface PluginChaptersRequest extends JsonObject {
   readonly id: string;
+  readonly groupId?: string;
+  readonly refresh?: boolean;
 }
 
 export interface PluginChapterSummary extends JsonObject {
@@ -341,6 +343,7 @@ export interface PluginChaptersResult extends JsonObject {
 /** A neutral ordered collection of media episodes. It can mean a season,
  * source line, edition, or any other source-defined grouping. */
 export interface PluginMediaGroup extends JsonObject {
+  readonly deferred?: boolean;
   readonly episodes: readonly PluginChapterSummary[];
   readonly id: string;
   readonly order: number;

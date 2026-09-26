@@ -26,6 +26,7 @@ Future<VideoEpisodeChoice?> showVideoEpisodeSheet({
   required String? activeGroupId,
   required String? activeEpisodeId,
   required ValueListenable<VideoPlaybackBackendState> playbackState,
+  Future<VideoEpisodeGroup> Function(String groupId)? loadGroup,
 }) => showModalBottomSheet<VideoEpisodeChoice>(
   context: context,
   backgroundColor: Colors.transparent,
@@ -42,6 +43,7 @@ Future<VideoEpisodeChoice?> showVideoEpisodeSheet({
       activeGroupId: activeGroupId,
       activeEpisodeId: activeEpisodeId,
       playbackState: playbackState,
+      loadGroup: loadGroup,
     ),
   ),
 );
@@ -52,12 +54,14 @@ final class _VideoEpisodeSheet extends StatefulWidget {
     required this.activeGroupId,
     required this.activeEpisodeId,
     required this.playbackState,
+    this.loadGroup,
   });
 
   final List<VideoEpisodeGroup> groups;
   final String? activeGroupId;
   final String? activeEpisodeId;
   final ValueListenable<VideoPlaybackBackendState> playbackState;
+  final Future<VideoEpisodeGroup> Function(String groupId)? loadGroup;
 
   @override
   State<_VideoEpisodeSheet> createState() => _VideoEpisodeSheetState();
@@ -65,6 +69,26 @@ final class _VideoEpisodeSheet extends StatefulWidget {
 
 final class _VideoEpisodeSheetState extends State<_VideoEpisodeSheet> {
   late String? _groupId = _initialGroupId();
+  final _loaded = <String, VideoEpisodeGroup>{};
+  final _loading = <String>{};
+  final _failed = <String>{};
+
+  Future<void> _selectGroup(String id) async {
+    setState(() => _groupId = id);
+    if (_group?.deferred != true || !_loading.add(id)) return;
+    setState(() => _failed.remove(id));
+    try {
+      final loader = widget.loadGroup;
+      if (loader == null) throw StateError('Group loader unavailable.');
+      final group = await loader(id);
+      if (!mounted) return;
+      setState(() => _loaded[id] = group);
+    } on Object {
+      if (mounted) setState(() => _failed.add(id));
+    } finally {
+      if (mounted) setState(() => _loading.remove(id));
+    }
+  }
 
   String? _initialGroupId() {
     for (final group in widget.groups) {
@@ -74,6 +98,7 @@ final class _VideoEpisodeSheetState extends State<_VideoEpisodeSheet> {
   }
 
   VideoEpisodeGroup? get _group {
+    if (_loaded[_groupId] case final VideoEpisodeGroup group) return group;
     for (final group in widget.groups) {
       if (group.id == _groupId) return group;
     }
@@ -131,7 +156,9 @@ final class _VideoEpisodeSheetState extends State<_VideoEpisodeSheet> {
                   ),
                   const Spacer(),
                   Text(
-                    '${group?.episodes.length ?? 0} 集',
+                    group?.deferred == true
+                        ? '待加载'
+                        : '${group?.episodes.length ?? 0} 集',
                     style: const TextStyle(
                       color: videoPlayerSecondary,
                       fontSize: 13,
@@ -150,7 +177,7 @@ final class _VideoEpisodeSheetState extends State<_VideoEpisodeSheet> {
                       _GroupChip(
                         group: item,
                         selected: item.id == _groupId,
-                        onSelected: () => setState(() => _groupId = item.id),
+                        onSelected: () => _selectGroup(item.id),
                       ),
                   ],
                 ),
@@ -158,7 +185,20 @@ final class _VideoEpisodeSheetState extends State<_VideoEpisodeSheet> {
             const SizedBox(height: 6),
             const Divider(height: 1),
             Expanded(
-              child: group == null || group.episodes.isEmpty
+              child: group?.deferred == true
+                  ? Center(
+                      child: _loading.contains(group!.id)
+                          ? const CircularProgressIndicator()
+                          : TextButton(
+                              onPressed: () => _selectGroup(group.id),
+                              child: Text(
+                                _failed.contains(group.id)
+                                    ? '加载失败，点击重试'
+                                    : '加载该线路',
+                              ),
+                            ),
+                    )
+                  : group == null || group.episodes.isEmpty
                   ? const Center(
                       child: Text(
                         '该分组暂无可播放选集',
