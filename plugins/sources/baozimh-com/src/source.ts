@@ -10,6 +10,7 @@ import * as cheerio from 'cheerio/slim';
 
 import type { ContentDetail, ContentSummary, MgReadPluginContext } from './contracts.js';
 import { ProjectionCache } from './projection-cache.js';
+import { pathFor, type Filters } from './discovery-filters.js';
 
 const entryUrl = 'https://www.baozimh.com';
 export const categories = Object.freeze([
@@ -30,15 +31,18 @@ export const projectionCachePolicy = Object.freeze({
 
 type ChaptersProjection = Readonly<{ readonly items: readonly Readonly<Record<string, unknown>>[] }>;
 interface BookProjection { readonly detail: ContentDetail; readonly chapters: ChaptersProjection }
+interface DiscoveryProjection { readonly items: readonly ContentSummary[]; readonly next: string|null }
 export interface BaozimhSourceOptions { readonly now?: () => number }
 
 export class BaozimhSource {
   readonly #listCache: ProjectionCache<readonly ContentSummary[]>;
   readonly #bookCache: ProjectionCache<BookProjection>;
+  readonly #discoveryCache: ProjectionCache<DiscoveryProjection>;
 
   constructor(private readonly context: MgReadPluginContext, options: BaozimhSourceOptions = {}) {
     this.#listCache = new ProjectionCache(projectionCachePolicy.lists, options.now);
     this.#bookCache = new ProjectionCache(projectionCachePolicy.books, options.now);
+    this.#discoveryCache = new ProjectionCache(projectionCachePolicy.lists, options.now);
   }
 
   async search(query: string): Promise<readonly ContentSummary[]> {
@@ -50,7 +54,38 @@ export class BaozimhSource {
     const category = categories.find(([id]) => id === categoryId);
     if (category === undefined) throw new Error('Unknown category.');
     const url = new URL(category[2], entryUrl);
-    return this.#listCache.get(`discover:${categoryId}`, async () => { const response = await this.#html(url); return this.parseCards(response.body, response.url); });
+    return this.browse(Object.fromEntries(url.searchParams) as Filters);
+  }
+
+  async browse(filters: Filters): Promise<readonly ContentSummary[]> {
+    return (await this.browsePage(filters,null)).items;
+  }
+
+  async browsePage(filters: Filters, nextPath: string|null): Promise<DiscoveryProjection> {
+    const path = nextPath===null?pathFor(filters):ampPath(nextPath,filters);
+    return this.#discoveryCache.get(path,async()=>{
+      const response=await this.#html(new URL(path,entryUrl));
+      if(nextPath===null) {
+        const $=cheerio.load(response.body),src=$('amp-list[load-more-bookmark="next"]').attr('src');
+        // A WebView may already render page two inside amp-list. Keep it for the explicit continuation only.
+        $('amp-list').remove();
+        return {items:this.parseCards($.html(),response.url),next:src?ampPath(src,filters):null};
+      }
+      let value: unknown;
+      try { value=JSON.parse(response.body); } catch { value=JSON.parse(cheerio.load(response.body)('pre').first().text()); }
+      if(!value||typeof value!=='object'||!('items' in value)||!Array.isArray(value.items))throw new Error('Discovery page is invalid.');
+      const seen=new Set<string>(),items:ContentSummary[]=[];
+      for(const raw of value.items) {
+        if(!raw||typeof raw!=='object')continue;
+        const id=typeof raw.comic_id==='string'?raw.comic_id:'',title=typeof raw.name==='string'?clean(raw.name):null;
+        if(!/^[A-Za-z0-9_-]+$/u.test(id)||!title||seen.has(id))continue;seen.add(id);
+        const url=new URL('/comic/'+id,response.url),image=typeof raw.topic_img==='string'?new URL('/cover/'+raw.topic_img+'?w=285&h=375&q=100','https://static-tw.baozimh.com'):null;
+        items.push(summary({id:encodeBookId(url),url,title,author:typeof raw.author==='string'?clean(raw.author):null,coverUrl:image?this.#proxyImage(image,response.url):null,description:null,status:'unknown',latest:null,categories:Array.isArray(raw.type_names)?unique(raw.type_names.filter((v:unknown):v is string=>typeof v==='string')):[]}));
+      }
+      const next='next' in value&&typeof value.next==='string'&&value.next!==''?ampPath(value.next,filters):null;
+      if(next===path)throw new Error('Discovery pagination did not advance.');
+      return {items:Object.freeze(items),next};
+    });
   }
 
   parseCards(html: string, pageUrl: URL): readonly ContentSummary[] {
@@ -169,6 +204,11 @@ function summary(input: { readonly id: string; readonly url: URL; readonly title
       title: input.latest.title, url: input.latest.url?.toString() ?? null, updatedAt: null }), categories: Object.freeze(input.categories), tags: Object.freeze(input.categories), attributes: Object.freeze([]) });
 }
 function meta($: cheerio.CheerioAPI, name: string): string | null { return clean($(`meta[name="${name}"],meta[property="${name}"]`).first().attr('content')); }
+function ampPath(value:string,filters:Filters) {
+  const url=new URL(value,entryUrl),page=Number(url.searchParams.get('page'));
+  if(url.pathname!=='/api/bzmhq/amp_comic_list'||!Number.isSafeInteger(page)||page<2||page>10000||Object.entries(filters).some(([key,value])=>url.searchParams.get(key)!==value))throw new Error('Discovery next page is invalid.');
+  return url.pathname+url.search;
+}
 function encodeBookId(url: URL): string { return `comic:${token(url.toString())}`; }
 function decodeBookId(id: string): URL { const value = /^comic:([A-Za-z0-9_-]+)$/u.exec(id)?.[1]; if (value === undefined) throw new Error('Content ID is invalid.'); const url = new URL(Buffer.from(value, 'base64url').toString('utf8'), entryUrl); if (!isBookUrl(url)) throw new Error('Content ID is invalid.'); return url; }
 function encodeChapterId(bookId: string, url: URL): string { return `chapter:${token(bookId)}:${token(url.toString())}`; }

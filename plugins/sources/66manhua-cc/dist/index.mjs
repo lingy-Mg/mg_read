@@ -6746,6 +6746,7 @@ var discoveryItemLimits = Object.freeze({
 });
 async function activate(next2) {
   context = next2;
+  source = void 0;
   next2.log.info("source_activated");
 }
 async function search(request) {
@@ -6754,8 +6755,26 @@ async function search(request) {
   return Object.freeze({ items, nextCursor: null, totalCount: null });
 }
 async function discover(request) {
-  if (request.target !== null || request.collectionId !== null) throw new Error("Discovery target is invalid.");
-  rejectCursor(request.cursor);
+  if (request.target !== null) {
+    const match = /^section:([a-z0-9-]+)$/u.exec(request.target);
+    if (!match) throw new Error("Discovery target is invalid.");
+    const home2 = await requireSource().discover(), id = match[1], group = home2.rankings.find((value) => value.id === id);
+    const plain = id === "featured" ? home2.featured : id === "recent" ? home2.recent : id === "completed" ? home2.completed : null;
+    const ranked = id === "rising" ? home2.rising : id === "popular" ? home2.popular : group?.items;
+    if (!plain && !ranked) throw new Error("Discovery target is invalid.");
+    const all = plain ? plain.map((content) => ({ content, rank: null, metric: null, recommendation: null })) : ranked.map((value) => ({ ...value, recommendation: null }));
+    const prefix = request.target + ":", raw = request.cursor?.startsWith(prefix) ? request.cursor.slice(prefix.length) : "";
+    const offset = request.cursor === null ? 0 : /^\d+$/u.test(raw) ? Number(raw) : NaN;
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > 1e4) throw new Error("Discovery cursor is invalid.");
+    const collectionId = id + "-items";
+    if (request.collectionId !== null && request.collectionId !== collectionId) throw new Error("Discovery collection is invalid.");
+    const items = all.slice(offset, offset + Math.max(1, Math.min(50, request.pageSize))), next2 = offset + items.length;
+    const continuation = next2 < all.length ? { target: request.target, cursor: prefix + next2 } : null;
+    if (request.collectionId !== null) return { kind: "append", collectionId, items, continuation };
+    const title = group?.title ?? { featured: "精选推荐", recent: "最近更新", completed: "完结大作", rising: "上升最快", popular: "人气排行榜" }[id];
+    return { kind: "document", document: { components: [section(id, title, null, ranked ? "ranking" : "manga", ranked ? "compact" : "coverGrid", items, continuation)] } };
+  }
+  if (request.collectionId !== null || request.cursor !== null) throw new Error("Initial discovery request is invalid.");
   const home = await requireSource().discover();
   const components = [];
   addCollection(components, home.featured, request.pageSize, discoveryItemLimits.featured, "featured", "精选推荐", "官网精选内容", "recommendation", "carousel");
@@ -6792,15 +6811,15 @@ function rejectCursor(cursor) {
 function addCollection(components, contents2, pageSize, maximumItems, id, title, subtitle, icon, layout) {
   if (contents2.length === 0) return;
   const items = contents2.slice(0, Math.min(pageSize, maximumItems)).map((content) => Object.freeze({ content, rank: null, metric: null, recommendation: null }));
-  components.push(section(id, title, subtitle, icon, layout, items));
+  components.push(section(id, title, subtitle, icon, layout, items, contents2.length > items.length ? { target: "section:" + id, cursor: "section:" + id + ":" + items.length } : null));
 }
 function addRankedCollection(components, contents2, pageSize, maximumItems, id, title, subtitle, icon, layout) {
   if (contents2.length === 0) return;
   const items = contents2.slice(0, Math.min(pageSize, maximumItems)).map((item) => Object.freeze({ ...item, recommendation: null }));
-  components.push(section(id, title, subtitle, icon, layout, items));
+  components.push(section(id, title, subtitle, icon, layout, items, contents2.length > items.length ? { target: "section:" + id, cursor: "section:" + id + ":" + items.length } : null));
 }
-function section(id, title, subtitle, icon, layout, items) {
-  return Object.freeze({ type: "section", id: `${id}-section`, title, subtitle, icon, children: Object.freeze([{ type: "contentCollection", id: `${id}-items`, layout, items: Object.freeze(items), continuation: null }]) });
+function section(id, title, subtitle, icon, layout, items, continuation) {
+  return Object.freeze({ type: "section", id: `${id}-section`, title, subtitle, icon, children: Object.freeze([{ type: "contentCollection", id: `${id}-items`, layout, items: Object.freeze(items), continuation }]) });
 }
 export {
   activate,

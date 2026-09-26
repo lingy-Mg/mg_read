@@ -1,7 +1,60 @@
 import { createRequire as __mgreadCreateRequire } from 'node:module'; const require = __mgreadCreateRequire(import.meta.url);
 
+// src/discovery-page.ts
+function position(cursor, target) {
+  if (cursor === null) return { page: 1, offset: 0 };
+  const prefix = target + ":";
+  const value = cursor.startsWith(prefix) ? cursor.slice(prefix.length) : "";
+  const match = /^(\d+)(?::(\d+))?$/u.exec(value);
+  const page = Number(match?.[1]), offset = Number(match?.[2] ?? 0);
+  if (!match || !Number.isSafeInteger(page) || page < 1 || page > 1e4 || !Number.isSafeInteger(offset) || offset < 0 || offset > 1e4) throw new Error("Discovery cursor is invalid.");
+  return { page, offset };
+}
+function window(all, target, page, offset, size, hasNext) {
+  const values = all.slice(offset, offset + size), next = offset + values.length;
+  const cursor = next < all.length ? target + ":" + page + ":" + next : hasNext && all.length > 0 && page < 1e4 ? target + ":" + (page + 1) + ":0" : null;
+  return { values, continuation: cursor === null ? null : { target, cursor } };
+}
+
 // src/source.ts
 import "node:buffer";
+
+// src/discovery-home.ts
+var rails = [{ id: "today", title: "今日漫画" }, { id: "popular", title: "热门漫画" }, { id: "recommended", title: "推荐" }];
+function homeEntries(html) {
+  return html.split(/<div\s+class="slider-product"[^>]*>/u).slice(1).flatMap((block) => {
+    const title = decode(/<h2\b[^>]*>([\s\S]*?)<\/h2>/u.exec(block)?.[1] ?? "");
+    const rail = rails.find((value) => value.title === title);
+    if (!rail) return [];
+    const seen = /* @__PURE__ */ new Set();
+    const entries = [...block.matchAll(/<a\b([^>]*\bhref="\/webtoon\/(\d+)"[^>]*)>([\s\S]*?)<\/a>/gu)].flatMap((match) => {
+      const id = match[2];
+      const title2 = decode(/aria-label="([^"]+)"/u.exec(match[1])?.[1] ?? /<h4\b[^>]*>([\s\S]*?)<\/h4>/u.exec(match[3])?.[1] ?? "");
+      if (!title2 || seen.has(id)) return [];
+      seen.add(id);
+      const images = [...match[3].matchAll(/\bsrc="([^"]+)"/gu)].map((value) => decode(value[1]));
+      const thumbnail = images.flatMap((raw) => {
+        try {
+          const url = new URL(raw, "https://rehanman.com");
+          const value = url.pathname === "/_next/image" ? url.searchParams.get("url") : url.toString();
+          return value?.startsWith("https://img.rehanman.com/") ? [value] : [];
+        } catch {
+          return [];
+        }
+      })[0] ?? null;
+      return [{ title: title2, title_normalized: id, thumbnail }];
+    });
+    return entries.length ? [{ ...rail, entries }] : [];
+  });
+}
+function decode(value) {
+  return value.replace(/<[^>]+>/gu, "").replace(/&#(x[0-9a-f]+|\d+);/giu, (_, code) => {
+    const n = code[0]?.toLowerCase() === "x" ? parseInt(code.slice(1), 16) : Number(code);
+    return n <= 1114111 ? String.fromCodePoint(n) : "";
+  }).replaceAll("&quot;", '"').replaceAll("&#39;", "'").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&").trim();
+}
+
+// src/source.ts
 var siteOrigin = "https://rehanman.com";
 var imageOrigin = "https://img.rehanman.com";
 var graphQlUrl = "https://api.rehanman.com/manga-graphql";
@@ -13,6 +66,14 @@ var RehanmanSource = class {
   context;
   async latest(page) {
     return this.#entries({ type: "new", page, limit: 30 });
+  }
+  async home() {
+    const response = await this.context.http.fetch(siteOrigin + "/", { headers: { accept: "text/html" } });
+    if (!response.ok) throw new Error("Source homepage is unavailable.");
+    return homeEntries(await response.text()).map((rail) => ({ id: rail.id, title: rail.title, items: rail.entries.flatMap((raw) => {
+      const entry = parseEntry(raw);
+      return entry ? [this.#summary(entry)] : [];
+    }) }));
   }
   async search(query, page) {
     return this.#entries({ type: "search", key: query, page, limit: 30 });
@@ -164,17 +225,35 @@ async function activate(context) {
   context.log.info("source_activated");
 }
 async function discover(request) {
-  if (request.target !== null && request.target !== "latest") throw new Error("Target is invalid.");
-  const page = parseCursor(request.cursor);
-  const result = await requireSource().latest(page);
-  const items = result.items.slice(0, request.pageSize).map((content) => Object.freeze({ content, rank: null, metric: null, recommendation: null }));
-  const continuation = result.hasNext && items.length === request.pageSize ? Object.freeze({ target: "latest", cursor: `latest:${page + 1}` }) : null;
-  if (request.collectionId !== null) return Object.freeze({ kind: "append", collectionId: "latest", items: Object.freeze(items), continuation });
-  return Object.freeze({ kind: "document", document: { components: Object.freeze([
-    Object.freeze({ type: "section", id: "latest-section", title: "最新漫画", subtitle: null, children: Object.freeze([
-      Object.freeze({ type: "contentCollection", id: "latest", layout: "coverGrid", items: Object.freeze(items), continuation })
-    ]) })
-  ]) } });
+  const size = Math.max(1, Math.min(50, request.pageSize));
+  if (request.target === null) {
+    if (request.cursor !== null || request.collectionId !== null) throw new Error("Initial discovery request is invalid.");
+    const latest = await discover({ target: "latest", cursor: null, collectionId: null, pageSize: Math.min(5, size) });
+    const rails2 = await requireSource().home();
+    return { kind: "document", document: { components: [...latest.kind === "document" ? latest.document.components : [], ...rails2.map((rail) => railSection(rail.id, rail.title, rail.items, 0, Math.min(5, size)))] } };
+  }
+  if (request.target.startsWith("home:")) {
+    const id = request.target.slice(5);
+    if (!["today", "popular", "recommended"].includes(id)) throw new Error("Target is invalid.");
+    const { page: page2, offset: offset2 } = position(request.cursor, request.target);
+    if (page2 !== 1 || request.collectionId !== null && request.collectionId !== request.target) throw new Error("Discovery cursor or collection is invalid.");
+    const rail = (await requireSource().home()).find((value) => value.id === id);
+    if (!rail) throw new Error("Homepage section is unavailable.");
+    const section = railSection(id, rail.title, rail.items, offset2, size);
+    const collection = section.children[0];
+    return request.collectionId === null ? { kind: "document", document: { components: [section] } } : { kind: "append", collectionId: request.target, items: collection.items, continuation: collection.continuation };
+  }
+  if (request.target !== "latest") throw new Error("Target is invalid.");
+  if (request.collectionId !== null && request.collectionId !== "latest") throw new Error("Discovery collection is invalid.");
+  const { page, offset } = position(request.cursor, "latest"), result = await requireSource().latest(page);
+  const { values, continuation } = window(result.items, "latest", page, offset, size, result.hasNext);
+  const items = values.map((content) => ({ content, rank: null, metric: null, recommendation: null }));
+  if (request.collectionId !== null) return { kind: "append", collectionId: "latest", items, continuation };
+  return { kind: "document", document: { components: [{ type: "section", id: "latest-section", title: "新漫画", subtitle: null, icon: "newRelease", children: [{ type: "contentCollection", id: "latest", layout: "coverGrid", items, continuation }] }] } };
+}
+function railSection(id, title, all, offset, size) {
+  const target = "home:" + id, { values, continuation } = window(all, target, 1, offset, size, false);
+  return { type: "section", id: target + "-section", title, subtitle: null, children: [{ type: "contentCollection", id: target, layout: "coverGrid", items: values.map((content) => ({ content, rank: null, metric: null, recommendation: null })), continuation }] };
 }
 async function search(request) {
   const page = parseCursor(request.cursor, "search");

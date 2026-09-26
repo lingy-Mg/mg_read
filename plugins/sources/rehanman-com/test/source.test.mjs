@@ -18,7 +18,7 @@ test('fixture chain emits Runtime-proxied session manga manifests and restricts 
   await plugin.activate({ dataDir: 'unused', app: {}, plugin: {}, log: { debug() {}, info() {}, warn() {}, error() {} }, resource: { proxy(request) { proxied.push(request); return `http://127.0.0.1/resource/${proxied.length}`; } }, http: { async fetch(input) { const url = new URL(input); requests.push(url); if (url.origin === 'https://img.rehanman.com') return new Response(new Uint8Array([1, 2]), { headers: { 'content-type': 'image/jpeg' } }); return new Response(url.origin === 'https://api.rehanman.com' ? listingJson : bookHtml, { headers: { 'content-type': 'application/json' } }); } } });
   const discovery = await plugin.discover({ target: null, collectionId: null, cursor: null, pageSize: 1 });
   const item = discovery.document.components[0].children[0].items[0].content;
-  assert.deepEqual(discovery.document.components[0].children[0].continuation, { target: 'latest', cursor: 'latest:2' });
+  assert.deepEqual(discovery.document.components[0].children[0].continuation, { target: 'latest', cursor: 'latest:2:0' });
   assert.equal(item.id, 'webtoon:1234567'); assert.equal(item.contentKind, 'manga'); assert.equal(item.coverUrl, 'http://127.0.0.1/resource/1');
   const search = await plugin.search({ query: 'Fixture', cursor: null, pageSize: 20 }); assert.deepEqual(search.items.map((value) => value.id), ['webtoon:1234567']);
   const detail = await plugin.getDetail({ id: item.id }); assert.equal(detail.author, 'Fixture Author'); assert.equal(detail.coverUrl, 'http://127.0.0.1/resource/3');
@@ -33,3 +33,13 @@ test('refuses premium chapters before emitting image resources', async () => {
 });
 
 function page(pageProps) { return `<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ props: { pageProps } })}</script></html>`; }
+
+test('public homepage rails expose every card and keep continuations scoped', async () => {
+ const rails=['今日漫画','热门漫画','推荐'].map((title,r)=>'<div class="slider-product"><h2>'+title+'</h2>'+Array.from({length:9},(_,i)=>`<a class="product-link" aria-label="Card ${r}-${i}" href="/webtoon/${2000000+r*10+i}"><img src="/_next/image?url=https%3A%2F%2Fimg.rehanman.com%2Fuploads%2Fdata%2Fchina18sky%2F1234567%2Fthumbnail.jpg&amp;w=640"></a>`).join('')+'</div>').join('');
+ await plugin.activate({log:{info(){}},resource:{proxy:r=>r.url},http:{fetch:async input=>new Response(String(input).includes('manga-graphql')?listingJson:rails)}});
+ const root=await plugin.discover({target:null,cursor:null,collectionId:null,pageSize:3});
+ assert.deepEqual(root.document.components.map(x=>x.title),['新漫画','今日漫画','热门漫画','推荐']);
+ const list=root.document.components[1].children[0];const next=await plugin.discover({...list.continuation,collectionId:list.id,pageSize:20});
+ assert.equal(next.items.length,6);assert.equal(new Set([...list.items,...next.items].map(x=>x.content.id)).size,9);assert.equal(next.continuation,null);
+ await assert.rejects(plugin.discover({...list.continuation,collectionId:'latest',pageSize:3}));
+});

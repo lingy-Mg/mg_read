@@ -2,12 +2,294 @@ import { createRequire as __mgreadCreateRequire } from 'node:module'; const requ
 
 // src/index.mts
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+
+// src/discovery-channels.ts
+var channels = [
+  {
+    "id": "novel",
+    "title": "小说",
+    "category": "2",
+    "classId": ""
+  },
+  {
+    "id": "storytelling",
+    "title": "评书",
+    "category": "1",
+    "classId": ""
+  },
+  {
+    "id": "fantasy",
+    "title": "玄幻奇幻",
+    "category": "2",
+    "classId": "46"
+  },
+  {
+    "id": "wuxia",
+    "title": "武侠小说",
+    "category": "2",
+    "classId": "11"
+  },
+  {
+    "id": "romance",
+    "title": "言情通俗",
+    "category": "2",
+    "classId": "19"
+  },
+  {
+    "id": "type-21",
+    "title": "相声小品",
+    "category": "2",
+    "classId": "21"
+  },
+  {
+    "id": "thriller",
+    "title": "恐怖惊悚",
+    "category": "2",
+    "classId": "14"
+  },
+  {
+    "id": "type-17",
+    "title": "官场商战",
+    "category": "2",
+    "classId": "17"
+  },
+  {
+    "id": "history",
+    "title": "历史军事",
+    "category": "2",
+    "classId": "15"
+  },
+  {
+    "id": "type-9",
+    "title": "百家讲坛",
+    "category": "2",
+    "classId": "9"
+  },
+  {
+    "id": "type-16",
+    "title": "刑侦反腐",
+    "category": "2",
+    "classId": "16"
+  },
+  {
+    "id": "type-10",
+    "title": "有声文学",
+    "category": "2",
+    "classId": "10"
+  },
+  {
+    "id": "type-18",
+    "title": "人物纪实",
+    "category": "2",
+    "classId": "18"
+  },
+  {
+    "id": "radio-drama",
+    "title": "广播剧",
+    "category": "2",
+    "classId": "36"
+  },
+  {
+    "id": "type-22",
+    "title": "英文读物",
+    "category": "2",
+    "classId": "22"
+  },
+  {
+    "id": "type-23",
+    "title": "轻音清心",
+    "category": "2",
+    "classId": "23"
+  },
+  {
+    "id": "type-31",
+    "title": "二人转",
+    "category": "2",
+    "classId": "31"
+  },
+  {
+    "id": "type-33",
+    "title": "健康养生",
+    "category": "2",
+    "classId": "33"
+  },
+  {
+    "id": "type-34",
+    "title": "综艺娱乐",
+    "category": "2",
+    "classId": "34"
+  },
+  {
+    "id": "type-40",
+    "title": "头条",
+    "category": "2",
+    "classId": "40"
+  },
+  {
+    "id": "type-38",
+    "title": "戏曲",
+    "category": "2",
+    "classId": "38"
+  },
+  {
+    "id": "type-41",
+    "title": "脱口秀",
+    "category": "2",
+    "classId": "41"
+  },
+  {
+    "id": "type-42",
+    "title": "商业财经",
+    "category": "2",
+    "classId": "42"
+  },
+  {
+    "id": "type-43",
+    "title": "亲子教育",
+    "category": "2",
+    "classId": "43"
+  },
+  {
+    "id": "type-44",
+    "title": "教育培训",
+    "category": "2",
+    "classId": "44"
+  },
+  {
+    "id": "type-45",
+    "title": "时尚生活",
+    "category": "2",
+    "classId": "45"
+  },
+  {
+    "id": "children",
+    "title": "童话寓言",
+    "category": "2",
+    "classId": "20"
+  },
+  {
+    "id": "shan-tianfang",
+    "title": "单田芳",
+    "category": "1",
+    "classId": "1"
+  },
+  {
+    "id": "liu-lanfang",
+    "title": "刘兰芳",
+    "category": "1",
+    "classId": "2"
+  },
+  {
+    "id": "tian-lianyuan",
+    "title": "田连元",
+    "category": "1",
+    "classId": "3"
+  },
+  {
+    "id": "teller-4",
+    "title": "袁阔成",
+    "category": "1",
+    "classId": "4"
+  },
+  {
+    "id": "teller-5",
+    "title": "连丽如",
+    "category": "1",
+    "classId": "5"
+  },
+  {
+    "id": "teller-8",
+    "title": "孙一",
+    "category": "1",
+    "classId": "8"
+  },
+  {
+    "id": "teller-30",
+    "title": "王子封臣",
+    "category": "1",
+    "classId": "30"
+  },
+  {
+    "id": "teller-25",
+    "title": "马长辉",
+    "category": "1",
+    "classId": "25"
+  },
+  {
+    "id": "teller-26",
+    "title": "昊儒书场",
+    "category": "1",
+    "classId": "26"
+  },
+  {
+    "id": "teller-27",
+    "title": "王军",
+    "category": "1",
+    "classId": "27"
+  },
+  {
+    "id": "teller-28",
+    "title": "王玥波",
+    "category": "1",
+    "classId": "28"
+  },
+  {
+    "id": "teller-29",
+    "title": "石连君",
+    "category": "1",
+    "classId": "29"
+  },
+  {
+    "id": "teller-12",
+    "title": "粤语评书",
+    "category": "1",
+    "classId": "12"
+  },
+  {
+    "id": "teller-35",
+    "title": "关永超",
+    "category": "1",
+    "classId": "35"
+  },
+  {
+    "id": "teller-6",
+    "title": "张少佐",
+    "category": "1",
+    "classId": "6"
+  },
+  {
+    "id": "teller-7",
+    "title": "田战义",
+    "category": "1",
+    "classId": "7"
+  },
+  {
+    "id": "teller-13",
+    "title": "其他评书",
+    "category": "1",
+    "classId": "13"
+  }
+];
+var sorts = [["comprehensive", "综合排序"], ["popular", "播放最多"], ["updated", "最近更新"], ["new", "最新发布"]];
+var statuses = [["all", "全部状态"], ["0", "已完结"], ["1", "连载中"]];
+
+// src/discovery-page.ts
+function position(cursor, target) {
+  if (cursor === null) return { page: 1, offset: 0 };
+  const prefix = target + ":";
+  const value = cursor.startsWith(prefix) ? cursor.slice(prefix.length) : "";
+  const match = /^(\d+)(?::(\d+))?$/u.exec(value);
+  const page = Number(match?.[1]), offset = Number(match?.[2] ?? 0);
+  if (!match || !Number.isSafeInteger(page) || page < 1 || page > 1e4 || !Number.isSafeInteger(offset) || offset < 0 || offset > 1e4) throw new Error("Discovery cursor is invalid.");
+  return { page, offset };
+}
+
+// src/index.mts
 var catalogRoot = "https://json.tingyou8.vip/azybk/json_v1/";
 var apiRoot = "https://tingyou.fm/api/";
 var key = Buffer.from("ea9d9d4f9a983fe6f6382f29c7b46b8d6dc47abc6da36662e6ddff8c78902f65", "hex");
 var appAgent = "zybk/1.0.6";
 var webAgent = "Mozilla/5.0 (Linux; Android 13; Pixel 7 Build/TQ3A.230805.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/116.0.0.0 Mobile Safari/537.36";
-var channels = Object.freeze([{ id: "novel", title: "小说", category: "2", classId: "" }, { id: "storytelling", title: "评书", category: "1", classId: "" }, { id: "fantasy", title: "玄幻奇幻", category: "2", classId: "46" }, { id: "wuxia", title: "武侠小说", category: "2", classId: "11" }, { id: "romance", title: "言情通俗", category: "2", classId: "19" }, { id: "thriller", title: "恐怖惊悚", category: "2", classId: "14" }, { id: "history", title: "历史军事", category: "2", classId: "15" }, { id: "radio-drama", title: "广播剧", category: "2", classId: "36" }, { id: "children", title: "童话寓言", category: "2", classId: "20" }, { id: "shan-tianfang", title: "单田芳", category: "1", classId: "1" }, { id: "liu-lanfang", title: "刘兰芳", category: "1", classId: "2" }, { id: "tian-lianyuan", title: "田连元", category: "1", classId: "3" }]);
 var context;
 async function activate(next) {
   context = next;
@@ -25,16 +307,44 @@ async function searchSuggestions(_request) {
 async function discover(request) {
   if (request.target === null) {
     if (request.cursor !== null || request.collectionId !== null) throw new Error("Initial discovery request is invalid.");
-    return frozen({ kind: "document", document: { components: [{ type: "section", id: "yueting-channels", title: "悦听听书", subtitle: "按类型浏览有声专辑", icon: "audio", children: [{ type: "categoryCollection", id: "yueting-channel-list", layout: "chips", categories: channels.map((channel2) => ({ id: channel2.id, title: channel2.title, target: `channel:${channel2.id}`, count: null, url: null, icon: "audio" })) }] }] } });
+    const components = [];
+    for (const id of ["novel", "storytelling"]) {
+      const result = await discover({ target: "channel:" + id, cursor: null, collectionId: null, pageSize: Math.min(6, clamp(request.pageSize)) });
+      if (result.kind === "document") components.push(...result.document.components);
+    }
+    for (const [category, title] of [["2", "全部听书分类"], ["1", "评书与主播"]]) {
+      components.push({ type: "section", id: "yueting-channels-" + category, title, subtitle: null, icon: "explore", children: [{ type: "categoryCollection", id: "yueting-channel-list-" + category, layout: "chips", categories: channels.filter((channel2) => channel2.category === category).map((channel2) => ({ id: channel2.id, title: channel2.title, target: "channel:" + channel2.id, count: null, url: null, icon: "audio" })) }] });
+    }
+    return { kind: "document", document: { components } };
   }
-  const channel = channels.find((value) => request.target === `channel:${value.id}`);
-  if (channel === void 0) throw new Error("Discovery target is invalid.");
-  const page = cursorPage(request.cursor, `channel:${channel.id}`), size = clamp(request.pageSize), path = channel.classId === "" ? `categories/${channel.category}/comprehensive/p${page}` : `types/${channel.classId}/comprehensive/p${page}`, data = decryptObject(await getPayload(path)), values = records(first(data.data, data.results, data)), contents = summaries(values).slice(0, size), collectionId = `yueting:${channel.id}`, items = contents.map((content) => frozen({ content, rank: null, metric: null, recommendation: null })), continuation = values.length >= size ? frozen({ target: request.target, cursor: `channel:${channel.id}:${page + 1}` }) : null;
-  if (request.collectionId !== null) {
-    if (request.collectionId !== collectionId) throw new Error("Discovery collection is invalid.");
-    return frozen({ kind: "append", collectionId, items, continuation });
+  const match = /^channel:([a-z0-9-]+)(?::sort:([a-z]+):status:(all|0|1))?$/u.exec(request.target);
+  const channel = channels.find((value) => value.id === match?.[1]), sort = match?.[2] ?? "comprehensive", status = match?.[3] ?? "all";
+  if (!channel || !sorts.some(([id]) => id === sort)) throw new Error("Discovery target is invalid.");
+  const suffix = sort === "comprehensive" && status === "all" ? "" : ":" + sort + ":" + status;
+  const collectionId = "yueting:" + channel.id + suffix;
+  if (request.collectionId !== null && request.collectionId !== collectionId) throw new Error("Discovery collection is invalid.");
+  let { page, offset } = position(request.cursor, request.target);
+  const values = [];
+  let continuation = null;
+  for (let scan = 0; scan < 5; scan++) {
+    const prefix = channel.classId === "" ? "categories/" + channel.category : "types/" + channel.classId;
+    const data = decryptObject(await getPayload(prefix + "/" + sort + "/p" + page));
+    const raw = records(first(data.data, data.results, data));
+    while (offset < raw.length && values.length < clamp(request.pageSize)) {
+      const value = raw[offset++];
+      if (status !== "all" && String(value.status) !== status) continue;
+      values.push(...summaries([value]));
+    }
+    const pages = nonNegative(data.pages), more = raw.length > 0 && (pages === null || page < pages);
+    continuation = offset < raw.length ? { target: request.target, cursor: request.target + ":" + page + ":" + offset } : more && page < 1e4 ? { target: request.target, cursor: request.target + ":" + (page + 1) + ":0" } : null;
+    if (values.length >= clamp(request.pageSize) || !continuation) break;
+    page++;
+    offset = 0;
   }
-  return frozen({ kind: "document", document: { components: [{ type: "section", id: `${collectionId}:section`, title: channel.title, subtitle: null, icon: "audio", children: [{ type: "contentCollection", id: collectionId, layout: "coverGrid", items, continuation }] }] } });
+  const items = values.map((content) => ({ content, rank: null, metric: null, recommendation: null }));
+  const filters = [{ type: "categoryCollection", id: collectionId + ":sorts", layout: "chips", categories: sorts.map(([id, title]) => ({ id, title, target: "channel:" + channel.id + ":sort:" + id + ":status:" + status, count: null, url: null, icon: "audio" })) }, { type: "categoryCollection", id: collectionId + ":statuses", layout: "chips", categories: statuses.map(([id, title]) => ({ id, title, target: "channel:" + channel.id + ":sort:" + sort + ":status:" + id, count: null, url: null, icon: id === "0" ? "completed" : "audio" })) }];
+  if (request.collectionId !== null) return { kind: "append", collectionId, items, continuation };
+  return { kind: "document", document: { components: [{ type: "section", id: collectionId + ":section", title: channel.title, subtitle: null, icon: "audio", children: [{ type: "contentCollection", id: collectionId, layout: "coverGrid", items, continuation }, ...filters] }] } };
 }
 async function getDetail(request) {
   const id = contentId(request.id), data = decryptObject(await getPayload(`album_info/${encodeURIComponent(id)}`)), item = summary(data, id);
@@ -104,7 +414,7 @@ function hchacha20(sourceKey, nonce) {
     quarter(state, 3, 4, 9, 14);
   }
   const output = Buffer.alloc(32), positions = [0, 1, 2, 3, 12, 13, 14, 15];
-  positions.forEach((position, index) => output.writeUInt32LE(state[position] ?? 0, index * 4));
+  positions.forEach((position2, index) => output.writeUInt32LE(state[position2] ?? 0, index * 4));
   return output;
 }
 function quarter(state, a, b, c, d) {
@@ -139,7 +449,7 @@ function summary(value, id) {
   const encoded = sourceId(id);
   if (encoded === null) throw new Error("Album ID is invalid.");
   const cover = text(first(value.cover_url, value.cover));
-  return frozen({ id: `album:${encoded}`, title: text(value.title) || id, contentKind: "audio", coverOrientation: "portrait", author: nullable(first(value.teller, value.author)), url: `${catalogRoot}album_info/${encodeURIComponent(id)}`, coverUrl: proxyImage(cover), description: nullable(first(value.intro, value.description, value.title)), language: "zh-CN", status: "unknown", access: "unknown", wordCount: null, chapterCount: nonNegative(first(value.chapter_count, value.chapterCount)), publishedAt: null, updatedAt: null, latestChapter: nullable(value.latest_chapter_title) === null ? null : { id: `album:${id}:latest`, title: text(value.latest_chapter_title), url: null, updatedAt: null }, categories: stringList(first(value.cat, value.category)), tags: [], attributes: [] });
+  return frozen({ id: `album:${encoded}`, title: text(value.title) || id, contentKind: "audio", coverOrientation: "portrait", author: nullable(first(value.teller, value.author)), url: `${catalogRoot}album_info/${encodeURIComponent(id)}`, coverUrl: proxyImage(cover), description: nullable(first(value.intro, value.description)), language: "zh-CN", status: value.status === 0 ? "completed" : value.status === 1 ? "ongoing" : "unknown", access: "unknown", wordCount: null, chapterCount: nonNegative(first(value.chapter_count, value.chapterCount, value.count)), publishedAt: null, updatedAt: null, latestChapter: nullable(value.latest_chapter_title) === null ? null : { id: `album:${id}:latest`, title: text(value.latest_chapter_title), url: null, updatedAt: null }, categories: stringList(first(value.cat, value.category)), tags: [], attributes: [] });
 }
 function chapter(albumId, value, index) {
   const native = sourceId(first(value.index, value.chapter_idx, value.id));

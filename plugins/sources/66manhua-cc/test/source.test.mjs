@@ -27,6 +27,12 @@ test('synthetic fixture covers public discovery, search, detail, catalog, image 
   assert.equal(sections[1].children[0].items[0].content.latestChapter.title, '第 8 话');
   assert.deepEqual(sections.slice(-3).map((section) => section.children[0].items[0].metric), [{ label: '收藏', value: '110' }, { label: '打赏', value: '2' }, { label: '月票', value: '9' }]);
   assert.equal(new Set(sections.flatMap((section) => section.children[0].items.map((item) => item.content.coverUrl).filter(Boolean))).size, 7);
+  for (const section of sections) {
+    const list = section.children[0]; if (!list.continuation) continue;
+    const tail = await plugin.discover({...list.continuation,collectionId:list.id,pageSize:50});
+    assert.ok(tail.items.length>0);assert.equal(tail.continuation,null);
+    assert.ok(tail.items.every(x=>!list.items.some(y=>y.content.id===x.content.id)));
+  }
   const detailResult = await plugin.getDetail({ id: search.items[0].id }); const chapters = await plugin.getChapters({ id: detailResult.id });
   assert.equal(detailResult.title, 'Sample'); assert.equal(detailResult.author, 'Fixture Author'); assert.equal(detailResult.description, 'Complete fixture summary.'); assert.deepEqual(detailResult.categories, ['都市']);
   assert.equal(chapters.items.length, 2); assert.equal(chapters.items[1].isLocked, true);

@@ -6,7 +6,10 @@
  * IO：HTML 和图片分片均走 ctx.http/resource.proxy；Runtime 数据面负责 BMI 图片解码。
  * 稳定标识：作品与章节使用站内路径的 base64url 编码，不包含域名、查询版本或会话状态。
  */
+import { position, window as pageWindow, type DiscoveryResult } from './discovery-page.js';
+
 import { load } from 'cheerio';
+import {defaultFilters, filterTarget, readFilters, filterSections, hasNextPage} from './discovery-navigation.js';
 import type { MgReadPluginContext } from '@mgread/source-api';
 
 type Context = MgReadPluginContext;
@@ -37,42 +40,34 @@ export async function searchSuggestions(_request: { cursor: string | null; pageS
   return frozen({ items: [], nextCursor: null });
 }
 
-export async function discover(request: {
-  target: string | null; cursor: string | null; collectionId: string | null; pageSize: number;
-}) {
-  if (request.target === null) return frozen({
-    kind: 'document' as const,
-    document: { components: [{
-      type: 'section', id: 'comicbox-channels', title: '污污漫画', subtitle: 'ComicBox 分类', icon: 'manga',
-      children: [{ type: 'categoryCollection', id: 'comicbox-channel-list', layout: 'chips', categories: channels.map((title, index) => ({
-        id: String(index), title, target: `channel:${index}`, count: null, url: null, icon: 'manga',
-      })) }],
-    }] },
-  });
-
-  const index = Number(request.target.replace(/^channel:/u, ''));
-  const title = channels[index];
-  if (!Number.isSafeInteger(index) || title === undefined) throw new Error('Discovery target is invalid.');
-  const page = cursorPage(request.cursor, request.target);
-  const size = clamp(request.pageSize);
-  const url = title === '热门'
-    ? `${base}/index`
-    : `${base}/booklist?tag=${encodeURIComponent(title)}&area=-1&end=-1&page=${page}`;
-  const values = parseCards(await text(url), title === '热门' ? '.sp-bcarousel-item, .sp-booklist-card' : '.sp-booklist-card');
-  const contents = values.map(summary).slice(0, size);
-  const collectionId = `comicbox:${index}`;
-  const items = contents.map((content) => frozen({ content, rank: null, metric: null, recommendation: null }));
-  const continuation = values.length >= size ? frozen({ target: request.target, cursor: `channel:${index}:${page + 1}` }) : null;
-  if (request.collectionId !== null) {
-    if (request.collectionId !== collectionId) throw new Error('Discovery collection is invalid.');
-    return frozen({ kind: 'append' as const, collectionId, items, continuation });
-  }
-  return frozen({ kind: 'document' as const, document: { components: [{
-    type: 'section', id: `${collectionId}:section`, title, subtitle: null, icon: 'manga',
-    children: [{ type: 'contentCollection', id: collectionId, layout: 'coverGrid', items, continuation }],
-  }] } });
+export async function discover(request:{target:string|null;cursor:string|null;collectionId:string|null;pageSize:number}):Promise<DiscoveryResult>{
+ if(request.target===null){
+  if(request.cursor!==null||request.collectionId!==null)throw new Error('Initial discovery request is invalid.');
+  const home=await discover({target:'channel:0',cursor:null,collectionId:null,pageSize:Math.min(10,clamp(request.pageSize))});
+  const components:object[]=home.kind==='document'?[...home.document.components]:[];
+  components.push({type:'section',id:'comicbox-channels',title:'分类与题材',subtitle:null,icon:'explore',children:[{type:'categoryCollection',id:'comicbox-channel-list',layout:'chips',categories:channels.map((title,index)=>({id:String(index),title,target:'channel:'+index,count:null,url:null,icon:'manga'}))}]});
+  const catalog=await text(base+'/booklist');
+  components.push(...filterSections(catalog,defaultFilters));
+  return {kind:'document',document:{components}};
+ }
+ const isBrowse=request.target.startsWith('browse:');
+ const match=/^channel:(\d+)$/u.exec(request.target),index=Number(match?.[1]),title=isBrowse?'漫画分类':channels[index];
+ if(!isBrowse&&(!match||!title))throw new Error('Discovery target is invalid.');
+ const legacyTags:Record<number,string>={1:'-1',3:'東方',5:'漢化',6:'-1',7:'-1',8:'單行本',9:'長篇'};
+ const filters=isBrowse?readFilters(request.target):{tag:legacyTags[index]??title!,area:index===6?'1':index===7?'2':'-1',end:'-1'};
+ const home=!isBrowse&&index===0;
+ const collectionId=isBrowse?'comicbox:'+request.target.slice(7):'comicbox:'+index;
+ if(request.collectionId!==null&&request.collectionId!==collectionId)throw new Error('Discovery collection is invalid.');
+ const {page,offset}=position(request.cursor,request.target);
+ if(home&&page!==1)throw new Error('Homepage has no upstream pagination.');
+ const params=new URLSearchParams({...filters,page:String(page)});
+ const html=await text(home?base+'/index':base+'/booklist?'+params);
+ const all=parseCards(html,home?'.sp-bcarousel-item, .sp-booklist-card':'.sp-booklist-card').map(summary);
+ const {values,continuation}=pageWindow(all,request.target,page,offset,clamp(request.pageSize),!home&&hasNextPage(html,page));
+ const items=values.map(content=>({content,rank:null,metric:null,recommendation:null}));
+ if(request.collectionId!==null)return {kind:'append',collectionId,items,continuation};
+ return {kind:'document',document:{components:[{type:'section',id:collectionId+':section',title,subtitle:null,icon:'manga',children:[{type:'contentCollection',id:collectionId,layout:'coverGrid',items,continuation}]},...(!home?filterSections(html,filters):[])]}};
 }
-
 export async function getDetail(request: { id: string }) {
   const path = contentPath(request.id);
   const $ = load(await text(new URL(path, base).toString()));

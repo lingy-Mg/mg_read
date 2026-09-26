@@ -219,6 +219,7 @@ var coverHeaders = {
 var audioHeaders = { Accept: "*/*", "User-Agent": "okhttp/4.9.3" };
 var playKey = "J9gSpfUlzYxE8Hn5IXiGaD2jVMrwAm0K";
 var categories = Object.freeze([["popular", "热门", null], ["6", "玄幻", "6"], ["7", "奇幻", "7"], ["8", "武侠", "8"], ["13", "历史", "13"], ["14", "恐怖", "14"], ["31", "评书", "31"], ["50", "儿童", "50"]]);
+var homeSections = [["best", "热门听书", "popular"], ["xuanhuan", "玄幻", "6"], ["qihuan", "奇幻", "7"], ["wuxia", "武侠", "8"], ["lishi", "历史", "13"], ["kongbu", "恐怖", "14"], ["pingshu", "评书", "31"], ["ertong", "儿童", "50"]];
 var playbackCacheTtlMs = 10 * 60 * 1e3;
 var playbackExpirySafetyMs = 5 * 1e3;
 var playbackProbeTimeoutMs = 1500;
@@ -252,6 +253,17 @@ async function discover(request) {
   if (request.target === null) {
     if (request.cursor !== null || request.collectionId !== null) throw new Error("Initial discovery request is invalid.");
     return rootDocument(request.pageSize);
+  }
+  if (request.target === "category:popular" || request.target.startsWith("home:")) {
+    const entry = homeSections.find(([key]) => request.target === "home:" + key || key === "best" && request.target === "category:popular");
+    if (entry === void 0) throw new Error("Discovery target is invalid.");
+    const prefix = request.target + ":offset:";
+    const raw = request.cursor?.startsWith(prefix) ? request.cursor.slice(prefix.length) : "";
+    const offset = request.cursor === null ? 0 : /^\d+$/u.test(raw) ? Number(raw) : NaN;
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > 1e4) throw new Error("Discovery cursor is invalid.");
+    const data2 = await fetchJson(api + "appHome");
+    const values2 = entry[0] === "best" ? popular(data2) : records(object(object(data2.data)[entry[0]]).list);
+    return homePage(entry, request.target, values2, offset, clamp(request.pageSize), request.collectionId);
   }
   const category = categories.find(([id2]) => request.target === `category:${id2}`);
   if (category === void 0) throw new Error("Discovery target is invalid.");
@@ -435,11 +447,24 @@ async function chapterPage(id, page) {
 }
 async function rootDocument(pageSize) {
   const data = await fetchJson(`${api}appHome`);
-  const items = popular(data).slice(0, Math.min(clamp(pageSize), 10)).map((value) => frozen({ content: summary(value), rank: null, metric: null, recommendation: null }));
   const components = [];
-  if (items.length > 0) components.push(section("audio-popular", "热门听书", items, null, "shelf", "audio", "主播与连载节目精选"));
+  for (const entry of homeSections) {
+    const values = entry[0] === "best" ? popular(data) : records(object(object(data.data)[entry[0]]).list);
+    if (values.length === 0) continue;
+    const result = homePage(entry, "home:" + entry[0], values, 0, Math.min(clamp(pageSize), 4), null);
+    if (result.kind === "document") components.push(...result.document.components);
+  }
   components.push({ type: "section", id: "audio-categories", title: "听书分类", subtitle: "按题材选择想听的内容", icon: "explore", children: [{ type: "categoryCollection", id: "audio-categories-list", layout: "chips", categories: categories.map(([id, title]) => ({ id, title, target: `category:${id}`, count: null, url: null, icon: "audio" })) }] });
   return frozen({ kind: "document", document: { components } });
+}
+function homePage(entry, target, values, offset, size, collectionId) {
+  const id = "audio:" + entry[2];
+  if (collectionId !== null && collectionId !== id) throw new Error("Discovery collection is invalid.");
+  const items = values.slice(offset, offset + size).map((value) => ({ content: summary(value), rank: null, metric: null, recommendation: null }));
+  const next = offset + items.length;
+  const continuation = next < values.length ? { target, cursor: target + ":offset:" + next } : null;
+  if (collectionId !== null) return { kind: "append", collectionId, items, continuation };
+  return { kind: "document", document: { components: [section(id, entry[1], items, continuation, "shelf")] } };
 }
 function section(id, title, items, continuation, layout = "coverGrid", icon = "audio", subtitle = null) {
   return { type: "section", id: `${id}:section`, title, subtitle, icon, children: [{ type: "contentCollection", id, layout, items, continuation }] };
@@ -449,7 +474,7 @@ function summary(value, idOverride) {
   if (id === "") throw new Error("Source item has no ID.");
   const count = number(value.count);
   const cover = imageUrl(nullable(value.bookImage) ?? nullable(value.image));
-  return frozen({ id: `audio:${id}`, title: text(value.bookTitle) || text(value.title) || "未命名音频", contentKind: "audio", author: nullable(value.bookAnchor) ?? nullable(value.anchor), url: `${base}/book/${id}`, coverUrl: cover === null ? null : requireContext().resource.proxy({ kind: "image", url: cover, headers: coverHeaders }), description: nullable(value.bookDesc) ?? nullable(value.desc), language: "zh-CN", status: status(value.bookUpdateStatus), access: "mixed", wordCount: null, chapterCount: count || null, publishedAt: null, updatedAt: null, latestChapter: count > 0 ? { id: null, title: `共${count}集`, url: null, updatedAt: null } : null, categories: nullable(value.categoryName) === null ? [] : [nullable(value.categoryName)], tags: [], attributes: [] });
+  return frozen({ id: `audio:${id}`, title: text(value.bookTitle) || text(value.title) || "未命名音频", contentKind: "audio", coverOrientation: "portrait", author: nullable(value.bookAnchor) ?? nullable(value.anchor), url: `${base}/book/${id}`, coverUrl: cover === null ? null : requireContext().resource.proxy({ kind: "image", url: cover, headers: coverHeaders }), description: nullable(value.bookDesc) ?? nullable(value.desc), language: "zh-CN", status: status(value.bookUpdateStatus), access: "mixed", wordCount: null, chapterCount: count || null, publishedAt: null, updatedAt: null, latestChapter: count > 0 ? { id: null, title: `共${count}集`, url: null, updatedAt: null } : null, categories: nullable(value.categoryName) === null ? [] : [nullable(value.categoryName)], tags: [], attributes: [] });
 }
 function detail(item) {
   return frozen({ ...item, aliases: [], catalogUrl: item.url });

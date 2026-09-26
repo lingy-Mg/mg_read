@@ -47,6 +47,17 @@ var require_boolbase = __commonJS({
   }
 });
 
+// src/discovery-page.ts
+function position(cursor, target) {
+  if (cursor === null) return { page: 1, offset: 0 };
+  const prefix = target + ":";
+  const value = cursor.startsWith(prefix) ? cursor.slice(prefix.length) : "";
+  const match = /^(\d+)(?::(\d+))?$/u.exec(value);
+  const page = Number(match?.[1]), offset = Number(match?.[2] ?? 0);
+  if (!match || !Number.isSafeInteger(page) || page < 1 || page > 1e4 || !Number.isSafeInteger(offset) || offset < 0 || offset > 1e4) throw new Error("Discovery cursor is invalid.");
+  return { page, offset };
+}
+
 // src/source.ts
 import { Buffer as Buffer2 } from "node:buffer";
 import { createHash } from "node:crypto";
@@ -6556,6 +6567,35 @@ var ProjectionCache = class {
   }
 };
 
+// src/discovery-filters.ts
+var dimensions = [
+  { key: "type", title: "题材", values: [["all", "全部"], ["lianai", "戀愛"], ["chunai", "純愛"], ["gufeng", "古風"], ["yineng", "異能"], ["xuanyi", "懸疑"], ["juqing", "劇情"], ["kehuan", "科幻"], ["qihuan", "奇幻"], ["xuanhuan", "玄幻"], ["chuanyue", "穿越"], ["mouxian", "冒險"], ["tuili", "推理"], ["wuxia", "武俠"], ["gedou", "格鬥"], ["zhanzheng", "戰爭"], ["rexie", "熱血"], ["gaoxiao", "搞笑"], ["danuzhu", "大女主"], ["dushi", "都市"], ["zongcai", "總裁"], ["hougong", "後宮"], ["richang", "日常"], ["hanman", "韓漫"], ["shaonian", "少年"], ["qita", "其他"]] },
+  { key: "region", title: "地区", values: [["all", "全部"], ["cn", "國漫"], ["jp", "日本"], ["kr", "韓國"], ["en", "歐美"]] },
+  { key: "state", title: "状态", values: [["all", "全部"], ["serial", "連載"], ["pub", "完結"]] },
+  { key: "filter", title: "首字母", values: [["*", "全部"], ["ABCD", "ABCD"], ["EFGH", "EFGH"], ["IJKL", "IJKL"], ["MNOP", "MNOP"], ["QRST", "QRST"], ["UVW", "UVW"], ["XYZ", "XYZ"], ["0-9", "0-9"]] }
+];
+var defaults = { type: "all", region: "all", state: "all", filter: "*" };
+function pathFor(value) {
+  return "/classify?" + new URLSearchParams(value).toString();
+}
+function targetFor(value) {
+  return "filter:" + Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+function readFilters(target) {
+  if (!/^filter:[A-Za-z0-9_-]{1,400}$/u.test(target)) throw new Error("Discovery target is invalid.");
+  let value;
+  try {
+    value = JSON.parse(Buffer.from(target.slice(7), "base64url").toString());
+  } catch {
+    throw new Error("Discovery target is invalid.");
+  }
+  if (!value || dimensions.some((group) => !group.values.some(([key]) => key === value[group.key]))) throw new Error("Discovery target is invalid.");
+  return { type: value.type, region: value.region, state: value.state, filter: value.filter };
+}
+function filterSections(current) {
+  return dimensions.map((group) => ({ type: "section", id: "filter-" + group.key, title: group.title, subtitle: null, children: [{ type: "categoryCollection", id: "filter-list-" + group.key, layout: "chips", categories: group.values.map(([value, title]) => ({ id: value, title, target: targetFor({ ...current, [group.key]: value }), count: null, url: null, icon: "manga" })) }] }));
+}
+
 // src/source.ts
 var entryUrl = "https://cn.bzmgcn.com";
 var categories = Object.freeze([
@@ -6577,10 +6617,12 @@ var BaozimhSource = class {
     this.context = context2;
     this.#listCache = new ProjectionCache(projectionCachePolicy.lists, options.now);
     this.#bookCache = new ProjectionCache(projectionCachePolicy.books, options.now);
+    this.#discoveryCache = new ProjectionCache(projectionCachePolicy.lists, options.now);
   }
   context;
   #listCache;
   #bookCache;
+  #discoveryCache;
   async search(query) {
     const url = new URL("/search", entryUrl);
     url.searchParams.set("q", query);
@@ -6593,9 +6635,39 @@ var BaozimhSource = class {
     const category = categories.find(([id]) => id === categoryId);
     if (category === void 0) throw new Error("Unknown category.");
     const url = new URL(category[2], entryUrl);
-    return this.#listCache.get(`discover:${categoryId}`, async () => {
-      const response = await this.#html(url);
-      return this.parseCards(response.body, response.url);
+    return this.browse(Object.fromEntries(url.searchParams));
+  }
+  async browse(filters2) {
+    return (await this.browsePage(filters2, null)).items;
+  }
+  async browsePage(filters2, nextPath) {
+    const path = nextPath === null ? pathFor(filters2) : ampPath(nextPath, filters2);
+    return this.#discoveryCache.get(path, async () => {
+      const response = await this.#html(new URL(path, entryUrl));
+      if (nextPath === null) {
+        const $ = load(response.body), src = $('amp-list[load-more-bookmark="next"]').attr("src");
+        $("amp-list").remove();
+        return { items: this.parseCards($.html(), response.url), next: src ? ampPath(src, filters2) : null };
+      }
+      let value;
+      try {
+        value = JSON.parse(response.body);
+      } catch {
+        value = JSON.parse(load(response.body)("pre").first().text());
+      }
+      if (!value || typeof value !== "object" || !("items" in value) || !Array.isArray(value.items)) throw new Error("Discovery page is invalid.");
+      const seen = /* @__PURE__ */ new Set(), items = [];
+      for (const raw of value.items) {
+        if (!raw || typeof raw !== "object") continue;
+        const id = typeof raw.comic_id === "string" ? raw.comic_id : "", title = typeof raw.name === "string" ? clean(raw.name) : null;
+        if (!/^[A-Za-z0-9_-]+$/u.test(id) || !title || seen.has(id)) continue;
+        seen.add(id);
+        const url = new URL("/comic/" + id, response.url), image = typeof raw.topic_img === "string" ? new URL("/cover/" + raw.topic_img + "?w=285&h=375&q=100", "https://static-tw.baozimh.com") : null;
+        items.push(summary({ id: encodeBookId(url), url, title, author: typeof raw.author === "string" ? clean(raw.author) : null, coverUrl: image ? this.#proxyImage(image, response.url) : null, description: null, status: "unknown", latest: null, categories: Array.isArray(raw.type_names) ? unique(raw.type_names.filter((v) => typeof v === "string")) : [] }));
+      }
+      const next2 = "next" in value && typeof value.next === "string" && value.next !== "" ? ampPath(value.next, filters2) : null;
+      if (next2 === path) throw new Error("Discovery pagination did not advance.");
+      return { items: Object.freeze(items), next: next2 };
     });
   }
   parseCards(html3, pageUrl) {
@@ -6762,6 +6834,11 @@ function summary(input) {
 function meta($, name) {
   return clean($(`meta[name="${name}"],meta[property="${name}"]`).first().attr("content"));
 }
+function ampPath(value, filters2) {
+  const url = new URL(value, entryUrl), page = Number(url.searchParams.get("page"));
+  if (url.pathname !== "/api/bzmhq/amp_comic_list" || !Number.isSafeInteger(page) || page < 2 || page > 1e4 || Object.entries(filters2).some(([key, value2]) => url.searchParams.get(key) !== value2)) throw new Error("Discovery next page is invalid.");
+  return url.pathname + url.search;
+}
 function encodeBookId(url) {
   return `comic:${token(url.toString())}`;
 }
@@ -6842,6 +6919,7 @@ var context;
 var source;
 async function activate(next2) {
   context = next2;
+  source = void 0;
   next2.log.info("source_activated");
 }
 async function search(request) {
@@ -6851,23 +6929,32 @@ async function search(request) {
 async function discover(request) {
   if (request.target === null) {
     if (request.cursor !== null || request.collectionId !== null) throw new Error("Initial discovery request is invalid.");
-    const content2 = await invoke("discover_home", (active) => active.discover("china"));
-    return categoriesDocument(content2.slice(0, Math.min(request.pageSize, 10)));
+    const resultPage2 = await invoke("discover_home", (active) => active.browsePage({ ...defaults, region: "cn" }, null));
+    const content2 = resultPage2.items;
+    const size = Math.min(request.pageSize, 10);
+    const result = categoriesDocument(content2.slice(0, size), continuationFor("category:china", 1, Math.min(size, content2.length), content2.length, null, resultPage2.next));
+    return { kind: "document", document: { components: [...result.document.components, ...filterSections({ ...defaults, region: "cn" })] } };
   }
-  if (request.cursor !== null) throw new Error("Discovery cursor is unsupported.");
   const categoryId = /^category:([a-z-]+)$/u.exec(request.target)?.[1];
-  if (categoryId === void 0) throw new Error("Discovery target is invalid.");
-  if (request.collectionId !== null) throw new Error("Discovery continuation is unsupported.");
-  const content = await invoke("discover", (active) => active.discover(categoryId));
-  const items = Object.freeze(content.slice(0, request.pageSize).map((value) => Object.freeze({ content: value, rank: null, metric: null, recommendation: null })));
-  const collectionId = `category-books:${categoryId}`;
-  return Object.freeze({ kind: "document", document: { components: Object.freeze([{
-    type: "section",
-    id: `${collectionId}-section`,
-    title: categories.find(([id]) => id === categoryId)?.[1] ?? "分类",
-    subtitle: null,
-    children: Object.freeze([{ type: "contentCollection", id: collectionId, layout: "coverGrid", items, continuation: null }])
-  }]) } });
+  const category = categories.find(([id]) => id === categoryId);
+  const filters2 = request.target.startsWith("filter:") ? readFilters(request.target) : category ? Object.fromEntries(new URL(category[2], "https://www.baozimh.com").searchParams) : null;
+  if (!filters2) throw new Error("Discovery target is invalid.");
+  const collectionId = category ? "category-books:" + categoryId : request.target;
+  if (request.collectionId !== null && request.collectionId !== collectionId) throw new Error("Discovery collection is invalid.");
+  const parts = request.cursor?.split("~") ?? [], { page, offset } = position(parts[0] ?? null, request.target);
+  if (parts.length > 2 || page === 1 && parts.length > 1 || page > 1 && (!parts[1] || !/^[A-Za-z0-9_-]{1,1400}$/u.test(parts[1]))) throw new Error("Discovery cursor is invalid.");
+  const path = parts[1] ? Buffer.from(parts[1], "base64url").toString() : null;
+  const resultPage = await invoke("discover", (active) => active.browsePage(filters2, path)), content = resultPage.items;
+  const values = content.slice(offset, offset + Math.max(1, Math.min(50, request.pageSize)));
+  const continuation = continuationFor(request.target, page, offset + values.length, content.length, path, resultPage.next);
+  const items = values.map((content2) => ({ content: content2, rank: null, metric: null, recommendation: null }));
+  if (request.collectionId !== null) return { kind: "append", collectionId, items, continuation };
+  return { kind: "document", document: { components: [{ type: "section", id: collectionId + "-section", title: categories.find(([id]) => id === categoryId)?.[1] ?? "分类", subtitle: null, children: [{ type: "contentCollection", id: collectionId, layout: "coverGrid", items, continuation }] }, ...filterSections(filters2)] } };
+}
+function continuationFor(target, page, offset, total, path, next2) {
+  if (offset >= total && (!next2 || page >= 1e4)) return null;
+  const nextPath = offset < total ? path : next2;
+  return { target, cursor: target + ":" + (offset < total ? page : page + 1) + ":" + (offset < total ? offset : 0) + (nextPath ? "~" + Buffer.from(nextPath).toString("base64url") : "") };
 }
 async function searchSuggestions(_request) {
   return Object.freeze({ items: Object.freeze([]), nextCursor: null });
@@ -6881,9 +6968,9 @@ async function getChapters(request) {
 async function getContent(request) {
   return invoke("get_content", (active) => active.getContent(request.id, request.chapterId));
 }
-function categoriesDocument(content) {
+function categoriesDocument(content, continuation) {
   const items = Object.freeze(content.map((value) => Object.freeze({ content: value, rank: null, metric: null, recommendation: null })));
-  return Object.freeze({ kind: "document", document: { components: Object.freeze([...items.length === 0 ? [] : [{ type: "section", id: "featured-section", title: "国漫推荐", subtitle: "国漫频道新近作品", icon: "manga", children: Object.freeze([{ type: "contentCollection", id: "featured-manga", layout: "coverGrid", items, continuation: null }]) }], { type: "section", id: "categories-section", title: "漫画分类", subtitle: "按地区或题材继续发现", icon: "explore", children: Object.freeze([{ type: "categoryCollection", id: "categories", layout: "chips", categories: Object.freeze(categories.map(([id, title]) => Object.freeze({ id, title, target: `category:${id}`, count: null, url: null, icon: id === "romance" ? "romance" : id === "action" ? "hot" : id === "fantasy" ? "fantasy" : "manga" }))) }]) }]) } });
+  return Object.freeze({ kind: "document", document: { components: Object.freeze([...items.length === 0 ? [] : [{ type: "section", id: "featured-section", title: "国漫推荐", subtitle: "国漫频道新近作品", icon: "manga", children: Object.freeze([{ type: "contentCollection", id: "category-books:china", layout: "coverGrid", items, continuation }]) }], { type: "section", id: "categories-section", title: "漫画分类", subtitle: "按地区或题材继续发现", icon: "explore", children: Object.freeze([{ type: "categoryCollection", id: "categories", layout: "chips", categories: Object.freeze(categories.map(([id, title]) => Object.freeze({ id, title, target: `category:${id}`, count: null, url: null, icon: id === "romance" ? "romance" : id === "action" ? "hot" : id === "fantasy" ? "fantasy" : "manga" }))) }]) }]) } });
 }
 function requireSource() {
   if (context === void 0) throw new Error("Source is not activated.");

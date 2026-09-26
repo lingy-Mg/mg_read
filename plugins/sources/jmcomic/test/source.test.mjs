@@ -32,7 +32,8 @@ test('search, discovery, detail and chapter pages carry source-owned decoded pro
   assert.equal(search.items[0].id, 'manga:302560');
   assert.equal(search.items[0].url, 'https://18comic.vip/album/302560');
   const root = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 20 });
-  assert.equal(root.document.components[0].children[0].categories.length, 8);
+  assert.equal(root.document.components.flatMap(value => value.children).find(value => value.type === 'categoryCollection').categories.length, 8);
+  assert.equal(root.document.components[0].children[0].items[0].content.id, 'manga:302560');
   const listing = await plugin.discover({ target: 'category:doujin', cursor: null, collectionId: null, pageSize: 1 });
   assert.equal(listing.document.components[0].children[0].items[0].content.id, 'manga:302560');
   assert.equal(listing.document.components[0].children[0].items[0].content.url, 'https://18comic.vip/album/302560');

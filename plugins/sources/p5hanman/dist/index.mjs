@@ -6677,7 +6677,15 @@ var detailPolicy = Object.freeze({
 var categories = Object.freeze([
   ["latest", "最新更新"],
   ["popular", "热门漫画"],
-  ["completed", "完结漫画"]
+  ["completed", "完结漫画"],
+  ["all", "全部漫画"],
+  ["ongoing", "连载漫画"],
+  ["korea", "韩国漫画"],
+  ["korea-ongoing", "韩国·连载"],
+  ["korea-completed", "韩国·完结"],
+  ["other", "其他地区"],
+  ["other-ongoing", "其他·连载"],
+  ["other-completed", "其他·完结"]
 ]);
 var P5HanmanSource = class {
   constructor(context2) {
@@ -6960,7 +6968,19 @@ function summary(input) {
   });
 }
 function listingUrl(categoryId, page) {
-  if (categoryId === "popular") return new URL("/rank", siteOrigin);
+  if (categoryId === "popular") {
+    const url2 = new URL("/rank", siteOrigin);
+    if (page > 1) url2.searchParams.set("page", String(page));
+    return url2;
+  }
+  if (["all", "ongoing", "korea", "korea-ongoing", "korea-completed", "other", "other-ongoing", "other-completed"].includes(categoryId)) {
+    const url2 = new URL("/booklist", siteOrigin);
+    url2.searchParams.set("cate", "全部");
+    url2.searchParams.set("area", categoryId.startsWith("korea") ? "1" : categoryId.startsWith("other") ? "2" : "-1");
+    url2.searchParams.set("end", categoryId.endsWith("completed") ? "1" : categoryId.endsWith("ongoing") ? "2" : "-1");
+    if (page > 1) url2.searchParams.set("page", String(page));
+    return url2;
+  }
   if (categoryId === "completed") {
     const url2 = new URL("/booklist", siteOrigin);
     url2.searchParams.set("end", "1");
@@ -7072,7 +7092,8 @@ async function discover(request) {
       }
       const listing2 = await requireSource().discover("latest", 1);
       return categoriesDocument(
-        listing2.items.slice(0, Math.min(request.pageSize, 10))
+        listing2.items.slice(0, Math.min(request.pageSize, 10)),
+        listing2.items.length > Math.min(request.pageSize, 10) ? { target: "category:latest", cursor: "category:latest:1:" + Math.min(request.pageSize, 10) } : listing2.hasNext ? { target: "category:latest", cursor: "category:latest:2:0" } : null
       );
     }
     const categoryId = /^category:([a-z-]+)$/u.exec(request.target)?.[1];
@@ -7159,7 +7180,7 @@ function requireSource() {
   if (context === void 0) throw new Error("Source is not activated.");
   return source ??= new P5HanmanSource(context);
 }
-function categoriesDocument(content) {
+function categoriesDocument(content, continuation) {
   const items = Object.freeze(
     content.map(
       (value) => Object.freeze({
@@ -7184,10 +7205,10 @@ function categoriesDocument(content) {
             children: Object.freeze([
               Object.freeze({
                 type: "contentCollection",
-                id: "latest-manga",
+                id: "category-manga:latest",
                 layout: "coverGrid",
                 items,
-                continuation: null
+                continuation
               })
             ])
           })

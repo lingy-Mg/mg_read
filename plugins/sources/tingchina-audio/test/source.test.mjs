@@ -128,3 +128,14 @@ test('serves an expired catalog immediately and refreshes it in the background',
     await rm(cacheDir, { recursive: true, force: true });
   }
 });
+
+function discoveryCollections(result) {const found=[]; const visit=node=>{if(node.type==='contentCollection')found.push(node);for(const child of node.children??[])visit(child);};for(const node of result.document?.components??[])visit(node);return found;}
+test('home exposes source sections and popular continuation drains the snapshot',async()=>{
+ const books=Array.from({length:7},(_,i)=>({id:String(i+1),bookTitle:'Book '+i}));const calls=[];
+ await plugin.activate({cacheDir:'fixture-cache',log:{info(){}},resource:{proxy:v=>v.url},http:{fetch:async(url)=>{calls.push(String(url));return Response.json({data:{best:{list:books},ertong:{id:50,list:books.slice(0,2)}}});}}});
+ const root=await plugin.discover({target:null,cursor:null,collectionId:null,pageSize:3});const lists=discoveryCollections(root);
+ assert.equal(lists.length,2);assert.equal(lists[1].items[0].content.coverOrientation,'portrait');let current=lists[0],seen=current.items.map(x=>x.content.id);
+ while(current.continuation){current=await plugin.discover({...current.continuation,collectionId:lists[0].id,pageSize:3});seen.push(...current.items.map(x=>x.content.id));}
+ assert.equal(seen.length,7);assert.equal(new Set(seen).size,7);assert.ok(calls.every(x=>x.endsWith('appHome')));
+ await assert.rejects(plugin.discover({target:'category:popular',cursor:'category:popular:2',collectionId:null,pageSize:3}));
+});

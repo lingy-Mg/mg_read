@@ -1,7 +1,7 @@
 /**
  * 听中国听书原生数据源。
  *
- * 职责：调用听中国 JSON API，解析专辑、目录和播放地址，并把音频交给 Runtime 代理。
+ * 职责：调用听中国 JSON API，保留全部已确认首页题材区块，首页快照按 offset 翻阅，分类独立分页。
  * 生命周期：activate 保存当前 Runtime 上下文；播放地址只在当前插件进程内按书籍/章节缓存。
  * IO：来源请求和快速音频探测都走 ctx.http；媒体地址只经 ctx.resource.proxy 输出，不缓存媒体主体。
  * 缓存：章节投影进入 Runtime 注入的持久化插件缓存，一天内直接命中；过期章节先返回旧目录并后台刷新。
@@ -25,6 +25,7 @@ const coverHeaders = {
 const audioHeaders = { Accept: '*/*', 'User-Agent': 'okhttp/4.9.3' };
 const playKey = 'J9gSpfUlzYxE8Hn5IXiGaD2jVMrwAm0K';
 const categories = Object.freeze([['popular', '热门', null], ['6', '玄幻', '6'], ['7', '奇幻', '7'], ['8', '武侠', '8'], ['13', '历史', '13'], ['14', '恐怖', '14'], ['31', '评书', '31'], ['50', '儿童', '50']] as const);
+const homeSections = [['best', '热门听书', 'popular'], ['xuanhuan', '玄幻', '6'], ['qihuan', '奇幻', '7'], ['wuxia', '武侠', '8'], ['lishi', '历史', '13'], ['kongbu', '恐怖', '14'], ['pingshu', '评书', '31'], ['ertong', '儿童', '50']] as const;
 const playbackCacheTtlMs = 10 * 60 * 1000;
 const playbackExpirySafetyMs = 5 * 1000;
 const playbackProbeTimeoutMs = 1500;
@@ -63,6 +64,17 @@ export async function discover(request: { target: string | null; cursor: string 
   if (request.target === null) {
     if (request.cursor !== null || request.collectionId !== null) throw new Error('Initial discovery request is invalid.');
     return rootDocument(request.pageSize);
+  }
+  if (request.target === 'category:popular' || request.target.startsWith('home:')) {
+    const entry = homeSections.find(([key]) => request.target === 'home:' + key || (key === 'best' && request.target === 'category:popular'));
+    if (entry === undefined) throw new Error('Discovery target is invalid.');
+    const prefix = request.target + ':offset:';
+    const raw = request.cursor?.startsWith(prefix) ? request.cursor.slice(prefix.length) : '';
+    const offset = request.cursor === null ? 0 : /^\d+$/u.test(raw) ? Number(raw) : NaN;
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > 10000) throw new Error('Discovery cursor is invalid.');
+    const data = await fetchJson(api + 'appHome');
+    const values = entry[0] === 'best' ? popular(data) : records(object(object(data.data)[entry[0]]).list);
+    return homePage(entry, request.target, values, offset, clamp(request.pageSize), request.collectionId);
   }
   const category = categories.find(([id]) => request.target === `category:${id}`);
   if (category === undefined) throw new Error('Discovery target is invalid.');
@@ -238,18 +250,31 @@ async function chapterPage(id: string, page: number) {
 }
 async function rootDocument(pageSize: number) {
   const data = await fetchJson(`${api}appHome`);
-  const items = popular(data).slice(0, Math.min(clamp(pageSize), 10)).map((value) => frozen({ content: summary(value), rank: null, metric: null, recommendation: null }));
   const components: object[] = [];
-  if (items.length > 0) components.push(section('audio-popular', '热门听书', items, null, 'shelf', 'audio', '主播与连载节目精选'));
+  for (const entry of homeSections) {
+    const values = entry[0] === 'best' ? popular(data) : records(object(object(data.data)[entry[0]]).list);
+    if (values.length === 0) continue;
+    const result = homePage(entry, 'home:' + entry[0], values, 0, Math.min(clamp(pageSize), 4), null);
+    if (result.kind === 'document') components.push(...result.document.components);
+  }
   components.push({ type: 'section', id: 'audio-categories', title: '听书分类', subtitle: '按题材选择想听的内容', icon: 'explore', children: [{ type: 'categoryCollection', id: 'audio-categories-list', layout: 'chips', categories: categories.map(([id, title]) => ({ id, title, target: `category:${id}`, count: null, url: null, icon: 'audio' })) }] });
   return frozen({ kind: 'document' as const, document: { components } });
+}
+function homePage(entry: typeof homeSections[number], target: string, values: Json[], offset: number, size: number, collectionId: string | null) {
+  const id = 'audio:' + entry[2];
+  if (collectionId !== null && collectionId !== id) throw new Error('Discovery collection is invalid.');
+  const items = values.slice(offset, offset + size).map(value => ({ content: summary(value), rank: null, metric: null, recommendation: null }));
+  const next = offset + items.length;
+  const continuation = next < values.length ? { target, cursor: target + ':offset:' + next } : null;
+  if (collectionId !== null) return { kind: 'append' as const, collectionId, items, continuation };
+  return { kind: 'document' as const, document: { components: [section(id, entry[1], items, continuation, 'shelf')] } };
 }
 function section(id: string, title: string, items: readonly unknown[], continuation: unknown, layout = 'coverGrid', icon = 'audio', subtitle: string | null = null) { return { type: 'section', id: `${id}:section`, title, subtitle, icon, children: [{ type: 'contentCollection', id, layout, items, continuation }] }; }
 function summary(value: Json, idOverride?: string) {
   const id = idOverride ?? (text(value.id) || text(value.bookId)); if (id === '') throw new Error('Source item has no ID.');
   const count = number(value.count);
   const cover = imageUrl(nullable(value.bookImage) ?? nullable(value.image));
-  return frozen({ id: `audio:${id}`, title: text(value.bookTitle) || text(value.title) || '未命名音频', contentKind: 'audio', author: nullable(value.bookAnchor) ?? nullable(value.anchor), url: `${base}/book/${id}`, coverUrl: cover === null ? null : requireContext().resource.proxy({ kind: 'image', url: cover, headers: coverHeaders }), description: nullable(value.bookDesc) ?? nullable(value.desc), language: 'zh-CN', status: status(value.bookUpdateStatus), access: 'mixed', wordCount: null, chapterCount: count || null, publishedAt: null, updatedAt: null, latestChapter: count > 0 ? { id: null, title: `共${count}集`, url: null, updatedAt: null } : null, categories: nullable(value.categoryName) === null ? [] : [nullable(value.categoryName) as string], tags: [], attributes: [] });
+  return frozen({ id: `audio:${id}`, title: text(value.bookTitle) || text(value.title) || '未命名音频', contentKind: 'audio', coverOrientation: 'portrait', author: nullable(value.bookAnchor) ?? nullable(value.anchor), url: `${base}/book/${id}`, coverUrl: cover === null ? null : requireContext().resource.proxy({ kind: 'image', url: cover, headers: coverHeaders }), description: nullable(value.bookDesc) ?? nullable(value.desc), language: 'zh-CN', status: status(value.bookUpdateStatus), access: 'mixed', wordCount: null, chapterCount: count || null, publishedAt: null, updatedAt: null, latestChapter: count > 0 ? { id: null, title: `共${count}集`, url: null, updatedAt: null } : null, categories: nullable(value.categoryName) === null ? [] : [nullable(value.categoryName) as string], tags: [], attributes: [] });
 }
 function detail(item: ReturnType<typeof summary>) { return frozen({ ...item, aliases: [], catalogUrl: item.url }); }
 function chapter(bookId: string, value: Json, order: number) { const id = text(value.chapterId) || text(value.id) || text(value.url); if (id === '') throw new Error('Source chapter has no ID.'); const price = number(value.price) || number(value.chapterPrice); return frozen({ id: `audio:${bookId}:${id}`, title: text(value.title) || `第${order + 1}集`, order, url: `${base}/book/${encodeURIComponent(bookId)}/${encodeURIComponent(id)}`, volumeTitle: null, wordCount: null, updatedAt: null, isLocked: price > 0, attributes: price > 0 ? [{ key: 'price', label: '听币', value: String(price) }] : [] }); }

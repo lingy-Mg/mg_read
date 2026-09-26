@@ -8,6 +8,7 @@ import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import * as cheerio from 'cheerio/slim';
 import { ProjectionCache } from './projection-cache.js';
+import { pathFor } from './discovery-filters.js';
 const entryUrl = 'https://www.baozimh.com';
 export const categories = Object.freeze([
     ['china', '國漫', '/classify?type=all&region=cn&state=all&filter=*'],
@@ -27,10 +28,12 @@ export class BaozimhSource {
     context;
     #listCache;
     #bookCache;
+    #discoveryCache;
     constructor(context, options = {}) {
         this.context = context;
         this.#listCache = new ProjectionCache(projectionCachePolicy.lists, options.now);
         this.#bookCache = new ProjectionCache(projectionCachePolicy.books, options.now);
+        this.#discoveryCache = new ProjectionCache(projectionCachePolicy.lists, options.now);
     }
     async search(query) {
         const url = new URL('/search', entryUrl);
@@ -42,7 +45,46 @@ export class BaozimhSource {
         if (category === undefined)
             throw new Error('Unknown category.');
         const url = new URL(category[2], entryUrl);
-        return this.#listCache.get(`discover:${categoryId}`, async () => { const response = await this.#html(url); return this.parseCards(response.body, response.url); });
+        return this.browse(Object.fromEntries(url.searchParams));
+    }
+    async browse(filters) {
+        return (await this.browsePage(filters, null)).items;
+    }
+    async browsePage(filters, nextPath) {
+        const path = nextPath === null ? pathFor(filters) : ampPath(nextPath, filters);
+        return this.#discoveryCache.get(path, async () => {
+            const response = await this.#html(new URL(path, entryUrl));
+            if (nextPath === null) {
+                const $ = cheerio.load(response.body), src = $('amp-list[load-more-bookmark="next"]').attr('src');
+                // A WebView may already render page two inside amp-list. Keep it for the explicit continuation only.
+                $('amp-list').remove();
+                return { items: this.parseCards($.html(), response.url), next: src ? ampPath(src, filters) : null };
+            }
+            let value;
+            try {
+                value = JSON.parse(response.body);
+            }
+            catch {
+                value = JSON.parse(cheerio.load(response.body)('pre').first().text());
+            }
+            if (!value || typeof value !== 'object' || !('items' in value) || !Array.isArray(value.items))
+                throw new Error('Discovery page is invalid.');
+            const seen = new Set(), items = [];
+            for (const raw of value.items) {
+                if (!raw || typeof raw !== 'object')
+                    continue;
+                const id = typeof raw.comic_id === 'string' ? raw.comic_id : '', title = typeof raw.name === 'string' ? clean(raw.name) : null;
+                if (!/^[A-Za-z0-9_-]+$/u.test(id) || !title || seen.has(id))
+                    continue;
+                seen.add(id);
+                const url = new URL('/comic/' + id, response.url), image = typeof raw.topic_img === 'string' ? new URL('/cover/' + raw.topic_img + '?w=285&h=375&q=100', 'https://static-tw.baozimh.com') : null;
+                items.push(summary({ id: encodeBookId(url), url, title, author: typeof raw.author === 'string' ? clean(raw.author) : null, coverUrl: image ? this.#proxyImage(image, response.url) : null, description: null, status: 'unknown', latest: null, categories: Array.isArray(raw.type_names) ? unique(raw.type_names.filter((v) => typeof v === 'string')) : [] }));
+            }
+            const next = 'next' in value && typeof value.next === 'string' && value.next !== '' ? ampPath(value.next, filters) : null;
+            if (next === path)
+                throw new Error('Discovery pagination did not advance.');
+            return { items: Object.freeze(items), next };
+        });
     }
     parseCards(html, pageUrl) {
         const $ = cheerio.load(html);
@@ -183,6 +225,12 @@ function summary(input) {
             title: input.latest.title, url: input.latest.url?.toString() ?? null, updatedAt: null }), categories: Object.freeze(input.categories), tags: Object.freeze(input.categories), attributes: Object.freeze([]) });
 }
 function meta($, name) { return clean($(`meta[name="${name}"],meta[property="${name}"]`).first().attr('content')); }
+function ampPath(value, filters) {
+    const url = new URL(value, entryUrl), page = Number(url.searchParams.get('page'));
+    if (url.pathname !== '/api/bzmhq/amp_comic_list' || !Number.isSafeInteger(page) || page < 2 || page > 10000 || Object.entries(filters).some(([key, value]) => url.searchParams.get(key) !== value))
+        throw new Error('Discovery next page is invalid.');
+    return url.pathname + url.search;
+}
 function encodeBookId(url) { return `comic:${token(url.toString())}`; }
 function decodeBookId(id) { const value = /^comic:([A-Za-z0-9_-]+)$/u.exec(id)?.[1]; if (value === undefined)
     throw new Error('Content ID is invalid.'); const url = new URL(Buffer.from(value, 'base64url').toString('utf8'), entryUrl); if (!isBookUrl(url))

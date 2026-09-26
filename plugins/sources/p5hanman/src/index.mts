@@ -55,6 +55,7 @@ export async function discover(
       const listing = await requireSource().discover('latest', 1);
       return categoriesDocument(
         listing.items.slice(0, Math.min(request.pageSize, 10)),
+        listing.items.length > Math.min(request.pageSize,10) ? {target:'category:latest',cursor:'category:latest:1:'+Math.min(request.pageSize,10)} : listing.hasNext ? {target:'category:latest',cursor:'category:latest:2:0'} : null,
       );
     }
     const categoryId = /^category:([a-z-]+)$/u.exec(request.target)?.[1];
@@ -165,6 +166,7 @@ function requireSource(): P5HanmanSource {
 
 function categoriesDocument(
   content: readonly Awaited<ReturnType<P5HanmanSource['discover']>>['items'][number][],
+  continuation: {target:string;cursor:string}|null,
 ) {
   const items = Object.freeze(
     content.map((value) =>
@@ -192,10 +194,10 @@ function categoriesDocument(
                 children: Object.freeze([
                   Object.freeze({
                     type: 'contentCollection' as const,
-                    id: 'latest-manga',
+                    id: 'category-manga:latest',
                     layout: 'coverGrid' as const,
                     items,
-                    continuation: null,
+                    continuation,
                   }),
                 ]),
               }),

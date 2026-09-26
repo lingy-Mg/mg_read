@@ -51,10 +51,11 @@ export async function search(request: { query: string; cursor: string | null; pa
 
 export function searchSuggestions(_request: { cursor: string | null; pageSize: number }) { return frozen({ items: [], nextCursor: null }); }
 
-export async function discover(request: { target: string | null; cursor: string | null; collectionId: string | null; pageSize: number }) {
+export async function discover(request: { target: string | null; cursor: string | null; collectionId: string | null; pageSize: number }): Promise<{kind:'document';document:{components:object[]}}|{kind:'append';collectionId:string;items:object[];continuation:{target:string;cursor:string}|null}> {
   if (request.target === null) {
     if (request.cursor !== null || request.collectionId !== null) throw new Error('Initial discovery request is invalid.');
-    return frozen({ kind: 'document' as const, document: { components: [{ type: 'section', id: 'jm-categories', title: '禁漫天堂',
+    const preview=await discover({target:'category:hanman',cursor:null,collectionId:null,pageSize:Math.min(10,clamp(request.pageSize))});
+    return frozen({ kind: 'document' as const, document: { components: [...(preview.kind==='document'?preview.document.components:[]), { type: 'section', id: 'jm-categories', title: '禁漫天堂',
       subtitle: '漫画分类', icon: 'manga', children: [{ type: 'categoryCollection', id: 'jm-category-list', layout: 'chips',
         categories: channels.map(channel => ({ id: channel.id, title: channel.title, target: `category:${channel.id}`, count: null, url: null, icon: 'manga' })) }] }] } });
   }

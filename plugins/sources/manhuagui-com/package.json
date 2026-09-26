@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/manhuagui-com",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "MgRead Node 24 source for public Manhuagui manga pages.",
   "type": "module",

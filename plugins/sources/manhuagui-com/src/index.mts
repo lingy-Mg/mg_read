@@ -9,10 +9,10 @@ export async function discover(request: DiscoverRequest): Promise<DiscoverResult
   return invoke('discover', async (active) => {
     if (request.target === null) {
       if (request.cursor !== null || request.collectionId !== null) throw new Error('Initial discovery request is invalid.');
-      const home = await active.home(request.pageSize);
+      const home = await active.category('category:update',null,Math.min(request.pageSize,10));
       return { kind: 'document', document: { components: [
         { type: 'section', id: 'manhuagui-latest-section', title: '最新更新', subtitle: null, icon: 'newRelease', children: [
-          { type: 'contentCollection', id: 'manhuagui-latest', layout: 'coverGrid', items: home.items.map((content) => ({ content, rank: null, metric: null, recommendation: null })), continuation: null },
+          { type: 'contentCollection', id: home.collectionId, layout: 'coverGrid', items: home.items, continuation: home.continuation },
         ] },
         { type: 'section', id: 'manhuagui-categories-section', title: '漫画分类', subtitle: null, icon: 'category', children: [
           { type: 'categoryCollection', id: 'manhuagui-categories', layout: 'chips', categories: active.categoryMetadata() },

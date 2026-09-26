@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/i275-audio",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "MgRead native audio source for i275.",
   "type": "module",

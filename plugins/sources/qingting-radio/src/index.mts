@@ -7,6 +7,7 @@
  * 稳定标识：使用蜻蜓 channel/radio ID，章节固定为该频道的 live 节点。
  */
 import { createHmac } from 'node:crypto';
+import { position, window as pageWindow, type DiscoveryResult } from './discovery-page.js';
 import type { MgReadPluginContext } from '@mgread/source-api';
 
 type Json = Record<string, unknown>;
@@ -32,17 +33,27 @@ export async function search(request: { query: string; cursor: string | null; pa
   return frozen({ items: values.map(summary), nextCursor: values.length >= clamp(request.pageSize) ? `search:${page + 1}` : null, totalCount: integer(object(object(json.data).searchResultsPage).numFound) });
 }
 export async function searchSuggestions(_request: { cursor: string | null; pageSize: number }) { return frozen({ items: [], nextCursor: null }); }
-export async function discover(request: { target: string | null; cursor: string | null; collectionId: string | null; pageSize: number }) {
-  if (request.target === null) {
-    if (request.cursor !== null || request.collectionId !== null) throw new Error('Initial discovery request is invalid.');
-    return frozen({ kind: 'document' as const, document: { components: [{ type: 'section', id: 'radio-categories', title: '电台分类', subtitle: '按地区与内容浏览', icon: 'audio', children: [{ type: 'categoryCollection', id: 'radio-categories-list', layout: 'chips', categories: categories.map(([id,title]) => ({ id, title, target: `category:${id}`, count: null, url: null, icon: 'audio' })) }] }] } });
+export async function discover(request:{target:string|null;cursor:string|null;collectionId:string|null;pageSize:number}): Promise<DiscoveryResult> {
+  if(request.target===null) {
+    if(request.cursor!==null||request.collectionId!==null)throw new Error('Initial discovery request is invalid.');
+    const components: object[]=[];
+    const result=await discover({target:'category:3',cursor:null,collectionId:null,pageSize:Math.min(6,clamp(request.pageSize))});
+    if(result.kind==='document')components.push(...result.document.components);
+    for(const [id,title,entries] of [['regions','地区电台',categories.filter(([id])=>Number(id)<400)],['topics','内容分类',categories.filter(([id])=>Number(id)>=400)]] as const) {
+      components.push({type:'section',id:'radio-'+id,title,subtitle:null,icon:'audio',children:[{type:'categoryCollection',id:'radio-'+id+'-list',layout:'chips',categories:entries.map(([id,title])=>({id,title,target:'category:'+id,count:null,url:null,icon:'audio'}))}]});
+    }
+    return {kind:'document' as const,document:{components}};
   }
-  const category = categories.find(([id]) => request.target === `category:${id}`); if (category === undefined) throw new Error('Discovery target is invalid.');
-  const page = cursorPage(request.cursor, request.target); const limit = clamp(request.pageSize); const [id,title] = category;
-  const json = await graph(`{ radioPage(cid:${id}, page:${page}) { contents } }`); const values = unwrap(object(object(json.data).radioPage).contents).slice(0, limit); const collectionId = `radio:${id}`;
-  const items = values.map((value) => frozen({ content: summary(value), rank: null, metric: null, recommendation: null })); const continuation = values.length >= limit ? frozen({ target: request.target, cursor: `${request.target}:${page + 1}` }) : null;
-  if (request.collectionId !== null) { if (request.collectionId !== collectionId) throw new Error('Discovery collection is invalid.'); return frozen({ kind: 'append' as const, collectionId, items, continuation }); }
-  return frozen({ kind: 'document' as const, document: { components: [{ type: 'section', id: `${collectionId}:section`, title, subtitle: null, icon: 'audio', children: [{ type: 'contentCollection', id: collectionId, layout: 'coverGrid', items, continuation }] }] } });
+  const category=categories.find(([id])=>request.target==='category:'+id);
+  if(!category)throw new Error('Discovery target is invalid.');
+  const [id,title]=category,collectionId='radio:'+id;
+  if(request.collectionId!==null&&request.collectionId!==collectionId)throw new Error('Discovery collection is invalid.');
+  const {page,offset}=position(request.cursor,request.target);
+  const json=await graph('{ radioPage(cid:'+id+', page:'+page+') { contents } }'), all=unwrap(object(object(json.data).radioPage).contents);
+  const {values,continuation}=pageWindow(all,request.target,page,offset,clamp(request.pageSize),all.length>0);
+  const items=values.map(value=>({content:summary(value),rank:null,metric:null,recommendation:null}));
+  if(request.collectionId!==null)return {kind:'append' as const,collectionId,items,continuation};
+  return {kind:'document' as const,document:{components:[{type:'section',id:collectionId+':section',title,subtitle:null,icon:'audio',children:[{type:'contentCollection',id:collectionId,layout:'coverGrid',items,continuation}]}]}};
 }
 export async function getDetail(request: { id: string }) {
   const id = contentId(request.id); const json = await fetchJson(`${detailBase}${encodeURIComponent(id)}`); const value = object(json.data); const item = summary({ ...value, id });

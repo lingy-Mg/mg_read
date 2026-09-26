@@ -7892,23 +7892,23 @@ var require_infra = __commonJS({
     "use strict";
     var assert = __require("node:assert");
     var { utf8DecodeBytes } = require_encoding();
-    function collectASequenceOfCodePoints(condition, input, position) {
+    function collectASequenceOfCodePoints(condition, input, position2) {
       let result = "";
-      while (position.position < input.length && condition(input[position.position])) {
-        result += input[position.position];
-        position.position++;
+      while (position2.position < input.length && condition(input[position2.position])) {
+        result += input[position2.position];
+        position2.position++;
       }
       return result;
     }
-    function collectASequenceOfCodePointsFast(char, input, position) {
-      const idx = input.indexOf(char, position.position);
-      const start = position.position;
+    function collectASequenceOfCodePointsFast(char, input, position2) {
+      const idx = input.indexOf(char, position2.position);
+      const start = position2.position;
       if (idx === -1) {
-        position.position = input.length;
+        position2.position = input.length;
         return input.slice(start);
       }
-      position.position = idx;
-      return input.slice(start, position.position);
+      position2.position = idx;
+      return input.slice(start, position2.position);
     }
     var ASCII_WHITESPACE_REPLACE_REGEX = /[\u0009\u000A\u000C\u000D\u0020]/g;
     function forgivingBase64(data2) {
@@ -8013,18 +8013,18 @@ var require_data_url = __commonJS({
       assert(dataURL.protocol === "data:");
       let input = URLSerializer(dataURL, true);
       input = input.slice(5);
-      const position = { position: 0 };
+      const position2 = { position: 0 };
       let mimeType = collectASequenceOfCodePointsFast(
         ",",
         input,
-        position
+        position2
       );
       const mimeTypeLength = mimeType.length;
       mimeType = removeASCIIWhitespace(mimeType, true, true);
-      if (position.position >= input.length) {
+      if (position2.position >= input.length) {
         return "failure";
       }
-      position.position++;
+      position2.position++;
       const encodedBody = input.slice(mimeTypeLength + 1);
       let body = stringPercentDecode(encodedBody);
       if (/;(?:\u0020*)base64$/ui.test(mimeType)) {
@@ -8092,23 +8092,23 @@ var require_data_url = __commonJS({
     }
     function parseMIMEType(input) {
       input = removeHTTPWhitespace(input, true, true);
-      const position = { position: 0 };
+      const position2 = { position: 0 };
       const type = collectASequenceOfCodePointsFast(
         "/",
         input,
-        position
+        position2
       );
       if (type.length === 0 || !HTTP_TOKEN_CODEPOINTS.test(type)) {
         return "failure";
       }
-      if (position.position >= input.length) {
+      if (position2.position >= input.length) {
         return "failure";
       }
-      position.position++;
+      position2.position++;
       let subtype = collectASequenceOfCodePointsFast(
         ";",
         input,
-        position
+        position2
       );
       subtype = removeHTTPWhitespace(subtype, false, true);
       if (subtype.length === 0 || !HTTP_TOKEN_CODEPOINTS.test(subtype)) {
@@ -8124,42 +8124,42 @@ var require_data_url = __commonJS({
         // https://mimesniff.spec.whatwg.org/#mime-type-essence
         essence: `${typeLowercase}/${subtypeLowercase}`
       };
-      while (position.position < input.length) {
-        position.position++;
+      while (position2.position < input.length) {
+        position2.position++;
         collectASequenceOfCodePoints(
           // https://fetch.spec.whatwg.org/#http-whitespace
           (char) => HTTP_WHITESPACE_REGEX.test(char),
           input,
-          position
+          position2
         );
         let parameterName = collectASequenceOfCodePoints(
           (char) => char !== ";" && char !== "=",
           input,
-          position
+          position2
         );
         parameterName = parameterName.toLowerCase();
-        if (position.position < input.length) {
-          if (input[position.position] === ";") {
+        if (position2.position < input.length) {
+          if (input[position2.position] === ";") {
             continue;
           }
-          position.position++;
+          position2.position++;
         }
-        if (position.position >= input.length) {
+        if (position2.position >= input.length) {
           break;
         }
         let parameterValue = null;
-        if (input[position.position] === '"') {
-          parameterValue = collectAnHTTPQuotedString(input, position, true);
+        if (input[position2.position] === '"') {
+          parameterValue = collectAnHTTPQuotedString(input, position2, true);
           collectASequenceOfCodePointsFast(
             ";",
             input,
-            position
+            position2
           );
         } else {
           parameterValue = collectASequenceOfCodePointsFast(
             ";",
             input,
-            position
+            position2
           );
           parameterValue = removeHTTPWhitespace(parameterValue, false, true);
           if (parameterValue.length === 0) {
@@ -8172,29 +8172,29 @@ var require_data_url = __commonJS({
       }
       return mimeType;
     }
-    function collectAnHTTPQuotedString(input, position, extractValue = false) {
-      const positionStart = position.position;
+    function collectAnHTTPQuotedString(input, position2, extractValue = false) {
+      const positionStart = position2.position;
       let value = "";
-      assert(input[position.position] === '"');
-      position.position++;
+      assert(input[position2.position] === '"');
+      position2.position++;
       while (true) {
         value += collectASequenceOfCodePoints(
           (char) => char !== '"' && char !== "\\",
           input,
-          position
+          position2
         );
-        if (position.position >= input.length) {
+        if (position2.position >= input.length) {
           break;
         }
-        const quoteOrBackslash = input[position.position];
-        position.position++;
+        const quoteOrBackslash = input[position2.position];
+        position2.position++;
         if (quoteOrBackslash === "\\") {
-          if (position.position >= input.length) {
+          if (position2.position >= input.length) {
             value += "\\";
             break;
           }
-          value += input[position.position];
-          position.position++;
+          value += input[position2.position];
+          position2.position++;
         } else {
           assert(quoteOrBackslash === '"');
           break;
@@ -8203,7 +8203,7 @@ var require_data_url = __commonJS({
       if (extractValue) {
         return value;
       }
-      return input.slice(positionStart, position.position);
+      return input.slice(positionStart, position2.position);
     }
     function serializeAMimeType(mimeType) {
       assert(mimeType !== "failure");
@@ -9502,23 +9502,23 @@ var require_util2 = __commonJS({
       if (!data2.startsWith("bytes")) {
         return "failure";
       }
-      const position = { position: 5 };
+      const position2 = { position: 5 };
       if (allowWhitespace) {
         collectASequenceOfCodePoints(
           (char) => char === "	" || char === " ",
           data2,
-          position
+          position2
         );
       }
-      if (data2.charCodeAt(position.position) !== 61) {
+      if (data2.charCodeAt(position2.position) !== 61) {
         return "failure";
       }
-      position.position++;
+      position2.position++;
       if (allowWhitespace) {
         collectASequenceOfCodePoints(
           (char) => char === "	" || char === " ",
           data2,
-          position
+          position2
         );
       }
       const rangeStart = collectASequenceOfCodePoints(
@@ -9527,25 +9527,25 @@ var require_util2 = __commonJS({
           return code >= 48 && code <= 57;
         },
         data2,
-        position
+        position2
       );
       const rangeStartValue = rangeStart.length ? Number(rangeStart) : null;
       if (allowWhitespace) {
         collectASequenceOfCodePoints(
           (char) => char === "	" || char === " ",
           data2,
-          position
+          position2
         );
       }
-      if (data2.charCodeAt(position.position) !== 45) {
+      if (data2.charCodeAt(position2.position) !== 45) {
         return "failure";
       }
-      position.position++;
+      position2.position++;
       if (allowWhitespace) {
         collectASequenceOfCodePoints(
           (char) => char === "	" || char === " ",
           data2,
-          position
+          position2
         );
       }
       const rangeEnd = collectASequenceOfCodePoints(
@@ -9554,10 +9554,10 @@ var require_util2 = __commonJS({
           return code >= 48 && code <= 57;
         },
         data2,
-        position
+        position2
       );
       const rangeEndValue = rangeEnd.length ? Number(rangeEnd) : null;
-      if (position.position < data2.length) {
+      if (position2.position < data2.length) {
         return "failure";
       }
       if (rangeEndValue === null && rangeStartValue === null) {
@@ -9639,27 +9639,27 @@ var require_util2 = __commonJS({
     }
     function gettingDecodingSplitting(value) {
       const input = value;
-      const position = { position: 0 };
+      const position2 = { position: 0 };
       const values = [];
       let temporaryValue = "";
-      while (position.position < input.length) {
+      while (position2.position < input.length) {
         temporaryValue += collectASequenceOfCodePoints(
           (char) => char !== '"' && char !== ",",
           input,
-          position
+          position2
         );
-        if (position.position < input.length) {
-          if (input.charCodeAt(position.position) === 34) {
+        if (position2.position < input.length) {
+          if (input.charCodeAt(position2.position) === 34) {
             temporaryValue += collectAnHTTPQuotedString(
               input,
-              position
+              position2
             );
-            if (position.position < input.length) {
+            if (position2.position < input.length) {
               continue;
             }
           } else {
-            assert(input.charCodeAt(position.position) === 44);
-            position.position++;
+            assert(input.charCodeAt(position2.position) === 44);
+            position2.position++;
           }
         }
         temporaryValue = removeChars(temporaryValue, true, true, (char) => char === 9 || char === 32);
@@ -9953,44 +9953,44 @@ var require_formdata_parser = __commonJS({
       }
       const boundary = Buffer.from(`--${boundaryString}`, "utf8");
       const entryList = [];
-      const position = { position: 0 };
+      const position2 = { position: 0 };
       const firstBoundaryIndex = input.indexOf(boundary);
       if (firstBoundaryIndex === -1) {
         throw parsingError("no boundary found in multipart body");
       }
-      position.position = firstBoundaryIndex;
+      position2.position = firstBoundaryIndex;
       while (true) {
-        if (input.subarray(position.position, position.position + boundary.length).equals(boundary)) {
-          position.position += boundary.length;
+        if (input.subarray(position2.position, position2.position + boundary.length).equals(boundary)) {
+          position2.position += boundary.length;
         } else {
           throw parsingError("expected a value starting with -- and the boundary");
         }
-        if (bufferStartsWith(input, dd, position)) {
+        if (bufferStartsWith(input, dd, position2)) {
           return entryList;
         }
-        if (input[position.position] !== 13 || input[position.position + 1] !== 10) {
+        if (input[position2.position] !== 13 || input[position2.position + 1] !== 10) {
           throw parsingError("expected CRLF");
         }
-        position.position += 2;
-        const result = parseMultipartFormDataHeaders(input, position);
+        position2.position += 2;
+        const result = parseMultipartFormDataHeaders(input, position2);
         let { name, filename, contentType, encoding } = result;
-        position.position += 2;
+        position2.position += 2;
         let body;
         {
-          const boundaryIndex = input.indexOf(boundary.subarray(2), position.position);
+          const boundaryIndex = input.indexOf(boundary.subarray(2), position2.position);
           if (boundaryIndex === -1) {
             throw parsingError("expected boundary after body");
           }
-          body = input.subarray(position.position, boundaryIndex - 4);
-          position.position += body.length;
+          body = input.subarray(position2.position, boundaryIndex - 4);
+          position2.position += body.length;
           if (encoding === "base64") {
             body = Buffer.from(body.toString(), "base64");
           }
         }
-        if (input[position.position] !== 13 || input[position.position + 1] !== 10) {
+        if (input[position2.position] !== 13 || input[position2.position + 1] !== 10) {
           throw parsingError("expected CRLF");
         } else {
-          position.position += 2;
+          position2.position += 2;
         }
         let value;
         if (filename !== null) {
@@ -10007,37 +10007,37 @@ var require_formdata_parser = __commonJS({
         entryList.push(makeEntry(name, value, filename));
       }
     }
-    function parseContentDispositionAttribute(input, position) {
-      if (input[position.position] === 59) {
-        position.position++;
+    function parseContentDispositionAttribute(input, position2) {
+      if (input[position2.position] === 59) {
+        position2.position++;
       }
       collectASequenceOfBytes(
         (char) => char === 32 || char === 9,
         input,
-        position
+        position2
       );
       const attributeName = collectASequenceOfBytes(
         (char) => isToken(char) && char !== 61 && char !== 42,
         // not = or *
         input,
-        position
+        position2
       );
       if (attributeName.length === 0) {
         return null;
       }
       const attrNameStr = attributeName.toString("ascii").toLowerCase();
-      const isExtended = input[position.position] === 42;
+      const isExtended = input[position2.position] === 42;
       if (isExtended) {
-        position.position++;
+        position2.position++;
       }
-      if (input[position.position] !== 61) {
+      if (input[position2.position] !== 61) {
         return null;
       }
-      position.position++;
+      position2.position++;
       collectASequenceOfBytes(
         (char) => char === 32 || char === 9,
         input,
-        position
+        position2
       );
       let value;
       if (isExtended) {
@@ -10045,7 +10045,7 @@ var require_formdata_parser = __commonJS({
           (char) => char !== 32 && char !== 13 && char !== 10 && char !== 59,
           // not space, CRLF, or ;
           input,
-          position
+          position2
         );
         if (headerValue[0] !== 117 && headerValue[0] !== 85 || // u or U
         headerValue[1] !== 116 && headerValue[1] !== 84 || // t or T
@@ -10055,37 +10055,37 @@ var require_formdata_parser = __commonJS({
           throw parsingError("unknown encoding, expected utf-8''");
         }
         value = decodeURIComponent(decoder.decode(headerValue.subarray(7)));
-      } else if (input[position.position] === 34) {
-        position.position++;
+      } else if (input[position2.position] === 34) {
+        position2.position++;
         const quotedValue = collectASequenceOfBytes(
           (char) => char !== 10 && char !== 13 && char !== 34,
           // not LF, CR, or "
           input,
-          position
+          position2
         );
-        if (input[position.position] !== 34) {
+        if (input[position2.position] !== 34) {
           throw parsingError("Closing quote not found");
         }
-        position.position++;
+        position2.position++;
         value = decoder.decode(quotedValue).replace(/%0A/ig, "\n").replace(/%0D/ig, "\r").replace(/%22/g, '"');
       } else {
         const tokenValue = collectASequenceOfBytes(
           (char) => isToken(char) && char !== 59,
           // not ;
           input,
-          position
+          position2
         );
         value = decoder.decode(tokenValue);
       }
       return { name: attrNameStr, value, extended: isExtended };
     }
-    function parseMultipartFormDataHeaders(input, position) {
+    function parseMultipartFormDataHeaders(input, position2) {
       let name = null;
       let filename = null;
       let contentType = null;
       let encoding = null;
       while (true) {
-        if (input[position.position] === 13 && input[position.position + 1] === 10) {
+        if (input[position2.position] === 13 && input[position2.position + 1] === 10) {
           if (name === null) {
             throw parsingError("header name is null");
           }
@@ -10094,20 +10094,20 @@ var require_formdata_parser = __commonJS({
         let headerName = collectASequenceOfBytes(
           (char) => char !== 10 && char !== 13 && char !== 58,
           input,
-          position
+          position2
         );
         headerName = removeChars(headerName, true, true, (char) => char === 9 || char === 32);
         if (!HTTP_TOKEN_CODEPOINTS.test(headerName.toString())) {
           throw parsingError("header name does not match the field-name token production");
         }
-        if (input[position.position] !== 58) {
+        if (input[position2.position] !== 58) {
           throw parsingError("expected :");
         }
-        position.position++;
+        position2.position++;
         collectASequenceOfBytes(
           (char) => char === 32 || char === 9,
           input,
-          position
+          position2
         );
         switch (bufferToLowerCasedHeaderName(headerName)) {
           case "content-disposition": {
@@ -10116,13 +10116,13 @@ var require_formdata_parser = __commonJS({
             const dispositionType = collectASequenceOfBytes(
               (char) => isToken(char),
               input,
-              position
+              position2
             );
             if (dispositionType.toString("ascii").toLowerCase() !== "form-data") {
               throw parsingError("expected form-data for content-disposition header");
             }
-            while (position.position < input.length && (input[position.position] !== 13 || input[position.position + 1] !== 10)) {
-              const attribute = parseContentDispositionAttribute(input, position);
+            while (position2.position < input.length && (input[position2.position] !== 13 || input[position2.position + 1] !== 10)) {
+              const attribute = parseContentDispositionAttribute(input, position2);
               if (!attribute) {
                 break;
               }
@@ -10146,7 +10146,7 @@ var require_formdata_parser = __commonJS({
             let headerValue = collectASequenceOfBytes(
               (char) => char !== 10 && char !== 13,
               input,
-              position
+              position2
             );
             headerValue = removeChars(headerValue, false, true, (char) => char === 9 || char === 32);
             contentType = isomorphicDecode(headerValue);
@@ -10156,7 +10156,7 @@ var require_formdata_parser = __commonJS({
             let headerValue = collectASequenceOfBytes(
               (char) => char !== 10 && char !== 13,
               input,
-              position
+              position2
             );
             headerValue = removeChars(headerValue, false, true, (char) => char === 9 || char === 32);
             encoding = isomorphicDecode(headerValue);
@@ -10166,23 +10166,23 @@ var require_formdata_parser = __commonJS({
             collectASequenceOfBytes(
               (char) => char !== 10 && char !== 13,
               input,
-              position
+              position2
             );
           }
         }
-        if (input[position.position] !== 13 || input[position.position + 1] !== 10) {
+        if (input[position2.position] !== 13 || input[position2.position + 1] !== 10) {
           throw parsingError("expected CRLF");
         } else {
-          position.position += 2;
+          position2.position += 2;
         }
       }
     }
-    function collectASequenceOfBytes(condition, input, position) {
-      let start = position.position;
+    function collectASequenceOfBytes(condition, input, position2) {
+      let start = position2.position;
       while (start < input.length && condition(input[start])) {
         ++start;
       }
-      return input.subarray(position.position, position.position = start);
+      return input.subarray(position2.position, position2.position = start);
     }
     function removeChars(buf, leading, trailing, predicate) {
       let lead = 0;
@@ -10195,12 +10195,12 @@ var require_formdata_parser = __commonJS({
       }
       return lead === 0 && trail === buf.length - 1 ? buf : buf.subarray(lead, trail + 1);
     }
-    function bufferStartsWith(buffer, start, position) {
+    function bufferStartsWith(buffer, start, position2) {
       if (buffer.length < start.length) {
         return false;
       }
       for (let i = 0; i < start.length; i++) {
-        if (start[i] !== buffer[position.position + i]) {
+        if (start[i] !== buffer[position2.position + i]) {
           return false;
         }
       }
@@ -19115,13 +19115,13 @@ var require_dns = __commonJS({
         } else {
           family.offset++;
         }
-        const position = family.offset % family.ips.length;
-        ip = family.ips[position] ?? null;
+        const position2 = family.offset % family.ips.length;
+        ip = family.ips[position2] ?? null;
         if (ip == null) {
           return ip;
         }
         if (Date.now() - ip.timestamp > ip.ttl) {
-          family.ips.splice(position, 1);
+          family.ips.splice(position2, 1);
           return this.pick(origin, hostnameRecords, affinity);
         }
         return ip;
@@ -19140,13 +19140,13 @@ var require_dns = __commonJS({
         } else {
           family.offset++;
         }
-        const position = family.offset % family.ips.length;
-        const ip = family.ips[position] ?? null;
+        const position2 = family.offset % family.ips.length;
+        const ip = family.ips[position2] ?? null;
         if (ip == null) {
           return ip;
         }
         if (Date.now() - ip.timestamp > ip.ttl) {
-          family.ips.splice(position, 1);
+          family.ips.splice(position2, 1);
         }
         return ip;
       }
@@ -23528,15 +23528,15 @@ var require_request2 = __commonJS({
           this.#dispatcher = init.dispatcher || input.#dispatcher;
         }
         const origin = environmentSettingsObject.settingsObject.origin;
-        let window = "client";
+        let window2 = "client";
         if (request.window?.constructor?.name === "EnvironmentSettingsObject" && sameOrigin(request.window, origin)) {
-          window = request.window;
+          window2 = request.window;
         }
         if (init.window != null) {
-          throw new TypeError(`'window' option '${window}' must be null`);
+          throw new TypeError(`'window' option '${window2}' must be null`);
         }
         if ("window" in init) {
-          window = "no-window";
+          window2 = "no-window";
         }
         request = makeRequest({
           // URL request’s URL.
@@ -23551,7 +23551,7 @@ var require_request2 = __commonJS({
           // client This’s relevant settings object.
           client: environmentSettingsObject.settingsObject,
           // window window.
-          window,
+          window: window2,
           // priority request’s priority.
           priority: request.priority,
           // origin request’s origin. The propagation of the origin is only significant for navigation requests
@@ -26385,22 +26385,22 @@ var require_parse = __commonJS({
       let name = "";
       let value = "";
       if (header.includes(";")) {
-        const position = { position: 0 };
-        nameValuePair = collectASequenceOfCodePointsFast(";", header, position);
-        unparsedAttributes = header.slice(position.position);
+        const position2 = { position: 0 };
+        nameValuePair = collectASequenceOfCodePointsFast(";", header, position2);
+        unparsedAttributes = header.slice(position2.position);
       } else {
         nameValuePair = header;
       }
       if (!nameValuePair.includes("=")) {
         value = nameValuePair;
       } else {
-        const position = { position: 0 };
+        const position2 = { position: 0 };
         name = collectASequenceOfCodePointsFast(
           "=",
           nameValuePair,
-          position
+          position2
         );
-        value = nameValuePair.slice(position.position + 1);
+        value = nameValuePair.slice(position2.position + 1);
       }
       name = name.trim();
       value = value.trim();
@@ -26434,13 +26434,13 @@ var require_parse = __commonJS({
       let attributeName = "";
       let attributeValue = "";
       if (cookieAv.includes("=")) {
-        const position = { position: 0 };
+        const position2 = { position: 0 };
         attributeName = collectASequenceOfCodePointsFast(
           "=",
           cookieAv,
-          position
+          position2
         );
-        attributeValue = cookieAv.slice(position.position + 1);
+        attributeValue = cookieAv.slice(position2.position + 1);
       } else {
         attributeName = cookieAv;
       }
@@ -27046,16 +27046,16 @@ var require_util5 = __commonJS({
       return isTextBinaryFrame(opcode) || isContinuationFrame(opcode) || isControlFrame(opcode);
     }
     function parseExtensions(extensions) {
-      const position = { position: 0 };
+      const position2 = { position: 0 };
       const extensionList = /* @__PURE__ */ new Map();
-      while (position.position < extensions.length) {
-        const pair = collectASequenceOfCodePointsFast(";", extensions, position);
+      while (position2.position < extensions.length) {
+        const pair = collectASequenceOfCodePointsFast(";", extensions, position2);
         const [name, value = ""] = pair.split("=", 2);
         extensionList.set(
           removeHTTPWhitespace(name, true, false),
           removeHTTPWhitespace(value, false, true)
         );
-        position.position++;
+        position2.position++;
       }
       return extensionList;
     }
@@ -29595,31 +29595,31 @@ var require_utils2 = __commonJS({
     exports.asciiLowercase = (string) => {
       return string.replace(/[A-Z]/ug, (l) => l.toLowerCase());
     };
-    exports.collectAnHTTPQuotedString = (input, position) => {
+    exports.collectAnHTTPQuotedString = (input, position2) => {
       let value = "";
-      position++;
+      position2++;
       while (true) {
-        while (position < input.length && input[position] !== '"' && input[position] !== "\\") {
-          value += input[position];
-          ++position;
+        while (position2 < input.length && input[position2] !== '"' && input[position2] !== "\\") {
+          value += input[position2];
+          ++position2;
         }
-        if (position >= input.length) {
+        if (position2 >= input.length) {
           break;
         }
-        const quoteOrBackslash = input[position];
-        ++position;
+        const quoteOrBackslash = input[position2];
+        ++position2;
         if (quoteOrBackslash === "\\") {
-          if (position >= input.length) {
+          if (position2 >= input.length) {
             value += "\\";
             break;
           }
-          value += input[position];
-          ++position;
+          value += input[position2];
+          ++position2;
         } else {
           break;
         }
       }
-      return [value, position];
+      return [value, position2];
     };
   }
 });
@@ -29700,23 +29700,23 @@ var require_parser = __commonJS({
     } = require_utils2();
     module.exports = (input) => {
       input = removeLeadingAndTrailingHTTPWhitespace(input);
-      let position = 0;
+      let position2 = 0;
       let type = "";
-      while (position < input.length && input[position] !== "/") {
-        type += input[position];
-        ++position;
+      while (position2 < input.length && input[position2] !== "/") {
+        type += input[position2];
+        ++position2;
       }
       if (type.length === 0 || !solelyContainsHTTPTokenCodePoints(type)) {
         return null;
       }
-      if (position >= input.length) {
+      if (position2 >= input.length) {
         return null;
       }
-      ++position;
+      ++position2;
       let subtype = "";
-      while (position < input.length && input[position] !== ";") {
-        subtype += input[position];
-        ++position;
+      while (position2 < input.length && input[position2] !== ";") {
+        subtype += input[position2];
+        ++position2;
       }
       subtype = removeTrailingHTTPWhitespace(subtype);
       if (subtype.length === 0 || !solelyContainsHTTPTokenCodePoints(subtype)) {
@@ -29727,34 +29727,34 @@ var require_parser = __commonJS({
         subtype: asciiLowercase(subtype),
         parameters: /* @__PURE__ */ new Map()
       };
-      while (position < input.length) {
-        ++position;
-        while (isHTTPWhitespaceChar(input[position])) {
-          ++position;
+      while (position2 < input.length) {
+        ++position2;
+        while (isHTTPWhitespaceChar(input[position2])) {
+          ++position2;
         }
         let parameterName = "";
-        while (position < input.length && input[position] !== ";" && input[position] !== "=") {
-          parameterName += input[position];
-          ++position;
+        while (position2 < input.length && input[position2] !== ";" && input[position2] !== "=") {
+          parameterName += input[position2];
+          ++position2;
         }
         parameterName = asciiLowercase(parameterName);
-        if (position < input.length) {
-          if (input[position] === ";") {
+        if (position2 < input.length) {
+          if (input[position2] === ";") {
             continue;
           }
-          ++position;
+          ++position2;
         }
         let parameterValue = null;
-        if (input[position] === '"') {
-          [parameterValue, position] = collectAnHTTPQuotedString(input, position);
-          while (position < input.length && input[position] !== ";") {
-            ++position;
+        if (input[position2] === '"') {
+          [parameterValue, position2] = collectAnHTTPQuotedString(input, position2);
+          while (position2 < input.length && input[position2] !== ";") {
+            ++position2;
           }
         } else {
           parameterValue = "";
-          while (position < input.length && input[position] !== ";") {
-            parameterValue += input[position];
-            ++position;
+          while (position2 < input.length && input[position2] !== ";") {
+            parameterValue += input[position2];
+            ++position2;
           }
           parameterValue = removeTrailingHTTPWhitespace(parameterValue);
           if (parameterValue === "") {
@@ -29909,6 +29909,22 @@ var require_mime_type = __commonJS({
     };
   }
 });
+
+// src/discovery-page.ts
+function position(cursor, target) {
+  if (cursor === null) return { page: 1, offset: 0 };
+  const prefix = target + ":";
+  const value = cursor.startsWith(prefix) ? cursor.slice(prefix.length) : "";
+  const match = /^(\d+)(?::(\d+))?$/u.exec(value);
+  const page = Number(match?.[1]), offset = Number(match?.[2] ?? 0);
+  if (!match || !Number.isSafeInteger(page) || page < 1 || page > 1e4 || !Number.isSafeInteger(offset) || offset < 0 || offset > 1e4) throw new Error("Discovery cursor is invalid.");
+  return { page, offset };
+}
+function window(all, target, page, offset, size, hasNext) {
+  const values = all.slice(offset, offset + size), next2 = offset + values.length;
+  const cursor = next2 < all.length ? target + ":" + page + ":" + next2 : hasNext && all.length > 0 && page < 1e4 ? target + ":" + (page + 1) + ":0" : null;
+  return { values, continuation: cursor === null ? null : { target, cursor } };
+}
 
 // node_modules/cheerio/dist/esm/options.js
 var defaultOpts = {
@@ -44720,6 +44736,57 @@ var undici = __toESM(require_undici(), 1);
 var import_whatwg_mimetype = __toESM(require_mime_type(), 1);
 import { Writable as Writable2, finished } from "node:stream";
 
+// src/discovery-navigation.ts
+var defaultFilters = { tag: "-1", area: "-1", end: "-1" };
+function filterTarget(value) {
+  return "browse:" + Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+function readFilters(target) {
+  if (!/^browse:[A-Za-z0-9_-]{1,600}$/u.test(target)) throw new Error("Discovery target is invalid.");
+  let value;
+  try {
+    value = JSON.parse(Buffer.from(target.slice(7), "base64url").toString("utf8"));
+  } catch {
+    throw new Error("Discovery target is invalid.");
+  }
+  if (!value || typeof value !== "object") throw new Error("Discovery target is invalid.");
+  const v = value;
+  if (typeof v.tag !== "string" || v.tag.length > 80 || !["-1", "1", "2"].includes(String(v.area)) || !["-1", "0", "1"].includes(String(v.end))) throw new Error("Discovery target is invalid.");
+  return { tag: v.tag, area: String(v.area), end: String(v.end) };
+}
+function filterSections(html3, current) {
+  const $2 = load(html3);
+  return $2(".sp-filter-group").toArray().flatMap((element, index2) => {
+    const group = $2(element), title = group.find(".sp-filter-label").first().text().trim();
+    const categories = group.find("dd[data-val]").toArray().flatMap((node) => {
+      const item = $2(node), value = item.attr("data-val"), label = item.text().trim();
+      const key = /active\(this,['"](tag|area|end)['"]\)/u.exec(item.attr("onclick") ?? "")?.[1];
+      if (!key || !label || value === void 0 || value.length > 80) return [];
+      const target = filterTarget({ ...current, [key]: value });
+      try {
+        readFilters(target);
+      } catch {
+        return [];
+      }
+      return [{ id: target, title: label, target, count: null, url: null, icon: "manga" }];
+    });
+    if (!title || categories.length === 0) return [];
+    const children2 = [];
+    for (let offset = 0; offset < categories.length; offset += 32) children2.push({ type: "categoryCollection", id: "comicbox-filter-list-" + index2 + "-" + offset, layout: "chips", categories: categories.slice(offset, offset + 32) });
+    return [{ type: "section", id: "comicbox-filter-" + index2, title, subtitle: null, icon: "category", children: children2 }];
+  });
+}
+function hasNextPage(html3, page) {
+  const $2 = load(html3);
+  return $2(".pagination a[href]").toArray().some((node) => {
+    try {
+      return Number(new URL($2(node).attr("href"), "https://www.comicbox.xyz").searchParams.get("page")) === page + 1;
+    } catch {
+      return false;
+    }
+  });
+}
+
 // src/index.mts
 var base = "https://www.comicbox.xyz";
 var sourceUserAgent = "Mozilla/5.0 MgRead";
@@ -44744,47 +44811,32 @@ async function searchSuggestions(_request) {
   return frozen({ items: [], nextCursor: null });
 }
 async function discover(request) {
-  if (request.target === null) return frozen({
-    kind: "document",
-    document: { components: [{
-      type: "section",
-      id: "comicbox-channels",
-      title: "污污漫画",
-      subtitle: "ComicBox 分类",
-      icon: "manga",
-      children: [{ type: "categoryCollection", id: "comicbox-channel-list", layout: "chips", categories: channels.map((title2, index3) => ({
-        id: String(index3),
-        title: title2,
-        target: `channel:${index3}`,
-        count: null,
-        url: null,
-        icon: "manga"
-      })) }]
-    }] }
-  });
-  const index2 = Number(request.target.replace(/^channel:/u, ""));
-  const title = channels[index2];
-  if (!Number.isSafeInteger(index2) || title === void 0) throw new Error("Discovery target is invalid.");
-  const page = cursorPage(request.cursor, request.target);
-  const size = clamp(request.pageSize);
-  const url = title === "热门" ? `${base}/index` : `${base}/booklist?tag=${encodeURIComponent(title)}&area=-1&end=-1&page=${page}`;
-  const values = parseCards(await text3(url), title === "热门" ? ".sp-bcarousel-item, .sp-booklist-card" : ".sp-booklist-card");
-  const contents2 = values.map(summary).slice(0, size);
-  const collectionId = `comicbox:${index2}`;
-  const items = contents2.map((content) => frozen({ content, rank: null, metric: null, recommendation: null }));
-  const continuation = values.length >= size ? frozen({ target: request.target, cursor: `channel:${index2}:${page + 1}` }) : null;
-  if (request.collectionId !== null) {
-    if (request.collectionId !== collectionId) throw new Error("Discovery collection is invalid.");
-    return frozen({ kind: "append", collectionId, items, continuation });
+  if (request.target === null) {
+    if (request.cursor !== null || request.collectionId !== null) throw new Error("Initial discovery request is invalid.");
+    const home2 = await discover({ target: "channel:0", cursor: null, collectionId: null, pageSize: Math.min(10, clamp(request.pageSize)) });
+    const components = home2.kind === "document" ? [...home2.document.components] : [];
+    components.push({ type: "section", id: "comicbox-channels", title: "分类与题材", subtitle: null, icon: "explore", children: [{ type: "categoryCollection", id: "comicbox-channel-list", layout: "chips", categories: channels.map((title2, index3) => ({ id: String(index3), title: title2, target: "channel:" + index3, count: null, url: null, icon: "manga" })) }] });
+    const catalog = await text3(base + "/booklist");
+    components.push(...filterSections(catalog, defaultFilters));
+    return { kind: "document", document: { components } };
   }
-  return frozen({ kind: "document", document: { components: [{
-    type: "section",
-    id: `${collectionId}:section`,
-    title,
-    subtitle: null,
-    icon: "manga",
-    children: [{ type: "contentCollection", id: collectionId, layout: "coverGrid", items, continuation }]
-  }] } });
+  const isBrowse = request.target.startsWith("browse:");
+  const match = /^channel:(\d+)$/u.exec(request.target), index2 = Number(match?.[1]), title = isBrowse ? "漫画分类" : channels[index2];
+  if (!isBrowse && (!match || !title)) throw new Error("Discovery target is invalid.");
+  const legacyTags = { 1: "-1", 3: "東方", 5: "漢化", 6: "-1", 7: "-1", 8: "單行本", 9: "長篇" };
+  const filters2 = isBrowse ? readFilters(request.target) : { tag: legacyTags[index2] ?? title, area: index2 === 6 ? "1" : index2 === 7 ? "2" : "-1", end: "-1" };
+  const home = !isBrowse && index2 === 0;
+  const collectionId = isBrowse ? "comicbox:" + request.target.slice(7) : "comicbox:" + index2;
+  if (request.collectionId !== null && request.collectionId !== collectionId) throw new Error("Discovery collection is invalid.");
+  const { page, offset } = position(request.cursor, request.target);
+  if (home && page !== 1) throw new Error("Homepage has no upstream pagination.");
+  const params = new URLSearchParams({ ...filters2, page: String(page) });
+  const html3 = await text3(home ? base + "/index" : base + "/booklist?" + params);
+  const all = parseCards(html3, home ? ".sp-bcarousel-item, .sp-booklist-card" : ".sp-booklist-card").map(summary);
+  const { values, continuation } = window(all, request.target, page, offset, clamp(request.pageSize), !home && hasNextPage(html3, page));
+  const items = values.map((content) => ({ content, rank: null, metric: null, recommendation: null }));
+  if (request.collectionId !== null) return { kind: "append", collectionId, items, continuation };
+  return { kind: "document", document: { components: [{ type: "section", id: collectionId + ":section", title, subtitle: null, icon: "manga", children: [{ type: "contentCollection", id: collectionId, layout: "coverGrid", items, continuation }] }, ...!home ? filterSections(html3, filters2) : []] } };
 }
 async function getDetail(request) {
   const path = contentPath(request.id);
@@ -45029,12 +45081,6 @@ function encode(value) {
 }
 function decode(value) {
   return Buffer.from(value, "base64url").toString("utf8");
-}
-function cursorPage(cursor, target) {
-  if (cursor === null) return 1;
-  const page = Number(cursor.startsWith(`${target}:`) ? cursor.slice(target.length + 1) : "");
-  if (!Number.isSafeInteger(page) || page < 2) throw new Error("Cursor is invalid.");
-  return page;
 }
 function clean(value) {
   return value.replaceAll(/\s+/gu, " ").trim();

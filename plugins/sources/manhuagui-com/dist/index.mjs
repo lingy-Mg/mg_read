@@ -485,6 +485,22 @@ var require_lz_string = __commonJS({
   }
 });
 
+// src/discovery-page.ts
+function position(cursor, target) {
+  if (cursor === null) return { page: 1, offset: 0 };
+  const prefix = target + ":";
+  const value = cursor.startsWith(prefix) ? cursor.slice(prefix.length) : "";
+  const match = /^(\d+)(?::(\d+))?$/u.exec(value);
+  const page = Number(match?.[1]), offset = Number(match?.[2] ?? 0);
+  if (!match || !Number.isSafeInteger(page) || page < 1 || page > 1e4 || !Number.isSafeInteger(offset) || offset < 0 || offset > 1e4) throw new Error("Discovery cursor is invalid.");
+  return { page, offset };
+}
+function window(all, target, page, offset, size, hasNext) {
+  const values = all.slice(offset, offset + size), next = offset + values.length;
+  const cursor = next < all.length ? target + ":" + page + ":" + next : hasNext && all.length > 0 && page < 1e4 ? target + ":" + (page + 1) + ":0" : null;
+  return { values, continuation: cursor === null ? null : { target, cursor } };
+}
+
 // src/source.ts
 var import_lz_string = __toESM(require_lz_string(), 1);
 var desktopOrigin = "https://www.manhuagui.com";
@@ -515,11 +531,13 @@ var ManhuaguiSource = class {
   }
   async category(target, cursor, pageSize) {
     const category = decodeCategory(target);
-    const page = decodeCursor(cursor);
+    const state = position(cursor !== null && /^\d+$/u.test(cursor) ? target + ":" + cursor : cursor, target);
+    const { page, offset } = state;
     const url = categoryUrl(category.path, page);
     const html = await this.#html(url, mobileOrigin);
-    const items = this.#parseCards(html, url).slice(0, boundedPageSize(pageSize)).map(toDiscoveryItem);
-    const continuation = findNextPage(html, category.path, page) ? { target, cursor: String(page + 1) } : null;
+    const all = this.#parseCards(html, url);
+    const { values, continuation } = window(all, target, page, offset, boundedPageSize(pageSize), findNextPage(html, category.path, page));
+    const items = values.map(toDiscoveryItem);
     return { title: category.title, collectionId: `manhuagui-${category.id}`, items, continuation };
   }
   categoryMetadata() {
@@ -759,13 +777,6 @@ function decodeCategory(target) {
   const value = categories.find((item) => item.id === id);
   if (value === void 0) throw new Error("Category target is invalid.");
   return value;
-}
-function decodeCursor(value) {
-  if (value === null) return 1;
-  if (!/^\d+$/u.test(value)) throw new Error("Category cursor is invalid.");
-  const page = Number(value);
-  if (!Number.isSafeInteger(page) || page < 1 || page > 1e4) throw new Error("Category cursor is invalid.");
-  return page;
 }
 function categoryUrl(path, page) {
   if (page === 1) return new URL(path, mobileOrigin);
@@ -1011,10 +1022,10 @@ async function discover(request) {
   return invoke("discover", async (active) => {
     if (request.target === null) {
       if (request.cursor !== null || request.collectionId !== null) throw new Error("Initial discovery request is invalid.");
-      const home = await active.home(request.pageSize);
+      const home = await active.category("category:update", null, Math.min(request.pageSize, 10));
       return { kind: "document", document: { components: [
         { type: "section", id: "manhuagui-latest-section", title: "最新更新", subtitle: null, icon: "newRelease", children: [
-          { type: "contentCollection", id: "manhuagui-latest", layout: "coverGrid", items: home.items.map((content) => ({ content, rank: null, metric: null, recommendation: null })), continuation: null }
+          { type: "contentCollection", id: home.collectionId, layout: "coverGrid", items: home.items, continuation: home.continuation }
         ] },
         { type: "section", id: "manhuagui-categories-section", title: "漫画分类", subtitle: null, icon: "category", children: [
           { type: "categoryCollection", id: "manhuagui-categories", layout: "chips", categories: active.categoryMetadata() }

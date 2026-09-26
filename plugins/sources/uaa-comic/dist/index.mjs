@@ -1,5 +1,21 @@
 import { createRequire as __mgreadCreateRequire } from 'node:module'; const require = __mgreadCreateRequire(import.meta.url);
 
+// src/discovery-page.ts
+function position(cursor, target) {
+  if (cursor === null) return { page: 1, offset: 0 };
+  const prefix = target + ":";
+  const value = cursor.startsWith(prefix) ? cursor.slice(prefix.length) : "";
+  const match = /^(\d+)(?::(\d+))?$/u.exec(value);
+  const page = Number(match?.[1]), offset = Number(match?.[2] ?? 0);
+  if (!match || !Number.isSafeInteger(page) || page < 1 || page > 1e4 || !Number.isSafeInteger(offset) || offset < 0 || offset > 1e4) throw new Error("Discovery cursor is invalid.");
+  return { page, offset };
+}
+function window(all, target, page, offset, size, hasNext2) {
+  const values = all.slice(offset, offset + size), next = offset + values.length;
+  const cursor = next < all.length ? target + ":" + page + ":" + next : hasNext2 && all.length > 0 && page < 1e4 ? target + ":" + (page + 1) + ":0" : null;
+  return { values, continuation: cursor === null ? null : { target, cursor } };
+}
+
 // src/index.mts
 var main = "https://www.uaa.com";
 var origin = "https://www.uaa001.com";
@@ -27,16 +43,24 @@ async function searchSuggestions(_request) {
 async function discover(request) {
   if (request.target === null) {
     if (request.cursor !== null || request.collectionId !== null) throw new Error("Initial discovery request is invalid.");
-    return frozen({ kind: "document", document: { components: [{ type: "section", id: "manga-channels", title: "UAA 漫画", subtitle: "按分类与榜单浏览", icon: "manga", children: [{ type: "categoryCollection", id: "manga-channel-list", layout: "chips", categories: channels.map((channel2) => ({ id: channel2.id, title: channel2.title, target: `channel:${channel2.id}`, count: null, url: null, icon: channel2.path === "rank" ? "ranking" : "manga" })) }] }] } });
+    const components = [];
+    for (const id of ["korea", "weekly", "latest"]) {
+      const result2 = await discover({ target: "channel:" + id, cursor: null, collectionId: null, pageSize: Math.min(6, clamp(request.pageSize)) });
+      if (result2.kind === "document") components.push(...result2.document.components);
+    }
+    components.push({ type: "section", id: "manga-channels", title: "分类与排行榜", subtitle: null, icon: "explore", children: [{ type: "categoryCollection", id: "manga-channel-list", layout: "chips", categories: channels.map((channel2) => ({ id: channel2.id, title: channel2.title, target: "channel:" + channel2.id, count: null, url: null, icon: channel2.path === "rank" ? "ranking" : "manga" })) }] });
+    return { kind: "document", document: { components } };
   }
-  const channel = channels.find((value) => request.target === `channel:${value.id}`);
-  if (channel === void 0) throw new Error("Discovery target is invalid.");
-  const page = cursorPage(request.cursor, `channel:${channel.id}`), size = clamp(request.pageSize), result = await fetchPage(channel.path, { ...channel.parameters, page: String(page), size: String(size) }), values = summaries(result.items).slice(0, size), collectionId = `manga:${channel.id}`, items = values.map((content) => frozen({ content, rank: null, metric: null, recommendation: null })), continuation = hasNext(result, page, values.length, size) ? frozen({ target: request.target, cursor: `channel:${channel.id}:${page + 1}` }) : null;
-  if (request.collectionId !== null) {
-    if (request.collectionId !== collectionId) throw new Error("Discovery collection is invalid.");
-    return frozen({ kind: "append", collectionId, items, continuation });
-  }
-  return frozen({ kind: "document", document: { components: [{ type: "section", id: `${collectionId}:section`, title: channel.title, subtitle: null, icon: "manga", children: [{ type: "contentCollection", id: collectionId, layout: "coverGrid", items, continuation }] }] } });
+  const channel = channels.find((value) => request.target === "channel:" + value.id);
+  if (!channel) throw new Error("Discovery target is invalid.");
+  const collectionId = "manga:" + channel.id;
+  if (request.collectionId !== null && request.collectionId !== collectionId) throw new Error("Discovery collection is invalid.");
+  const { page, offset } = position(request.cursor, request.target), upstreamSize = 30;
+  const result = await fetchPage(channel.path, { ...channel.parameters, page: String(page), size: String(upstreamSize) }), all = summaries(result.items);
+  const { values, continuation } = window(all, request.target, page, offset, clamp(request.pageSize), hasNext(result, page, result.items.length, upstreamSize));
+  const items = values.map((content, index) => ({ content, rank: channel.path === "rank" ? (page - 1) * upstreamSize + offset + index + 1 : null, metric: null, recommendation: null }));
+  if (request.collectionId !== null) return { kind: "append", collectionId, items, continuation };
+  return { kind: "document", document: { components: [{ type: "section", id: collectionId + ":section", title: channel.title, subtitle: null, icon: channel.path === "rank" ? "ranking" : "manga", children: [{ type: "contentCollection", id: collectionId, layout: channel.path === "rank" ? "compact" : "coverGrid", items, continuation }] }] } };
 }
 async function getDetail(request) {
   const id = contentId(request.id), model = object((await fetchJson("intro", { id, force: "false", viewId: viewId() })).model), item = summary(model, id);
@@ -61,7 +85,7 @@ async function getContent(request) {
 }
 async function fetchPage(path, params) {
   const response = await fetchJson(path, params), model = response.model;
-  if (Array.isArray(model)) return { items: model.filter(isObject), totalCount: null, totalPage: null };
+  if (Array.isArray(model)) return { items: model.filter(isObject), totalCount: model.length, totalPage: 1 };
   const value = object(model);
   return { items: records(value.data), totalCount: nonNegative(value.totalCount), totalPage: positive(value.totalPage) };
 }

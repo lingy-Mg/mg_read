@@ -1,7 +1,7 @@
 /**
  * 275听书网原生数据源。
  *
- * 职责：直接解析 i275 移动站的首页、检索、详情、目录和音频地址。
+ * 职责：解析 i275 首页、检索、详情、目录和音频；发现保留首页全部作品，用页内游标继续浏览。
  * 生命周期：activate 注入 Runtime 上下文；宿主 browser.sessionV1 负责复用站点会话。
  * IO：HTML 走宿主会话 HTTP（Node testkit 无会话时回退 ctx.http），封面与音频经 ctx.resource.proxy。
  * 稳定标识：有声书和章节使用 /book/、/play/ 路径中的数字 ID。
@@ -40,10 +40,17 @@ export async function searchSuggestions(_request: { cursor: string | null; pageS
 }
 
 export async function discover(request: { target: string | null; cursor: string | null; collectionId: string | null; pageSize: number }) {
-  if (request.target === null) {
-    if (request.cursor !== null || request.collectionId !== null) throw new Error('Initial discovery request is invalid.');
-    const values = parseBooks(await fetchText(`${base}/`)).slice(0, clamp(request.pageSize));
+  if (request.target === null && (request.cursor !== null || request.collectionId !== null)) throw new Error('Initial discovery request is invalid.');
+  if (request.target !== null && request.target !== 'home') throw new Error('Discovery target is invalid.');
+  if (request.collectionId !== null && request.collectionId !== 'audio-home-list') throw new Error('Discovery collection is invalid.');
+  const offset = request.cursor === null ? 0 : Number(/^home:(\d+)$/u.exec(request.cursor)?.[1]);
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > 10000) throw new Error('Discovery cursor is invalid.');
+  const all = parseBooks(await fetchText(`${base}/`));
+  const size = request.target === null ? Math.min(10, clamp(request.pageSize)) : clamp(request.pageSize);
+  const values = all.slice(offset, offset + size);
     const items = values.map((content) => frozen({ content, rank: null, metric: null, recommendation: null }));
+    const continuation = offset + values.length < all.length ? { target: 'home', cursor: `home:${offset + values.length}` } : null;
+    if (request.collectionId !== null) return frozen({ kind: 'append' as const, collectionId: request.collectionId, items, continuation });
     return frozen({
       kind: 'document' as const,
       document: {
@@ -53,12 +60,10 @@ export async function discover(request: { target: string | null; cursor: string 
           title: '有声小说',
           subtitle: null,
           icon: 'audio',
-          children: [{ type: 'contentCollection', id: 'audio-home-list', layout: 'coverGrid', items, continuation: null }],
+          children: [{ type: 'contentCollection', id: 'audio-home-list', layout: 'coverGrid', items, continuation }],
         }],
       },
     });
-  }
-  throw new Error('Discovery target is invalid.');
 }
 
 export async function getDetail(request: { id: string }) {

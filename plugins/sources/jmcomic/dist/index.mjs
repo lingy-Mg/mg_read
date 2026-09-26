@@ -3180,7 +3180,8 @@ function searchSuggestions(_request) {
 async function discover(request) {
   if (request.target === null) {
     if (request.cursor !== null || request.collectionId !== null) throw new Error("Initial discovery request is invalid.");
-    return frozen({ kind: "document", document: { components: [{
+    const preview = await discover({ target: "category:hanman", cursor: null, collectionId: null, pageSize: Math.min(10, clamp(request.pageSize)) });
+    return frozen({ kind: "document", document: { components: [...preview.kind === "document" ? preview.document.components : [], {
       type: "section",
       id: "jm-categories",
       title: "禁漫天堂",

@@ -2,6 +2,7 @@
  * Public Manhuagui page parser.
  * Owns stable manga/chapter IDs, bounded P.A.C.K.E.R decoding, and Runtime-proxied images with chapter Referer.
  */
+import { position, window as pageWindow } from './discovery-page.js';
 import LZString from 'lz-string';
 const desktopOrigin = 'https://www.manhuagui.com';
 const mobileOrigin = 'https://m.manhuagui.com';
@@ -31,13 +32,13 @@ export class ManhuaguiSource {
     }
     async category(target, cursor, pageSize) {
         const category = decodeCategory(target);
-        const page = decodeCursor(cursor);
+        const state = position(cursor !== null && /^\d+$/u.test(cursor) ? target + ':' + cursor : cursor, target);
+        const { page, offset } = state;
         const url = categoryUrl(category.path, page);
         const html = await this.#html(url, mobileOrigin);
-        const items = this.#parseCards(html, url).slice(0, boundedPageSize(pageSize)).map(toDiscoveryItem);
-        const continuation = findNextPage(html, category.path, page)
-            ? { target, cursor: String(page + 1) }
-            : null;
+        const all = this.#parseCards(html, url);
+        const { values, continuation } = pageWindow(all, target, page, offset, boundedPageSize(pageSize), findNextPage(html, category.path, page));
+        const items = values.map(toDiscoveryItem);
         return { title: category.title, collectionId: `manhuagui-${category.id}`, items, continuation };
     }
     categoryMetadata() {

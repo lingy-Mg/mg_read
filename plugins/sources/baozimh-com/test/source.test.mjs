@@ -17,6 +17,34 @@ test('fixtures cover categories search detail redirected catalog ordered pages a
 });
 test('cross-book chapter ids are rejected before any resource descriptor is emitted', async () => { const book = (await plugin.search({ query: 'fixture', cursor: null, pageSize: 5 })).items[0]; const chapters = await plugin.getChapters({ id: book.id }); await assert.rejects(plugin.getContent({ id: 'comic:L2NvbWljL290aGVy', chapterId: chapters.items[0].id }), /Chapter ID is invalid/u); });
 
+test('classify combines all four dimensions without dropping the current Korean region', async () => {
+ const urls=[];const list=await readFile(new URL('./fixtures/list.html',import.meta.url),'utf8');
+ await plugin.activate({log:{info(){},warn(){}},resource:{proxy:r=>r.url},http:{fetch:async input=>{urls.push(new URL(input));return new Response(list);}}});
+ const root=await plugin.discover({target:'category:korea',cursor:null,collectionId:null,pageSize:2});
+ const group=id=>root.document.components.find(x=>x.id==='filter-'+id).children[0].categories;
+ assert.equal(group('type').length,26);assert.equal(group('region').length,5);assert.equal(group('state').length,3);assert.equal(group('filter').length,9);
+ const finished=group('state').find(x=>x.id==='pub');
+ const child=await plugin.discover({target:finished.target,cursor:null,collectionId:null,pageSize:2});
+ const genre=child.document.components.find(x=>x.id==='filter-type').children[0].categories.find(x=>x.id==='hanman');
+ await plugin.discover({target:genre.target,cursor:null,collectionId:null,pageSize:2});
+ assert.equal(urls.at(-1).searchParams.get('region'),'kr');assert.equal(urls.at(-1).searchParams.get('state'),'pub');assert.equal(urls.at(-1).searchParams.get('type'),'hanman');
+ await assert.rejects(plugin.discover({target:'filter:bad',cursor:null,collectionId:null,pageSize:2}));
+});
+
+test('AMP continuation drains each page, follows next URLs and excludes already rendered amp-list cards',async()=>{
+ const base='/api/bzmhq/amp_comic_list?type=all&region=kr&state=all&filter=*&limit=36&language=tw&page=';
+ const list=await readFile(new URL('./fixtures/list.html',import.meta.url),'utf8');const calls=[];
+ await plugin.activate({log:{info(){},warn(){}},resource:{proxy:r=>r.url},http:{fetch:async input=>{
+   const url=new URL(input);calls.push(url);if(url.pathname==='/classify')return new Response(list+`<amp-list src="${base}2" load-more-bookmark="next">${list.replaceAll('fixture-comic','already-rendered')}</amp-list>`);
+   const p=Number(url.searchParams.get('page'));return Response.json({items:Array.from({length:3},(_,i)=>({comic_id:'page-'+p+'-'+i,name:'Comic '+i,author:'Author',topic_img:'test.jpg',type_names:['題材']})),next:p===2?base+'3':null});
+ }}});
+ const first=await plugin.discover({target:'category:korea',cursor:null,collectionId:null,pageSize:2});let listResult=first.document.components[0].children[0];assert.equal(listResult.items.length,1);
+ const ids=listResult.items.map(x=>x.content.id),id=listResult.id;
+ for(let guard=0;listResult.continuation&&guard<8;guard++){listResult=await plugin.discover({...listResult.continuation,collectionId:id,pageSize:2});ids.push(...listResult.items.map(x=>x.content.id));}
+ assert.equal(ids.length,7);assert.equal(new Set(ids).size,7);assert.equal(listResult.continuation,null);
+ assert.deepEqual(calls.filter(x=>x.pathname.includes('/api/')).map(x=>x.searchParams.get('page')),['2','3']);
+});
+
 test('gatekeeper responses fall back to the public WebView page', async () => {
   const list = await readFile(new URL('./fixtures/list.html', import.meta.url), 'utf8');
   const calls = []; const navigations = []; let currentUrl = 'https://www.baozimh.com/verified';

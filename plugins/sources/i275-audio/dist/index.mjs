@@ -44727,25 +44727,30 @@ async function searchSuggestions(_request) {
   return frozen({ items: [], nextCursor: null });
 }
 async function discover(request) {
-  if (request.target === null) {
-    if (request.cursor !== null || request.collectionId !== null) throw new Error("Initial discovery request is invalid.");
-    const values = parseBooks(await fetchText(`${base}/`)).slice(0, clamp(request.pageSize));
-    const items = values.map((content) => frozen({ content, rank: null, metric: null, recommendation: null }));
-    return frozen({
-      kind: "document",
-      document: {
-        components: [{
-          type: "section",
-          id: "audio-home",
-          title: "有声小说",
-          subtitle: null,
-          icon: "audio",
-          children: [{ type: "contentCollection", id: "audio-home-list", layout: "coverGrid", items, continuation: null }]
-        }]
-      }
-    });
-  }
-  throw new Error("Discovery target is invalid.");
+  if (request.target === null && (request.cursor !== null || request.collectionId !== null)) throw new Error("Initial discovery request is invalid.");
+  if (request.target !== null && request.target !== "home") throw new Error("Discovery target is invalid.");
+  if (request.collectionId !== null && request.collectionId !== "audio-home-list") throw new Error("Discovery collection is invalid.");
+  const offset = request.cursor === null ? 0 : Number(/^home:(\d+)$/u.exec(request.cursor)?.[1]);
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > 1e4) throw new Error("Discovery cursor is invalid.");
+  const all = parseBooks(await fetchText(`${base}/`));
+  const size = request.target === null ? Math.min(10, clamp(request.pageSize)) : clamp(request.pageSize);
+  const values = all.slice(offset, offset + size);
+  const items = values.map((content) => frozen({ content, rank: null, metric: null, recommendation: null }));
+  const continuation = offset + values.length < all.length ? { target: "home", cursor: `home:${offset + values.length}` } : null;
+  if (request.collectionId !== null) return frozen({ kind: "append", collectionId: request.collectionId, items, continuation });
+  return frozen({
+    kind: "document",
+    document: {
+      components: [{
+        type: "section",
+        id: "audio-home",
+        title: "有声小说",
+        subtitle: null,
+        icon: "audio",
+        children: [{ type: "contentCollection", id: "audio-home-list", layout: "coverGrid", items, continuation }]
+      }]
+    }
+  });
 }
 async function getDetail(request) {
   const id = contentId(request.id);

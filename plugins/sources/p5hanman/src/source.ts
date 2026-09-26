@@ -62,6 +62,9 @@ export const categories = Object.freeze([
   ['latest', '最新更新'],
   ['popular', '热门漫画'],
   ['completed', '完结漫画'],
+  ['all', '全部漫画'], ['ongoing', '连载漫画'],
+  ['korea', '韩国漫画'], ['korea-ongoing', '韩国·连载'], ['korea-completed', '韩国·完结'],
+  ['other', '其他地区'], ['other-ongoing', '其他·连载'], ['other-completed', '其他·完结'],
 ] as const);
 
 export class P5HanmanSource {
@@ -423,7 +426,13 @@ function summary(input: {
 }
 
 function listingUrl(categoryId: string, page: number): URL {
-  if (categoryId === 'popular') return new URL('/rank', siteOrigin);
+  if(categoryId==='popular') { const url=new URL('/rank',siteOrigin); if(page>1)url.searchParams.set('page',String(page)); return url; }
+  if(['all','ongoing','korea','korea-ongoing','korea-completed','other','other-ongoing','other-completed'].includes(categoryId)) {
+    const url=new URL('/booklist',siteOrigin);
+    url.searchParams.set('cate','全部');url.searchParams.set('area',categoryId.startsWith('korea')?'1':categoryId.startsWith('other')?'2':'-1');
+    url.searchParams.set('end',categoryId.endsWith('completed')?'1':categoryId.endsWith('ongoing')?'2':'-1');
+    if(page>1)url.searchParams.set('page',String(page));return url;
+  }
   if (categoryId === 'completed') {
     const url = new URL('/booklist', siteOrigin);
     url.searchParams.set('end', '1');

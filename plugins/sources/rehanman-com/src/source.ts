@@ -1,5 +1,6 @@
 /** Public Rehanman page parser. */
 import { Buffer } from 'node:buffer';
+import { homeEntries } from './discovery-home.js';
 
 const siteOrigin = 'https://rehanman.com';
 const imageOrigin = 'https://img.rehanman.com';
@@ -19,6 +20,11 @@ export class RehanmanSource {
   constructor(private readonly context: Context) {}
 
   async latest(page: number) { return this.#entries({ type: 'new', page, limit: 30 }); }
+  async home() {
+    const response = await this.context.http.fetch(siteOrigin + '/', { headers: { accept: 'text/html' } });
+    if (!response.ok) throw new Error('Source homepage is unavailable.');
+    return homeEntries(await response.text()).map(rail => ({ id: rail.id, title: rail.title, items: rail.entries.flatMap(raw => { const entry = parseEntry(raw); return entry ? [this.#summary(entry)] : []; }) }));
+  }
   async search(query: string, page: number) { return this.#entries({ type: 'search', key: query, page, limit: 30 }); }
 
   async detail(id: string) { const entry = await this.#entry(id); return Object.freeze({ ...this.#summary(entry), aliases: Object.freeze([]), catalogUrl: bookUrl(entry).toString() }); }

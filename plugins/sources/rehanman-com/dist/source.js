@@ -1,5 +1,6 @@
 /** Public Rehanman page parser. */
 import { Buffer } from 'node:buffer';
+import { homeEntries } from './discovery-home.js';
 const siteOrigin = 'https://rehanman.com';
 const imageOrigin = 'https://img.rehanman.com';
 const graphQlUrl = 'https://api.rehanman.com/manga-graphql';
@@ -10,6 +11,12 @@ export class RehanmanSource {
         this.context = context;
     }
     async latest(page) { return this.#entries({ type: 'new', page, limit: 30 }); }
+    async home() {
+        const response = await this.context.http.fetch(siteOrigin + '/', { headers: { accept: 'text/html' } });
+        if (!response.ok)
+            throw new Error('Source homepage is unavailable.');
+        return homeEntries(await response.text()).map(rail => ({ id: rail.id, title: rail.title, items: rail.entries.flatMap(raw => { const entry = parseEntry(raw); return entry ? [this.#summary(entry)] : []; }) }));
+    }
     async search(query, page) { return this.#entries({ type: 'search', key: query, page, limit: 30 }); }
     async detail(id) { const entry = await this.#entry(id); return Object.freeze({ ...this.#summary(entry), aliases: Object.freeze([]), catalogUrl: bookUrl(entry).toString() }); }
     async chapters(id) { const entry = await this.#entry(id); this.#assertFree(entry); const chapters = entry.entries_data?.chapters ?? []; return Object.freeze({ items: Object.freeze(chapters.map((chapter) => Object.freeze({ id: chapterId(entry, chapter), title: chapter.name, order: chapter.index, url: chapterUrl(entry, chapter).toString(), volumeTitle: entry.entries_data?.volume_name ?? null, wordCount: null, updatedAt: entry.modified_date, isLocked: false, attributes: Object.freeze([]) }))) }); }

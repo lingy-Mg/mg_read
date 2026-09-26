@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/uaa-audio",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "MgRead native source for UAA audio.",
   "type": "module",
