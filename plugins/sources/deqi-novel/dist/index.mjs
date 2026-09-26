@@ -5,7 +5,6 @@ var site = "https://www.deqixs.cc";
 var agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36";
 var headers = { "User-Agent": agent, Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "zh-CN,zh;q=0.9", Referer: `${site}/` };
 var channels = [{ id: "0", title: "全部" }, { id: "1", title: "玄幻" }, { id: "2", title: "都市" }, { id: "3", title: "仙侠" }, { id: "4", title: "历史" }, { id: "5", title: "科幻" }, { id: "6", title: "诸天" }, { id: "7", title: "悬疑" }, { id: "8", title: "体育" }, { id: "9", title: "游戏" }, { id: "10", title: "综合" }];
-var charts = [["allvisit", "总点击榜"], ["monthvisit", "月点击榜"], ["weekvisit", "周点击榜"], ["dayvisit", "日点击榜"], ["allvote", "总推荐榜"], ["monthvote", "月推荐榜"], ["weekvote", "周推荐榜"], ["dayvote", "日推荐榜"], ["allvipvote", "总月票榜"], ["monthvipvote", "本月票榜"], ["previpvote", "前月票榜"], ["weekvipvote", "周月票榜"], ["dayvipvote", "日月票榜"], ["allflower", "总鲜花榜"], ["monthflower", "月鲜花榜"], ["weekflower", "周鲜花榜"], ["dayflower", "日鲜花榜"], ["allegg", "总鸡蛋榜"], ["monthegg", "月鸡蛋榜"], ["weekegg", "周鸡蛋榜"], ["dayegg", "日鸡蛋榜"], ["allsale", "总销售榜"], ["monthsale", "月销售榜"], ["weeksale", "周销售榜"], ["daysale", "日销售榜"], ["monthwords", "月勤更榜"], ["weekwords", "周勤更榜"], ["daywords", "日勤更榜"], ["lastupdate", "最近更新"], ["postdate", "最新入库"], ["signtime", "最新上架"], ["goodnum", "收藏榜"], ["words", "字数榜"], ["toptime", "编辑推荐"], ["newhot", "新书榜"]];
 var context;
 var cache = /* @__PURE__ */ new Map();
 async function activate(next) {
@@ -23,19 +22,7 @@ async function searchSuggestions(_request) {
   return frozen({ items: [], nextCursor: null });
 }
 async function discover(request) {
-  if (request.target === null) {
-    if (request.cursor !== null || request.collectionId !== null) throw new Error("Initial discovery request is invalid.");
-    return frozen({ kind: "document", document: { components: [{ type: "section", id: "deqi-channels", title: "得奇小说网", subtitle: "免费小说分类", icon: "book", children: [{ type: "categoryCollection", id: "deqi-channel-list", layout: "chips", categories: channels.map((channel2) => ({ id: channel2.id, title: channel2.title, target: `channel:${channel2.id}`, count: null, url: null, icon: "book" })) }] }, { type: "section", id: "deqi-rankings", title: "小说排行榜", subtitle: "点击、推荐、收藏与更新榜单", icon: "ranking", children: [{ type: "categoryCollection", id: "deqi-ranking-list", layout: "chips", categories: charts.map(([id, title]) => ({ id, title, target: `chart:${id}`, count: null, url: null, icon: "ranking" })) }] }] } });
-  }
-  const chartId = /^chart:([a-z]+)$/u.exec(request.target)?.[1], chart = charts.find(([id]) => id === chartId);
-  if (chart) {
-    const [id, title] = chart, [page2, offset] = chartPosition(request.cursor, request.target), size2 = clamp(request.pageSize), values2 = parseBooks(await get(`${site}/top/${id}/${page2}.html`)), contents2 = values2.slice(offset, offset + size2), collectionId2 = `deqi:chart:${id}`, items2 = contents2.map((content) => frozen({ content: summary(content), rank: null, metric: null, recommendation: null })), continuation2 = offset + contents2.length < values2.length ? frozen({ target: request.target, cursor: `chart:${id}:${page2}:${offset + contents2.length}` }) : values2.length > 0 ? frozen({ target: request.target, cursor: `chart:${id}:${page2 + 1}:0` }) : null;
-    if (request.collectionId !== null) {
-      if (request.collectionId !== collectionId2) throw new Error("Discovery collection is invalid.");
-      return frozen({ kind: "append", collectionId: collectionId2, items: items2, continuation: continuation2 });
-    }
-    return frozen({ kind: "document", document: { components: [{ type: "section", id: `${collectionId2}:section`, title, subtitle: null, icon: "ranking", children: [{ type: "contentCollection", id: collectionId2, layout: "compact", items: items2, continuation: continuation2 }] }] } });
-  }
+  if (request.target === null) return frozen({ kind: "document", document: { components: [{ type: "section", id: "deqi-channels", title: "得奇小说网", subtitle: "免费小说分类", icon: "book", children: [{ type: "categoryCollection", id: "deqi-channel-list", layout: "chips", categories: channels.map((channel2) => ({ id: channel2.id, title: channel2.title, target: `channel:${channel2.id}`, count: null, url: null, icon: "book" })) }] }] } });
   const channel = channels.find((value) => request.target === `channel:${value.id}`);
   if (!channel) throw new Error("Discovery target is invalid.");
   const page = cursorPage(request.cursor, request.target), size = clamp(request.pageSize), values = parseBooks(await get(`${site}/sort/${channel.id}/${page}.html`)), contents = values.map(summary).slice(0, size), collectionId = `deqi:${channel.id}`, items = contents.map((content) => frozen({ content, rank: null, metric: null, recommendation: null })), continuation = values.length >= size ? frozen({ target: request.target, cursor: `channel:${channel.id}:${page + 1}` }) : null;
@@ -148,12 +135,6 @@ function safeUrl(value) {
   } catch {
     return false;
   }
-}
-function chartPosition(cursor, target) {
-  if (cursor === null) return [1, 0];
-  const raw = cursor.startsWith(`${target}:`) ? cursor.slice(target.length + 1) : "", match = /^(\d+):(\d+)$/u.exec(raw), page = Number(match?.[1]), offset = Number(match?.[2]);
-  if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(offset) || offset < 0) throw new Error("Cursor is invalid.");
-  return [page, offset];
 }
 function cursorPage(cursor, target) {
   if (cursor === null) return 1;

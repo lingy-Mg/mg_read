@@ -44711,7 +44711,6 @@ var base = "https://www.tatays.com";
 var searchBase = "https://m.tatays.com";
 var headers = Object.freeze({ Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "zh-CN,zh;q=0.9", Referer: `${base}/`, "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" });
 var categories = Object.freeze([["xuanhuan", "玄幻奇幻"], ["wuxia", "武侠修真"], ["yanqing", "都市言情"], ["lishi", "历史军事"], ["kehuan", "科幻小说"], ["wangyou", "网游小说"], ["nvsheng", "女生小说"], ["qita", "其他小说"]]);
-var charts = [["allvisit", "总点击榜"], ["monthvisit", "月点击榜"], ["allvote", "总推荐榜"], ["monthvote", "月推荐榜"], ["allvipvote", "总月票榜"], ["monthvipvote", "本月票榜"], ["allflower", "总鲜花榜"], ["monthflower", "月鲜花榜"], ["monthwords", "月勤更榜"], ["lastupdate", "最近更新"], ["postdate", "最新入库"], ["signtime", "VIP免费"], ["goodnum", "收藏榜"], ["size", "字数榜"], ["newhot", "新书榜"]];
 var context;
 async function activate(next2) {
   context = next2;
@@ -44729,25 +44728,16 @@ async function searchSuggestions(_request) {
 async function discover(request) {
   if (request.target === null) {
     if (request.cursor !== null || request.collectionId !== null) throw new Error("Initial discovery request is invalid.");
-    return frozen({ kind: "document", document: { components: [{ type: "section", id: "novel-categories", title: "小说分类", subtitle: "按题材浏览", icon: "book", children: [{ type: "categoryCollection", id: "novel-categories-list", layout: "chips", categories: categories.map(([id2, title2]) => ({ id: id2, title: title2, target: "category:" + id2, count: null, url: null, icon: "book" })) }] }, { type: "section", id: "novel-rankings", title: "小说排行榜", subtitle: "点击、推荐、收藏与更新榜单", icon: "ranking", children: [{ type: "categoryCollection", id: "novel-ranking-list", layout: "chips", categories: charts.map(([id2, title2]) => ({ id: id2, title: title2, target: "chart:" + id2, count: null, url: null, icon: "ranking" })) }] }] } });
+    return frozen({ kind: "document", document: { components: [{ type: "section", id: "novel-categories", title: "小说分类", subtitle: "按题材浏览", icon: "book", children: [{ type: "categoryCollection", id: "novel-categories-list", layout: "chips", categories: categories.map(([id2, title2]) => ({ id: id2, title: title2, target: `category:${id2}`, count: null, url: null, icon: "book" })) }] }] } });
   }
-  const chartId = /^chart:([a-z]+)$/u.exec(request.target)?.[1], chart = charts.find(([id2]) => id2 === chartId);
-  if (chart) {
-    const [id2, title2] = chart, [page2, offset] = chartPosition(request.cursor, request.target), limit2 = clamp(request.pageSize), values2 = parseListing(await fetchText(base + "/" + id2 + "/p" + page2 + ".html")), contents2 = values2.slice(offset, offset + limit2), collectionId2 = "novel:chart:" + id2, items2 = contents2.map((content) => frozen({ content, rank: null, metric: null, recommendation: null })), continuation2 = offset + contents2.length < values2.length ? frozen({ target: request.target, cursor: "chart:" + id2 + ":" + page2 + ":" + (offset + contents2.length) }) : values2.length > 0 ? frozen({ target: request.target, cursor: "chart:" + id2 + ":" + (page2 + 1) + ":0" }) : null;
-    if (request.collectionId !== null) {
-      if (request.collectionId !== collectionId2) throw new Error("Discovery collection is invalid.");
-      return frozen({ kind: "append", collectionId: collectionId2, items: items2, continuation: continuation2 });
-    }
-    return frozen({ kind: "document", document: { components: [{ type: "section", id: collectionId2 + ":section", title: title2, subtitle: null, icon: "ranking", children: [{ type: "contentCollection", id: collectionId2, layout: "compact", items: items2, continuation: continuation2 }] }] } });
-  }
-  const category = categories.find(([id2]) => request.target === "category:" + id2);
+  const category = categories.find(([id2]) => request.target === `category:${id2}`);
   if (category === void 0) throw new Error("Discovery target is invalid.");
-  const page = cursorPage(request.cursor, request.target), limit = clamp(request.pageSize), [id, title] = category, values = parseListing(await fetchText(base + "/" + id + "/p" + page + ".html")).slice(0, limit), collectionId = "novel:" + id, items = values.map((content) => frozen({ content, rank: null, metric: null, recommendation: null })), continuation = values.length >= limit ? frozen({ target: request.target, cursor: "category:" + id + ":" + (page + 1) }) : null;
+  const page = cursorPage(request.cursor, request.target), limit = clamp(request.pageSize), [id, title] = category, values = parseListing(await fetchText(`${base}/${id}/p${page}.html`)).slice(0, limit), collectionId = `novel:${id}`, items = values.map((content) => frozen({ content, rank: null, metric: null, recommendation: null })), continuation = values.length >= limit ? frozen({ target: request.target, cursor: `${request.target}:${page + 1}` }) : null;
   if (request.collectionId !== null) {
     if (request.collectionId !== collectionId) throw new Error("Discovery collection is invalid.");
     return frozen({ kind: "append", collectionId, items, continuation });
   }
-  return frozen({ kind: "document", document: { components: [{ type: "section", id: collectionId + ":section", title, subtitle: null, icon: "book", children: [{ type: "contentCollection", id: collectionId, layout: "coverGrid", items, continuation }] }] } });
+  return frozen({ kind: "document", document: { components: [{ type: "section", id: `${collectionId}:section`, title, subtitle: null, icon: "book", children: [{ type: "contentCollection", id: collectionId, layout: "coverGrid", items, continuation }] }] } });
 }
 async function getDetail(request) {
   const id = contentId(request.id), url = bookUrl(id), $2 = load(await fetchText(url)), title = clean($2(".chapter-list-info .mid h2").first().text()) || clean($2('meta[property="og:title"]').attr("content") ?? "") || `小说 ${id}`, cover = $2(".chapter-img img").first().attr("src") ?? $2('meta[property="og:image"]').attr("content") ?? "", intro = clean($2(".info .intro").first().text()), latest = clean($2(".lastchapter a").first().text()), details = $2(".mid .clearfix dd").toArray().map((node) => clean($2(node).text())), author = details.map((value) => /作者[：:]\s*([^|]+)/u.exec(value)?.[1]?.trim() ?? "").find(Boolean) ?? "", category = details.map((value) => /类型[：:]\s*(.+)$/u.exec(value)?.[1]?.trim() ?? "").find(Boolean) ?? "", item = summary(id, title, author, cover, category, latest);
@@ -44796,11 +44786,11 @@ function parseSearch(html3) {
 }
 function parseListing(html3) {
   const $2 = load(html3), result = [];
-  $2(".list-title li, .sort-list li").each((_, node) => {
-    const root2 = $2(node), link = root2.find('.one a[href*="/book/"],a[href*="/book/"]').first(), href = link.attr("href") ?? "", id = bookId(href);
+  $2(".list-title li").each((_, node) => {
+    const href = $2(node).find("a").first().attr("href") ?? "", id = bookId(href);
     if (id === null) return;
-    const title = clean(root2.find(".one a").first().text()) || clean(root2.find("h2").first().text()) || clean(link.text()), cover = root2.find("img").first().attr("src") ?? "", info = clean(root2.find("p.info").first().text()), author = clean(root2.find(".three").first().text()) || (/作者[：:]\s*([^|]+)/u.exec(info)?.[1]?.trim() ?? ""), category = clean(root2.find(".type").first().text()), latest = clean(root2.find(".two a").first().text());
-    if (title !== "") result.push(summary(id, title, author, cover, category, latest));
+    const title = clean($2(node).find("h2").first().text()), cover = $2(node).find("img").first().attr("src") ?? "", author = /作者[：:]\s*([^|]+)/u.exec(clean($2(node).find("p.info").first().text()))?.[1]?.trim() ?? "";
+    if (title !== "") result.push(summary(id, title, author, cover, "", ""));
   });
   return result;
 }
@@ -44865,12 +44855,6 @@ function decode(value) {
 }
 function clean(value) {
   return decode(value).replace(/[\s\u3000\u00a0]+/gu, " ").trim();
-}
-function chartPosition(cursor, target) {
-  if (cursor === null) return [1, 0];
-  const raw = cursor.startsWith(`${target}:`) ? cursor.slice(target.length + 1) : "", match = /^(\d+):(\d+)$/u.exec(raw), page = Number(match?.[1]), offset = Number(match?.[2]);
-  if (!Number.isSafeInteger(page) || page < 1 || page > 1e3 || !Number.isSafeInteger(offset) || offset < 0) throw new Error("Cursor is invalid.");
-  return [page, offset];
 }
 function cursorPage(cursor, target) {
   if (cursor === null) return 1;
