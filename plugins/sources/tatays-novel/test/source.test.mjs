@@ -40,3 +40,49 @@ test('126 native HTML flow uses the live mobile search entry and keeps first/mid
   }
   assert.ok(resources.some((value) => value.kind === 'image'));
 });
+
+test('126 discovery exposes chart pages and continues ordered ranking lists', async () => {
+  const requests = [];
+  const ranking = '<div class="sort-list icon"><li><span class="one"><a href="/book/109/">排行榜作品</a></span><span class="two"><a href="/book/109/224613.html">最新章节</a></span><span class="three">榜单作者</span><span class="four">2049</span></li><li><span class="one"><a href="/book/110/">第二部作品</a></span><span class="two"><a href="/book/110/224614.html">第二最新章</a></span><span class="three">另一作者</span><span class="four">1024</span></li></div>';
+  await plugin.activate({
+    log: { info() {}, warn() {} },
+    resource: { proxy() { return 'http://127.0.0.1/ranking-cover'; } },
+    http: { async fetch(input) { const path = new URL(input).pathname; requests.push(path); return new Response(path.endsWith('/p2.html') ? '' : ranking); } },
+  });
+  const home = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 20 });
+  const rankingCategories = home.document.components[1].children[0].categories;
+  assert.equal(rankingCategories.length, 15);
+  assert.equal(rankingCategories[0].target, 'chart:allvisit');
+
+  const first = await plugin.discover({ target: 'chart:allvisit', cursor: null, collectionId: null, pageSize: 1 });
+  const collection = first.document.components[0].children[0];
+  assert.equal(first.document.components[0].title, '总点击榜');
+  assert.equal(collection.layout, 'compact');
+  assert.equal(collection.items[0].content.id, 'novel:109');
+  assert.equal(collection.items[0].content.author, '榜单作者');
+  assert.deepEqual(collection.continuation, { target: 'chart:allvisit', cursor: 'chart:allvisit:1:1' });
+
+  const next = await plugin.discover({
+    target: 'chart:allvisit',
+    cursor: 'chart:allvisit:1:1',
+    collectionId: 'novel:chart:allvisit',
+    pageSize: 1,
+  });
+  assert.equal(next.kind, 'append');
+  assert.equal(next.collectionId, 'novel:chart:allvisit');
+  assert.equal(next.items[0].content.id, 'novel:110');
+  assert.deepEqual(next.continuation, { target: 'chart:allvisit', cursor: 'chart:allvisit:2:0' });
+  const last = await plugin.discover({
+    target: 'chart:allvisit',
+    cursor: 'chart:allvisit:2:0',
+    collectionId: 'novel:chart:allvisit',
+    pageSize: 1,
+  });
+  assert.equal(last.items.length, 0);
+  assert.equal(last.continuation, null);
+  assert.deepEqual(requests, ['/allvisit/p1.html', '/allvisit/p1.html', '/allvisit/p2.html']);
+  await assert.rejects(
+    plugin.discover({ target: 'chart:unknown', cursor: null, collectionId: null, pageSize: 5 }),
+    /Discovery target is invalid/u,
+  );
+});

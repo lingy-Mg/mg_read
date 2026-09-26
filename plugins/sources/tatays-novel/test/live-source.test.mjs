@@ -4,6 +4,10 @@ import * as plugin from '../dist/index.mjs';
 
 test('live 126 discovery, search, catalog and first/middle/last novel text remain reachable', { timeout: 90_000 }, async () => {
   await plugin.activate({ log: { info() {}, warn() {} }, resource: { proxy() { return 'http://127.0.0.1/live-resource'; } }, http: { fetch: (input, init = {}) => fetch(input, { ...init, signal: AbortSignal.timeout(15_000) }) } });
+  const home = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 20 });
+  assert.equal(home.document.components[1].children[0].categories.length, 15);
+  const ranking = await plugin.discover({ target: 'chart:allvisit', cursor: null, collectionId: null, pageSize: 3 });
+  assert.ok(ranking.document.components[0].children[0].items.length > 0);
   const discovery = await plugin.discover({ target: 'category:xuanhuan', cursor: null, collectionId: null, pageSize: 3 });
   const candidate = discovery.document.components[0].children[0].items[0]?.content;
   assert.ok(candidate);
