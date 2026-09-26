@@ -1,3 +1,6 @@
+/// Queue prefetch and intent-safe recovery shared by foreground and background.
+/// EOF keeps an in-flight resource request alive; its source owns I/O timeout.
+/// Append can race completion, so continuation checks EOF on both sides.
 part of 'audio_player_session.dart';
 
 extension _AudioPlayerSessionRecovery on AudioPlayerSession {
@@ -140,7 +143,7 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
         queueEntries: playlist.queueEntries,
       );
       _applyReadySnapshot(backend.snapshot);
-      if (wasCompleted &&
+      if ((wasCompleted || backend.snapshot.completed) &&
           _playbackDesired &&
           intentRevision == _playbackIntentRevision) {
         if (backend.snapshot.currentIndex == previousTailIndex) {
@@ -224,6 +227,14 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
       try {
         await activeContinuation.timeout(const Duration(milliseconds: 500));
       } on TimeoutException {
+        // EOF is expected when seeking ahead of a slow prefetch. Keep that
+        // single-flight request (and resourceLoading/focus) alive until its
+        // source succeeds or fails instead of repeatedly cancelling the URL
+        // resolution after only 500ms. Explicit pause/selection still cancel.
+        if (identical(_prefetchRequest, activeContinuation) &&
+            backend.snapshot.completed) {
+          return;
+        }
         // A stalled Runtime request is superseded below through the source's
         // cancellation boundary instead of blocking foreground recovery.
       } on Object {
