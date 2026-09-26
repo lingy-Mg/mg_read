@@ -1,5 +1,5 @@
 /** Deterministic fixtures cover the full manga chain without an origin or protocol gate. */
-import assert from 'node:assert/strict'; import { readFile } from 'node:fs/promises'; import test from 'node:test'; import * as plugin from '../dist/index.mjs'; import { ProjectionCache } from '../dist/projection-cache.js';
+import assert from 'node:assert/strict'; import { readFile } from 'node:fs/promises'; import test from 'node:test'; import * as plugin from '../dist/index.mjs'; import { ProjectionCache } from '../dist/projection-cache.js'; import { BaozimhSource } from '../dist/source.js';
 test('fixtures cover categories search detail redirected catalog ordered pages and Referer proxy', async () => {
   const fixture = (name) => readFile(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'); const [list, detail, content] = await Promise.all(['list.html', 'detail.html', 'content.html'].map(fixture));
   const calls = []; const resources = [];
@@ -12,10 +12,25 @@ test('fixtures cover categories search detail redirected catalog ordered pages a
   assert.deepEqual(chapters.items.map((chapter) => chapter.title), ['Fixture One', 'Fixture Two']); assert.equal(calls.filter(({ url }) => url.pathname === '/comic/fixture-comic').length, 1);
   const chapter = await plugin.getContent({ id: detailResult.id, chapterId: chapters.items[0].id }); assert.equal(chapter.text, null); assert.deepEqual(chapter.pages.map((page) => [page.index, page.width, page.height]), [[0, 800, 1200], [1, 640, 960]]); assert.ok(chapter.pages.every((page) => page.url.startsWith('http://127.0.0.1/resource/')));
   const resourceRequest = resources.find((request) => request.url.includes('/scomic/fixture/1.jpg')); assert.ok(resourceRequest); assert.equal(resourceRequest.kind, 'image'); assert.equal(resourceRequest.url, 'http://images.example/scomic/fixture/1.jpg'); assert.equal(resourceRequest.headers.Referer, 'http://mirror.example/comic/chapter/fixture-comic_real/0_0.html'); assert.match(resourceRequest.headers.Accept, /^image\//u);
-  assert.ok(calls.some(({ url }) => url.hostname === 'cn.bzmgcn.com')); assert.ok(calls.some(({ url }) => url.hostname === 'mirror.example'));
+  assert.ok(calls.some(({ url }) => url.hostname === 'www.baozimh.com')); assert.ok(calls.some(({ url }) => url.hostname === 'mirror.example'));
   assert.equal(calls.some(({ url }) => url.hostname === 'images.example'), false);
 });
 test('cross-book chapter ids are rejected before any resource descriptor is emitted', async () => { const book = (await plugin.search({ query: 'fixture', cursor: null, pageSize: 5 })).items[0]; const chapters = await plugin.getChapters({ id: book.id }); await assert.rejects(plugin.getContent({ id: 'comic:L2NvbWljL290aGVy', chapterId: chapters.items[0].id }), /Chapter ID is invalid/u); });
+
+test('gatekeeper responses fall back to the public WebView page', async () => {
+  const list = await readFile(new URL('./fixtures/list.html', import.meta.url), 'utf8');
+  const calls = []; const navigations = []; let currentUrl = 'https://www.baozimh.com/verified';
+  const source = new BaozimhSource({
+    http: { async fetch(input) { calls.push(new URL(input).toString()); return new Response(JSON.stringify({ challenge_url: '/__gatekeeper_challenge/start?token=fixture', error: 'challenge_required' }), { status: 403 }); } },
+    webview: { async open(options) { assert.deepEqual(options, { visible: false, timeoutMs: 30_000 }); return {
+      async navigate(url) { navigations.push(url); currentUrl = url.includes('/__gatekeeper_challenge/') ? 'https://www.baozimh.com/verified' : url; }, async getHtml() { return list; }, async getUrl() { return currentUrl; },
+    }; } },
+    errors: { raise(error) { throw new Error(`${error.code}:${error.message}`); } },
+    resource: { proxy() { return 'http://127.0.0.1/resource'; } },
+  });
+  const results = await source.search('fixture');
+  assert.equal(results[0].title, 'Fixture Comic'); assert.equal(calls.length, 1); assert.match(navigations[0], /^https:\/\/www\.baozimh\.com\/__gatekeeper_challenge\/start\?token=fixture/u); assert.match(navigations[1], /^https:\/\/www\.baozimh\.com\/search\?q=fixture/u);
+});
 
 test('projection cache is single-flight, stale-readable, failure-cleaning, concurrent across keys, and LRU bounded', async () => {
   let now = 0; let loads = 0;
