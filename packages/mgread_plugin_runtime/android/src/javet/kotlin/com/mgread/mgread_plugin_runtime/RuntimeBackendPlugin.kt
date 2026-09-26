@@ -29,6 +29,7 @@ class JavetRuntimeBackendPlugin : FlutterPlugin, MethodChannel.MethodCallHandler
     private var progressSink: EventChannel.EventSink? = null
     private var runtime: AndroidRuntimeHost? = null
     private var nodeBridge: AndroidNodeFlutterBridge? = null
+    private var backendSettings: AndroidNodeBackendSettings? = null
     private var activityBinding: ActivityPluginBinding? = null
     private var pendingPickerResult: MethodChannel.Result? = null
     private val activityResultListener = object : PluginRegistry.ActivityResultListener {
@@ -66,6 +67,7 @@ class JavetRuntimeBackendPlugin : FlutterPlugin, MethodChannel.MethodCallHandler
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         val context = binding.applicationContext
         applicationContext = context
+        backendSettings = AndroidNodeBackendSettings(context, binding.binaryMessenger)
         val assetRoot = binding.flutterAssets.getAssetFilePathByName(
             "packages/mgread_plugin_runtime/assets/runtime/android",
         )
@@ -254,6 +256,8 @@ class JavetRuntimeBackendPlugin : FlutterPlugin, MethodChannel.MethodCallHandler
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        backendSettings?.dispose()
+        backendSettings = null
         activityBinding?.removeActivityResultListener(activityResultListener)
         activityBinding = null
         pendingPickerResult?.error(

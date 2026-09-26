@@ -68,7 +68,6 @@ android {
         hybrid {
             kotlin.srcDirs += ['src/javet/kotlin', 'src/nativeRuntime/kotlin']
             jniLibs.srcDirs = ['src/native/jniLibs']
-            jniLibs.excludes += ['**/libnode.so', '**/libmgread_node_bridge.so']
         }
     }
 

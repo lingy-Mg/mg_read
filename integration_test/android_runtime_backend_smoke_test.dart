@@ -1,16 +1,24 @@
 /// Android backend process and version smoke test.
 ///
-/// Runs with Javet by default. Pass MGREAD_ANDROID_NODE_PROCESS=true at build
-/// time to exercise the arm64 private Node service and Core wire handshake.
+/// Both hosts ship in one APK. The test-only define seeds the same persisted
+/// preference as the settings page before the process selects its backend.
 library;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
-  const nodeProcess = bool.fromEnvironment('MGREAD_ANDROID_NODE_PROCESS');
+  const nodeProcess = bool.fromEnvironment('MGREAD_TEST_ANDROID_NODE_PROCESS');
+
+  setUpAll(() async {
+    await const MethodChannel(
+      'mgread_plugin_runtime/android_backend',
+    ).invokeMethod<void>('select', {'backend': nodeProcess ? 'nodeProcess' : 'javet'});
+    await AndroidNodeRuntimeSettings.instance.initialize();
+  });
 
   testWidgets('selected Android backend starts and answers Core requests', (tester) async {
     await tester.pump();

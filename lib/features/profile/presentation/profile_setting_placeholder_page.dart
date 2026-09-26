@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 
 import 'network_proxy_settings_page.dart';
+import 'node_runtime_settings_page.dart';
 import 'profile_general_setting_page.dart';
 
 /// Empty secondary page for a profile setting whose capability is not ready.
@@ -22,6 +23,9 @@ class ProfileSettingPlaceholderPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (settingId == 'node-runtime') {
+      return NodeRuntimeSettingsPage(onBackRequested: onBackRequested);
+    }
     if (settingId == 'network-proxy') {
       return NetworkProxySettingsPage(onBackRequested: onBackRequested);
     }

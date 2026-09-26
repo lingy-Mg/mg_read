@@ -1,11 +1,12 @@
 /// MgRead Flutter 启动组合根。
 ///
 /// 职责：
-/// - 在任何持久化或 Runtime IO 前挂载稳定的 ProviderScope 与真实应用壳。
+/// - 在业务持久化或 Runtime 启动前挂载稳定的 ProviderScope 与真实应用壳。
 /// - 在后台完成应用持久化、设置和诊断组合，并通过启动状态原地解锁。
 ///
 /// 注意：
 /// - Node Runtime 仍由根应用首帧后的独立预热流程启动。
+/// - Android 在挂载应用前读取 Runtime 宿主选择；这里只读启动偏好，不启动 VM。
 /// - 启动期资源失败必须关闭已打开的资源，不能让启动界面持有业务状态。
 ///
 /// - 无。
@@ -19,6 +20,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app.dart';
 import 'package:mg_read/app/app_content_library_source_prefetcher_coordinator.dart';
@@ -100,6 +102,11 @@ Future<void> bootstrapMgReadApp({
     throw ArgumentError('Provide diagnosticsService or diagnosticsManager, not both.');
   }
   WidgetsFlutterBinding.ensureInitialized();
+  // Read the small platform launch preference before any Facade is created.
+  // No Node VM or service starts until the normal post-frame warmup.
+  if (Platform.isAndroid && !const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME')) {
+    await AndroidNodeRuntimeSettings.instance.initialize();
+  }
   // The real ProviderScope and MgReadApp are mounted exactly once before any
   // application-support lookup or first-run database open.
   Future<Directory>? dataRootFuture;

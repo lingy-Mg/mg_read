@@ -81,11 +81,13 @@ final class PluginRuntime {
     if (Platform.isAndroid) {
       return _androidInstance ??= PluginRuntime._(
         const bool.fromEnvironment('MGREAD_NODE_ONLY')
-            ? (const bool.fromEnvironment('MGREAD_ANDROID_NODE_PROCESS')
+            ? (AndroidNodeRuntimeSettings.instance.active ==
+                      AndroidNodeBackend.nodeProcess
                   ? _AndroidNodeProcessSupervisor()
                   : _AndroidRuntimeSupervisor())
             : _HybridRuntimeSupervisor(
-                const bool.fromEnvironment('MGREAD_ANDROID_NODE_PROCESS')
+                AndroidNodeRuntimeSettings.instance.active ==
+                        AndroidNodeBackend.nodeProcess
                     ? _AndroidNodeProcessSupervisor()
                     : _AndroidRuntimeSupervisor(),
                 _NativeRuntimeSupervisor.forCurrentPlatform(),

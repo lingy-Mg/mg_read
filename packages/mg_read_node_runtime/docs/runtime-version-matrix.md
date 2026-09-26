@@ -22,7 +22,7 @@
 
 | 平台 | 选择 | 证据边界 |
 | --- | --- | --- |
-| Android | 默认 Javet Node 26.9.0，arm64-v8a/x86_64；构建期开关 `MGREAD_ANDROID_NODE_PROCESS=true` 选择 Node 24.21.0 私有进程，仅 arm64-v8a；minSdk 24 | 新后端 `libnode.so` 是基于 Node.js 源码的移动端第三方构建，非 Node.js 官方 Android 二进制；模拟器集成验证与最终安装包验收分别记录 |
+| Android | 同包包含 Javet Node 26.9.0（arm64-v8a/x86_64）与 Node 24.21.0 私有进程（仅 arm64-v8a）；默认 Javet，设置中选择并重启 App 生效；minSdk 24 | 新后端 `libnode.so` 是基于 Node.js 源码的移动端第三方构建，非 Node.js 官方 Android 二进制；模拟器集成验证与最终安装包验收分别记录 |
 | Windows | bundled Node 26.10.0 x64 child process | Windows 测试不证明 Android、macOS 或最终安装包 |
 | macOS | bundled Node 26.10.0；当前产物为 arm64 | arm64 验证执行、签名和启动；x64、hardened runtime 与公证待发布验证 |
 

@@ -215,7 +215,7 @@ try {
             $buildArguments += "--dart-define=MGREAD_TEST_HTTP_PROXY=$HttpProxy"
         }
         if ($AndroidBackend -eq 'node-process') {
-            $buildArguments += @('--target-platform', 'android-arm64', '--dart-define=MGREAD_ANDROID_NODE_PROCESS=true')
+            $buildArguments += @('--target-platform', 'android-arm64', '--dart-define=MGREAD_TEST_ANDROID_NODE_PROCESS=true')
         }
         elseif ($AndroidBackend -in @('native', 'hybrid')) {
             $nativeImportPath = "/data/user/0/$androidApplicationId/$nativePackageRelativePath"

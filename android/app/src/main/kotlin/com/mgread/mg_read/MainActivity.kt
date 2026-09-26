@@ -39,6 +39,20 @@ class MainActivity : AudioServiceActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mgread/app_lifecycle")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "restart") {
+                    result.notImplemented()
+                } else {
+                    try {
+                        startActivity(Intent(this, AppRestartActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        result.success(null)
+                    } catch (error: Exception) {
+                        result.error("app_restart_failed", error.javaClass.simpleName, null)
+                    }
+                }
+            }
         if (!flutterEngine.plugins.has(AudioBackgroundPlatformBridge::class.java)) {
             flutterEngine.plugins.add(AudioBackgroundPlatformBridge())
         }

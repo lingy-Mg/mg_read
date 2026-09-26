@@ -14,6 +14,13 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false">
+        <activity
+            android:name=".AppRestartActivity"
+            android:exported="false"
+            android:process=":app_restart"
+            android:taskAffinity="${applicationId}.restart"
+            android:excludeFromRecents="true"
+            android:theme="@style/LaunchTheme" />
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.app_update_provider"

@@ -1,6 +1,6 @@
 part of mgread_plugin_runtime;
 
-/// Opt-in Android backend that owns one private Node service and Core socket.
+/// Android backend selected in settings, owning one Node service and Core socket.
 ///
 /// All capabilities and resources use the same authenticated Core protocol as
 /// desktop. The native channel owns only process lifetime, WebView and local

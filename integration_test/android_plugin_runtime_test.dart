@@ -15,6 +15,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
@@ -25,7 +26,14 @@ import 'package:mg_read/features/reader/data/content_library_source_text_reader.
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
-  const useNodeProcess = bool.fromEnvironment('MGREAD_ANDROID_NODE_PROCESS');
+  const useNodeProcess = bool.fromEnvironment('MGREAD_TEST_ANDROID_NODE_PROCESS');
+
+  setUpAll(() async {
+    await const MethodChannel(
+      'mgread_plugin_runtime/android_backend',
+    ).invokeMethod<void>('select', {'backend': useNodeProcess ? 'nodeProcess' : 'javet'});
+    await AndroidNodeRuntimeSettings.instance.initialize();
+  });
 
   testWidgets('Android Runtime accepts the normal app proxy warmup call', (WidgetTester tester) async {
     await tester.pump();

@@ -10,6 +10,8 @@
 ///
 library;
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -140,7 +142,19 @@ class _ProfilePageState extends State<ProfilePage> {
                           const SizedBox(height: AppSpacing.section - 2),
                           _ProfileSectionTitle(title: '设置与管理'),
                           const SizedBox(height: AppSpacing.comfortable / 2),
-                          ProfileSettingsList(items: data.settings, onItemPressed: _handleSettingsItemPressed),
+                          ProfileSettingsList(
+                            items: [
+                              ...data.settings,
+                              if (Platform.isAndroid && !const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME'))
+                                const ProfileSettingsItemViewData(
+                                  id: 'node-runtime',
+                                  title: 'Node.js 运行时',
+                                  description: '切换运行时，重启后生效',
+                                  icon: ProfileSettingsIcon.sources,
+                                ),
+                            ],
+                            onItemPressed: _handleSettingsItemPressed,
+                          ),
                           const SizedBox(height: AppSpacing.section - 4),
                           _ProfileSectionTitle(title: '关于与其他'),
                           const SizedBox(height: AppSpacing.comfortable / 2),
