@@ -16,6 +16,24 @@
 
 冲突时依次采用：用户当前要求 → `docs/core.md` → 最近的嵌套 `AGENTS.md` → 代码公开契约与测试。
 
+## 插件系统任务入口
+
+- Windows 和 Android 的正常 App 同时交付 Node 与 Rust 原生宿主；已安装来源按各自引擎动态装载，
+  不是为两类来源分别打包 App，也不是用原生来源替换 Node 来源。macOS 当前只有 Node 宿主。
+  `MGREAD_NATIVE_RUNTIME=true` 仅用于原生独立性验收；Android 默认 Node 后端是 Javet，私有 Node
+  进程是另一个构建选择。
+- 主应用只经 `packages/mgread_plugin_runtime/` 的 `PluginRuntime` Facade 调用插件。该 package 按来源的
+  `engine` 归属路由安装、管理、内容调用和传输；Node 与原生宿主各有私有进程、安装根和资源服务，
+  来源 ID 在两套引擎之间必须唯一。宿主随 App 交付，来源 artifact 可在安装后导入。
+- Node 来源是打包为单个 JS 的 `.mgplugin.js` 或 Node `.mgplugin` 归档，由
+  `packages/mg_read_node_runtime/` 执行；原生来源是 `engine=native` 的 `.mgplugin` 归档，携带按目标 ABI
+  预编译的 Windows DLL / Android SO，由 `packages/mg_read_native_runtime/` 装载。两种归档格式不能混用；
+  共享的内容语义在 `packages/mg_read_source_api/`，原生 C ABI 在原生 Runtime 的 `abi/`。
+- 后续涉及插件打包、加载或平台交付时，先选目标 package 的最近 `AGENTS.md`、公开入口和直接测试；
+  跨边界再从 `docs/development/README.md` 定位 `docs/core.md` 的相关章节。并存路由的直接验证入口是
+  `packages/mgread_plugin_runtime/test/hybrid_runtime_test.dart` 和 `integration_test/android_hybrid_source_test.dart`；
+  Android 真机或模拟器验证再读取 `.agents/references/android-testing.md`。
+
 ## 工作区与修改归属
 
 - 直接使用当前工作区，不创建 worktree、第二份检出或嵌套 Flutter App。
