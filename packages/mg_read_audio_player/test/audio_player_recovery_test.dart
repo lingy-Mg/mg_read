@@ -49,7 +49,7 @@ void main() {
 
       expect(source.followingCalls, 2);
       expect(backend.appendedIds, <String>['track-2']);
-      expect(backend.nextCalls, 1);
+      expect(backend.snapshot.currentIndex, 1);
       expect(backend.playCalls, 2);
       expect(controller.snapshot.currentTrack?.id, 'track-2');
       expect(controller.snapshot.playing, isTrue);

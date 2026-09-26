@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read_audio_player/mg_read_audio_player.dart';
 import 'package:mg_read_audio_player/src/core/audio_player_session.dart';
 
+part 'support/audio_continuation_regressions.dart';
+
 void main() {
   Future<void> settle() => Future<void>.delayed(Duration.zero);
 
@@ -107,7 +109,7 @@ void main() {
       expect(harness.controller.snapshot.currentTrack?.id, 'b');
       expect(harness.controller.snapshot.playing, isTrue);
       expect(harness.controller.snapshot.resourceLoading, isFalse);
-      expect(harness.backend.nextCalls, 1);
+      expect(harness.backend.jumpedIndices, <int>[1]);
       expect(
         harness.observer.operations.map((event) => event.stage),
         containsAllInOrder(<String>[
@@ -146,71 +148,7 @@ void main() {
     },
   );
 
-  for (final background in <bool>[false, true]) {
-    test(
-      'slow EOF continuation survives recovery (background=$background)',
-      () async {
-        final harness = _Harness();
-        final pending = Completer<List<AudioTrack>>();
-        harness.source.pendingFollowing = pending;
-        addTearDown(harness.close);
-        await harness.session.initialize();
-        await harness.controller.seek(const Duration(seconds: 99));
-        if (background) {
-          await harness.session.handleLifecycle(
-            AudioPlayerLifecycleState.paused,
-          );
-        }
-        harness.backend.emit(
-          harness.backend.snapshot.copyWith(
-            playing: false,
-            completed: true,
-            position: const Duration(seconds: 100),
-          ),
-        );
-
-        // Cross both the recovery backoff and its former 500ms cancellation.
-        await Future<void>.delayed(const Duration(milliseconds: 650));
-        expect(harness.source.followingCalls, 1);
-        expect(harness.controller.snapshot.resourceLoading, isTrue);
-        expect(harness.controller.snapshot.playbackDesired, isTrue);
-        pending.complete(<AudioTrack>[_track('b')]);
-        await settle();
-        await settle();
-
-        expect(harness.controller.snapshot.currentTrack?.id, 'b');
-        expect(harness.controller.snapshot.playing, isTrue);
-        expect(harness.controller.snapshot.resourceLoading, isFalse);
-        expect(harness.backend.nextCalls, 1);
-      },
-    );
-  }
-
-  test('EOF during append advances without a recovery event', () async {
-    final harness = _Harness();
-    final gate = Completer<void>();
-    harness.backend.appendGate = gate;
-    addTearDown(harness.close);
-    await harness.session.initialize();
-    await harness.controller.seek(const Duration(seconds: 99));
-    await settle();
-    expect(harness.backend.appendedTrackIds, isEmpty);
-    harness.backend.emit(
-      harness.backend.snapshot.copyWith(
-        playing: false,
-        completed: true,
-        position: const Duration(seconds: 100),
-      ),
-    );
-    gate.complete();
-    await settle();
-    await settle();
-
-    expect(harness.controller.snapshot.currentTrack?.id, 'b');
-    expect(harness.controller.snapshot.playing, isTrue);
-    expect(harness.controller.snapshot.resourceLoading, isFalse);
-    expect(harness.backend.nextCalls, 1);
-  });
+  _continuationRegressions();
 
   test(
     'manual next explicitly plays after a background resource open',
@@ -620,6 +558,7 @@ final class _Backend implements AudioPlaybackBackend {
   final List<String> appendedTrackIds = <String>[];
   int playCalls = 0;
   int nextCalls = 0;
+  final List<int> jumpedIndices = <int>[];
   bool failNextOpen = false;
   bool failNextPlay = false;
   bool ignoreNextPlay = false;
@@ -703,7 +642,9 @@ final class _Backend implements AudioPlaybackBackend {
     nextCalls++;
     emit(
       _snapshot.copyWith(
-        currentIndex: (_snapshot.currentIndex + 1).clamp(0, _tracks.length - 1),
+        // Match MediaKit: play() at EOF resets to index zero before next.
+        currentIndex: ((_snapshot.completed ? 0 : _snapshot.currentIndex) + 1)
+            .clamp(0, _tracks.length - 1),
         position: Duration.zero,
         completed: false,
       ),
@@ -720,13 +661,16 @@ final class _Backend implements AudioPlaybackBackend {
   );
 
   @override
-  Future<void> jump(int index) async => emit(
-    _snapshot.copyWith(
-      currentIndex: index,
-      position: Duration.zero,
-      completed: false,
-    ),
-  );
+  Future<void> jump(int index) async {
+    jumpedIndices.add(index);
+    emit(
+      _snapshot.copyWith(
+        currentIndex: index,
+        position: Duration.zero,
+        completed: false,
+      ),
+    );
+  }
 
   @override
   Future<void> setRate(double rate) async =>

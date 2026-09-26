@@ -151,13 +151,17 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
             'trackAdvanceStarted',
             targetTrackId: additions.first.id,
           );
-          await backend.next();
+          // MediaKit next() first plays an ended playlist from index zero.
+          // Select the appended index explicitly, including after later EOFs.
+          await backend.jump(previousTailIndex + 1);
           _recordOperation(
             'trackAdvanceReturned',
             targetTrackId: additions.first.id,
           );
         }
-        if (_playbackDesired && intentRevision == _playbackIntentRevision) {
+        if (_isContinuationCurrent(generation, requestRevision) &&
+            _playbackDesired &&
+            intentRevision == _playbackIntentRevision) {
           final started = await _playBackendAndConfirm(
             generation: generation,
             intentRevision: intentRevision,
@@ -383,6 +387,10 @@ extension _AudioPlayerSessionRecovery on AudioPlayerSession {
     if (_closing ||
         _closed ||
         !_playbackDesired ||
+        // Waiting for the source is not a failed attempt. Spending retries
+        // here can exhaust the budget before a slow request reports failure,
+        // leaving background playback stuck until a screen/network event.
+        (_prefetchRequest != null && !_continuationRecoveryPending) ||
         _recoveryTimer != null ||
         _recoveryRequest != null ||
         _recoveryAttempt >= recoveryBackoff.length) {
