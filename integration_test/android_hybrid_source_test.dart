@@ -1,5 +1,6 @@
 /// Confirms one production Android Facade can run Node and native sources.
 /// Test packages are staged in unique app-private inbox paths by the runner.
+/// An optional explicit proxy lets the native source reach its live site.
 library;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +21,10 @@ void main() {
     final runtime = PluginRuntime();
     addTearDown(runtime.debugDispose);
     expect(runtime.supportsNativeSources, isTrue);
+    const proxy = String.fromEnvironment('MGREAD_TEST_HTTP_PROXY');
+    if (proxy.isNotEmpty) {
+      await runtime.configurePluginHttpProxy(Uri.parse(proxy));
+    }
 
     await runtime.importLocalPluginForTesting(nodePath);
     await runtime.importLocalPluginForTesting(nativePath);
@@ -36,6 +41,14 @@ void main() {
 
     final nodeSearch = await runtime.invoke(const SourceSearchInvocation(pluginId: nodeId, query: 'hybrid', pageSize: 1));
     expect(nodeSearch.items.single.title, 'fixture:hybrid');
+    final nativeDiscovery = await runtime.invoke(const SourceDiscoverInvocation(pluginId: nativeId, pageSize: 8));
+    expect(nativeDiscovery, isA<PluginDiscoveryDocumentResult>());
+    final nativeComponents = (nativeDiscovery as PluginDiscoveryDocumentResult).document.components;
+    expect(nativeComponents, isNotEmpty);
+    final nativeCategories = nativeComponents.whereType<PluginDiscoveryCategoryCollectionComponent>().first;
+    expect(nativeCategories.categories, isNotEmpty);
+    final nativeSearch = await runtime.invoke(const SourceSearchInvocation(pluginId: nativeId, query: '修仙', pageSize: 5));
+    expect(nativeSearch.items, isNotEmpty);
     final nativeCache = await runtime.invoke(const PluginCacheUsageInvocation(pluginId: nativeId));
     final transfers = await runtime.invoke(const PluginTransferListInvocation());
     expect(transfers.singleWhere((item) => item.pluginId == nativeId).engine, PluginEngine.native);
@@ -46,6 +59,9 @@ void main() {
       'nodeSource': nodeId,
       'nativeSource': nativeId,
       'nodeSearchCount': nodeSearch.items.length,
+      'nativeDiscoveryComponentCount': nativeComponents.length,
+      'nativeCategoryCount': nativeCategories.categories.length,
+      'nativeSearchCount': nativeSearch.items.length,
       'nativeCacheEntries': nativeCache.length,
       'nativeTransferListed': true,
     };
