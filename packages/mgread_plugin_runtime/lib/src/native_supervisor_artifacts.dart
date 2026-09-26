@@ -11,6 +11,7 @@ final class _NativeRuntimeArtifactTransfer {
   ) async {
     final materialized = await materializePluginArtifact(
       PluginTransferOffer(
+        engine: PluginEngine.native,
         developmentFingerprint: artifact.developmentFingerprint,
         developmentRevision: artifact.developmentRevision,
         format: artifact.format,
@@ -90,6 +91,7 @@ final class _NativeRuntimeArtifactTransfer {
       );
     }
     final artifact = PluginTransferArtifact(
+      engine: PluginEngine.native,
       bytes: byteCount,
       developmentFingerprint: null,
       developmentRevision: null,

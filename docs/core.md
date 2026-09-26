@@ -47,11 +47,13 @@ plugins/sources/                    真实数据源及其他能力参考实现
 
 ## Runtime 与平台宿主
 
-- 数据源构建期选择一个引擎。默认 Node 引擎在 Android 选择 Javet 或私有 Service 中的 Node 进程；Node 模式
-  一次只启动一个 Node Runtime/V8，禁止来源创建 Worker、子进程、第二 VM、native addon 或自定义 loader。
-- `MGREAD_NATIVE_RUNTIME=true` 在 Windows/Android 选择独立 Rust Runtime；Windows EXE 与 Android 私有
-  Service 中的原生宿主加载 C ABI v1 DLL/SO。原生构建不包含 Node/Javet/V8 和 Runtime JS 资产，网络、安装、
-  私有存储及资源代理均由 Rust 拥有。原生可信插件按目标 ABI 发布；动态库更新和卸载经 worker 冷重启完成。
+- Windows/Android 默认 App 并存 Node 与原生数据源引擎，Facade 按安装来源的引擎归属路由调用、管理和传输；
+  两端使用独立宿主、安装根和资源服务。Android Node 引擎选择 Javet 或私有 Service 中的 Node 进程；
+  Node 侧一次只启动一个 Node Runtime/V8，禁止来源创建 Worker、子进程、第二 VM、native addon 或自定义 loader。
+- `MGREAD_NATIVE_RUNTIME=true` 保留为 Windows/Android 原生独立性验收构建；该构建不包含 Node/Javet/V8 和
+  Runtime JS 资产。默认并存构建中，Windows EXE 与 Android 私有 Service 的 Rust 宿主按需加载 C ABI v1
+  DLL/SO；其网络、安装、私有存储及资源代理仍由 Rust 拥有。原生可信插件按目标 ABI 发布；动态库更新和卸载经
+  worker 冷重启完成。macOS 当前只有 Node 引擎，不接收原生归档。
 - Runtime 独立拥有 Node Core、Android Javet/进程后端、desktop Node launcher、Supervisor、内部控制/数据面、Plugin
   API、安装、私有数据根、瞬时诊断和 Flutter Facade。
 - `packages/mg_read_source_api` 拥有共享内容语义及 JS 宿主 Context/WebView 声明；来源不得复制 Context 子集。

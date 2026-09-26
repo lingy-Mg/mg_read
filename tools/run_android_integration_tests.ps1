@@ -4,9 +4,10 @@ Run Android integration tests against the selected Runtime backend.
 
 .DESCRIPTION
 Builds and installs a test APK on an explicitly selected connected device.
-Javet remains the default; the private Node process requires arm64-v8a and
-uses Core CLI's private import inbox. The native backend runs its dedicated
-Rust source test without requiring Node or npm. Results are saved per target.
+The production Javet and native hosts run together by default. The private
+Node process requires arm64-v8a and uses Core CLI's private import inbox.
+The native-only and hybrid source tests use dedicated app-private inboxes.
+Results are saved per target.
 #>
 [CmdletBinding(DefaultParameterSetName = 'Single')]
 param(
@@ -27,7 +28,7 @@ param(
     [ValidateSet('debug', 'profile')]
     [string]$BuildMode = 'debug',
 
-    [ValidateSet('javet', 'node-process', 'native')]
+    [ValidateSet('javet', 'node-process', 'native', 'hybrid')]
     [string]$AndroidBackend = 'javet',
 
     # Optional explicit proxy for tests that read MGREAD_TEST_HTTP_PROXY.
@@ -42,6 +43,7 @@ $runtimeNodeRoot = Join-Path $projectRoot 'packages/mg_read_node_runtime/tools/n
 $runtimeNpm = Join-Path $runtimeNodeRoot 'npm.cmd'
 $runtimeNode = Join-Path $runtimeNodeRoot 'node.exe'
 $nativeTestTarget = 'integration_test/android_native_source_test.dart'
+$hybridTestTarget = 'integration_test/android_hybrid_source_test.dart'
 $nativePluginArtifact = Join-Path $projectRoot 'plugins/sources/aisishuwu-native/dist/aisishuwu-native-0.1.0.mgplugin'
 
 if ($AndroidBackend -eq 'native') {
@@ -49,8 +51,16 @@ if ($AndroidBackend -eq 'native') {
         throw "The native backend is isolated to '$nativeTestTarget'. Select that target and omit -All. No test was started."
     }
 }
+elseif ($AndroidBackend -eq 'hybrid') {
+    if ($All -or $Target.Replace('\', '/') -ne $hybridTestTarget) {
+        throw "The hybrid backend test is '$hybridTestTarget'. Select that target and omit -All. No test was started."
+    }
+}
 elseif ($Target.Replace('\', '/') -eq $nativeTestTarget) {
     throw "'$nativeTestTarget' requires -AndroidBackend native. No test was started."
+}
+elseif ($Target.Replace('\', '/') -eq $hybridTestTarget) {
+    throw "'$hybridTestTarget' requires -AndroidBackend hybrid. No test was started."
 }
 
 $deviceStateOutput = & $adb.Source -s $DeviceId get-state 2>$null | Out-String
@@ -110,7 +120,7 @@ if ($targets.Count -eq 0) {
 if ($AndroidBackend -ne 'native' -and -not (Test-Path -LiteralPath $runtimeNpm -PathType Leaf)) {
     throw 'The pinned Runtime npm toolchain is unavailable. No Android test was started.'
 }
-if ($AndroidBackend -eq 'native' -and -not (Test-Path -LiteralPath $nativePluginArtifact -PathType Leaf)) {
+if ($AndroidBackend -in @('native', 'hybrid') -and -not (Test-Path -LiteralPath $nativePluginArtifact -PathType Leaf)) {
     throw "The native Android test plugin '$nativePluginArtifact' is unavailable. Build the package artifact first. No test was started."
 }
 
@@ -159,7 +169,7 @@ if ($AndroidBackend -ne 'native') {
     }
 }
 
-if ($AndroidBackend -ne 'native' -and ($All -or $targets -contains 'integration_test/android_browser_session_test.dart' -or
+if ($AndroidBackend -ne 'native' -and ($All -or $AndroidBackend -eq 'hybrid' -or $targets -contains 'integration_test/android_browser_session_test.dart' -or
     $targets -contains 'integration_test/android_plugin_runtime_test.dart')) {
     $fixturePath = Join-Path $artifactDirectory 'org.mgread.android-runtime-fixture-1.0.0.mgplugin.js'
     & $runtimeNode (Join-Path $projectRoot 'tools/build_android_runtime_fixture.mjs') $fixturePath
@@ -176,6 +186,10 @@ $nativePackageName = [IO.Path]::GetFileName($nativePluginArtifact)
 $nativePackageRelativePath = "$nativeInboxRelativePath/$nativePackageName"
 $nativePackagePath = $null
 $nativeDeviceTemporaryPath = $null
+$hybridNodeInboxRelativePath = "files/mgread-runtime/import-inbox/integration-tests/$nativeRunSuffix"
+$hybridNodePackageName = 'org.mgread.android-runtime-fixture-1.0.0.mgplugin.js'
+$hybridNodePackageRelativePath = "$hybridNodeInboxRelativePath/$hybridNodePackageName"
+$hybridNodePackagePath = $null
 
 try {
     Push-Location $projectRoot
@@ -203,12 +217,19 @@ try {
         if ($AndroidBackend -eq 'node-process') {
             $buildArguments += @('--target-platform', 'android-arm64', '--dart-define=MGREAD_ANDROID_NODE_PROCESS=true')
         }
-        elseif ($AndroidBackend -eq 'native') {
+        elseif ($AndroidBackend -in @('native', 'hybrid')) {
             $nativeImportPath = "/data/user/0/$androidApplicationId/$nativePackageRelativePath"
-            $buildArguments += @(
-                '--dart-define=MGREAD_NATIVE_RUNTIME=true',
-                "--dart-define=MGREAD_TEST_NATIVE_IMPORT_PATH=$nativeImportPath"
-            )
+            $buildArguments += "--dart-define=MGREAD_TEST_NATIVE_IMPORT_PATH=$nativeImportPath"
+            if ($AndroidBackend -eq 'native') {
+                $buildArguments += '--dart-define=MGREAD_NATIVE_RUNTIME=true'
+            }
+            else {
+                $hybridNodeImportPath = "/data/user/0/$androidApplicationId/$hybridNodePackageRelativePath"
+                $buildArguments += @(
+                    '--dart-define=MGREAD_TEST_DIRECT_IMPORTS=true',
+                    "--dart-define=MGREAD_TEST_NODE_IMPORT_PATH=$hybridNodeImportPath"
+                )
+            }
             if ($BuildMode -eq 'profile') {
                 $buildArguments += @('--target-platform', 'android-arm64')
             }
@@ -222,7 +243,7 @@ try {
         if ($LASTEXITCODE -ne 0) {
             throw "Android Integration Test APK installation failed for '$testTarget'."
         }
-        if ($AndroidBackend -eq 'native') {
+        if ($AndroidBackend -in @('native', 'hybrid')) {
             $nativePackagePath = "/data/user/0/$androidApplicationId/$nativePackageRelativePath"
             $nativeDeviceTemporaryPath = "/data/local/tmp/mgread-native-$nativeRunSuffix.mgplugin"
             & $adb.Source -s $DeviceId shell run-as $androidApplicationId mkdir -p $nativeInboxRelativePath
@@ -242,8 +263,10 @@ try {
                 throw 'The temporary ADB native package could not be removed.'
             }
         }
-        else {
-            $inboxPath = if ($AndroidBackend -eq 'node-process') {
+        if ($AndroidBackend -ne 'native') {
+            $inboxPath = if ($AndroidBackend -eq 'hybrid') {
+                $hybridNodeInboxRelativePath
+            } elseif ($AndroidBackend -eq 'node-process') {
                 'files/mgread-runtime/data/import-inbox'
             } else {
                 'files/mgread-runtime/import-inbox'
@@ -271,6 +294,9 @@ try {
                 if ($LASTEXITCODE -ne 0) {
                     throw "The temporary ADB plugin '$($pluginArtifact.Name)' could not be removed."
                 }
+            }
+            if ($AndroidBackend -eq 'hybrid') {
+                $hybridNodePackagePath = $hybridNodePackageRelativePath
             }
         }
         $driveArguments = @(
@@ -315,6 +341,15 @@ finally {
         }
         catch {
             Write-Warning 'The temporary ADB native package cleanup did not complete.'
+        }
+    }
+    if ($null -ne $hybridNodePackagePath) {
+        try {
+            & $adb.Source -s $DeviceId shell run-as $androidApplicationId rm -f $hybridNodePackagePath
+            & $adb.Source -s $DeviceId shell run-as $androidApplicationId rmdir $hybridNodeInboxRelativePath
+        }
+        catch {
+            Write-Warning 'The unique Node test inbox cleanup did not complete.'
         }
     }
     Pop-Location

@@ -41,6 +41,7 @@ void main() {
       Platform.isWindows || Platform.isMacOS ? findsOneWidget : findsNothing,
     );
     expect(find.byKey(const Key('runtime-debug-http-toggle')), findsOneWidget);
+    if (Platform.isWindows) expect(find.textContaining('两类可以同时使用'), findsOneWidget);
     expect(
       reportedErrors.where((details) => details.exceptionAsString().contains('ListTile background color or ink splashes may be invisible')),
       isEmpty,

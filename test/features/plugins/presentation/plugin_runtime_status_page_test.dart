@@ -49,6 +49,9 @@ void main() {
     expect(find.text('数据源分组'), findsNothing);
     expect(find.byKey(const Key('data-source-management-card')), findsOneWidget);
     expect(find.byKey(const Key('data-source-add')), findsOneWidget);
+    expect(find.byKey(const Key('data-source-add-native')), findsOneWidget);
+    expect(find.text('添加 Node 数据源'), findsOneWidget);
+    expect(find.text('添加原生数据源'), findsOneWidget);
     expect(find.byKey(const Key('data-source-open-runtime-directory')), findsNothing);
     expect(find.byKey(const Key('data-source-add-development-directory')), findsNothing);
     expect(find.byKey(const Key('runtime-debug-http-toggle')), findsNothing);

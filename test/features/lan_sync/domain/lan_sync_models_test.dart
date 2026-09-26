@@ -59,6 +59,25 @@ void main() {
     expect(decoded.skippedShelfItems, 1);
   });
 
+  test('plugin manifests preserve native engine and accept legacy Node peers', () {
+    const native = LanSyncPluginDescriptor(
+      id: 'source.native',
+      version: '1.0.0',
+      bytes: 128,
+      artifactFormat: LanSyncPluginArtifactFormat.archive,
+      checksum: 'aaaaaaaa',
+      transferable: true,
+      engine: LanSyncPluginEngine.native,
+    );
+    expect(LanSyncPluginDescriptor.fromJson(native.toJson()).engine, LanSyncPluginEngine.native);
+    final legacy = Map<String, Object?>.of(native.toJson())..remove('engine');
+    expect(LanSyncPluginDescriptor.fromJson(legacy).engine, LanSyncPluginEngine.node);
+    expect(
+      () => LanSyncPluginDescriptor.fromJson(<String, Object?>{...native.toJson(), 'artifactFormat': 'singleFile'}),
+      throwsFormatException,
+    );
+  });
+
   test('paired task schema separates bookshelf metadata from reading progress', () {
     final progress = LanSyncReadingProgress(
       chapterId: 'chapter-2',

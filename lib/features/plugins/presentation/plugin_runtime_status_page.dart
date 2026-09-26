@@ -10,6 +10,8 @@
 ///
 library;
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -66,7 +68,7 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
                   if (onRuntimeStatusRequested != null)
                     AppSecondaryPageIconButton(
                       key: const Key('data-source-runtime-status'),
-                      label: const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME') ? '运行状态' : 'Node 状态',
+                      label: '运行状态',
                       icon: Icons.monitor_heart_outlined,
                       onPressed: onRuntimeStatusRequested!,
                     ),
@@ -149,9 +151,9 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
     }
   }
 
-  Future<void> _importDataSource() async {
+  Future<void> _importDataSource({bool native = false}) async {
     try {
-      final imported = await ref.read(pluginRuntimeSourceImportProvider.notifier).importLocalPlugin();
+      final imported = await ref.read(pluginRuntimeSourceImportProvider.notifier).importLocalPlugin(native: native);
       if (!mounted || !imported) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据源已添加。')));
     } on Object catch (error) {
@@ -224,7 +226,14 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
           sourceCount: widget.sources.length,
           installedSourceCount: widget.sources.where((source) => !source.isDevelopment).length,
           importState: importState,
-          onAddPressed: importState.isImporting ? null : _importDataSource,
+          onAddPressed: importState.isImporting ? null : () => _importDataSource(),
+          onNativeAddPressed:
+              importState.isImporting ||
+                  const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME') ||
+                  const bool.fromEnvironment('MGREAD_NODE_ONLY') ||
+                  (!Platform.isWindows && !Platform.isAndroid)
+              ? null
+              : () => _importDataSource(native: true),
           isClearingAll: isClearingAll,
           removalProgress: removalProgress,
           onClearAllPressed: isClearingAll || widget.sources.every((source) => source.isDevelopment) ? null : _clearAllSources,
@@ -371,6 +380,7 @@ class _DataSourceOverviewCard extends StatelessWidget {
     required this.installedSourceCount,
     required this.importState,
     required this.onAddPressed,
+    required this.onNativeAddPressed,
     required this.isClearingAll,
     required this.removalProgress,
     required this.onClearAllPressed,
@@ -381,6 +391,7 @@ class _DataSourceOverviewCard extends StatelessWidget {
   final int installedSourceCount;
   final PluginSourceImportState importState;
   final VoidCallback? onAddPressed;
+  final VoidCallback? onNativeAddPressed;
   final bool isClearingAll;
   final PluginSourceRemovalProgress removalProgress;
   final VoidCallback? onClearAllPressed;
@@ -442,6 +453,17 @@ class _DataSourceOverviewCard extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.comfortable),
             _AddDataSourceButton(isImporting: importState.isImporting, onPressed: onAddPressed),
+            if (!const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME') &&
+                !const bool.fromEnvironment('MGREAD_NODE_ONLY') &&
+                (Platform.isWindows || Platform.isAndroid)) ...<Widget>[
+              const SizedBox(height: AppSpacing.compact),
+              OutlinedButton.icon(
+                key: const Key('data-source-add-native'),
+                onPressed: onNativeAddPressed,
+                icon: const Icon(Icons.memory_outlined),
+                label: const Text('添加原生数据源'),
+              ),
+            ],
             if (installedSourceCount > 0) ...<Widget>[
               const SizedBox(height: AppSpacing.regular),
               _ClearAllDataSourcesButton(isClearing: isClearingAll, progress: removalProgress, onPressed: onClearAllPressed),
@@ -679,7 +701,13 @@ class _AddDataSourceButton extends StatelessWidget {
                 child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.onPrimary),
               )
             : const Icon(Icons.add_rounded, size: 21),
-        label: Text(isImporting ? '正在添加数据源…' : '添加数据源'),
+        label: Text(
+          isImporting
+              ? '正在添加数据源…'
+              : const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME')
+              ? '添加原生数据源'
+              : '添加 Node 数据源',
+        ),
         style: FilledButton.styleFrom(
           backgroundColor: tokens.dataSourceAccent,
           foregroundColor: Theme.of(context).colorScheme.onPrimary,

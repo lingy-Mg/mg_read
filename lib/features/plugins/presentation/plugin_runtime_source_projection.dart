@@ -36,6 +36,7 @@ List<DataSourceManagementRowData> pluginManagementSourcesFromConnection(PluginRu
 
 String _sourceMetadataLabel(PluginRuntimePlugin plugin) {
   final kindLabel = pluginContentKindsLabel(plugin.contentKinds);
+  if (plugin.engine == 'native') return '$kindLabel · 原生数据源';
   if (plugin.status == 'development') return '$kindLabel · 开发数据源插件（即时生效）';
   final String? origin = switch (plugin.displayName) {
     '起点中文网' || '番茄小说' || '七猫中文网' || '纵横中文网' => '官方源',

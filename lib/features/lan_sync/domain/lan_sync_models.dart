@@ -46,6 +46,8 @@ enum LanSyncPluginArtifactFormat { singleFile, archive }
 
 enum LanSyncPluginProvenance { installed, development, developmentReplica }
 
+enum LanSyncPluginEngine { node, native }
+
 @immutable
 final class LanSyncBookConflict {
   const LanSyncBookConflict({
@@ -167,6 +169,7 @@ final class LanSyncPluginDescriptor {
     this.developmentRevision,
     this.displayName,
     this.provenance = LanSyncPluginProvenance.installed,
+    this.engine = LanSyncPluginEngine.node,
     this.reason,
   });
 
@@ -181,6 +184,7 @@ final class LanSyncPluginDescriptor {
   final bool deferred;
   final String? displayName;
   final LanSyncPluginProvenance provenance;
+  final LanSyncPluginEngine engine;
   final String? reason;
 
   Map<String, Object?> toJson() => <String, Object?>{
@@ -191,6 +195,7 @@ final class LanSyncPluginDescriptor {
     'developmentRevision': developmentRevision,
     'artifactFormat': artifactFormat.name,
     'provenance': provenance.name,
+    'engine': engine.name,
     'checksum': checksum,
     'transferable': transferable,
     'deferred': deferred,
@@ -220,6 +225,11 @@ final class LanSyncPluginDescriptor {
         'developmentReplica' => LanSyncPluginProvenance.developmentReplica,
         _ => throw const FormatException('invalid_plugin_provenance'),
       },
+      engine: switch (_optionalString(json, 'engine', maxLength: 16)) {
+        null || 'node' => LanSyncPluginEngine.node,
+        'native' => LanSyncPluginEngine.native,
+        _ => throw const FormatException('invalid_plugin_engine'),
+      },
       reason: _optionalString(json, 'reason', maxLength: 128),
     );
     if (!RegExp(r'^[a-f0-9]{8}$').hasMatch(descriptor.checksum) ||
@@ -229,6 +239,9 @@ final class LanSyncPluginDescriptor {
         (!descriptor.transferable && descriptor.bytes != 0) ||
         (descriptor.provenance == LanSyncPluginProvenance.installed &&
             (descriptor.developmentFingerprint != null || descriptor.developmentRevision != null)) ||
+        (descriptor.engine == LanSyncPluginEngine.native &&
+            (descriptor.artifactFormat != LanSyncPluginArtifactFormat.archive ||
+                descriptor.provenance != LanSyncPluginProvenance.installed)) ||
         (descriptor.provenance != LanSyncPluginProvenance.installed &&
             (descriptor.developmentFingerprint == null ||
                 !RegExp(r'^[a-f0-9]{64}$').hasMatch(descriptor.developmentFingerprint!) ||

@@ -10,6 +10,7 @@ enum PluginArtifactProvenance { installed, development, developmentReplica }
 @immutable
 final class PluginTransferArtifact {
   const PluginTransferArtifact({
+    this.engine = PluginEngine.node,
     required this.bytes,
     required this.developmentFingerprint,
     required this.developmentRevision,
@@ -20,6 +21,7 @@ final class PluginTransferArtifact {
     required this.version,
   });
 
+  final PluginEngine engine;
   final int bytes;
   final String? developmentFingerprint;
   final int? developmentRevision;
@@ -45,6 +47,7 @@ final class PluginTransferArtifact {
 @immutable
 final class PluginTransferOffer {
   const PluginTransferOffer({
+    this.engine = PluginEngine.node,
     required this.developmentFingerprint,
     required this.developmentRevision,
     required this.format,
@@ -53,6 +56,7 @@ final class PluginTransferOffer {
     required this.version,
   });
 
+  final PluginEngine engine;
   final String? developmentFingerprint;
   final int? developmentRevision;
   final PluginArtifactFormat format;
@@ -249,6 +253,11 @@ final class PluginTransferOfferPlanInvocation
 
 PluginTransferArtifact _decodePluginTransferArtifact(Object? value) {
   final item = _jsonObject(value, 'Plugin transfer artifact');
+  final engine = switch (item['engine']) {
+    null || 'node' => PluginEngine.node,
+    'native' => PluginEngine.native,
+    _ => null,
+  };
   final bytes = item['bytes'];
   final developmentFingerprint = item['developmentFingerprint'];
   final developmentRevision = item['developmentRevision'];
@@ -266,7 +275,8 @@ PluginTransferArtifact _decodePluginTransferArtifact(Object? value) {
   };
   final checksum = item['checksum'];
   final version = item['version'];
-  if (bytes is! int ||
+  if (engine == null ||
+      bytes is! int ||
       bytes <= 0 ||
       bytes > maxPluginTransferBytes ||
       format == null ||
@@ -288,6 +298,7 @@ PluginTransferArtifact _decodePluginTransferArtifact(Object? value) {
     );
   }
   return PluginTransferArtifact(
+    engine: engine,
     bytes: bytes,
     developmentFingerprint: developmentFingerprint as String?,
     developmentRevision: developmentRevision as int?,
@@ -301,6 +312,11 @@ PluginTransferArtifact _decodePluginTransferArtifact(Object? value) {
 
 PluginTransferOffer _decodePluginTransferOffer(Object? value) {
   final item = _jsonObject(value, 'Plugin transfer offer');
+  final engine = switch (item['engine']) {
+    null || 'node' => PluginEngine.node,
+    'native' => PluginEngine.native,
+    _ => null,
+  };
   final developmentFingerprint = item['developmentFingerprint'];
   final developmentRevision = item['developmentRevision'];
   final format = switch (item['format']) {
@@ -316,7 +332,8 @@ PluginTransferOffer _decodePluginTransferOffer(Object? value) {
     _ => null,
   };
   final version = item['version'];
-  if (format == null ||
+  if (engine == null ||
+      format == null ||
       pluginId is! String ||
       provenance == null ||
       version is! String ||
@@ -333,6 +350,7 @@ PluginTransferOffer _decodePluginTransferOffer(Object? value) {
     );
   }
   return PluginTransferOffer(
+    engine: engine,
     developmentFingerprint: developmentFingerprint as String?,
     developmentRevision: developmentRevision as int?,
     format: format,

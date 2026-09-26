@@ -6,8 +6,8 @@ project(mg_read LANGUAGES CXX)
 # the on-disk name of your application.
 set(BINARY_NAME "mg_read")
 
-# Native-only packaging stages the Rust host beside the app and removes the
-# legacy Runtime assets from the installed Flutter asset tree. Flutter encodes
+# All Windows packages stage the Rust host beside the app; the native-only
+# acceptance build additionally removes Node assets. Flutter encodes
 # Dart defines as base64 in generated_config.cmake, so derive this mode from the
 # same --dart-define used by the Facade instead of retaining a CMake cache flag.
 set(MGREAD_NATIVE_RUNTIME OFF)
@@ -123,22 +123,17 @@ install(CODE "
 install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime)
 
+if(NOT EXISTS "${MGREAD_NATIVE_HOST_EXECUTABLE}")
+  message(FATAL_ERROR
+    "MgRead requires the Rust host at ${MGREAD_NATIVE_HOST_EXECUTABLE}. Build it before packaging.")
+endif()
+install(FILES "${MGREAD_NATIVE_HOST_EXECUTABLE}"
+  DESTINATION "${INSTALL_BUNDLE_LIB_DIR}/native"
+  RENAME "mgread-native-host.exe"
+  COMPONENT Runtime)
 if(MGREAD_NATIVE_RUNTIME)
-  if(NOT EXISTS "${MGREAD_NATIVE_HOST_EXECUTABLE}")
-    message(FATAL_ERROR
-      "MGREAD_NATIVE_RUNTIME requires the Rust host at "
-      "${MGREAD_NATIVE_HOST_EXECUTABLE}. Build it before packaging.")
-  endif()
-  install(FILES "${MGREAD_NATIVE_HOST_EXECUTABLE}"
-    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}/native"
-    RENAME "mgread-native-host.exe"
-    COMPONENT Runtime)
   install(CODE
     "file(REMOVE_RECURSE \"${INSTALL_BUNDLE_DATA_DIR}/${FLUTTER_ASSET_DIR_NAME}/packages/mgread_plugin_runtime/assets/runtime\")"
-    COMPONENT Runtime)
-else()
-  install(CODE
-    "file(REMOVE \"${INSTALL_BUNDLE_LIB_DIR}/native/mgread-native-host.exe\")"
     COMPONENT Runtime)
 endif()
 

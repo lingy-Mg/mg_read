@@ -62,11 +62,16 @@ final class PluginRuntime {
   static PluginRuntime? _androidInstance;
   static PluginRuntime? _nativeInstance;
 
+  /// Whether this Facade can install and execute native binary sources.
+  bool get supportsNativeSources =>
+      _supervisor is _HybridRuntimeSupervisor ||
+      _supervisor is _NativeRuntimeSupervisor;
+
   /// Creates or returns the process-scoped production Facade.
   ///
-  /// The Runtime package resolves its own Windows or macOS bundle layout. Android uses
-  /// Javet by default or the build-selected private Node process; neither leaks
-  /// file-system details to the host application.
+  /// The Runtime package resolves its own desktop bundle layout. Windows and
+  /// Android own both Node and native backends. The native-only
+  /// define remains available for isolation and package acceptance builds.
   factory PluginRuntime() {
     if (const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME')) {
       return _nativeInstance ??= PluginRuntime._(
@@ -75,9 +80,16 @@ final class PluginRuntime {
     }
     if (Platform.isAndroid) {
       return _androidInstance ??= PluginRuntime._(
-        const bool.fromEnvironment('MGREAD_ANDROID_NODE_PROCESS')
-            ? _AndroidNodeProcessSupervisor()
-            : _AndroidRuntimeSupervisor(),
+        const bool.fromEnvironment('MGREAD_NODE_ONLY')
+            ? (const bool.fromEnvironment('MGREAD_ANDROID_NODE_PROCESS')
+                  ? _AndroidNodeProcessSupervisor()
+                  : _AndroidRuntimeSupervisor())
+            : _HybridRuntimeSupervisor(
+                const bool.fromEnvironment('MGREAD_ANDROID_NODE_PROCESS')
+                    ? _AndroidNodeProcessSupervisor()
+                    : _AndroidRuntimeSupervisor(),
+                _NativeRuntimeSupervisor.forCurrentPlatform(),
+              ),
       );
     }
     if (!Platform.isWindows && !Platform.isMacOS) {
@@ -87,10 +99,23 @@ final class PluginRuntime {
       );
     }
     return _bundledInstance ??= PluginRuntime._(
-      _DesktopRuntimeSupervisor(
-        _DesktopRuntimeBundle.fromApplicationPackage(),
-        useEnvironmentProxy: true,
-      ),
+      Platform.isWindows
+          ? const bool.fromEnvironment('MGREAD_NODE_ONLY')
+                ? _DesktopRuntimeSupervisor(
+                    _DesktopRuntimeBundle.fromApplicationPackage(),
+                    useEnvironmentProxy: true,
+                  )
+                : _HybridRuntimeSupervisor(
+                    _DesktopRuntimeSupervisor(
+                      _DesktopRuntimeBundle.fromApplicationPackage(),
+                      useEnvironmentProxy: true,
+                    ),
+                    _NativeRuntimeSupervisor.forCurrentPlatform(),
+                  )
+          : _DesktopRuntimeSupervisor(
+              _DesktopRuntimeBundle.fromApplicationPackage(),
+              useEnvironmentProxy: true,
+            ),
     );
   }
 
@@ -231,12 +256,33 @@ final class PluginRuntime {
     return true;
   }
 
-  /// Imports a package-owned fixture by path for native Runtime tests.
+  /// Imports a native binary source through the selected platform picker.
+  Future<bool> importNativeLocalPlugin() {
+    final supervisor = _supervisor;
+    if (supervisor is _HybridRuntimeSupervisor) {
+      return supervisor.importNativeLocalPlugin();
+    }
+    if (supervisor is _NativeRuntimeSupervisor) {
+      return Platform.isAndroid
+          ? supervisor.pickAndImportLocalPlugin()
+          : importLocalPlugin();
+    }
+    throw const PluginRuntimeException(
+      'unsupported',
+      'Native source packages are unavailable on this platform.',
+    );
+  }
+
+  /// Imports a package-owned fixture by path for Runtime integration tests.
   ///
   /// Product flows keep path selection inside this package; only package
   /// acceptance tests use this helper to exercise the production Supervisor.
   @visibleForTesting
   Future<void> importLocalPluginForTesting(String sourcePath) {
+    if (const bool.fromEnvironment('MGREAD_TEST_DIRECT_IMPORTS') &&
+        _supervisor is _HybridRuntimeSupervisor) {
+      return _supervisor.importLocalPluginForTesting(sourcePath);
+    }
     if (!const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME')) {
       throw const PluginRuntimeException(
         'unsupported',
@@ -270,6 +316,13 @@ final class PluginRuntime {
     artifacts, {
     Set<String> forceUpgradePluginIds = const <String>{},
   }) {
+    if (!supportsNativeSources &&
+        artifacts.any((item) => item.artifact.engine == PluginEngine.native)) {
+      throw const PluginRuntimeException(
+        'unsupported',
+        'Native source packages are unavailable on this platform.',
+      );
+    }
     return _supervisor.importPluginArtifacts(
       artifacts,
       forceUpgradePluginIds: forceUpgradePluginIds,
@@ -350,6 +403,24 @@ final class PluginRuntime {
         testControlUri: testControlUri,
         testToken: testToken,
       ),
+    );
+  }
+
+  /// Combines isolated package test Facades without exposing either transport.
+  @visibleForTesting
+  factory PluginRuntime.hybridForTesting({
+    required PluginRuntime nodeRuntime,
+    required PluginRuntime nativeRuntime,
+  }) {
+    final native = nativeRuntime._supervisor;
+    if (native is! _NativeRuntimeSupervisor ||
+        nodeRuntime._supervisor is _NativeRuntimeSupervisor) {
+      throw ArgumentError(
+        'Hybrid tests require one Node and one native Facade.',
+      );
+    }
+    return PluginRuntime._(
+      _HybridRuntimeSupervisor(nodeRuntime._supervisor, native),
     );
   }
 

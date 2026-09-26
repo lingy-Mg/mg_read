@@ -29,7 +29,7 @@ import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.Executors
 
-class RuntimeBackendPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware {
+class NativeRuntimeBackendPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var ioExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "MgReadNativeFiles").apply { isDaemon = true }

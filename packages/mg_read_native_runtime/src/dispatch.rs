@@ -169,7 +169,7 @@ pub fn control(
                 let m = &e.manifest;
                 let bytes =
                     std::fs::read(c.versions(&m.id).join(&m.version).join("source.mgplugin"))?;
-                items.push(json!({"id":m.id,"version":m.version,"format":"archive","provenance":"installed","developmentFingerprint":null,"developmentRevision":null,"bytes":bytes.len(),"checksum":catalog::transfer_checksum(&bytes)}));
+                items.push(json!({"id":m.id,"version":m.version,"format":"archive","engine":"native","provenance":"installed","developmentFingerprint":null,"developmentRevision":null,"bytes":bytes.len(),"checksum":catalog::transfer_checksum(&bytes)}));
             }
             Ok(json!(items))
         }

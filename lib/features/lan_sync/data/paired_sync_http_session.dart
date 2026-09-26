@@ -262,6 +262,7 @@ bool _sameLogical(LanSyncPluginDescriptor actual, LanSyncPluginDescriptor offere
     actual.developmentFingerprint == offered.developmentFingerprint &&
     actual.developmentRevision == offered.developmentRevision &&
     actual.provenance == offered.provenance &&
+    actual.engine == offered.engine &&
     actual.transferable &&
     !actual.deferred;
 

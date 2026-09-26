@@ -1,6 +1,6 @@
 # 独立数据源运行时重新规划
 
-日期：2026-09-25。状态：原生实现已接入，平台验收结果见爱丽丝原生来源的效果报告。
+日期：2026-09-25。状态：原生独立性阶段已接入；2026-09-26 按用户要求将 Windows/Android 默认交付改为双引擎并存。
 所有者：Runtime Facade 与平台宿主；本文记录路线决策和验收门槛，实际 ABI 由原生 runtime 与 Source API 共同拥有。
 需求依据：用户明确要求独立于 Node，支持 Windows 和 Android，以爱丽丝验证二进制数据源。
 
@@ -111,16 +111,15 @@ android-x86_64/libsource.so    当前模拟器验证目标
 | `packages/mgread_plugin_runtime/` | 现有唯一 Facade 增加 Native Supervisor；选择器、进程管理、内部 IPC、平台 WebView 接口 |
 | `packages/mg_read_source_api/` | 共享内容语义、版本和契约 fixture；保留现有 JS 类型，避免来源自行复制公共定义 |
 | `plugins/sources/aisishuwu-native/` | 爱丽丝原生来源、构建、fixture、双平台效果报告 |
-| 根构建及测试工具 | 同一 Flutter App 的 native-only 构建、包内容审计、定向 EXE 与 Android 验收 |
+| 根构建及测试工具 | 同一 Flutter App 的默认双引擎与 native-only 构建、包内容审计、定向 EXE 与 Android 验收 |
 
 `PluginRuntime()` 工厂通过编译时 `MGREAD_NATIVE_RUNTIME=true` 选择 Native Supervisor，接管初始化、
 安装列表、启停、传输和资源调用，不调用旧 Node manager 获取基础信息。
 
-先在同一个 App 增加 native-only 构建配置：Windows 排除 Node 资产，Android 用明确的构建变体排除
+独立性验收保留 native-only 构建配置：Windows 排除 Node 资产，Android 用明确的构建变体排除
 Javet/libnode、JS 资产及直接引用它们的 Kotlin 源码。仅设置运行时布尔开关或没有 Node 子进程不算独立证据。
-v1 用显式引擎配置选择原生或旧 Node 后端，不同时启动两套引擎。旧来源文件和数据保留；native-only 模式
-明确只支持原生来源。混合运行若后续实施，应在 Facade 按引擎路由并保持 Node 延迟启动，另作验证，不成为
-原生来源运行的前置条件。
+默认 Windows/Android 包同时交付两套宿主，Facade 按来源引擎路由；旧来源文件和数据保留。native-only 模式
+明确只支持原生来源，供独立性验收。macOS 继续只交付 Node；收到原生来源传输描述时应报告不可用。
 
 复用爱丽丝实验中验证过的纯 Rust 解析、URL/ID 逻辑和测试样本；将 continuation 调度替换成原生异步调用，补齐
 持久化缓存。已废弃的二进制实验实现及专属测试已移除；其历史测试结果不计入独立运行时验收。

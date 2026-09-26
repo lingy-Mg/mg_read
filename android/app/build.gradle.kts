@@ -25,9 +25,20 @@ val isAndroidNodeProcessBuild = (findProperty("dart-defines") as? String)
                 "MGREAD_ANDROID_NODE_PROCESS=true"
         }.getOrDefault(false)
     } == true
+val isNodeOnlyRuntimeBuild = (findProperty("dart-defines") as? String)
+    ?.split(',')
+    ?.any { encoded ->
+        runCatching {
+            String(Base64.getDecoder().decode(encoded), Charsets.UTF_8) ==
+                "MGREAD_NODE_ONLY=true"
+        }.getOrDefault(false)
+    } == true
 
 check(!(isNativeRuntimeBuild && isAndroidNodeProcessBuild)) {
     "MGREAD_NATIVE_RUNTIME and MGREAD_ANDROID_NODE_PROCESS select incompatible Android Runtime backends."
+}
+check(!(isNativeRuntimeBuild && isNodeOnlyRuntimeBuild)) {
+    "Native-only and Node-only Android Runtime builds cannot be selected together."
 }
 
 val androidApplicationIdSuffix = (findProperty("dart-defines") as? String)
@@ -69,18 +80,18 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        // The Runtime Android library exposes mutually exclusive Javet and
-        // native-only variants. Normal builds continue to select Javet.
+        // The Runtime Android library exposes dedicated and combined variants.
+        // Normal builds include both engines.
         missingDimensionStrategy(
             "mgreadRuntimeBackend",
-            if (isNativeRuntimeBuild) "nativeRuntime" else "javet",
+            if (isNativeRuntimeBuild) "nativeRuntime" else if (isNodeOnlyRuntimeBuild) "javet" else "hybrid",
         )
 
-        // The legacy production runtime is arm64-only. The independent native
-        // distribution also ships x86_64 for Android emulators/devices.
+        // The combined production runtime ships both Android ABIs so Javet and
+        // Rust sources can run together on x86_64 emulators and arm64 devices.
         ndk {
             abiFilters.add("arm64-v8a")
-            if (isNativeRuntimeBuild) abiFilters.add("x86_64")
+            if (isNativeRuntimeBuild || !isNodeOnlyRuntimeBuild) abiFilters.add("x86_64")
         }
     }
 
@@ -94,7 +105,7 @@ android {
             excludes += buildSet {
                 add("**/armeabi-v7a/**")
                 add("**/x86/**")
-                if ((isReleaseBuild && !isNativeRuntimeBuild) || isAndroidNodeProcessBuild) add("**/x86_64/**")
+                if ((isReleaseBuild && isNodeOnlyRuntimeBuild) || isAndroidNodeProcessBuild) add("**/x86_64/**")
                 if (!isAndroidNodeProcessBuild) {
                     add("**/libnode.so")
                     add("**/libmgread_node_bridge.so")
@@ -111,8 +122,7 @@ android {
 
     buildTypes {
         debug {
-            // Keep the production APK arm64-only while allowing the x86_64
-            // Android emulator to exercise Flutter and MediaKit playback.
+            // Keep the x86_64 emulator available to exercise both source engines.
             ndk {
                 abiFilters.add("x86_64")
             }

@@ -15,7 +15,7 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.PluginRegistry
 
 /** Flutter bridge for the Runtime-owned Android Javet adapter. */
-class RuntimeBackendPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
+class JavetRuntimeBackendPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     EventChannel.StreamHandler, ActivityAware {
     private companion object {
         const val IMPORT_FILE_REQUEST = 48271

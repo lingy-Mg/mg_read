@@ -1,4 +1,4 @@
-/// Runtime status projection for the selected source engine. Native builds show
+/// Runtime status projection for both source engines. Native cards show
 /// measured process RSS; V8-only counters remain specific to the Node backend.
 library;
 
@@ -9,8 +9,6 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
-
-const _nativeRuntimeBuild = bool.fromEnvironment('MGREAD_NATIVE_RUNTIME');
 
 /// A small, expandable Flutter-native status page for the source Runtime.
 ///
@@ -34,7 +32,7 @@ class PluginRuntimeHealthPage extends ConsumerWidget {
               AppSecondaryPageTopBar(
                 headerKey: const Key('runtime-health-top-bar'),
                 backButtonKey: const Key('runtime-health-back'),
-                title: _nativeRuntimeBuild ? '运行状态' : 'Node 状态',
+                title: '运行状态',
                 onBack: onBackRequested,
                 actions: <Widget>[
                   AppSecondaryPageIconButton(
@@ -47,11 +45,7 @@ class PluginRuntimeHealthPage extends ConsumerWidget {
               ),
               Expanded(
                 child: status.when(
-                  loading: () => const AppLoadingState(
-                    label: _nativeRuntimeBuild ? '正在读取运行状态' : '正在读取 Node 状态',
-                    message: _nativeRuntimeBuild ? '正在读取运行状态' : '正在读取 Node 状态',
-                    progressKey: Key('runtime-health-loading'),
-                  ),
+                  loading: () => const AppLoadingState(label: '正在读取运行状态', message: '正在读取运行状态', progressKey: Key('runtime-health-loading')),
                   error: (Object _, StackTrace _) => _RuntimeHealthFailure(onRetry: () => ref.invalidate(pluginRuntimeStatusProvider)),
                   data: (PluginRuntimeStatus value) => _RuntimeHealthContent(status: value),
                 ),
@@ -72,11 +66,7 @@ class _RuntimeHealthFailure extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: TextButton(
-        key: const Key('runtime-health-retry'),
-        onPressed: onRetry,
-        child: const Text(_nativeRuntimeBuild ? '运行状态暂不可用，点击重试' : 'Node 状态暂不可用，点击重试'),
-      ),
+      child: TextButton(key: const Key('runtime-health-retry'), onPressed: onRetry, child: const Text('运行状态暂不可用，点击重试')),
     );
   }
 }
@@ -100,6 +90,12 @@ class _RuntimeHealthContent extends StatelessWidget {
         _RuntimeSummaryCard(status: status),
         const SizedBox(height: AppSpacing.regular),
         _RuntimeMemoryCard(memory: status.memory, runtimeKind: status.runtimeKind),
+        if (status.nativeStatus case final native?) ...<Widget>[
+          const SizedBox(height: AppSpacing.regular),
+          _RuntimeSummaryCard(status: native),
+          const SizedBox(height: AppSpacing.regular),
+          _RuntimeMemoryCard(memory: native.memory, runtimeKind: native.runtimeKind),
+        ],
         const SizedBox(height: AppSpacing.regular),
         _RuntimePluginsCard(plugins: status.plugins),
       ],
@@ -116,7 +112,7 @@ class _RuntimeSummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = AppThemeTokens.of(context);
     return _StatusCard(
-      cardKey: const Key('runtime-health-summary-card'),
+      cardKey: Key(status.runtimeKind == 'native-rust' ? 'runtime-health-native-summary-card' : 'runtime-health-summary-card'),
       title: status.runtimeKind == 'native-rust'
           ? 'Rust 原生数据源引擎'
           : status.runtimeKind == 'android-javet'
@@ -162,7 +158,7 @@ class _RuntimeMemoryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _StatusCard(
-      cardKey: const Key('runtime-health-memory-card'),
+      cardKey: Key(runtimeKind == 'native-rust' ? 'runtime-health-native-memory-card' : 'runtime-health-memory-card'),
       title: '内存占用',
       icon: Icons.data_usage_rounded,
       child: Column(

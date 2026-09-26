@@ -48,6 +48,7 @@ final class PluginRuntimeStatus {
     required this.runtimeVersion,
     required this.runtimeKind,
     required this.uptime,
+    this.nativeStatus,
   });
 
   final String arch;
@@ -59,6 +60,7 @@ final class PluginRuntimeStatus {
   final String runtimeVersion;
   final String runtimeKind;
   final Duration uptime;
+  final PluginRuntimeStatus? nativeStatus;
 }
 
 @immutable
@@ -91,6 +93,7 @@ final class PluginRuntimePlugin {
     required this.status,
     this.description,
     this.iconUrl,
+    this.engine = 'node',
   });
 
   final String? activeVersion;
@@ -99,6 +102,7 @@ final class PluginRuntimePlugin {
   final String displayName;
   final bool enabled;
   final String? iconUrl;
+  final String engine;
   final String id;
   final String name;
   final String? pendingVersion;

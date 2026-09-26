@@ -12,6 +12,7 @@ plugins {
 
 def encodedDartDefines = findProperty('dart-defines') ?: rootProject.findProperty('dart-defines')
 def isNativeRuntimeBuild = false
+def isNodeOnlyRuntimeBuild = false
 if (encodedDartDefines instanceof String) {
     isNativeRuntimeBuild = encodedDartDefines.split(',').any { encoded ->
         try {
@@ -20,7 +21,15 @@ if (encodedDartDefines instanceof String) {
             false
         }
     }
+    isNodeOnlyRuntimeBuild = encodedDartDefines.split(',').any { encoded ->
+        try {
+            new String(Base64.decoder.decode(encoded), 'UTF-8') == 'MGREAD_NODE_ONLY=true'
+        } catch (IllegalArgumentException ignored) {
+            false
+        }
+    }
 }
+def includesNativeRuntime = !isNodeOnlyRuntimeBuild
 
 group = 'com.mgread.mgread_plugin_runtime'
 version = '1.0-SNAPSHOT'
@@ -42,6 +51,24 @@ android {
         }
         nativeRuntime {
             dimension 'mgreadRuntimeBackend'
+        }
+        hybrid {
+            dimension 'mgreadRuntimeBackend'
+            consumerProguardFiles 'consumer-rules.pro'
+        }
+    }
+
+    sourceSets {
+        javet {
+            kotlin.srcDirs += ['src/javetOnly/kotlin']
+        }
+        nativeRuntime {
+            kotlin.srcDirs += ['src/nativeOnly/kotlin']
+        }
+        hybrid {
+            kotlin.srcDirs += ['src/javet/kotlin', 'src/nativeRuntime/kotlin']
+            jniLibs.srcDirs = ['src/native/jniLibs']
+            jniLibs.excludes += ['**/libnode.so', '**/libmgread_node_bridge.so']
         }
     }
 
@@ -95,10 +122,12 @@ dependencies {
     // WebKit's legacy adapter nor Javet in its dependency graph.
     javetImplementation 'androidx.webkit:webkit:1.17.0'
     javetImplementation 'com.caoccao.javet:javet-node-android:6.0.1'
+    hybridImplementation 'androidx.webkit:webkit:1.17.0'
+    hybridImplementation 'com.caoccao.javet:javet-node-android:6.0.1'
     testImplementation 'junit:junit:4.13.2'
 }
 
-if (isNativeRuntimeBuild) {
+if (includesNativeRuntime) {
     def verifyNativeRuntimeLibraries = tasks.register('verifyNativeRuntimeLibraries') {
         doLast {
             ['arm64-v8a', 'x86_64'].each { abi ->

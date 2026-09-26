@@ -12,14 +12,16 @@
 
 ## Package 所有权
 
-- 本 package 独立拥有唯一 Flutter Facade、Supervisor、Android 互斥后端和桌面平台宿主；Node.js Core
+- 本 package 独立拥有唯一 Flutter Facade、Node/原生双 Supervisor、Android 组合后端和桌面平台宿主；Node.js Core
   位于同级 `mg_read_node_runtime`，构建后只以 package asset 形式进入本 package。
 - 主应用只调用版本化 `PluginRuntime.invoke`；不得获得 executable、PID、端口、ready、bootId、内部 URL、
   wire envelope、Runtime 数据根或平台对象。
-- Android 默认使用 Javet；`MGREAD_ANDROID_NODE_PROCESS=true` 在构建期选择 arm64-v8a 私有 Service 中的
-  Node 24.21.0。一次应用运行只能启动所选后端，WebView 仍由主进程持有。Runtime 私有数据不得承载主应用持久化权威。
-- Windows/Android 的 `MGREAD_NATIVE_RUNTIME=true` 选择独立 Rust Supervisor；与 Android Node 进程开关
-  互斥。Windows 同步按该 Dart define 裁剪 Runtime 资产，Android 使用 nativeRuntime source set/dependency。
+- Android 的 Node 后端默认使用 Javet；`MGREAD_ANDROID_NODE_PROCESS=true` 在构建期选择 arm64-v8a 私有
+  Service 中的 Node 24.21.0。Rust 原生后端与所选 Node 后端并存，WebView 仍由主进程持有。Runtime 私有数据
+  不得承载主应用持久化权威。
+- Windows/Android 默认同时交付 Node 和 Rust 宿主，Facade 按来源引擎归属路由；两种来源 ID 必须全局唯一。
+  `MGREAD_NATIVE_RUNTIME=true` 只用于原生独立性验收，并与 Android Node 进程开关互斥。Windows 按该 define
+  裁剪 Node Runtime 资产；Android 正常包用 hybrid source set，独立性验收包用 nativeRuntime source set。
   私有 Service 只经 Binder 引导 Rust 服务；控制 HTTP 与资源流属于 Rust，不能在 Dart 内新增回环代理。
   原生测试先构建 `tools/build_native_runtime.ps1` 的产物，再执行 native Facade/Android integration；修改
   Kotlin 停止语义必须验证 worker 真正退出后才允许下一次启动。

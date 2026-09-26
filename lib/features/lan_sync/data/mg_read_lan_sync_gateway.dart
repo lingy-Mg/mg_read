@@ -79,6 +79,9 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
           version: entry.value,
           bytes: artifact?.bytes ?? 0,
           artifactFormat: _toLanArtifactFormat(artifact?.format ?? offer?.format ?? PluginArtifactFormat.archive),
+          engine: (artifact?.engine ?? offer?.engine ?? installedPlugin?.engine ?? PluginEngine.node) == PluginEngine.native
+              ? LanSyncPluginEngine.native
+              : LanSyncPluginEngine.node,
           developmentFingerprint: artifact?.developmentFingerprint ?? offer?.developmentFingerprint,
           developmentRevision: artifact?.developmentRevision ?? offer?.developmentRevision,
           checksum: artifact?.checksum ?? ''.padLeft(8, '0'),
@@ -128,6 +131,7 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
         version: plugin.version,
         bytes: materialized.artifact.bytes,
         artifactFormat: _toLanArtifactFormat(materialized.artifact.format),
+        engine: materialized.artifact.engine == PluginEngine.native ? LanSyncPluginEngine.native : LanSyncPluginEngine.node,
         developmentFingerprint: materialized.artifact.developmentFingerprint,
         developmentRevision: materialized.artifact.developmentRevision,
         checksum: materialized.artifact.checksum,
@@ -148,11 +152,17 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
     final installedIds = installed.map((plugin) => plugin.id).toSet();
     final installedById = <String, InstalledPlugin>{for (final plugin in installed) plugin.id: plugin};
     final transferable = manifest.plugins
-        .where((plugin) => plugin.transferable && !plugin.deferred)
+        .where(
+          (plugin) =>
+              plugin.transferable && !plugin.deferred && (_runtime.supportsNativeSources || plugin.engine == LanSyncPluginEngine.node),
+        )
         .map(_toRuntimeArtifact)
         .toList(growable: false);
     final deferred = manifest.plugins
-        .where((plugin) => plugin.transferable && plugin.deferred)
+        .where(
+          (plugin) =>
+              plugin.transferable && plugin.deferred && (_runtime.supportsNativeSources || plugin.engine == LanSyncPluginEngine.node),
+        )
         .map(_toRuntimeOffer)
         .toList(growable: false);
     final forceUpgradePluginIds = force
@@ -170,7 +180,9 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
     final availableAfterTransfer = <String>{...installedIds};
     for (final plugin in manifest.plugins) {
       final plan = planById[plugin.id];
-      final state = plan == null ? _planUnavailableArchive(plugin, installedById[plugin.id]) : _toFeaturePlan(plan.action);
+      final receiver = installedById[plugin.id];
+      final matchingReceiver = receiver?.engine.name == plugin.engine.name ? receiver : null;
+      final state = plan == null ? _planUnavailableArchive(plugin, matchingReceiver) : _toFeaturePlan(plan.action);
       featurePlans[plugin.id] = state;
       if (state == LanSyncPluginPlanState.missing || state == LanSyncPluginPlanState.upgrade) {
         availableAfterTransfer.add(plugin.id);
@@ -378,6 +390,7 @@ PluginTransferOffer? _findOffer(List<PluginTransferOffer> offers, String pluginI
 }
 
 PluginTransferArtifact _toRuntimeArtifact(LanSyncPluginDescriptor plugin) => PluginTransferArtifact(
+  engine: plugin.engine == LanSyncPluginEngine.native ? PluginEngine.native : PluginEngine.node,
   bytes: plugin.bytes,
   developmentFingerprint: plugin.developmentFingerprint,
   developmentRevision: plugin.developmentRevision,
@@ -392,6 +405,7 @@ PluginTransferArtifact _toRuntimeArtifact(LanSyncPluginDescriptor plugin) => Plu
 );
 
 PluginTransferOffer _toRuntimeOffer(LanSyncPluginDescriptor plugin) => PluginTransferOffer(
+  engine: plugin.engine == LanSyncPluginEngine.native ? PluginEngine.native : PluginEngine.node,
   developmentFingerprint: plugin.developmentFingerprint,
   developmentRevision: plugin.developmentRevision,
   format: switch (plugin.artifactFormat) {

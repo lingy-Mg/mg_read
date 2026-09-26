@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <service
+            android:name="com.mgread.mgread_plugin_runtime.NativeRuntimeService"
+            android:exported="false"
+            android:process=":mgread_native" />
+    </application>
+</manifest>

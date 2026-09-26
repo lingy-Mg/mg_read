@@ -188,6 +188,7 @@ final class RuntimeStatusResult {
     required this.runtimeVersion,
     required this.runtimeKind,
     required this.uptimeMs,
+    this.nativeStatus,
   });
 
   final String arch;
@@ -199,6 +200,9 @@ final class RuntimeStatusResult {
   final String runtimeVersion;
   final String runtimeKind;
   final int uptimeMs;
+
+  /// Independent native worker metrics in a mixed-engine application.
+  final RuntimeStatusResult? nativeStatus;
 }
 
 @immutable
@@ -807,6 +811,11 @@ final class PluginCacheClearItem {
 
 InstalledPlugin _decodeInstalledPlugin(Object? value) {
   final item = _jsonObject(value, 'Installed plugin');
+  final engine = switch (item['engine']) {
+    null || 'node' => PluginEngine.node,
+    'native' => PluginEngine.native,
+    _ => null,
+  };
   final id = item['id'];
   final name = item['name'];
   final displayName = item['displayName'];
@@ -817,7 +826,8 @@ InstalledPlugin _decodeInstalledPlugin(Object? value) {
   final enabled = item['enabled'];
   final status = item['status'];
   final kinds = item['contentKinds'];
-  if (id is! String ||
+  if (engine == null ||
+      id is! String ||
       name is! String ||
       displayName is! String ||
       (description != null && description is! String) ||
@@ -835,6 +845,7 @@ InstalledPlugin _decodeInstalledPlugin(Object? value) {
     );
   }
   return InstalledPlugin(
+    engine: engine,
     activeVersion: activeVersion as String?,
     contentKinds: List<String>.unmodifiable(kinds.cast<String>()),
     description: description as String?,
@@ -848,10 +859,14 @@ InstalledPlugin _decodeInstalledPlugin(Object? value) {
   );
 }
 
+/// Engine that owns an installed source and its private installation state.
+enum PluginEngine { node, native }
+
 /// Strong Flutter projection of one Runtime-owned plugin installation.
 @immutable
 final class InstalledPlugin {
   const InstalledPlugin({
+    this.engine = PluginEngine.node,
     required this.activeVersion,
     required this.contentKinds,
     required this.displayName,
@@ -864,6 +879,7 @@ final class InstalledPlugin {
     this.iconUrl,
   });
 
+  final PluginEngine engine;
   final String? activeVersion;
   final List<String> contentKinds;
   final String? description;
