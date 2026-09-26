@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/rehanman-com",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
   "description": "MgRead source for public Rehanman webtoons.",
   "type": "module",
