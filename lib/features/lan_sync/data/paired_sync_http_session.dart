@@ -1,6 +1,7 @@
 /// 已配对 HTTP 会话交换、清单规划和有界请求辅助。
 ///
 /// 作为 paired_sync_transport.dart 的私有实现部分，不建立新的公开边界。
+/// 来源制品按会话接收设备的平台准备，准备响应返回实际大小和摘要。
 part of 'paired_sync_transport.dart';
 
 const int _parallelPluginTaskLimit = 3;
@@ -104,7 +105,7 @@ final class _HttpExchange {
     final plugin = localManifest!.plugins.where((item) => item.id == pluginId).firstOrNull;
     if (plugin == null) throw const LanSyncTransportException('lan_sync_plugin_unexpected');
     return artifacts.putIfAbsent(pluginId, () async {
-      final materialized = await _materialize(gateway!, plugin);
+      final materialized = await _materialize(gateway!, plugin, peer.platform.name);
       if (!_sameLogical(materialized.descriptor, plugin)) {
         throw const LanSyncTransportException('lan_sync_plugin_version_changed');
       }
@@ -251,9 +252,12 @@ Future<LanSyncManifest> _createManifest(LanSyncGateway gateway, _WirePolicy poli
   );
 }
 
-Future<LanSyncMaterializedPlugin> _materialize(LanSyncGateway gateway, LanSyncPluginDescriptor plugin) => gateway is LanSyncPairedGateway
-    ? (gateway as LanSyncPairedGateway).materializePluginArchive(plugin)
-    : gateway.openPluginArchive(plugin).then((bytes) => LanSyncMaterializedPlugin(descriptor: plugin, bytes: bytes));
+Future<LanSyncMaterializedPlugin> _materialize(LanSyncGateway gateway, LanSyncPluginDescriptor plugin, String receiverPlatform) async {
+  final source = gateway is LanSyncPairedGateway
+      ? await (gateway as LanSyncPairedGateway).materializePluginArchive(plugin)
+      : LanSyncMaterializedPlugin(descriptor: plugin, bytes: await gateway.openPluginArchive(plugin));
+  return nativeArtifactForPlatform(source, receiverPlatform);
+}
 
 bool _sameLogical(LanSyncPluginDescriptor actual, LanSyncPluginDescriptor offered) =>
     actual.id == offered.id &&

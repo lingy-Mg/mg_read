@@ -1,5 +1,7 @@
 //! Native-only immutable installations and atomic catalog. The catalog owns state;
 //! pending removal/version changes are committed only before libraries are loaded.
+//! A same-version platform subset may be reimported when its binary hash and
+//! metadata match; the installed portable archive remains unchanged.
 use crate::error::{Error, Result, invalid};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -12,12 +14,12 @@ use std::{
 };
 
 pub const MAX_ARCHIVE: usize = 64 * 1024 * 1024;
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Target {
     pub path: String,
     pub sha256: String,
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Manifest {
     pub format: String,
@@ -54,6 +56,19 @@ pub fn target() -> &'static str {
     } else {
         "windows-x86_64"
     }
+}
+
+fn same_installed_build(stored: &Manifest, incoming: &Manifest) -> bool {
+    let mut stored_metadata = stored.clone();
+    let mut incoming_metadata = incoming.clone();
+    stored_metadata.targets.clear();
+    incoming_metadata.targets.clear();
+    stored_metadata == incoming_metadata
+        && stored.targets.get(target()) == incoming.targets.get(target())
+        && incoming
+            .targets
+            .iter()
+            .all(|(name, binary)| stored.targets.get(name).is_none_or(|known| known == binary))
 }
 pub fn hash(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
@@ -260,7 +275,12 @@ impl Catalog {
         }
         let version_dir = self.versions(&manifest.id).join(&manifest.version);
         if version_dir.exists() {
-            if fs::read(version_dir.join("manifest.json"))? != raw {
+            let stored: Manifest =
+                serde_json::from_slice(&fs::read(version_dir.join("manifest.json"))?)?;
+            // A LAN transfer may carry just this platform's targets. Treat it
+            // as the same immutable build when metadata and every common
+            // binary hash agree; retain the richer stored archive unchanged.
+            if !same_installed_build(&stored, &manifest) {
                 return Err(invalid("Installed versions are immutable"));
             }
         } else {
@@ -368,5 +388,36 @@ mod tests {
             assert!(!safe_name(p));
         }
         assert!(safe_name("org.mgread.alice"));
+    }
+    #[test]
+    fn platform_subset_is_the_same_installed_build() {
+        let selected = Target {
+            path: "native/current/source.dll".into(),
+            sha256: "a".repeat(64),
+        };
+        let other = Target {
+            path: "native/other/source.so".into(),
+            sha256: "b".repeat(64),
+        };
+        let manifest = Manifest {
+            format: "mgread-native".into(),
+            engine: "native".into(),
+            abi: 1,
+            id: "org.mgread.alice".into(),
+            name: "Alice".into(),
+            version: "0.1.0".into(),
+            description: String::new(),
+            content_kinds: vec!["novel".into()],
+            capabilities: vec!["search".into()],
+            targets: BTreeMap::from([(target().into(), selected.clone()), ("other".into(), other)]),
+        };
+        let mut subset = manifest.clone();
+        subset.targets.retain(|name, _| name == target());
+        assert!(same_installed_build(&manifest, &subset));
+        subset.targets.get_mut(target()).unwrap().sha256 = "c".repeat(64);
+        assert!(!same_installed_build(&manifest, &subset));
+        subset = manifest.clone();
+        subset.version = "0.1.1".into();
+        assert!(!same_installed_build(&manifest, &subset));
     }
 }

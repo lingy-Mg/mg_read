@@ -1,10 +1,12 @@
 # Build and package the Alice source for the three supported native targets.
 # Rust 1.97.1, Cargo.lock, target triples, and Android 16 KiB page alignment
-# are fixed here; the only output is the Runtime-ready .mgplugin archive.
+# are fixed here; packaging emits portable, Windows, and Android archives.
 [CmdletBinding()]
 param(
   [string]$NdkHome = "$env:LOCALAPPDATA/Android/Sdk/ndk/28.2.13676358",
-  [string]$Output = (Join-Path $PSScriptRoot '..\dist\aisishuwu-native-0.1.0.mgplugin')
+  [string]$Output = (Join-Path $PSScriptRoot '..\dist\aisishuwu-native-0.1.0.mgplugin'),
+  [string]$WindowsOutput = (Join-Path $PSScriptRoot '..\dist\aisishuwu-native-0.1.0-windows.mgplugin'),
+  [string]$AndroidOutput = (Join-Path $PSScriptRoot '..\dist\aisishuwu-native-0.1.0-android.mgplugin')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -95,7 +97,9 @@ try {
     -WindowsDll $windowsDll `
     -AndroidArm64So $arm64So `
     -AndroidX64So $x64So `
-    -Output $Output
+    -Output $Output `
+    -WindowsOutput $WindowsOutput `
+    -AndroidOutput $AndroidOutput
 }
 finally {
   foreach ($name in $environmentNames) {

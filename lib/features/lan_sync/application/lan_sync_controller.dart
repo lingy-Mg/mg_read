@@ -8,6 +8,7 @@
 /// - 会话代际用于丢弃过期异步结果。
 /// - 网络和流资源释放必须是尽力操作，不能把清理异常泄漏到应用边界。
 /// - 扫码预览至清理完成持有共享网关会话，避免自动同步覆盖或取消当前导入。
+/// - 扫码选择返回实际制品大小和摘要后才准备导入，原生包可能按接收平台裁剪。
 /// - 亮屏按实际异步操作持有至清理完成；等待扫码、配对确认和内容选择时不占用。
 ///
 library;
@@ -389,19 +390,15 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
       preview: preview,
       totalBytes: state.totalBytes,
     );
-    _recordStage('plugin_import_prepare_started');
     try {
-      await session.run(
-        (gateway) => gateway.preparePluginImports(<LanSyncPluginDescriptor>[
-          for (final plugin in manifest.plugins)
-            if (selectedPluginIds.contains(plugin.id)) plugin,
-        ], forceUpgradePluginIds: preview.forceUpgradePluginIds),
-      );
-      if (!_isCurrent(generation)) return;
       _recordStage('plugin_transport_started');
       await receiver.receivePlugins(
         pluginIds: selectedPluginIds,
         shelfItemIds: selectedShelfItemIds,
+        preparePlugins: (plugins) async {
+          _recordStage('plugin_import_prepare_started');
+          await session.run((gateway) => gateway.preparePluginImports(plugins, forceUpgradePluginIds: preview.forceUpgradePluginIds));
+        },
         importPlugin: (plugin, bytes) {
           updateTransferProgress('正在写入${plugin.displayName ?? plugin.id}数据源', state.transferredBytes, state.totalBytes);
           return session.run((gateway) => gateway.importPluginArchive(plugin, bytes));

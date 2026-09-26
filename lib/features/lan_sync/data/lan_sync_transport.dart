@@ -3,6 +3,7 @@
 /// 二维码交付一次性端点；配对确认、manifest 和选择使用 JSON HTTP API，
 /// 插件制品通过独立 GET 及标准 Range/ETag/If-Range 传输。最后一个制品响应
 /// 完成后发送端主动关闭，不等待接收端回报本地导入结果。
+/// 接收端选择时声明平台；原生来源只发送对应平台的二进制。
 library;
 
 import 'dart:async';
@@ -12,6 +13,8 @@ import 'dart:math';
 
 import 'package:mg_read/features/lan_sync/data/lan_sync_http_artifact.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_http_client.dart';
+import 'package:mg_read/features/lan_sync/data/native_platform_artifact.dart';
+import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_endpoint_policy.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 
@@ -132,22 +135,31 @@ final class LanSyncSenderService {
         final body = await _jsonBody(request);
         final raw = body['pluginIds'];
         final shelf = body['shelfItemIds'];
-        if (raw is! List || shelf is! List || raw.any((e) => e is! String) || shelf.any((e) => e is! String)) {
+        final platform = body['platform'];
+        if (raw is! List ||
+            shelf is! List ||
+            raw.any((e) => e is! String) ||
+            shelf.any((e) => e is! String) ||
+            platform != null && platform != 'windows' && platform != 'android' && platform != 'macos') {
           throw const LanSyncTransportException('lan_sync_selection_invalid');
         }
         final ids = raw.cast<String>().toSet();
         final selected = manifest.plugins.where((p) => ids.contains(p.id)).toList();
         if (selected.length != ids.length) throw const LanSyncTransportException('lan_sync_selection_invalid');
         _setActive(true);
-        _total = selected.fold(0, (n, p) => n + p.bytes);
+        final prepared = <LanSyncPluginDescriptor>[];
         for (final plugin in selected) {
-          final artifact = await LanSyncHttpArtifact.materialize(plugin, await openPlugin(plugin));
+          final source = LanSyncMaterializedPlugin(descriptor: plugin, bytes: await openPlugin(plugin));
+          final materialized = platform == null ? source : await nativeArtifactForPlatform(source, platform as String);
+          final artifact = await LanSyncHttpArtifact.materialize(materialized.descriptor, materialized.bytes);
           _artifacts[plugin.id] = artifact;
+          prepared.add(artifact.descriptor);
         }
+        _total = prepared.fold(0, (n, p) => n + p.bytes);
         _selectedPluginIds
           ..clear()
           ..addAll(selected.map((plugin) => plugin.id));
-        await _respond(request.response, HttpStatus.ok, {'plugins': selected.map((p) => p.toJson()).toList()});
+        await _respond(request.response, HttpStatus.ok, {'plugins': prepared.map((p) => p.toJson()).toList()});
         if (selected.isEmpty) await _finishSending();
         return;
       }
@@ -263,6 +275,7 @@ final class LanSyncReceiverConnection {
   Future<void> receivePlugins({
     required Set<String> pluginIds,
     Set<String>? shelfItemIds,
+    Future<void> Function(List<LanSyncPluginDescriptor>)? preparePlugins,
     required Future<void> Function(LanSyncPluginDescriptor, Stream<List<int>>) importPlugin,
     void Function(int, int)? onProgress,
     void Function(LanSyncPluginDescriptor, int, int)? onVerificationProgress,
@@ -275,12 +288,29 @@ final class LanSyncReceiverConnection {
     final result = await _request(_client, _base.resolve('/v3/selection'), {
       'pluginIds': pluginIds.toList(),
       'shelfItemIds': shelf.toList(),
+      'platform': Platform.isAndroid
+          ? 'android'
+          : Platform.isWindows
+          ? 'windows'
+          : 'macos',
     }, pairingCode);
     final raw = result['plugins'];
     if (raw is! List) throw const LanSyncTransportException('lan_sync_selection_invalid');
     final plugins = raw
         .map((e) => LanSyncPluginDescriptor.fromJson((e as Map).map<String, Object?>((k, v) => MapEntry(k as String, v))))
         .toList();
+    if (plugins.length != pluginIds.length ||
+        !plugins.map((plugin) => plugin.id).toSet().containsAll(pluginIds) ||
+        plugins.any((plugin) {
+          final offered = manifest.plugins.firstWhere((item) => item.id == plugin.id);
+          return plugin.version != offered.version ||
+              plugin.artifactFormat != offered.artifactFormat ||
+              plugin.provenance != offered.provenance ||
+              plugin.engine != offered.engine;
+        })) {
+      throw const LanSyncTransportException('lan_sync_selection_invalid');
+    }
+    await preparePlugins?.call(plugins);
     var done = 0;
     final total = plugins.fold(0, (n, p) => n + p.bytes);
     for (final plugin in plugins) {

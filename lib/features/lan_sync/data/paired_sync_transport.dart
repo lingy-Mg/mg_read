@@ -3,6 +3,7 @@
 /// HTTP v4 业务接口把书架元信息、阅读进度、单插件制品与用户主动触发的 App 包
 /// 建模为独立任务；插件任务最多三个并发，GET 支持标准 Range/ETag/If-Range。
 /// 逐设备配对密钥只用于 HMAC 请求与 UDP 唤醒认证。
+/// 原生来源导出按已配对接收端平台裁剪归档，制品描述符记录裁剪后大小和摘要。
 library;
 
 import 'dart:async';
@@ -20,6 +21,7 @@ import 'package:mg_read/features/lan_sync/data/app_transfer_transport.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_http_artifact.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_http_client.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_transport.dart';
+import 'package:mg_read/features/lan_sync/data/native_platform_artifact.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_endpoint_policy.dart';
 import 'package:mg_read/features/lan_sync/domain/app_update_models.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
@@ -524,7 +526,7 @@ final class PairedSyncClientSession {
     try {
       await _runBoundedPluginTasks(offers.length, (index) async {
         final offer = offers[index];
-        final item = await _materialize(gateway, offer);
+        final item = await _materialize(gateway, offer, peer.platform.name);
         if (!_sameLogical(item.descriptor, offer)) {
           throw const LanSyncTransportException('lan_sync_plugin_descriptor_invalid');
         }

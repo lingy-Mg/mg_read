@@ -17,7 +17,7 @@ sha2 = "=0.10.9"
 url = "=2.5.8"
 
 [profile.release]
-opt-level = "s"
+opt-level = "z"
 lto = true
 codegen-units = 1
 panic = "unwind"
