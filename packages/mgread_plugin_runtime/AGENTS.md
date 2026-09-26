@@ -25,11 +25,16 @@
   私有 Service 只经 Binder 引导 Rust 服务；控制 HTTP 与资源流属于 Rust，不能在 Dart 内新增回环代理。
   原生测试先构建 `tools/build_native_runtime.ps1` 的产物，再执行 native Facade/Android integration；修改
   Kotlin 停止语义必须验证 worker 真正退出后才允许下一次启动。
+- 区分宿主打包与来源装载：正常 App 预置两套宿主，来源 artifact 可在安装后导入，由归属引擎按需装载；
+  不为 Node 和原生来源分别发布正常 App 版本。Node 单文件和原生 DLL/SO 的 artifact、加载与更新规则分别由
+  `../mg_read_node_runtime/AGENTS.md` 和 `../mg_read_native_runtime/AGENTS.md` 拥有。
 
 ## 验证
 
 - Dart/Facade：运行目标 Flutter 测试；Node 桌面 transport 变化时追加 Node package 的 `test:flutter-desktop`。
   原生 transport 使用 `test/native_supervisor_test.dart` 和真实原生宿主验收；共享类型需覆盖旧 decoder 测试。
+- 双引擎并存或按来源路由变化：运行 `test/hybrid_runtime_test.dart`；Android 正常包的实际内容调用另用根目录
+  `integration_test/android_hybrid_source_test.dart` 验证，不把单宿主或 native-only 结果当作并存证据。
 - Android：执行目标 Gradle 编译；原生 Service 的启动、退出与重启需 Integration Test 验证真实进程生命周期，
   不能只用 Kotlin mock 代替。真实流程仍需用户明确授权。
 - Windows：增加 reverse-broker、Dart fake-platform/HTTP 和 Facade reverse-wire fixture；原生修改再构建
