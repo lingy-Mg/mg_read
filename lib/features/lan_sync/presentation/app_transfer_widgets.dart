@@ -4,12 +4,13 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/lan_sync/application/app_transfer_controller.dart';
 import 'package:mg_read/features/lan_sync/domain/app_transfer_qr_payload.dart';
 import 'package:mg_read/features/lan_sync/domain/app_update_models.dart';
+
+import 'lan_sync_qr_code.dart';
 
 class AppTransferRoleChooser extends StatelessWidget {
   const AppTransferRoleChooser({required this.onSend, required this.onReceive, super.key});
@@ -223,17 +224,10 @@ class _AppQrCard extends StatelessWidget {
         children: <Widget>[
           Text('发送 App ${version?.displayVersion ?? ''}', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: AppSpacing.regular),
-          ColoredBox(
-            color: Theme.of(context).colorScheme.surface,
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.compact),
-              child: QrImageView(
-                key: const Key('app-transfer-sender-qr'),
-                data: AppTransferQrPayload.encode(offer),
-                size: 220,
-                backgroundColor: Theme.of(context).colorScheme.surface,
-              ),
-            ),
+          LanSyncQrCode(
+            qrKey: const Key('app-transfer-sender-qr'),
+            data: AppTransferQrPayload.encode(offer),
+            semanticsLabel: 'MgRead App 传输二维码',
           ),
           const SizedBox(height: AppSpacing.compact),
           const Text('对方扫码后会先看到双方版本，并自行确认是否升级。'),

@@ -17,7 +17,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/lan_sync/application/app_transfer_controller.dart';
@@ -33,6 +32,7 @@ import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 
 import 'lan_sync_qr_scanner_page.dart';
+import 'lan_sync_qr_code.dart';
 import 'lan_sync_overview_widgets.dart';
 import 'lan_sync_sheet_widgets.dart';
 import 'paired_device_widgets.dart';
@@ -318,7 +318,6 @@ class LanSyncConnectionQrCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final value = offer;
-    final colorScheme = Theme.of(context).colorScheme;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.regular),
@@ -327,27 +326,7 @@ class LanSyncConnectionQrCard extends StatelessWidget {
             Text('用接收设备扫码连接', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: AppSpacing.regular),
             if (value != null)
-              Semantics(
-                image: true,
-                label: 'MgRead 局域网同步二维码',
-                child: ExcludeSemantics(
-                  child: ColoredBox(
-                    color: colorScheme.surface,
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppSpacing.compact),
-                      child: QrImageView(
-                        key: const Key('lan-sync-sender-qr'),
-                        data: LanSyncQrPayload.encode(value),
-                        version: QrVersions.auto,
-                        size: 220,
-                        backgroundColor: colorScheme.surface,
-                        eyeStyle: QrEyeStyle(color: colorScheme.onSurface),
-                        dataModuleStyle: QrDataModuleStyle(color: colorScheme.onSurface),
-                      ),
-                    ),
-                  ),
-                ),
-              )
+              LanSyncQrCode(qrKey: const Key('lan-sync-sender-qr'), data: LanSyncQrPayload.encode(value), semanticsLabel: 'MgRead 局域网同步二维码')
             else
               const Text('未找到可用的私有 IPv4 地址'),
             const SizedBox(height: AppSpacing.regular),

@@ -6,7 +6,6 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/lan_sync/application/device_sync_controller.dart';
@@ -14,6 +13,7 @@ import 'package:mg_read/features/lan_sync/domain/lan_pairing_payload.dart';
 import 'package:mg_read/features/lan_sync/domain/paired_device_models.dart';
 
 import 'lan_sync_sheet_widgets.dart';
+import 'lan_sync_qr_code.dart';
 
 /// “添加设备”底部弹层的配对流程。
 ///
@@ -71,7 +71,6 @@ class _PairingPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final offer = state.pairingOffer;
-    final colorScheme = Theme.of(context).colorScheme;
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerLow, borderRadius: AppRadii.detailControl),
@@ -86,20 +85,10 @@ class _PairingPanel extends StatelessWidget {
             ] else if (state.pairingPhase == DevicePairingPhase.showingOffer && offer != null) ...<Widget>[
               Text('扫描以配对', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: AppSpacing.regular),
-              ColoredBox(
-                color: colorScheme.surface,
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.compact),
-                  child: QrImageView(
-                    key: const Key('device-sync-pairing-qr'),
-                    data: LanPairingQrPayload.encode(offer),
-                    version: QrVersions.auto,
-                    size: 220,
-                    backgroundColor: colorScheme.surface,
-                    eyeStyle: QrEyeStyle(color: colorScheme.onSurface),
-                    dataModuleStyle: QrDataModuleStyle(color: colorScheme.onSurface),
-                  ),
-                ),
+              LanSyncQrCode(
+                qrKey: const Key('device-sync-pairing-qr'),
+                data: LanPairingQrPayload.encode(offer),
+                semanticsLabel: 'MgRead 设备配对二维码',
               ),
               const SizedBox(height: AppSpacing.compact),
               const Text('二维码十分钟内有效。另一台设备扫码后，请核对双方验证码。'),
