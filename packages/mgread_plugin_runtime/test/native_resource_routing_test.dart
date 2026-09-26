@@ -1,134 +1,167 @@
-/// Authenticated worker endpoint registrations, typed media, and restart expiry.
-/// These are Facade tests; HTTP/player behavior is tested in the SDK/App layers.
+/// Facade ownership and delayed-load restart recovery; not player acceptance.
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 void main() {
-  test('native resources require active plugin, port and generation', () async {
-    final root = await Directory.systemTemp.createTemp('mgread-v2-routing-');
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    const plugin = 'org.mgread.fixture.native';
-    var generation = 'a' * 64;
-    final resourcePort = server.port + (server.port == 65535 ? -1 : 1);
-    String url() =>
-        'http://127.0.0.1:$resourcePort/v2/source-resource/native/$plugin/$generation/${'c' * 64}';
-    var resourceUrl = url();
-    var contentKind = 'audio';
-    var registered = true;
-    final methods = <String>[];
-    server.listen((request) async {
-      expect(request.headers.value('authorization'), 'Bearer fixture-token');
-      final input = jsonDecode(await utf8.decoder.bind(request).join()) as Map;
-      final method = input['method'] as String;
-      methods.add(method);
-      Object? result = <String, Object?>{};
-      if (method == 'source.getContent.v1') {
-        result = <String, Object?>{
-          'pluginId': plugin,
-          'sourceName': 'Fixture',
-          'chapterId': 'chapter',
-          'contentKind': contentKind,
-          'title': null,
-          'updatedAt': null,
-          'text': null,
-          'pages': <Object?>[],
-          'media': <String, Object?>{
-            'url': resourceUrl,
-            'resourceType': contentKind == 'audio' ? 'audio' : 'hls',
-            'resourcePolicy': 'sessionOnly',
-            'expiresAt': null,
-            'mimeType': null,
-            'headers': <String, String>{},
-          },
-        };
-      } else if (method == 'runtime.sourceResource.decode.v1') {
-        expect((input['params'] as Map)['pluginId'], plugin);
-        result = <String, Object?>{
-          'pluginId': plugin,
-          'request': <String, Object?>{'engine': 'native', 'kind': 'audio'},
-        };
+  test(
+    'resolves saved descriptors after restart without another content call',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'mgread-http-routing-',
+      );
+      final manager = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      var pluginServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      const plugin = 'org.mgread.fixture.native';
+      var generation = 'a' * 64;
+      var contentCalls = 0;
+      String url(int port, {String owner = plugin, String engine = 'native'}) =>
+          'http://127.0.0.1:$port/v1/source-resource/${base64Url.encode(utf8.encode(jsonEncode({
+            'version': 1,
+            'engine': engine,
+            'pluginId': owner,
+            'request': {'kind': 'image', 'url': 'https://upstream.example/image'},
+          }))).replaceAll('=', '')}';
+      var resultUrl = url(pluginServer.port);
+      void listenPlugin(HttpServer server) {
+        server.listen((request) async {
+          if (request.method == 'GET') {
+            request.response.write('image-after-restart');
+            await request.response.close();
+            return;
+          }
+          expect(request.uri.path, '/invoke');
+          expect(request.headers.value('authorization'), 'Bearer ${'b' * 64}');
+          final input =
+              jsonDecode(await utf8.decoder.bind(request).join()) as Map;
+          expect(input.containsKey('id'), isFalse);
+          contentCalls++;
+          request.response.headers.contentType = ContentType.json;
+          request.response.write(
+            jsonEncode({
+              'ok': true,
+              'result': {
+                'pluginId': plugin,
+                'sourceName': 'Fixture',
+                'chapterId': 'chapter',
+                'contentKind': 'audio',
+                'title': null,
+                'updatedAt': null,
+                'text': null,
+                'pages': [],
+                'media': {
+                  'url': resultUrl,
+                  'resourceType': 'audio',
+                  'resourcePolicy': 'sessionOnly',
+                  'expiresAt': null,
+                  'mimeType': null,
+                  'headers': {},
+                },
+              },
+            }),
+          );
+          await request.response.close();
+        });
       }
-      request.response.headers.contentType = ContentType.json;
-      request.response.write(
-        jsonEncode(<String, Object?>{
-          'ok': true,
-          'result': result,
-          'resourceEndpoints': registered
-              ? <Object?>[
-                  <String, Object?>{
+
+      listenPlugin(pluginServer);
+      manager.listen((request) async {
+        expect(request.headers.value('authorization'), 'Bearer fixture-token');
+        final input =
+            jsonDecode(await utf8.decoder.bind(request).join()) as Map;
+        if (input['method'] == 'runtime.native.shutdown.v1') {
+          await pluginServer.close(force: true);
+          pluginServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+          listenPlugin(pluginServer);
+          generation = 'd' * 64;
+        }
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(
+          jsonEncode({
+            'ok': true,
+            'result': input['method'] == 'plugins.native.initialize.v1'
+                ? {
                     'pluginId': plugin,
                     'generation': generation,
-                    'port': resourcePort,
-                  },
-                ]
-              : <Object?>[],
-        }),
+                    'port': pluginServer.port,
+                    'controlToken': 'b' * 64,
+                  }
+                : {},
+          }),
+        );
+        await request.response.close();
+      });
+      final runtime = PluginRuntime.nativeForTesting(
+        executablePath: 'unused',
+        dataRoot: root.path,
+        testControlUri: Uri(
+          scheme: 'http',
+          host: '127.0.0.1',
+          port: manager.port,
+        ),
+        testToken: 'fixture-token',
       );
-      await request.response.close();
-      if (method == 'runtime.native.shutdown.v1') generation = 'b' * 64;
-    });
-    final runtime = PluginRuntime.nativeForTesting(
-      executablePath: 'unused',
-      dataRoot: root.path,
-      testControlUri: Uri(scheme: 'http', host: '127.0.0.1', port: server.port),
-      testToken: 'fixture-token',
-    );
-    addTearDown(() async {
-      await runtime.debugDispose();
-      await server.close(force: true);
-      await root.delete(recursive: true);
-    });
-    const invocation = SourceContentInvocation(
-      pluginId: plugin,
-      id: 'content',
-      chapterId: 'chapter',
-    );
-    final invalid = throwsA(
-      isA<PluginRuntimeException>().having(
-        (e) => e.code,
-        'code',
-        'invalid_response',
-      ),
-    );
-    registered = false;
-    await expectLater(runtime.invoke(invocation), invalid);
-    registered = true;
-    final content = await runtime.invoke(invocation);
-    expect(content.media!.url.toString(), resourceUrl);
-    contentKind = 'video';
-    expect(
-      (await runtime.invoke(invocation)).media!.resourceType,
-      PluginMediaResourceType.hls,
-    );
-    expect(
-      (await runtime.invoke(
-        SourceResourceDecodeInvocation(url: resourceUrl),
-      )).pluginId,
-      plugin,
-    );
-    for (final bad in <String>[
-      resourceUrl.replaceFirst(':$resourcePort/', ':123/'),
-      resourceUrl.replaceFirst('/$plugin/', '/another.plugin/'),
-      resourceUrl.replaceFirst('/$generation/', '/${'d' * 64}/'),
-      'http://127.0.0.1:$resourcePort/unrelated',
-      'https://upstream.example/video.mp4',
-    ]) {
-      resourceUrl = bad;
-      await expectLater(runtime.invoke(invocation), invalid);
-    }
-    resourceUrl = url();
-    await runtime.configurePluginHttpProxy(
-      Uri.parse('socks5://127.0.0.1:1080'),
-    );
-    expect(runtime.debugDesktopProcessStartCount, 2);
-    expect(methods, contains('runtime.native.shutdown.v1'));
-    await expectLater(runtime.invoke(invocation), invalid);
-    resourceUrl = url();
-    expect(
-      (await runtime.invoke(invocation)).media!.url.toString(),
-      resourceUrl,
-    );
-  });
+      addTearDown(() async {
+        await runtime.debugDispose();
+        await manager.close(force: true);
+        await pluginServer.close(force: true);
+        await root.delete(recursive: true);
+      });
+      const invocation = SourceContentInvocation(
+        pluginId: plugin,
+        id: 'content',
+        chapterId: 'chapter',
+      );
+      final content = await runtime.invoke(invocation);
+      final saved = content.media!.url.toString();
+      expect(
+        (await runtime.invoke(
+          SourceResourceDecodeInvocation(url: saved),
+        )).pluginId,
+        plugin,
+      );
+      for (final bad in [
+        url(123),
+        url(pluginServer.port, owner: 'another.plugin'),
+        url(pluginServer.port, engine: 'node'),
+        'https://upstream.example/video.mp4',
+      ]) {
+        resultUrl = bad;
+        await expectLater(
+          runtime.invoke(invocation),
+          throwsA(
+            isA<PluginRuntimeException>().having(
+              (e) => e.code,
+              'code',
+              'invalid_response',
+            ),
+          ),
+        );
+      }
+      final callsBeforeRestart = contentCalls;
+      await runtime.configurePluginHttpProxy(
+        Uri.parse('socks5://127.0.0.1:1080'),
+      );
+      final resolved = await runtime.invoke(
+        SourceResourceResolveInvocation(url: saved),
+      );
+      expect(Uri.parse(resolved).port, pluginServer.port);
+      expect(Uri.parse(resolved).path, Uri.parse(saved).path);
+      expect(contentCalls, callsBeforeRestart);
+      final client = HttpClient()..findProxy = (_) => 'DIRECT';
+      final response = await (await client.getUrl(Uri.parse(resolved))).close();
+      expect(await utf8.decoder.bind(response).join(), 'image-after-restart');
+      client.close(force: true);
+      expect(runtime.debugDesktopProcessStartCount, 2);
+      expect(
+        await runtime.invoke(
+          const SourceResourceResolveInvocation(
+            url: 'https://example.org/direct.png',
+          ),
+        ),
+        'https://example.org/direct.png',
+      );
+    },
+  );
 }

@@ -3,8 +3,8 @@
 This directory owns the portable Alice source core, native C ABI adapter,
 fixture tests, and deterministic `.mgplugin` packaging. `src/parsing.rs` owns
 pure HTML and URL projection; `src/source.rs` owns source routing and public
-result projection; `src/lib.rs` owns ABI v2 entry points and plugin-owned SDK HTTP/cache/cancel
-adaptation. The native runtime's public ABI is owned by
+result projection; `src/lib.rs` owns the single ABI v3 initialization entry and async source handler.
+The SDK owns HTTP requests, disconnect cancellation, cache and resources. The native runtime's public ABI is owned by
 `packages/mg_read_native_runtime/abi` and must be consumed as-is.
 
 The plugin is a Rust `cdylib` and `rlib`; it does not use Node.js, WASI, or

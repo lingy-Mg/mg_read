@@ -52,9 +52,9 @@ plugins/sources/                    真实数据源及其他能力参考实现
   设置中保存选择并在 App 进程重启后启用；两者共享 Node 来源数据根，不在运行中替换 VM。
   Node 侧一次只启动一个 Node Runtime/V8，禁止来源创建 Worker、子进程、第二 VM、native addon 或自定义 loader。
 - `MGREAD_NATIVE_RUNTIME=true` 保留为 Windows/Android 原生独立性验收构建；该构建不包含 Node/Javet/V8 和
-  Runtime JS 资产。默认并存构建中，Windows EXE 与 Android 私有 Service 的 Rust 宿主仅为已启用来源按需加载 C ABI v2
-  DLL/SO；宿主拥有安装和调用生命周期，插件拥有上游 HTTP、专属缓存及动态回环资源服务。原生可信插件按目标 ABI 发布；动态库更新和卸载经
-  worker 冷重启完成。macOS 当前只有 Node 引擎，不接收原生归档。
+  Runtime JS 资产。默认并存构建中，Windows EXE 与 Android 私有 Service 的 Rust 宿主仅为已启用来源按需加载初始化 ABI v3
+  DLL/SO；宿主拥有安装和调用生命周期，插件拥有上游 HTTP、专属缓存及动态回环服务，初始化后内容和资源均走插件 HTTP。原生可信插件按目标 ABI 发布；动态库更新和卸载经
+  worker 冷重启完成。资源使用自包含描述，统一 Facade 在下载前按引擎与来源重建当前端口。macOS 当前只有 Node 引擎，不接收原生归档。
 - Runtime 独立拥有 Node Core、Android Javet/进程后端、desktop Node launcher、Supervisor、内部控制/数据面、Plugin
   API、安装、私有数据根、瞬时诊断和 Flutter Facade。
 - `packages/mg_read_source_api` 拥有共享内容语义及 JS 宿主 Context/WebView 声明；来源不得复制 Context 子集。

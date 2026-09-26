@@ -119,6 +119,36 @@ final class RuntimeStatusInvocation
   }
 }
 
+/// Resolves a saved resource descriptor against its currently enabled engine.
+/// Remote HTTP URLs pass through unchanged; applications need not parse routes.
+@immutable
+final class SourceResourceResolveInvocation extends PluginInvocation<String> {
+  const SourceResourceResolveInvocation({required this.url});
+  final String url;
+  @override
+  String get _wireMethod => 'runtime.sourceResource.resolve.v1';
+  @override
+  Map<String, Object?> get _wireParams => {'url': url};
+  @override
+  String _decodeResult(Object? value) {
+    final result = _jsonObject(value, 'Resolved source resource');
+    final resolved = result['url'];
+    final route = resolved is String
+        ? _SourceResourceUrl.parse(resolved)
+        : null;
+    final original = _SourceResourceUrl.require(url);
+    if (resolved is! String ||
+        route == null ||
+        route.pluginId != original.pluginId ||
+        route.engine != original.engine)
+      throw const PluginRuntimeException(
+        'invalid_response',
+        'Invalid resolved resource URL.',
+      );
+    return resolved;
+  }
+}
+
 /// Decodes one Runtime-generated source-resource URL for technical inspection.
 @immutable
 final class SourceResourceDecodeInvocation

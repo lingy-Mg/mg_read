@@ -38,7 +38,7 @@ export async function dispatchSourceContent(
   manager: PluginManager | undefined,
   requestError: RuntimeRequestErrorFactory,
   cancellation: AbortSignal,
-  operation: PluginContentOperation,
+  operation: PluginContentOperation = request.method.slice(7, -3) as PluginContentOperation,
 ): Promise<RuntimeDispatchResult> {
   try {
     if (manager === undefined) throw new PluginManagerError("plugin_load_failed");
@@ -182,4 +182,16 @@ export function dispatchSourceResourceDecode(
     };
   }
   return { result: { pluginId: decoded.pluginId, request: decoded.request } };
+}
+
+/** Rebuilds the same self-contained descriptor at the current listener. */
+export async function dispatchSourceResourceResolve(request: RuntimeRequest, manager: PluginManager | undefined, requestError: RuntimeRequestErrorFactory): Promise<RuntimeDispatchResult> {
+  const parsed = dispatchSourceResourceDecode(request, requestError);
+  if ("error" in parsed) return parsed;
+  const decoded = decodeSourceResourceUrl(request.params.url as string)!;
+  if (manager === undefined || !(await manager.listInstalled()).some(plugin => plugin.id === decoded.pluginId && plugin.enabled)) {
+    return { error: requestError(request, "plugin_disabled", "Resource owner is unavailable or disabled.") };
+  }
+  try { return { result: {url: manager.createResourceUrl(decoded.pluginId, decoded.request)} }; }
+  catch { return { error: requestError(request, "invalid_request", "Resource descriptor is invalid.") }; }
 }

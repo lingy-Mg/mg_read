@@ -78,6 +78,12 @@ void main() {
             'engine': 'native',
           },
         ],
+        'plugins.native.initialize.v1' => {
+          'pluginId': 'org.mgread.fixture.native',
+          'generation': 'a' * 64,
+          'port': server.port,
+          'controlToken': 'b' * 64,
+        },
         'source.search.v1' => <String, Object?>{
           'pluginId': 'org.mgread.fixture.native',
           'sourceName': 'Native Fixture',
@@ -185,12 +191,30 @@ void main() {
       ),
     );
     expect(nodeResource.pluginId, 'org.mgread.android-runtime-fixture');
+    final rebuilt = await hybrid.invoke(
+      SourceResourceResolveInvocation(
+        url: 'http://127.0.0.1:12345/v1/source-resource/$nodeToken',
+      ),
+    );
+    expect(Uri.parse(rebuilt).port, isNot(12345));
+    expect(
+      (await hybrid.invoke(
+        SourceResourceDecodeInvocation(url: rebuilt),
+      )).request,
+      nodeResource.request,
+    );
     expect(
       requests.where((method) => method == 'runtime.sourceResource.decode.v1'),
       isEmpty,
     );
-    final nativeUrl =
-        'http://127.0.0.1:${server.port}/v2/source-resource/native/org.mgread.fixture.native/${'a' * 64}/${'b' * 64}';
+    String nativeUrlFor(String id) =>
+        'http://127.0.0.1:${server.port}/v1/source-resource/${base64Url.encode(utf8.encode(jsonEncode({
+          'version': 1,
+          'engine': 'native',
+          'pluginId': id,
+          'request': {'kind': 'image', 'url': 'https://example.test/image'},
+        }))).replaceAll('=', '')}';
+    final nativeUrl = nativeUrlFor('org.mgread.fixture.native');
     expect(
       (await hybrid.invoke(
         SourceResourceDecodeInvocation(url: nativeUrl),
@@ -200,10 +224,7 @@ void main() {
     await expectLater(
       hybrid.invoke(
         SourceResourceDecodeInvocation(
-          url: nativeUrl.replaceFirst(
-            'org.mgread.fixture.native',
-            'org.mgread.android-runtime-fixture',
-          ),
+          url: nativeUrlFor('org.mgread.android-runtime-fixture'),
         ),
       ),
       throwsA(
@@ -216,7 +237,7 @@ void main() {
     );
     expect(
       requests.where((method) => method == 'runtime.sourceResource.decode.v1'),
-      hasLength(1),
+      isEmpty,
     );
 
     const conflictingArtifact = PluginTransferArtifact(

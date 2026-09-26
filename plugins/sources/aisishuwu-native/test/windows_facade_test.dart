@@ -27,7 +27,7 @@ void main() {
       final artifact = File(
         '${root.path}${Platform.pathSeparator}plugins${Platform.pathSeparator}'
         'sources${Platform.pathSeparator}aisishuwu-native${Platform.pathSeparator}'
-        'dist${Platform.pathSeparator}aisishuwu-native-0.2.0.mgplugin',
+        'dist${Platform.pathSeparator}aisishuwu-native-0.3.0.mgplugin',
       );
       expect(await hostExecutable.exists(), isTrue);
       expect(await artifact.exists(), isTrue);
@@ -60,7 +60,7 @@ void main() {
       final source = installed.singleWhere((item) => item.id == _pluginId);
       expect(source.status, 'active');
       expect(source.enabled, isTrue);
-      expect(source.activeVersion, '0.2.0');
+      expect(source.activeVersion, '0.3.0');
 
       final proxy = _environmentProxy();
       if (proxy != null) await runtime.configurePluginHttpProxy(proxy);
@@ -160,7 +160,15 @@ void main() {
         ..connectionTimeout = const Duration(seconds: 20)
         ..findProxy = (_) => 'DIRECT';
       addTearDown(client.close);
-      final coverResponse = await (await client.getUrl(detail.summary.coverUrl!)).close();
+      final savedCover = detail.summary.coverUrl!;
+      final oldStarts = runtime.debugDesktopProcessStartCount;
+      await runtime.configurePluginHttpProxy(Uri.parse('http://127.0.0.1:1'));
+      await runtime.configurePluginHttpProxy(null);
+      expect(runtime.debugDesktopProcessStartCount, oldStarts + 2);
+      final rebound = Uri.parse(await runtime.invoke(SourceResourceResolveInvocation(url: savedCover.toString())));
+      expect(rebound.path, savedCover.path);
+      evidence['undownloadedCoverRestoredAfterRestartWithoutDetail'] = true;
+      final coverResponse = await (await client.getUrl(rebound)).close();
       expect(coverResponse.statusCode, 200);
       expect(coverResponse.headers.contentType?.mimeType, startsWith('image/'));
       final coverBuilder = BytesBuilder(copy: false);
@@ -219,7 +227,7 @@ void main() {
       final recoveredSource = installedAfterCrash.singleWhere((item) => item.id == _pluginId);
       expect(recoveredSource.status, 'active');
       expect(recoveredSource.enabled, isTrue);
-      expect(recoveredSource.activeVersion, '0.2.0');
+      expect(recoveredSource.activeVersion, '0.3.0');
 
       final restartCacheWatch = Stopwatch()..start();
       final cachedDetail = await runtime.invoke(const SourceDetailInvocation(pluginId: _pluginId, id: _bookId));
@@ -262,7 +270,7 @@ void main() {
             pluginId: _pluginId,
             provenance: PluginArtifactProvenance.installed,
             checksum: _crc32(packageBytes),
-            version: '0.2.0',
+            version: '0.3.0',
           ),
           bytes: Stream<List<int>>.value(packageBytes),
         ),

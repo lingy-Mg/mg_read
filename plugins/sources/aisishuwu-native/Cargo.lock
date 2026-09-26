@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "aisishuwu-native"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "base64 0.22.1",
  "mgread-native-abi",
@@ -12,6 +12,7 @@ dependencies = [
  "scraper",
  "serde_json",
  "sha2",
+ "tokio",
  "url",
 ]
 
@@ -42,6 +43,8 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite",
  "serde_core",
+ "serde_json",
+ "serde_path_to_error",
  "sync_wrapper",
  "tokio",
  "tower",
@@ -690,15 +693,18 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "mgread-native-abi"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "mgread-native-sdk"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "futures-util",
  "getrandom 0.4.3",
+ "hyper",
+ "hyper-util",
  "mgread-native-abi",
  "reqwest",
  "serde",
@@ -706,6 +712,7 @@ dependencies = [
  "sha2",
  "tokio",
  "tokio-util",
+ "tower",
 ]
 
 [[package]]
@@ -1158,6 +1165,17 @@ dependencies = [
  "serde",
  "serde_core",
  "zmij",
+]
+
+[[package]]
+name = "serde_path_to_error"
+version = "0.1.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10a9ff822e371bb5403e391ecd83e182e0e77ba7f6fe0160b795797109d1b457"
+dependencies = [
+ "itoa",
+ "serde",
+ "serde_core",
 ]
 
 [[package]]

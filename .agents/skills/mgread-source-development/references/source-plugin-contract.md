@@ -41,7 +41,7 @@
 - Node 数据源代码强制构建为单个兼容固定后端版本的 ESM JS。`single-file` 发布 `.mgplugin.js`；`archive` 发布 `.mgplugin`
   压缩包，内部同样是单个 JS 入口及元数据、图标。压缩包没有 npm 依赖恢复语义。
 - 独立原生模式的 C ABI 由 `packages/mg_read_native_runtime/abi` 定义，`engine=native` 归档包含
-  ABI v2 manifest 与预编译 DLL/SO；来源 SDK 拥有 HTTP/缓存/资源服务，Rust 宿主拥有安装、串行调用与取消路由。参考
+  初始化 ABI v3 manifest 与预编译 DLL/SO；来源 SDK 拥有 HTTP 内容/资源调用及断连取消，Rust 宿主拥有安装与共享 worker 生命周期。参考
   `aisishuwu-native`，使用 Cargo 构建及真实 native-only App 验收，既有单 JS 打包要求只适用于 Node 引擎。
 - 开发项目可用 npm 管理构建工具和源码依赖，但构建必须启用 bundle、禁用 splitting，并内联所有使用的
   第三方包；仅 Node.js 内置模块可外置。不得用 external 或 packages: external 绕过打包。

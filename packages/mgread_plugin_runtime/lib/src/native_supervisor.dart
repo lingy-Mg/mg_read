@@ -43,9 +43,9 @@ final class _NativeRuntimeSupervisor implements _RuntimeSupervisor {
   final Map<String, _NativeInFlight> _inFlight = <String, _NativeInFlight>{};
 
   final _resourceEndpoints = _NativeResourceEndpoints();
+  final Map<String, Future<_NativePluginEndpoint>> _pluginInitializations = {};
   bool _stopUnconfirmed = false;
   _NativeRuntimeReady? _ready;
-  HttpClient? _httpClient;
   Process? _process;
   WindowsJobObject? _jobObject;
   Uri? _pluginHttpProxy;
@@ -201,6 +201,10 @@ final class _NativeRuntimeSupervisor implements _RuntimeSupervisor {
       'plugins.cache.clearAll.v1',
     }.contains(invocation._wireMethod)) {
       return await _runLifecycleTransition<T>(() async {
+        final clearCache = invocation._wireMethod.startsWith(
+          'plugins.cache.clear',
+        );
+        if (clearCache) await _restartAfterManagementChange();
         try {
           final raw = await _invokeRpc(
             method: invocation._wireMethod,
@@ -210,9 +214,7 @@ final class _NativeRuntimeSupervisor implements _RuntimeSupervisor {
           );
           return invocation._decodeResult(raw);
         } finally {
-          // A failed cache clear may already have shut down plugin services.
-          // Retire that worker before admitting another source invocation.
-          await _restartAfterManagementChange();
+          if (!clearCache) await _restartAfterManagementChange();
         }
       });
     }
@@ -368,7 +370,6 @@ final class _NativeRuntimeSupervisor implements _RuntimeSupervisor {
           port: testingUri.port,
           token: _testToken!,
         );
-        _initializeHttpClient();
         _ready = ready;
         _processStartCount += 1;
         if (_pluginHttpProxyConfigured) {
@@ -453,7 +454,6 @@ final class _NativeRuntimeSupervisor implements _RuntimeSupervisor {
         }
       }
       _ready = ready;
-      _initializeHttpClient();
       if (_pluginHttpProxyConfigured) {
         await _invokeReadyRpc(
           ready,

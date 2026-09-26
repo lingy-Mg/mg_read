@@ -1,22 +1,16 @@
 part of mgread_plugin_runtime;
 
-/// The single parser for source-resource ownership. Parsing identifies a route;
-/// native trust additionally requires the authenticated worker's live endpoint.
-/// Ordinary remote URLs are not plugin routes. Node keeps its existing format.
+/// Shared Node/native resource descriptor parser. Descriptors survive a worker
+/// restart; their old port is never authority. Resolve through the owner before
+/// fetching. Base64 is encoding, not encryption or a bearer credential.
 final class _SourceResourceUrl {
-  const _SourceResourceUrl(
-    this.uri,
-    this.engine,
-    this.pluginId,
-    this.generation,
-  );
+  const _SourceResourceUrl(this.uri, this.engine, this.pluginId, this.request);
   final Uri uri;
   final PluginEngine engine;
   final String pluginId;
-  final String? generation;
+  final Map<String, Object?> request;
   static final _identity = RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$');
   static final _hex = RegExp(r'^[a-f0-9]{64}$');
-
   static _SourceResourceUrl? parse(String value) {
     if (value.length > 32768) return null;
     final uri = Uri.tryParse(value);
@@ -31,40 +25,32 @@ final class _SourceResourceUrl {
         !const {'127.0.0.1', 'localhost', '::1'}.contains(uri.host))
       return null;
     final parts = uri.pathSegments;
-    if (parts.length == 6 &&
-        parts[0] == 'v2' &&
-        parts[1] == 'source-resource' &&
-        parts[2] == 'native' &&
-        uri.host == '127.0.0.1' &&
-        _identity.hasMatch(parts[3]) &&
-        _hex.hasMatch(parts[4]) &&
-        _hex.hasMatch(parts[5])) {
-      return _SourceResourceUrl(uri, PluginEngine.native, parts[3], parts[4]);
-    }
-    if (parts.length == 3 &&
-        parts[0] == 'v1' &&
-        parts[1] == 'source-resource') {
-      try {
-        final payload = jsonDecode(
-          utf8.decode(base64Url.decode(base64Url.normalize(parts[2]))),
-        );
-        if (payload is Map &&
-            payload['version'] == 1 &&
-            payload['pluginId'] is String &&
-            _identity.hasMatch(payload['pluginId'] as String) &&
-            payload['request'] is Map) {
-          return _SourceResourceUrl(
-            uri,
-            PluginEngine.node,
-            payload['pluginId'] as String,
-            null,
-          );
-        }
-      } on Object {
+    if (parts.length != 3 ||
+        parts[0] != 'v1' ||
+        parts[1] != 'source-resource' ||
+        parts[2].length > 24576)
+      return null;
+    try {
+      final payload = jsonDecode(
+        utf8.decode(base64Url.decode(base64Url.normalize(parts[2]))),
+      );
+      if (payload is! Map ||
+          payload['version'] != 1 ||
+          payload['pluginId'] is! String ||
+          !_identity.hasMatch(payload['pluginId'] as String) ||
+          payload['request'] is! Map)
         return null;
-      }
+      final engine = payload['engine'];
+      if (engine != null && engine != 'native' && engine != 'node') return null;
+      return _SourceResourceUrl(
+        uri,
+        engine == 'native' ? PluginEngine.native : PluginEngine.node,
+        payload['pluginId'] as String,
+        Map<String, Object?>.from(payload['request'] as Map),
+      );
+    } on Object {
+      return null;
     }
-    return null;
   }
 
   static _SourceResourceUrl require(String value) =>
@@ -75,32 +61,41 @@ final class _SourceResourceUrl {
       ));
 }
 
-/// Cleared at every worker boundary. Neither a loopback hostname nor a path
-/// alone grants trust; port, plugin and generation must all match registration.
-final class _NativeResourceEndpoints {
-  final Map<String, ({int port, String generation})> _entries = {};
-  void clear() => _entries.clear();
+final class _NativePluginEndpoint {
+  const _NativePluginEndpoint(this.port, this.generation, this.controlToken);
+  final int port;
+  final String generation;
+  final String controlToken;
+}
 
-  void register(Object? raw) {
-    if (raw == null) return;
-    if (raw is! List || raw.length > 256) _invalid();
-    for (final item in raw) {
-      final data = _nativeObject(item, 'resource endpoint');
-      final id = data['pluginId'];
-      final generation = data['generation'];
-      final port = data['port'];
-      if (id is! String ||
-          !_SourceResourceUrl._identity.hasMatch(id) ||
-          generation is! String ||
-          !_SourceResourceUrl._hex.hasMatch(generation) ||
-          port is! int ||
-          port < 1 ||
-          port > 65535)
-        _invalid();
-      final endpoint = (port: port, generation: generation);
-      if (_entries[id] != null && _entries[id] != endpoint) _invalid();
-      _entries[id] = endpoint;
-    }
+/// Only authenticated worker initialization can register endpoints. Content URLs
+/// must use that port and owner; previously saved descriptors are explicitly
+/// rebased by the resolve capability, never trusted as current endpoints.
+final class _NativeResourceEndpoints {
+  final Map<String, _NativePluginEndpoint> _entries = {};
+  void clear() => _entries.clear();
+  _NativePluginEndpoint register(Object? raw, String owner) {
+    final data = _nativeObject(raw, 'native initialization');
+    final id = data['pluginId'],
+        generation = data['generation'],
+        port = data['port'],
+        token = data['controlToken'];
+    if (id != owner ||
+        generation is! String ||
+        !_SourceResourceUrl._hex.hasMatch(generation) ||
+        token is! String ||
+        token.length < 32 ||
+        port is! int ||
+        port < 1 ||
+        port > 65535)
+      _invalid();
+    final previous = _entries[owner];
+    if (previous != null &&
+        (previous.port != port ||
+            previous.generation != generation ||
+            previous.controlToken != token))
+      _invalid();
+    return _entries[owner] = _NativePluginEndpoint(port, generation, token);
   }
 
   void validate(String url, String? pluginId) {
@@ -108,10 +103,10 @@ final class _NativeResourceEndpoints {
     final endpoint = route == null ? null : _entries[route.pluginId];
     if (route == null ||
         route.engine != PluginEngine.native ||
+        route.uri.host != '127.0.0.1' ||
         endpoint == null ||
         route.pluginId != pluginId ||
-        endpoint.port != route.uri.port ||
-        endpoint.generation != route.generation)
+        endpoint.port != route.uri.port)
       _invalid();
   }
 
@@ -124,8 +119,9 @@ final class _NativeResourceEndpoints {
             (entry.key == 'coverUrl' ||
                 (entry.key == 'url' &&
                     (value.containsKey('resourcePolicy') ||
+                        value.containsKey('resourceType') ||
                         value.containsKey('index'))) ||
-                child.contains('/v2/source-resource/'))) {
+                child.contains('/v1/source-resource/'))) {
           validate(child, pluginId);
         } else {
           validateResult(child, pluginId, depth + 1);

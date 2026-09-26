@@ -427,7 +427,10 @@ final class ContentLibraryComicReaderDataSource
     return _runtimeManifest(chapterId, forceRefresh: true);
   }
 
-  Future<Uint8List> _fetchImage(Uri uri) => _externalFetcher?.call(uri) ?? _httpClientOwner!.fetch(uri);
+  Future<Uint8List> _fetchImage(Uri uri) async {
+    final current = await resolveSourceResource(gateway, uri);
+    return _externalFetcher?.call(current) ?? _httpClientOwner!.fetch(current);
+  }
 
   ReaderFailure _imageFailure(Object error) => ReaderFailure(
     ReaderFailureKind.image,

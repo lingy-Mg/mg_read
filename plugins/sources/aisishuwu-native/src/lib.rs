@@ -1,17 +1,18 @@
-//! Native Alice source entry. ABI v2 initializes one plugin-owned HTTP/cache
-//! instance per worker. Source parsing remains serialized; resources use the
-//! SDK loopback service. No host I/O callbacks or host pointers are retained.
+//! Native Alice source. A bootstrap-only ABI starts its HTTP service inside the
+//! shared worker. Each HTTP request owns its async source state and upstream I/O.
+//! Parsing is pure; no host callback, allocator or call-id crosses the ABI.
 mod parsing;
 mod source;
 
-use mgread_native_abi::{ABI_VERSION, Buffer, MAX_MESSAGE, SourceApi};
+use mgread_native_abi::{InitResult, MAX_MESSAGE};
 use mgread_native_sdk::{Call, PluginInstance};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::{future::Future, pin::Pin};
 
 const SOURCE_ID: &str = "org.mgread.aisishuwu.native";
-const SOURCE_VERSION: &str = "0.2.0";
+const SOURCE_VERSION: &str = "0.3.0";
 const BODY_LIMIT: usize = 4 * 1024 * 1024;
 const REQUEST_LIMIT: usize = 128;
 const STEPS_LIMIT: usize = 128;
@@ -73,9 +74,10 @@ fn cache_ttl_ms(method: &str) -> u64 {
 }
 
 // Source-local test seam; production uses the statically linked SDK directly.
-trait SourceIo {
+type HttpFuture<'a> = Pin<Box<dyn Future<Output = Result<Value, NativeError>> + Send + 'a>>;
+trait SourceIo: Sync {
     fn cancelled(&self) -> bool;
-    fn http(&self, request: &Value) -> Result<Value, NativeError>;
+    fn http<'a>(&'a self, request: &'a Value) -> HttpFuture<'a>;
     fn read(&self, key: &str) -> Result<Option<String>, NativeError>;
     fn write(&self, key: &str, value: &str) -> Result<(), NativeError>;
     fn remove(&self, key: &str) -> Result<(), NativeError>;
@@ -83,12 +85,12 @@ trait SourceIo {
 fn sdk_error(error: mgread_native_sdk::error::Error) -> NativeError {
     NativeError::new(error.code, error.message)
 }
-impl SourceIo for Call<'_> {
+impl SourceIo for Call {
     fn cancelled(&self) -> bool {
         Call::cancelled(self)
     }
-    fn http(&self, request: &Value) -> Result<Value, NativeError> {
-        Call::http(self, request).map_err(sdk_error)
+    fn http<'a>(&'a self, request: &'a Value) -> HttpFuture<'a> {
+        Box::pin(async move { Call::http(self, request).await.map_err(sdk_error) })
     }
     fn read(&self, key: &str) -> Result<Option<String>, NativeError> {
         self.cache().read(key).map_err(sdk_error)
@@ -194,11 +196,11 @@ fn checked_http_url(value: &Value) -> Result<&str, NativeError> {
     Ok(url)
 }
 
-fn http_response(host: &dyn SourceIo, request: &Value) -> Result<Value, NativeError> {
+async fn http_response(host: &dyn SourceIo, request: &Value) -> Result<Value, NativeError> {
     check_cancelled(host)?;
     let url = checked_http_url(request)?;
     let headers = request.get("headers").cloned().unwrap_or_else(|| json!({}));
-    let value = host.http(&json!({"url":url,"headers":headers}));
+    let value = host.http(&json!({"url":url,"headers":headers})).await;
     match value {
         Ok(response) => {
             let status = response["status"].as_u64().unwrap_or(0);
@@ -228,7 +230,7 @@ fn http_response(host: &dyn SourceIo, request: &Value) -> Result<Value, NativeEr
     }
 }
 
-fn invoke_inner(host: &dyn SourceIo, input: Value) -> Result<Value, NativeError> {
+async fn invoke_inner(host: &dyn SourceIo, input: Value) -> Result<Value, NativeError> {
     let method = input["method"]
         .as_str()
         .ok_or_else(|| NativeError::source("request_invalid"))?;
@@ -287,7 +289,7 @@ fn invoke_inner(host: &dyn SourceIo, input: Value) -> Result<Value, NativeError>
                 }
                 let mut responses = Vec::with_capacity(requests.len());
                 for request in requests {
-                    responses.push(http_response(host, request)?);
+                    responses.push(http_response(host, request).await?);
                 }
                 source_input = json!({
                     "method":method,
@@ -311,38 +313,20 @@ fn invoke_inner(host: &dyn SourceIo, input: Value) -> Result<Value, NativeError>
 }
 
 static INSTANCE: PluginInstance = PluginInstance::new(SOURCE_ID);
-unsafe extern "C" fn init(input: *const u8, length: usize) -> Buffer {
-    unsafe { INSTANCE.init(input, length) }
+fn handle(call: Call, input: Value) -> mgread_native_sdk::SourceFuture {
+    Box::pin(async move {
+        invoke_inner(&call, input)
+            .await
+            .map(|result| result["value"].clone())
+            .map_err(|error| mgread_native_sdk::error::Error::new(&error.code, &error.message))
+    })
 }
-unsafe extern "C" fn invoke(id: u64, input: *const u8, length: usize) -> Buffer {
-    unsafe {
-        INSTANCE.invoke(id, input, length, |call, input| {
-            invoke_inner(call, input)
-                .map(|result| result["value"].clone())
-                .map_err(|error| mgread_native_sdk::error::Error::new(&error.code, &error.message))
-        })
-    }
-}
-unsafe extern "C" fn cancel(id: u64) {
-    INSTANCE.cancel(id);
-}
-unsafe extern "C" fn shutdown() -> Buffer {
-    INSTANCE.shutdown()
-}
-static SOURCE_API: SourceApi = SourceApi {
-    version: ABI_VERSION,
-    size: std::mem::size_of::<SourceApi>(),
-    init,
-    invoke,
-    cancel,
-    shutdown,
-    release: mgread_native_abi::release,
-};
-/// No I/O occurs until the host explicitly initializes this enabled source.
+/// # Safety
+/// The host lends valid UTF-8 JSON until this function returns. No host pointers
+/// or allocations are retained; subsequent communication is exclusively HTTP.
 #[unsafe(no_mangle)]
-pub extern "C" fn mg_source_get_api_v2() -> *const SourceApi {
-    &SOURCE_API
+pub unsafe extern "C" fn mg_source_init_v3(input: *const u8, length: usize) -> InitResult {
+    unsafe { INSTANCE.init(input, length, handle) }
 }
-
 #[cfg(test)]
 mod tests;

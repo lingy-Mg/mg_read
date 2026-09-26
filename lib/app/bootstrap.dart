@@ -325,7 +325,11 @@ Future<void> bootstrapMgReadApp({
           }),
         if (contentLibrary != null || contentLibraryFactory != null)
           bookCoverBytesLoaderProvider.overrideWith((ref) {
-            final loader = DeferredBookCoverBytesLoader(getLibrary, ref.read(configuredFlutterNetworkProxyManagerProvider));
+            final loader = DeferredBookCoverBytesLoader(
+              getLibrary,
+              ref.read(configuredFlutterNetworkProxyManagerProvider),
+              resolveResource: (url) => resolveSourceResource(ref.read(sourceContentGatewayProvider), url),
+            );
             ref.onDispose(() => unawaited(loader.dispose()));
             return loader;
           }),

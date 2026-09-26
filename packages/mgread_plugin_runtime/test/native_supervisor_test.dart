@@ -9,18 +9,15 @@ void main() {
   late HttpServer server;
   late Directory dataRoot;
   late List<Map<String, Object?>> requests;
-  late Completer<void> cancellationSeen;
   late Completer<void> slowRequestSeen;
   late Completer<void> exportSeen;
   late Completer<void> releaseExport;
   late Completer<void> uninstallSeen;
   var holdNextPing = false;
-  var cancellationSettled = true;
   var holdNativeExport = false;
 
   setUp(() async {
     requests = <Map<String, Object?>>[];
-    cancellationSeen = Completer<void>();
     slowRequestSeen = Completer<void>();
     exportSeen = Completer<void>();
     releaseExport = Completer<void>();
@@ -28,27 +25,18 @@ void main() {
     holdNativeExport = false;
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen((request) async {
-      if (request.headers.value(HttpHeaders.authorizationHeader) !=
-          'Bearer native-test-token') {
+      if (!{
+        'Bearer native-test-token',
+        'Bearer ${'b' * 64}',
+      }.contains(request.headers.value(HttpHeaders.authorizationHeader))) {
         request.response.statusCode = HttpStatus.unauthorized;
         await request.response.close();
         return;
       }
       final body = await utf8.decoder.bind(request).join();
       final decoded = jsonDecode(body) as Map<String, Object?>;
-      if (request.uri.path == '/cancel') {
-        if (!cancellationSeen.isCompleted) cancellationSeen.complete();
-        request.response
-          ..statusCode = HttpStatus.ok
-          ..write(
-            jsonEncode(<String, Object?>{
-              'ok': true,
-              'settled': cancellationSettled,
-            }),
-          );
-        await request.response.close();
-        return;
-      }
+      expect(request.uri.path, isNot('/cancel'));
+      expect(decoded.containsKey('id'), isFalse);
       requests.add(decoded);
       if (decoded['method'] == 'plugins.native.export.v1' && holdNativeExport) {
         holdNativeExport = false;
@@ -89,6 +77,12 @@ void main() {
           'runtimeVersion': 'native-test',
         },
         'runtime.status.v1' => _nativeStatus(),
+        'plugins.native.initialize.v1' => {
+          'pluginId': 'native-test',
+          'generation': 'a' * 64,
+          'port': server.port,
+          'controlToken': 'b' * 64,
+        },
         'plugins.native.export.v1' => <String, Object?>{
           'base64': 'YWJj',
           'checksum': '352441c2',
@@ -319,44 +313,18 @@ void main() {
     },
   );
 
-  test('forwards cancellation to the authenticated cancel endpoint', () async {
-    final runtime = createRuntime();
-    addTearDown(runtime.debugDispose);
-    final cancellation = PluginInvocationCancellation();
-    final pending = runtime.invoke(
-      const SourceSearchInvocation(pluginId: 'native-test', query: 'book'),
-      cancellation: cancellation,
-    );
-    await slowRequestSeen.future.timeout(const Duration(seconds: 2));
-
-    cancellation.cancel();
-
-    await expectLater(
-      pending,
-      throwsA(
-        isA<PluginRuntimeException>().having(
-          (error) => error.code,
-          'error code',
-          'cancelled',
-        ),
-      ),
-    );
-    await cancellationSeen.future.timeout(const Duration(seconds: 2));
-    expect(requests.single['method'], 'source.search.v1');
-  });
-
   test(
-    'cancellation stops a worker when the native job does not settle',
+    'aborts source HTTP without a cancellation RPC or worker restart',
     () async {
       final runtime = createRuntime();
       addTearDown(runtime.debugDispose);
-      cancellationSettled = false;
       final cancellation = PluginInvocationCancellation();
       final pending = runtime.invoke(
         const SourceSearchInvocation(pluginId: 'native-test', query: 'book'),
         cancellation: cancellation,
       );
       await slowRequestSeen.future.timeout(const Duration(seconds: 2));
+
       cancellation.cancel();
 
       await expectLater(
@@ -369,13 +337,21 @@ void main() {
           ),
         ),
       );
-      await cancellationSeen.future.timeout(const Duration(seconds: 2));
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-
-      await runtime.invoke(const RuntimePingInvocation());
-      expect(runtime.debugDesktopProcessStartCount, 2);
+      expect(
+        requests.map((r) => r['method']),
+        containsAllInOrder([
+          'plugins.native.initialize.v1',
+          'source.search.v1',
+        ]),
+      );
+      expect(
+        (await runtime.invoke(const RuntimePingInvocation())).isHealthy,
+        isTrue,
+      );
+      expect(runtime.debugDesktopProcessStartCount, 1);
     },
   );
+
   test(
     'a request timeout drops the worker session before a later restart',
     () async {

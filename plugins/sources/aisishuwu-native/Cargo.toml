@@ -1,6 +1,6 @@
 [package]
 name = "aisishuwu-native"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 publish = false
 
@@ -23,3 +23,6 @@ lto = true
 codegen-units = 1
 panic = "unwind"
 strip = true
+
+[dev-dependencies]
+tokio = { version = "=1.50.0", features = ["rt", "time", "net"] }

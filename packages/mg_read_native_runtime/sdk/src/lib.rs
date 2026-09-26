@@ -1,31 +1,46 @@
-//! Small statically linked source SDK. A library owns one initialized instance
-//! until worker exit. Content operations are serialized; async resource streams
-//! and cancellation use one I/O executor thread, not parallel source execution.
+//! Statically linked HTTP source SDK. The single worker calls init once per DLL;
+//! content and resources then use independent HTTP requests on one loopback port.
+//! Source handlers are async. Dropping a disconnected request drops its upstream
+//! work; shared cache mutations stay protected. No per-call ABI or RPC cancel map.
 pub mod cache;
 pub mod error;
 mod hls;
 mod http;
 mod resource;
+mod server;
+mod validation;
 
+use axum::{
+    Extension, Json, Router,
+    extract::{DefaultBodyLimit, State},
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
+    routing::post,
+};
 use error::{Error, Result, invalid};
-use mgread_native_abi::{Buffer, MAX_MESSAGE};
+use futures_util::{FutureExt, future::BoxFuture};
+use mgread_native_abi::{InitResult, MAX_MESSAGE};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
-    collections::HashSet,
     path::PathBuf,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 use tokio_util::sync::CancellationToken;
 
+pub type SourceFuture = BoxFuture<'static, Result<Value>>;
+pub type Handler = fn(Call, Value) -> SourceFuture;
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Config {
     plugin_id: String,
+    source_name: String,
     generation: String,
+    control_token: String,
     cache_dir: PathBuf,
     upstream_proxy: Option<String>,
+    capabilities: Vec<String>,
     #[serde(default)]
     test_mode: bool,
 }
@@ -36,20 +51,15 @@ pub struct Context {
     resources: Arc<resource::Resources>,
     stop: CancellationToken,
     server: Mutex<Option<tokio::task::JoinHandle<()>>>,
-    calls: Mutex<Calls>,
-    test_mode: bool,
+    config: Config,
+    handler: Handler,
 }
-#[derive(Default)]
-struct Calls {
-    active: Option<(u64, CancellationToken)>,
-    early_cancel: HashSet<u64>,
-}
-pub struct Call<'a> {
-    context: &'a Context,
+pub struct Call {
+    context: Arc<Context>,
     cancel: CancellationToken,
     started: Instant,
 }
-impl Call<'_> {
+impl Call {
     pub fn cancelled(&self) -> bool {
         self.cancel.is_cancelled()
             || self.context.stop.is_cancelled()
@@ -58,7 +68,7 @@ impl Call<'_> {
     pub fn cache(&self) -> &cache::Cache {
         &self.context.cache
     }
-    pub fn http(&self, request: &Value) -> Result<Value> {
+    pub async fn http(&self, request: &Value) -> Result<Value> {
         if self.cancelled() {
             return Err(error::cancelled());
         }
@@ -66,26 +76,42 @@ impl Call<'_> {
             request["url"]
                 .as_str()
                 .ok_or_else(|| invalid("Missing URL"))?,
-            self.context.test_mode,
+            self.context.config.test_mode,
         )?;
         let headers = http::headers(&request["headers"])?;
-        self.context.executor.block_on(async {
-            let operation = async {
-                let response = http::open(&self.context.client, reqwest::Method::GET, url, headers, self.context.test_mode).await?;
-                let status = response.status().as_u16();
-                if !response.status().is_success() { return Err(Error::new("source_http_error", &format!("Upstream HTTP {status}"))); }
-                let body = String::from_utf8(http::bounded_body(response, 4 * 1024 * 1024).await?).map_err(|_| invalid("Source text is not UTF-8"))?;
-                Ok(json!({"body":body,"status":status,"headers":{}}))
-            };
-            tokio::select! { biased; _ = self.cancel.cancelled() => Err(error::cancelled()), _ = self.context.stop.cancelled() => Err(error::cancelled()), result = tokio::time::timeout(Duration::from_secs(20), operation) => result.map_err(|_| Error::new("runtime_timeout", "Source HTTP timed out"))? }
-        })
+        let operation = async {
+            let response = http::open(
+                &self.context.client,
+                reqwest::Method::GET,
+                url,
+                headers,
+                self.context.config.test_mode,
+            )
+            .await?;
+            let status = response.status().as_u16();
+            if !response.status().is_success() {
+                return Err(Error::new(
+                    "source_http_error",
+                    &format!("Upstream HTTP {status}"),
+                ));
+            }
+            let body = String::from_utf8(http::bounded_body(response, 4 * 1024 * 1024).await?)
+                .map_err(|_| invalid("Source text is not UTF-8"))?;
+            Ok(json!({"body":body,"status":status,"headers":{}}))
+        };
+        tokio::select! { biased;
+            _ = self.cancel.cancelled() => Err(error::cancelled()),
+            _ = self.context.stop.cancelled() => Err(error::cancelled()),
+            result = tokio::time::timeout(Duration::from_secs(20), operation) => result.map_err(|_| Error::new("runtime_timeout", "Source HTTP timed out"))?,
+        }
     }
 }
 impl Context {
-    fn open(config: Config) -> Result<Arc<Self>> {
+    fn open(config: Config, handler: Handler) -> Result<Arc<Self>> {
         if !component(&config.plugin_id)
             || config.generation.len() != 64
-            || !config.generation.bytes().all(|b| b.is_ascii_hexdigit())
+            || config.control_token.len() < 32
+            || config.capabilities.is_empty()
         {
             return Err(invalid("Invalid plugin initialization identity"));
         }
@@ -99,121 +125,158 @@ impl Context {
         let listener = executor.block_on(tokio::net::TcpListener::bind("127.0.0.1:0"))?;
         let port = listener.local_addr()?.port();
         let resources = resource::Resources::new(
-            config.plugin_id,
-            config.generation,
+            config.plugin_id.clone(),
             port,
             client.clone(),
             stop.clone(),
             config.test_mode,
         );
-        let router = resources.clone().router();
-        let shutdown = stop.clone();
-        let server = executor.spawn(async move {
-            let _ = axum::serve(listener, router)
-                .with_graceful_shutdown(shutdown.cancelled_owned())
-                .await;
-        });
-        Ok(Arc::new(Self {
+        let context = Arc::new(Self {
             cache,
             executor,
             client,
             resources,
             stop,
-            server: Mutex::new(Some(server)),
-            calls: Mutex::new(Calls::default()),
-            test_mode: config.test_mode,
-        }))
+            server: Mutex::new(None),
+            config,
+            handler,
+        });
+        let router = Router::new()
+            .route("/invoke", post(invoke))
+            .route("/shutdown", post(shutdown))
+            .layer(DefaultBodyLimit::max(MAX_MESSAGE))
+            .with_state(context.clone())
+            .merge(context.resources.clone().router());
+        let server = context
+            .executor
+            .spawn(server::serve(listener, router, context.stop.clone()));
+        *context.server.lock().unwrap() = Some(server);
+        Ok(context)
     }
-    fn invoke(
-        &self,
-        id: u64,
-        input: Value,
-        handler: fn(&Call<'_>, Value) -> Result<Value>,
-    ) -> Result<Value> {
-        if id == 0 || self.stop.is_cancelled() {
+    async fn invoke(self: &Arc<Self>, input: Value, cancel: CancellationToken) -> Result<Value> {
+        if self.stop.is_cancelled() {
             return Err(Error::new("plugin_closed", "Source is closed"));
         }
-        let cancel = self.stop.child_token();
+        let raw_method = input["method"]
+            .as_str()
+            .ok_or_else(|| invalid("Missing source method"))?;
+        let method = raw_method
+            .strip_prefix("source.")
+            .and_then(|v| v.strip_suffix(".v1"))
+            .unwrap_or(raw_method);
+        if !self.config.capabilities.iter().any(|v| v == method) {
+            return Err(Error::new(
+                "unsupported",
+                "Source capability is not declared",
+            ));
+        }
+        let mut request = input["params"].clone();
+        let params = request
+            .as_object_mut()
+            .ok_or_else(|| invalid("Invalid source request"))?;
+        if params
+            .remove("pluginId")
+            .is_some_and(|v| v != self.config.plugin_id)
         {
-            let mut calls = self.calls.lock().unwrap();
-            if calls.active.is_some() {
-                return Err(Error::new(
-                    "runtime_busy",
-                    "Source calls must be serialized",
-                ));
-            }
-            if calls.early_cancel.remove(&id) {
-                cancel.cancel();
-            }
-            calls.active = Some((id, cancel.clone()));
+            return Err(invalid("Wrong source owner"));
         }
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let call = Call {
-                context: self,
-                cancel,
-                started: Instant::now(),
-            };
-            if call.cancelled() {
-                return Err(error::cancelled());
+        if !params.contains_key("id") {
+            if let Some(id) = params.remove("contentId") {
+                params.insert("id".into(), id);
             }
-            if input["method"] == "resource.inspect" {
-                return self
-                    .resources
-                    .inspect(input["request"]["url"].as_str().unwrap_or(""));
-            }
-            let mut result = handler(&call, input)?;
-            if call.cancelled() {
-                return Err(error::cancelled());
-            }
-            self.resources.project(&mut result, 0)?;
-            Ok(result)
-        }))
-        .unwrap_or_else(|_| Err(Error::new("native_panic", "Source call failed internally")));
-        self.calls.lock().unwrap().active = None;
-        result
+        }
+        if ["discover", "search", "searchSuggestions"].contains(&method) {
+            params.entry("pageSize").or_insert(json!(20));
+            params.entry("cursor").or_insert(Value::Null);
+        }
+        if method == "discover" {
+            params.entry("target").or_insert(Value::Null);
+            params.entry("collectionId").or_insert(Value::Null);
+        }
+        let call = Call {
+            context: self.clone(),
+            cancel: cancel.clone(),
+            started: Instant::now(),
+        };
+        let operation = std::panic::AssertUnwindSafe((self.handler)(
+            call,
+            json!({"method":method,"request":request}),
+        ))
+        .catch_unwind();
+        let mut value = tokio::select! { biased;
+            _ = cancel.cancelled() => return Err(error::cancelled()),
+            _ = self.stop.cancelled() => return Err(error::cancelled()),
+            result = tokio::time::timeout(Duration::from_secs(90), operation) => result.map_err(|_| Error::new("timeout", "Source HTTP call timed out"))?.map_err(|_| Error::new("native_panic", "Source handler failed"))??,
+        };
+        self.resources.project(&mut value, 0)?;
+        validation::validate(method, &request, &value)?;
+        self.resources.validate_output(&value)?;
+        let result = value
+            .as_object_mut()
+            .ok_or_else(|| invalid("Invalid source result"))?;
+        result.insert("pluginId".into(), json!(self.config.plugin_id));
+        result.insert("sourceName".into(), json!(self.config.source_name));
+        if method == "getChapters" {
+            result.entry("groups").or_insert(json!([]));
+        }
+        Ok(value)
     }
-    fn cancel(&self, id: u64) {
-        let mut calls = self.calls.lock().unwrap();
-        if let Some((active, cancel)) = &calls.active {
-            if *active == id {
-                cancel.cancel();
-                return;
-            }
-        }
-        // Only the host's current ABI call can arrive just before registration.
-        if calls.early_cancel.len() < 64 {
-            calls.early_cancel.insert(id);
-        }
+    fn authorized(&self, headers: &HeaderMap) -> bool {
+        !headers.contains_key("origin")
+            && headers.get("host").and_then(|v| v.to_str().ok())
+                == Some(&format!("127.0.0.1:{}", self.resources.port))
+            && headers.get("authorization").and_then(|v| v.to_str().ok())
+                == Some(&format!("Bearer {}", self.config.control_token))
     }
-    fn shutdown(&self) -> Result<Value> {
+    fn stop(&self) {
         self.resources.close();
-        if self.calls.lock().unwrap().active.is_some() {
-            return Err(Error::new("runtime_busy", "Source call is still running"));
-        }
-        if let Some(mut server) = self.server.lock().unwrap().take() {
-            self.executor.block_on(async {
-                if tokio::time::timeout(Duration::from_secs(1), &mut server)
-                    .await
-                    .is_err()
-                {
-                    server.abort();
-                    let _ = server.await;
-                }
-            });
-        }
-        Ok(json!({"stopped":true}))
     }
+    #[cfg(test)]
+    fn shutdown(&self) {
+        self.stop();
+        if let Some(job) = self.server.lock().unwrap().take() {
+            let _ = self.executor.block_on(job);
+        }
+    }
+}
+async fn invoke(
+    State(context): State<Arc<Context>>,
+    Extension(cancel): Extension<CancellationToken>,
+    headers: HeaderMap,
+    Json(input): Json<Value>,
+) -> Response {
+    if !context.authorized(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let result = match context.invoke(input, cancel).await {
+        Ok(value) => json!({"ok":true,"result":value}),
+        Err(error) => error.envelope(),
+    };
+    let mut response = Json(result).into_response();
+    // A call owns its HTTP connection, so closing it cancels only this request.
+    response
+        .headers_mut()
+        .insert("connection", "close".parse().unwrap());
+    response
+}
+async fn shutdown(State(context): State<Arc<Context>>, headers: HeaderMap) -> Response {
+    if !context.authorized(&headers) {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        context.stop();
+    });
+    Json(json!({"ok":true,"result":{"stopping":true}})).into_response()
 }
 fn component(value: &str) -> bool {
     !value.is_empty()
-        && value.len() <= 160
-        && value != "."
-        && value != ".."
+        && value.len() <= 128
+        && value.as_bytes()[0].is_ascii_alphanumeric()
         && value
             .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b".-".contains(&b))
 }
-
 pub struct PluginInstance {
     plugin_id: &'static str,
     context: Mutex<Option<Arc<Context>>>,
@@ -226,76 +289,28 @@ impl PluginInstance {
         }
     }
     /// # Safety
-    /// Input must be readable for length bytes until return.
-    pub unsafe fn init(&self, input: *const u8, length: usize) -> Buffer {
-        boundary(|| {
+    /// JSON input is borrowed for this call only. Nothing is allocated for the host.
+    pub unsafe fn init(&self, input: *const u8, length: usize, handler: Handler) -> InitResult {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<u16> {
             let mut slot = self.context.lock().unwrap();
-            if slot.is_some() {
-                return Err(invalid("Source is already initialized"));
+            if slot.is_some() || input.is_null() || length == 0 || length > MAX_MESSAGE {
+                return Err(invalid("Invalid initialization"));
             }
-            let config: Config = serde_json::from_value(unsafe { decode(input, length)? })?;
+            let config: Config =
+                serde_json::from_slice(unsafe { std::slice::from_raw_parts(input, length) })?;
             if config.plugin_id != self.plugin_id {
                 return Err(invalid("Plugin identity mismatch"));
             }
-            let context = Context::open(config)?;
-            let endpoint = context.resources.endpoint();
+            let context = Context::open(config, handler)?;
+            let port = context.resources.port;
             *slot = Some(context);
-            Ok(endpoint)
-        })
-    }
-    /// # Safety
-    /// Input must be readable for length bytes until return; invoke is serialized.
-    pub unsafe fn invoke(
-        &self,
-        id: u64,
-        input: *const u8,
-        length: usize,
-        handler: fn(&Call<'_>, Value) -> Result<Value>,
-    ) -> Buffer {
-        boundary(|| {
-            let input = unsafe { decode(input, length)? };
-            let context = self
-                .context
-                .lock()
-                .unwrap()
-                .clone()
-                .ok_or_else(|| invalid("Source is not initialized"))?;
-            context.invoke(id, input, handler)
-        })
-    }
-    pub fn cancel(&self, id: u64) {
-        if let Some(context) = self.context.lock().unwrap().as_ref() {
-            context.cancel(id);
+            Ok(port)
+        }));
+        match result {
+            Ok(Ok(port)) => InitResult::ready(port),
+            _ => InitResult::failed(),
         }
     }
-    pub fn shutdown(&self) -> Buffer {
-        boundary(|| match self.context.lock().unwrap().as_ref() {
-            Some(context) => context.shutdown(),
-            None => Ok(json!({"stopped":true})),
-        })
-    }
 }
-unsafe fn decode(input: *const u8, length: usize) -> Result<Value> {
-    if input.is_null() || length == 0 || length > MAX_MESSAGE {
-        return Err(invalid("Invalid ABI input"));
-    }
-    Ok(serde_json::from_slice(unsafe {
-        std::slice::from_raw_parts(input, length)
-    })?)
-}
-fn boundary(action: impl FnOnce() -> Result<Value>) -> Buffer {
-    let value = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(action)) {
-        Ok(Ok(value)) => json!({"ok":true,"value":value}),
-        Ok(Err(error)) => error.envelope(),
-        Err(_) => Error::new("native_panic", "Source operation failed internally").envelope(),
-    };
-    let bytes = serde_json::to_vec(&value).unwrap_or_default();
-    Buffer::from_vec(if bytes.len() <= MAX_MESSAGE {
-        bytes
-    } else {
-        br#"{"ok":false,"error":{"code":"result_too_large","message":"Source result exceeds its limit"}}"#.to_vec()
-    })
-}
-
 #[cfg(test)]
 mod tests;

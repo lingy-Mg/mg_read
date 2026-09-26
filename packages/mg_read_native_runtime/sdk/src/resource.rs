@@ -1,6 +1,6 @@
-//! Plugin-owned HTTP data plane. URLs contain only plugin identity, generation
-//! and random capabilities; upstream descriptors never leave this library.
-//! Streaming owns its semaphore permit and upstream response until client drop.
+//! Self-contained source-resource URLs, matching Node's reversible Base64URL
+//! JSON design. No transient registry, expiry or generation in resource identity.
+//! A resource can be rebound to a new plugin port without repeating source calls.
 use crate::{
     error::{Result, invalid},
     http,
@@ -13,26 +13,14 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde_json::{Value, json};
-use std::{
-    collections::{HashMap, HashSet},
-    sync::{Arc, Mutex},
-    time::{Duration, Instant},
-};
+use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
-const IDLE_TTL: Duration = Duration::from_secs(30 * 60);
-struct Entry {
-    descriptor: Value,
-    touched: Instant,
-    // HLS descendants share the root playlist activity window.
-    family: Option<String>,
-}
 pub struct Resources {
     pub plugin_id: String,
-    pub generation: String,
     pub port: u16,
-    entries: Mutex<HashMap<String, Entry>>,
     client: reqwest::Client,
     stopping: CancellationToken,
     slots: Arc<tokio::sync::Semaphore>,
@@ -41,7 +29,6 @@ pub struct Resources {
 impl Resources {
     pub fn new(
         plugin_id: String,
-        generation: String,
         port: u16,
         client: reqwest::Client,
         stopping: CancellationToken,
@@ -49,9 +36,7 @@ impl Resources {
     ) -> Arc<Self> {
         Arc::new(Self {
             plugin_id,
-            generation,
             port,
-            entries: Mutex::new(HashMap::new()),
             client,
             stopping,
             slots: Arc::new(tokio::sync::Semaphore::new(16)),
@@ -61,72 +46,57 @@ impl Resources {
     pub fn close(&self) {
         self.stopping.cancel();
         self.slots.close();
-        self.entries.lock().unwrap().clear();
-    }
-    pub fn endpoint(&self) -> Value {
-        json!({"pluginId":self.plugin_id,"generation":self.generation,"port":self.port})
     }
     pub fn prefix(&self) -> String {
-        format!(
-            "http://127.0.0.1:{}/v2/source-resource/native/{}/{}/",
-            self.port, self.plugin_id, self.generation
-        )
+        format!("http://127.0.0.1:{}/v1/source-resource/", self.port)
     }
-    pub fn register(&self, descriptor: Value) -> Result<String> {
-        self.register_in_family(descriptor, None)
-    }
-    fn register_in_family(&self, descriptor: Value, family: Option<String>) -> Result<String> {
-        if self.stopping.is_cancelled() {
-            return Err(invalid("Resource service is closed"));
-        }
-        let url = descriptor["url"]
-            .as_str()
-            .ok_or_else(|| invalid("Missing resource URL"))?;
-        http::check_url(url, self.test_mode)?;
+    fn validate(&self, descriptor: &Value) -> Result<()> {
+        http::check_url(
+            descriptor["url"]
+                .as_str()
+                .ok_or_else(|| invalid("Missing resource URL"))?,
+            self.test_mode,
+        )?;
         http::headers(&descriptor["headers"])?;
         if !["image", "audio", "video", "hls"].contains(&descriptor["kind"].as_str().unwrap_or(""))
             || descriptor.get("resourceTransform").is_some()
         {
             return Err(invalid("Unsupported native resource descriptor"));
         }
-        if serde_json::to_vec(&descriptor)?.len() > 16384 {
+        Ok(())
+    }
+    pub fn register(&self, descriptor: Value) -> Result<String> {
+        if self.stopping.is_cancelled() {
+            return Err(invalid("Resource service is closed"));
+        }
+        self.validate(&descriptor)?;
+        let token = URL_SAFE_NO_PAD.encode(serde_json::to_vec(
+            &json!({"version":1,"engine":"native","pluginId":self.plugin_id,"request":descriptor}),
+        )?);
+        if token.len() > 24 * 1024 {
             return Err(invalid("Resource descriptor exceeds its limit"));
         }
-        let mut entries = self.entries.lock().unwrap();
-        let active_roots = entries
-            .iter()
-            .filter(|(_, e)| e.family.is_none() && e.touched.elapsed() < IDLE_TTL)
-            .map(|(id, _)| id.clone())
-            .collect::<HashSet<_>>();
-        entries.retain(|_, entry| {
-            entry.touched.elapsed() < IDLE_TTL
-                || entry
-                    .family
-                    .as_ref()
-                    .is_some_and(|root| active_roots.contains(root))
-        });
-        if let Some((key, entry)) = entries
-            .iter_mut()
-            .find(|(_, e)| e.descriptor == descriptor && e.family == family)
-        {
-            entry.touched = Instant::now();
-            return Ok(format!("{}{key}", self.prefix()));
-        }
-        if entries.len() >= 4096 {
-            return Err(invalid("Too many active source resources"));
-        }
-        let mut bytes = [0u8; 32];
-        getrandom::fill(&mut bytes).map_err(|_| invalid("Resource token creation failed"))?;
-        let token = bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
-        entries.insert(
-            token.clone(),
-            Entry {
-                descriptor,
-                touched: Instant::now(),
-                family,
-            },
-        );
         Ok(format!("{}{token}", self.prefix()))
+    }
+    pub fn decode(&self, token: &str) -> Result<Value> {
+        if token.len() < 16 || token.len() > 24 * 1024 {
+            return Err(invalid("Invalid resource payload"));
+        }
+        let bytes = URL_SAFE_NO_PAD
+            .decode(token)
+            .map_err(|_| invalid("Invalid resource payload"))?;
+        if URL_SAFE_NO_PAD.encode(&bytes) != token {
+            return Err(invalid("Invalid resource encoding"));
+        }
+        let value: Value = serde_json::from_slice(&bytes)?;
+        if value["version"] != 1
+            || value["engine"] != "native"
+            || value["pluginId"] != self.plugin_id
+        {
+            return Err(invalid("Resource belongs to another source"));
+        }
+        self.validate(&value["request"])?;
+        Ok(value["request"].clone())
     }
     pub fn project(&self, value: &mut Value, depth: usize) -> Result<()> {
         if depth > 48 {
@@ -150,57 +120,48 @@ impl Resources {
         }
         Ok(())
     }
-    pub fn inspect(&self, url: &str) -> Result<Value> {
-        let token = url
-            .strip_prefix(&self.prefix())
-            .ok_or_else(|| invalid("Resource belongs to another plugin instance"))?;
-        let (descriptor, _) = self
-            .lookup(token)
-            .ok_or_else(|| invalid("Resource expired"))?;
-        Ok(
-            json!({"pluginId":self.plugin_id,"request":{"engine":"native","kind":descriptor["kind"],"generation":self.generation}}),
-        )
-    }
-    fn lookup(&self, token: &str) -> Option<(Value, String)> {
-        let mut entries = self.entries.lock().unwrap();
-        let entry = entries.get(token)?;
-        let family = entry.family.as_deref().unwrap_or(token).to_string();
-        let family_active = entries
-            .get(&family)
-            .is_some_and(|e| e.touched.elapsed() < IDLE_TTL);
-        if entry.touched.elapsed() >= IDLE_TTL && !family_active {
-            entries.remove(token);
-            return None;
-        }
-        let descriptor = entry.descriptor.clone();
-        entries.get_mut(token)?.touched = Instant::now();
-        if let Some(root) = entries.get_mut(&family) {
-            root.touched = Instant::now();
-        }
-        Some((descriptor, family))
-    }
-    fn touch_stream(&self, token: &str) {
-        let mut entries = self.entries.lock().unwrap();
-        if let Some(entry) = entries.get_mut(token) {
-            entry.touched = Instant::now();
-            let family = entry.family.clone();
-            if let Some(root) = family.and_then(|id| entries.get_mut(&id)) {
-                root.touched = Instant::now();
+    pub fn validate_output(&self, value: &Value) -> Result<()> {
+        match value {
+            Value::Object(map) => {
+                for (key, child) in map {
+                    if key == "$resource" {
+                        return Err(invalid("Unresolved resource descriptor"));
+                    }
+                    if let Some(url) = child.as_str() {
+                        if key == "coverUrl"
+                            || (key == "url"
+                                && (map.contains_key("resourcePolicy")
+                                    || map.contains_key("resourceType")
+                                    || map.contains_key("index")))
+                            || url.contains("/v1/source-resource/")
+                        {
+                            let token = url
+                                .strip_prefix(&self.prefix())
+                                .ok_or_else(|| invalid("Resource owner or port mismatch"))?;
+                            self.decode(token)?;
+                        }
+                    }
+                    self.validate_output(child)?;
+                }
             }
+            Value::Array(items) => {
+                for child in items {
+                    self.validate_output(child)?;
+                }
+            }
+            _ => {}
         }
+        Ok(())
     }
     pub fn router(self: Arc<Self>) -> Router {
         Router::new()
-            .route(
-                "/v2/source-resource/native/{plugin}/{generation}/{token}",
-                get(serve).head(serve),
-            )
+            .route("/v1/source-resource/{token}", get(serve).head(serve))
             .with_state(self)
     }
 }
 async fn serve(
     State(resources): State<Arc<Resources>>,
-    Path((plugin, generation, token)): Path<(String, String, String)>,
+    Path(token): Path<String>,
     method: Method,
     headers: HeaderMap,
 ) -> Response {
@@ -213,23 +174,18 @@ async fn serve(
     if resources.stopping.is_cancelled() {
         return StatusCode::GONE.into_response();
     }
-    if plugin != resources.plugin_id || generation != resources.generation {
+    let Ok(descriptor) = resources.decode(&token) else {
         return StatusCode::NOT_FOUND.into_response();
-    }
-    let Some((descriptor, family)) = resources.lookup(&token) else {
-        return StatusCode::GONE.into_response();
     };
     let response = tokio::select! {
         biased;
         _ = resources.stopping.cancelled() => return StatusCode::GONE.into_response(),
-        result = open_resource(resources.clone(), token, family, descriptor, method, headers) => result,
+        result = open_resource(resources.clone(), descriptor, method, headers) => result,
     };
     response.unwrap_or_else(|_| StatusCode::BAD_GATEWAY.into_response())
 }
 async fn open_resource(
     resources: Arc<Resources>,
-    token: String,
-    family: String,
     descriptor: Value,
     method: Method,
     headers: HeaderMap,
@@ -287,7 +243,7 @@ async fn open_resource(
             next["url"] = json!(uri);
             next["kind"] = json!(kind);
             next["resourceRole"] = json!(role);
-            resources.register_in_family(next, Some(family.clone()))
+            resources.register(next)
         })?;
         let length = body.len();
         let mut response = Response::new(if method == Method::HEAD {
@@ -337,13 +293,13 @@ async fn open_resource(
         Body::empty()
     } else {
         let stream = futures_util::stream::try_unfold(
-            (upstream, permit, resources, token),
-            |(mut response, permit, resources, token)| async move {
+            (upstream, permit, resources),
+            |(mut response, permit, resources)| async move {
                 tokio::select! {
                     biased;
                     _ = resources.stopping.cancelled() => Err(crate::error::cancelled()),
                     chunk = response.chunk() => match chunk {
-                        Ok(Some(chunk)) => { resources.touch_stream(&token); Ok(Some((chunk, (response, permit, resources, token)))) },
+                        Ok(Some(chunk)) => { Ok(Some((chunk, (response, permit, resources)))) },
                         Ok(None) => Ok(None),
                         Err(_) => Err(invalid("Resource upstream stream failed")),
                     }
@@ -361,83 +317,41 @@ async fn open_resource(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
+    use std::{
+        sync::atomic::{AtomicUsize, Ordering},
+        time::Duration,
+    };
     #[test]
-    fn tokens_expire_and_shutdown_discards_descriptors() {
-        let resources = Resources::new(
+    fn resource_payload_survives_another_instance_and_has_no_registry_limit() {
+        let first = Resources::new(
             "fixture".into(),
-            "a".repeat(64),
             1234,
+            reqwest::Client::new(),
+            CancellationToken::new(),
+            false,
+        );
+        let next = Resources::new(
+            "fixture".into(),
+            2345,
             reqwest::Client::new(),
             CancellationToken::new(),
             false,
         );
         let descriptor = json!({"kind":"image","url":"https://example.test/image"});
-        let url = resources.register(descriptor.clone()).unwrap();
-        let token = url.strip_prefix(&resources.prefix()).unwrap();
-        resources
-            .entries
-            .lock()
-            .unwrap()
-            .get_mut(token)
-            .unwrap()
-            .touched = Instant::now() - IDLE_TTL;
-        assert!(resources.inspect(&url).is_err());
-        assert_ne!(url, resources.register(descriptor.clone()).unwrap());
-        resources.close();
-        assert!(resources.entries.lock().unwrap().is_empty());
-        assert!(resources.register(descriptor).is_err());
-    }
-
-    #[test]
-    fn hls_children_remain_valid_while_the_root_playback_is_active() {
-        let resources = Resources::new(
-            "fixture".into(),
-            "a".repeat(64),
-            1234,
-            reqwest::Client::new(),
-            CancellationToken::new(),
-            false,
-        );
-        let root_url = resources
-            .register(json!({"kind":"hls","url":"https://example.test/master"}))
-            .unwrap();
-        let root = root_url
-            .strip_prefix(&resources.prefix())
-            .unwrap()
-            .to_string();
-        let child_url = resources
-            .register_in_family(
-                json!({"kind":"video","url":"https://example.test/late-segment"}),
-                Some(root.clone()),
-            )
-            .unwrap();
-        let child = child_url
-            .strip_prefix(&resources.prefix())
-            .unwrap()
-            .to_string();
-        resources
-            .entries
-            .lock()
-            .unwrap()
-            .get_mut(&child)
-            .unwrap()
-            .touched = Instant::now() - IDLE_TTL;
-        resources
-            .register(json!({"kind":"image","url":"https://example.test/another"}))
-            .unwrap();
-        assert!(
-            resources.lookup(&child).is_some(),
-            "Future HLS segments share the active root lease"
-        );
-        for entry in resources.entries.lock().unwrap().values_mut() {
-            entry.touched = Instant::now() - IDLE_TTL;
+        let url = first.register(descriptor.clone()).unwrap();
+        let token = url.strip_prefix(&first.prefix()).unwrap();
+        first.close();
+        assert_eq!(next.decode(token).unwrap(), descriptor);
+        for n in 0..5000 {
+            next.register(json!({"kind":"image","url":format!("https://example.test/{n}")}))
+                .unwrap();
         }
-        assert!(resources.lookup(&child).is_none());
-        assert!(resources.lookup(&root).is_none());
+        assert_eq!(next.decode(token).unwrap(), descriptor);
+        assert_eq!(
+            next.register(descriptor).unwrap(),
+            format!("{}{token}", next.prefix())
+        );
     }
-
     #[test]
     fn slow_client_applies_backpressure_and_disconnect_releases_stream_slot() {
         let mut random = [0u8; 16];
@@ -445,13 +359,19 @@ mod tests {
         let path =
             std::env::temp_dir().join(format!("mgread-stream-{:x}", u128::from_ne_bytes(random)));
         std::fs::create_dir(&path).unwrap();
-        let context = crate::Context::open(crate::Config {
-            plugin_id: "fixture".into(),
-            generation: "a".repeat(64),
-            cache_dir: path.clone(),
-            upstream_proxy: None,
-            test_mode: true,
-        })
+        let context = crate::Context::open(
+            crate::Config {
+                plugin_id: "fixture".into(),
+                generation: "a".repeat(64),
+                source_name: "Fixture".into(),
+                control_token: "s".repeat(64),
+                capabilities: vec!["search".into()],
+                cache_dir: path.clone(),
+                upstream_proxy: None,
+                test_mode: true,
+            },
+            crate::tests::echo,
+        )
         .unwrap();
         let count = Arc::new(AtomicUsize::new(0));
         let upstream_count = count.clone();
@@ -511,7 +431,7 @@ mod tests {
             }
             assert_eq!(context.resources.slots.available_permits(), 16);
         });
-        context.shutdown().unwrap();
+        context.shutdown();
         upstream.abort();
         drop(context);
         std::fs::remove_dir_all(path).unwrap();

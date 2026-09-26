@@ -1,5 +1,5 @@
 //! Independent native worker. Owns its private authenticated loopback listener,
-//! immutable catalog and serialized source calls. Plugins own upstream HTTP,
+//! immutable catalog and lazy plugin initialization. Plugins own source HTTP,
 //! caches and resource listeners; management changes retire this whole worker.
 #[cfg(target_os = "android")]
 mod android;
@@ -8,7 +8,6 @@ mod dispatch;
 pub mod error;
 mod native;
 mod transfer;
-mod validation;
 
 use axum::{
     Json, Router,
@@ -22,15 +21,14 @@ use native::NativePlugin;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     path::PathBuf,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::Instant,
 };
-use tokio_util::sync::CancellationToken;
 
 pub struct Runtime {
     root: PathBuf,
@@ -39,11 +37,9 @@ pub struct Runtime {
     started: Instant,
     catalog: Mutex<catalog::Catalog>,
     loaded: Mutex<BTreeMap<String, Arc<NativePlugin>>>,
-    source_gate: Mutex<()>,
+    initialization_gate: Mutex<()>,
     proxy: Mutex<Option<String>>,
     stopping: AtomicBool,
-    sequence: AtomicU64,
-    jobs: Mutex<HashMap<String, (String, CancellationToken, u64)>>,
     recovered: AtomicUsize,
 }
 impl Runtime {
@@ -60,11 +56,9 @@ impl Runtime {
             started: Instant::now(),
             catalog: Mutex::new(catalog),
             loaded: Mutex::new(BTreeMap::new()),
-            source_gate: Mutex::new(()),
+            initialization_gate: Mutex::new(()),
             proxy: Mutex::new(None),
             stopping: AtomicBool::new(false),
-            sequence: AtomicU64::new(0),
-            jobs: Mutex::new(HashMap::new()),
             recovered: AtomicUsize::new(recovered),
         }))
     }
@@ -75,36 +69,9 @@ impl Runtime {
                 .and_then(|v| v.to_str().ok())
                 .is_some_and(|v| v == format!("Bearer {}", self.token))
     }
-    fn cancel_plugin(&self, id: &str) {
-        let calls = self
-            .jobs
-            .lock()
-            .unwrap()
-            .values()
-            .filter(|(plugin, _, _)| plugin == id)
-            .cloned()
-            .collect::<Vec<_>>();
-        for (_, token, call_id) in calls {
-            token.cancel();
-            if let Some(plugin) = self.loaded.lock().unwrap().get(id) {
-                plugin.cancel(call_id);
-            }
-        }
-    }
     fn shutdown(&self) -> Result<()> {
         self.stopping.store(true, Ordering::SeqCst);
-        let ids = self
-            .loaded
-            .lock()
-            .unwrap()
-            .keys()
-            .cloned()
-            .collect::<Vec<_>>();
-        for id in &ids {
-            self.cancel_plugin(id);
-        }
-        let _gate = self.source_gate.lock().unwrap();
-        // An init already holding the gate may have completed during drain.
+        let _gate = self.initialization_gate.lock().unwrap();
         let plugins = self
             .loaded
             .lock()
@@ -112,15 +79,36 @@ impl Runtime {
             .values()
             .cloned()
             .collect::<Vec<_>>();
-        for plugin in plugins {
-            plugin.shutdown()?;
-        }
-        Ok(())
+        tokio::runtime::Handle::current().block_on(async {
+            let client = reqwest::Client::builder()
+                .no_proxy()
+                .timeout(std::time::Duration::from_secs(2))
+                .build()
+                .map_err(|_| invalid("Shutdown client failed"))?;
+            let mut jobs = tokio::task::JoinSet::new();
+            for plugin in plugins {
+                let client = client.clone();
+                jobs.spawn(async move { plugin.shutdown(&client).await });
+            }
+            let mut failed = false;
+            while let Some(result) = jobs.join_next().await {
+                if !matches!(result, Ok(Ok(()))) {
+                    failed = true;
+                }
+            }
+            if failed {
+                Err(Error::new(
+                    "shutdown_failed",
+                    "Plugin did not acknowledge shutdown; worker exit is required",
+                ))
+            } else {
+                Ok(())
+            }
+        })
     }
 }
 #[derive(Deserialize)]
 struct Rpc {
-    id: String,
     method: String,
     #[serde(default)]
     params: Value,
@@ -133,80 +121,22 @@ async fn rpc(
     if !runtime.authorized(&headers) {
         return StatusCode::UNAUTHORIZED.into_response();
     }
-    if request.id.is_empty() || request.id.len() > 160 || !request.params.is_object() {
+    if !request.params.is_object() {
         return Json(invalid("Invalid control request").envelope()).into_response();
     }
-    let cancel = CancellationToken::new();
-    let call_id = runtime.sequence.fetch_add(1, Ordering::Relaxed) + 1;
-    {
-        let mut jobs = runtime.jobs.lock().unwrap();
-        if jobs.len() >= 64 || jobs.contains_key(&request.id) {
-            return Json(
-                Error::new("runtime_busy", "Too many requests or duplicate request ID").envelope(),
-            )
-            .into_response();
-        }
-        jobs.insert(
-            request.id.clone(),
-            (
-                request.params["pluginId"].as_str().unwrap_or("").into(),
-                cancel.clone(),
-                call_id,
-            ),
-        );
-    }
-    let rt = runtime.clone();
-    let id = request.id.clone();
-    let completion = runtime.clone();
     let result = tokio::task::spawn_blocking(move || {
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            if request.method.starts_with("source.") {
-                dispatch::source(rt, request.method, request.params, cancel, call_id)
-            } else {
-                dispatch::control(&rt, &request.method, &request.params, cancel, call_id)
-            }
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            dispatch::control(&runtime, &request.method, &request.params)
         }))
-        .unwrap_or_else(|_| Err(Error::new("runtime_error", "Native control call failed")));
-        // Completion belongs to the native task, even when the HTTP caller
-        // disconnects and drops the response future before the C call returns.
-        completion.jobs.lock().unwrap().remove(&id);
-        result
+        .unwrap_or_else(|_| Err(Error::new("runtime_error", "Native management call failed")))
     })
     .await
-    .unwrap_or_else(|_| Err(Error::new("runtime_error", "Native worker task failed")));
+    .unwrap_or_else(|_| Err(Error::new("runtime_error", "Native management task failed")));
     Json(match result {
-        Ok(value) => json!({"ok":true,"result":value,"resourceEndpoints":runtime.loaded.lock().unwrap().values().map(|p|p.endpoint.clone()).collect::<Vec<_>>()}),
+        Ok(value) => json!({"ok":true,"result":value}),
         Err(e) => e.envelope(),
     })
     .into_response()
-}
-async fn cancel(
-    State(runtime): State<Arc<Runtime>>,
-    headers: HeaderMap,
-    Json(value): Json<Value>,
-) -> Response {
-    if !runtime.authorized(&headers) {
-        return StatusCode::UNAUTHORIZED.into_response();
-    }
-    if let Some(id) = value["id"].as_str() {
-        let job = runtime.jobs.lock().unwrap().get(id).cloned();
-        if let Some((plugin_id, token, call_id)) = job {
-            token.cancel();
-            if let Some(plugin) = runtime.loaded.lock().unwrap().get(&plugin_id) {
-                plugin.cancel(call_id);
-            }
-        }
-        // A cancellation acknowledgement is distinct from a finished native
-        // call. The Supervisor kills a non-cooperating worker after this grace.
-        for _ in 0..50 {
-            if !runtime.jobs.lock().unwrap().contains_key(id) {
-                return Json(json!({"ok":true,"settled":true})).into_response();
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        }
-        return Json(json!({"ok":true,"settled":false})).into_response();
-    }
-    Json(json!({"ok":false,"settled":false})).into_response()
 }
 pub async fn serve(
     root: PathBuf,
@@ -219,7 +149,6 @@ pub async fn serve(
     let runtime = Runtime::open(root, token.clone(), port, test_mode)?;
     let router = Router::new()
         .route("/rpc", post(rpc))
-        .route("/cancel", post(cancel))
         .layer(DefaultBodyLimit::max(90 * 1024 * 1024))
         .with_state(runtime);
     ready(json!({"port":port,"token":token,"runtimeKind":"native-rust"}));

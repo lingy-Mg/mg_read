@@ -147,7 +147,12 @@ final class SourceVideoDataSource implements VideoGroupDataSource {
     if (content.chapterId != selected.id || content.contentKind != PluginContentKind.video || media == null) {
       throw const VideoPlayerLoadException(code: 'video_episode_resource_missing', location: '解析所选集的播放资源', message: '数据源没有返回可播放的视频资源。');
     }
-    return VideoEpisode(id: selected.id, title: selected.title, uri: media.url.toString(), httpHeaders: media.headers);
+    return VideoEpisode(
+      id: selected.id,
+      title: selected.title,
+      uri: (await resolveSourceResource(gateway, media.url)).toString(),
+      httpHeaders: media.headers,
+    );
   }
 
   Future<PluginContentDetail> _loadDetail(String contentId) async {

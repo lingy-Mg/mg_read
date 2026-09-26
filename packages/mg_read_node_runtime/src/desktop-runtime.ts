@@ -89,6 +89,7 @@ import { dispatchPluginStorageControl } from "./desktop-plugin-cache-dispatch.js
 import {
   dispatchSourceContent,
   dispatchSourceResourceDecode,
+  dispatchSourceResourceResolve,
 } from "./desktop-source-control-dispatch.js";
 import { emitRuntimeDiagnostic, observeRuntimeDiagnostics } from "./runtime-diagnostics.js";
 
@@ -127,6 +128,7 @@ const RUNTIME_CONTROL_METHOD = Object.freeze({
   sourceGetChapters: "source.getChapters.v1",
   sourceGetContent: "source.getContent.v1",
   sourceResourceDecode: "runtime.sourceResource.decode.v1",
+  sourceResourceResolve: "runtime.sourceResource.resolve.v1",
   shutdown: "runtime.shutdown",
 } as const);
 
@@ -159,6 +161,7 @@ const RUNTIME_CONTROL_CAPABILITIES = Object.freeze([
   RUNTIME_CONTROL_METHOD.sourceGetChapters,
   RUNTIME_CONTROL_METHOD.sourceGetContent,
   RUNTIME_CONTROL_METHOD.sourceResourceDecode,
+  RUNTIME_CONTROL_METHOD.sourceResourceResolve,
   RUNTIME_CONTROL_METHOD.shutdown,
 ]);
 const RUNTIME_RPC_PATH = "/v1/rpc";
@@ -949,53 +952,14 @@ export class DesktopRuntime {
       case RUNTIME_CONTROL_METHOD.pluginsTransferVerify:
         return dispatchPluginTransferRequest(request, this.#pluginManager, this.#requestError.bind(this));
       case RUNTIME_CONTROL_METHOD.sourceDiscover:
-        return dispatchSourceContent(
-          request,
-          this.#pluginManager,
-          this.#requestError.bind(this),
-          cancellation,
-          "discover",
-        );
       case RUNTIME_CONTROL_METHOD.sourceSearch:
-        return dispatchSourceContent(
-          request,
-          this.#pluginManager,
-          this.#requestError.bind(this),
-          cancellation,
-          "search",
-        );
       case RUNTIME_CONTROL_METHOD.sourceSearchSuggestions:
-        return dispatchSourceContent(
-          request,
-          this.#pluginManager,
-          this.#requestError.bind(this),
-          cancellation,
-          "searchSuggestions",
-        );
       case RUNTIME_CONTROL_METHOD.sourceGetDetail:
-        return dispatchSourceContent(
-          request,
-          this.#pluginManager,
-          this.#requestError.bind(this),
-          cancellation,
-          "getDetail",
-        );
       case RUNTIME_CONTROL_METHOD.sourceGetChapters:
-        return dispatchSourceContent(
-          request,
-          this.#pluginManager,
-          this.#requestError.bind(this),
-          cancellation,
-          "getChapters",
-        );
       case RUNTIME_CONTROL_METHOD.sourceGetContent:
-        return dispatchSourceContent(
-          request,
-          this.#pluginManager,
-          this.#requestError.bind(this),
-          cancellation,
-          "getContent",
-        );
+        return dispatchSourceContent(request, this.#pluginManager, this.#requestError.bind(this), cancellation);
+      case RUNTIME_CONTROL_METHOD.sourceResourceResolve:
+        return dispatchSourceResourceResolve(request, this.#pluginManager, this.#requestError.bind(this));
       case RUNTIME_CONTROL_METHOD.sourceResourceDecode:
         return dispatchSourceResourceDecode(
           request,

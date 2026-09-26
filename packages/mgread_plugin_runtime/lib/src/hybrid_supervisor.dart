@@ -161,9 +161,10 @@ final class _HybridRuntimeSupervisor implements _RuntimeSupervisor {
       return await _planOffers(invocation as PluginTransferOfferPlanInvocation)
           as T;
     }
-    if (invocation is SourceResourceDecodeInvocation) {
+    if (invocation is SourceResourceDecodeInvocation ||
+        invocation is SourceResourceResolveInvocation) {
       final route = _SourceResourceUrl.require(
-        (invocation as SourceResourceDecodeInvocation).url,
+        invocation._wireParams['url'] as String,
       );
       final owner = await _owner(route.pluginId);
       if (!identical(

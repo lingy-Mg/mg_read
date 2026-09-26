@@ -80,6 +80,15 @@ abstract interface class CancellableSourceContentGateway {
   Future<T> runCancellable<T>(PluginInvocationCancellation cancellation, Future<T> Function() request);
 }
 
+/// Optional opaque resource routing. Production resolves the current engine and
+/// port immediately before a request; test gateways may keep direct URLs.
+abstract interface class SourceResourceGateway {
+  Future<Uri> resolveResource(Uri url);
+}
+
+Future<Uri> resolveSourceResource(SourceContentGateway gateway, Uri url) =>
+    gateway is SourceResourceGateway ? (gateway as SourceResourceGateway).resolveResource(url) : Future.value(url);
+
 /// Optional whole-group loading; legacy gateways need no new implementation.
 abstract interface class SourceChapterGroupGateway {
   Future<PluginChaptersResult> getChapterGroup({required String pluginId, required String id, required String groupId});
@@ -101,12 +110,17 @@ final Object _sourceInvocationCancellationZoneKey = Object();
 
 /// Production adapter. Runtime owns execution and transport; this adapter owns
 /// only application error normalization and the main-app Facade span.
-final class MgReadSourceContentGateway implements SourceContentGateway, CancellableSourceContentGateway, SourceChapterGroupGateway {
+final class MgReadSourceContentGateway
+    implements SourceContentGateway, CancellableSourceContentGateway, SourceChapterGroupGateway, SourceResourceGateway {
   const MgReadSourceContentGateway(this._runtime, this._diagnostics, this._loadRuntimeConnection);
 
   final PluginRuntime _runtime;
   final DiagnosticsManager _diagnostics;
   final Future<PluginRuntimeConnection> Function() _loadRuntimeConnection;
+
+  @override
+  Future<Uri> resolveResource(Uri url) async =>
+      Uri.parse(await _runtime.invoke(SourceResourceResolveInvocation(url: url.toString()), cancellation: _activeCancellation));
 
   @override
   Future<T> runCancellable<T>(PluginInvocationCancellation cancellation, Future<T> Function() request) {

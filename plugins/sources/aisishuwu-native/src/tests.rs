@@ -1,59 +1,62 @@
 use super::*;
-use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::sync::Mutex;
 
 #[derive(Default)]
 struct FixtureHost {
     cancelled: bool,
     incomplete_catalog: bool,
     long_content: bool,
-    cache: RefCell<BTreeMap<String, String>>,
-    http_calls: RefCell<Vec<String>>,
+    cache: Mutex<BTreeMap<String, String>>,
+    http_calls: Mutex<Vec<String>>,
 }
 
 impl SourceIo for FixtureHost {
     fn cancelled(&self) -> bool {
         self.cancelled
     }
-    fn http(&self, request: &Value) -> Result<Value, NativeError> {
-        let url = request["url"].as_str().unwrap_or_default().to_string();
-        self.http_calls.borrow_mut().push(url.clone());
-        let parsed = url::Url::parse(&url).unwrap();
-        let body = if parsed.path().starts_with("/novel/") {
-            detail_html(
-                parsed
-                    .path()
-                    .trim_start_matches("/novel/")
-                    .trim_end_matches(".html"),
-            )
-        } else if parsed.path().starts_with("/other/chapters/") {
-            catalog_html(
-                self.incomplete_catalog,
-                parsed.query().unwrap_or("").contains("page=2"),
-            )
-        } else if parsed.path().starts_with("/book/") && self.long_content {
-            format!(
-                "<h1>长章节</h1><div class='read-content'><p>{}</p></div>",
-                "长内容".repeat(180_000)
-            )
-        } else if parsed.path().starts_with("/book/") {
-            "<h1>测试章节</h1><div class='read-content'><p>第一段。</p><script>广告脚本</script><p>第二段。</p></div>".to_string()
-        } else {
-            list_html()
-        };
-        Ok(json!({"body":body,"status":200,"headers":{"content-type":"text/html"}}))
+    fn http<'a>(&'a self, request: &'a Value) -> HttpFuture<'a> {
+        Box::pin(async move {
+            let url = request["url"].as_str().unwrap_or_default().to_string();
+            self.http_calls.lock().unwrap().push(url.clone());
+            let parsed = url::Url::parse(&url).unwrap();
+            let body = if parsed.path().starts_with("/novel/") {
+                detail_html(
+                    parsed
+                        .path()
+                        .trim_start_matches("/novel/")
+                        .trim_end_matches(".html"),
+                )
+            } else if parsed.path().starts_with("/other/chapters/") {
+                catalog_html(
+                    self.incomplete_catalog,
+                    parsed.query().unwrap_or("").contains("page=2"),
+                )
+            } else if parsed.path().starts_with("/book/") && self.long_content {
+                format!(
+                    "<h1>长章节</h1><div class='read-content'><p>{}</p></div>",
+                    "长内容".repeat(180_000)
+                )
+            } else if parsed.path().starts_with("/book/") {
+                "<h1>测试章节</h1><div class='read-content'><p>第一段。</p><script>广告脚本</script><p>第二段。</p></div>".to_string()
+            } else {
+                list_html()
+            };
+            Ok(json!({"body":body,"status":200,"headers":{"content-type":"text/html"}}))
+        })
     }
     fn read(&self, path: &str) -> Result<Option<String>, NativeError> {
-        Ok(self.cache.borrow().get(path).cloned())
+        Ok(self.cache.lock().unwrap().get(path).cloned())
     }
     fn write(&self, path: &str, value: &str) -> Result<(), NativeError> {
         self.cache
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .insert(path.to_owned(), value.to_owned());
         Ok(())
     }
     fn remove(&self, path: &str) -> Result<(), NativeError> {
-        self.cache.borrow_mut().remove(path);
+        self.cache.lock().unwrap().remove(path);
         Ok(())
     }
 }
@@ -61,7 +64,15 @@ fn host_api(host: &FixtureHost) -> &FixtureHost {
     host
 }
 fn call(host: &FixtureHost, method: &str, request: Value) -> Value {
-    invoke_inner(host, json!({"method":method,"request":request})).unwrap_or_else(failure)
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(invoke_inner(
+            host,
+            json!({"method":method,"request":request}),
+        ))
+        .unwrap_or_else(failure)
 }
 
 fn detail_html(id: &str) -> String {
@@ -98,10 +109,7 @@ fn catalog_html(incomplete: bool, second: bool) -> String {
 }
 
 #[test]
-fn exports_abi_v2_and_projects_fixture_capabilities_without_node() {
-    let api = unsafe { &*mg_source_get_api_v2() };
-    assert_eq!(api.version, 2);
-    assert_eq!(api.size, std::mem::size_of::<SourceApi>());
+fn projects_fixture_capabilities_without_node() {
     let fixture = FixtureHost::default();
     let host = host_api(&fixture);
 
@@ -114,7 +122,12 @@ fn exports_abi_v2_and_projects_fixture_capabilities_without_node() {
         "https://img.321cdn.com/cover.jpg"
     );
     assert_eq!(
-        fixture.http_calls.borrow().last().map(String::as_str),
+        fixture
+            .http_calls
+            .lock()
+            .unwrap()
+            .last()
+            .map(String::as_str),
         Some("https://www.alicesw.com/novel/1.html")
     );
 
@@ -155,15 +168,16 @@ fn cache_persists_the_full_result_and_does_not_cache_host_proxy_urls() {
     let host = host_api(&fixture);
     let request = json!({"id":"novel:7"});
     let first = call(&host, "getDetail", request.clone());
-    let fetches = fixture.http_calls.borrow().len();
-    assert!(fixture.cache.borrow().len() == 1);
-    let cache = fixture.cache.borrow();
+    let fetches = fixture.http_calls.lock().unwrap().len();
+    assert!(fixture.cache.lock().unwrap().len() == 1);
+    let cache = fixture.cache.lock().unwrap();
     let cached_text = cache.values().next().unwrap();
     assert!(cached_text.contains("$resource"));
     assert!(!cached_text.contains("127.0.0.1"));
+    drop(cache);
     let second = call(&host, "getDetail", request);
     assert_eq!(first, second);
-    assert_eq!(fixture.http_calls.borrow().len(), fetches);
+    assert_eq!(fixture.http_calls.lock().unwrap().len(), fetches);
 }
 
 #[test]
@@ -175,7 +189,7 @@ fn cancellation_stops_before_network_io() {
     let host = host_api(&fixture);
     let cancelled = call(&host, "getDetail", json!({"id":"novel:1"}));
     assert_eq!(cancelled["error"]["code"], "cancelled");
-    assert!(fixture.http_calls.borrow().is_empty());
+    assert!(fixture.http_calls.lock().unwrap().is_empty());
 }
 
 #[test]
@@ -215,5 +229,5 @@ fn invalid_source_identity_is_rejected_before_http() {
     let host = host_api(&fixture);
     let result = call(&host, "getDetail", json!({"id":"novel:../other"}));
     assert_eq!(result["error"]["code"], "id_invalid");
-    assert!(fixture.http_calls.borrow().is_empty());
+    assert!(fixture.http_calls.lock().unwrap().is_empty());
 }

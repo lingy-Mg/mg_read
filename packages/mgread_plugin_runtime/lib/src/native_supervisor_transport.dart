@@ -1,16 +1,31 @@
 part of mgread_plugin_runtime;
 
-/// Owns native host HTTP requests, cancellation, and worker teardown.
-///
-/// Kept separate from the Facade coordinator so each source file stays
-/// small enough to review and validate independently.
+/// Management stays on the shared worker. Content calls go directly to each
+/// initialized plugin, with one HTTP connection per call. Closing that connection
+/// cancels its async work; no call IDs or separate cancellation requests cross
+/// the transport. A worker boundary invalidates all registered endpoints.
 extension _NativeRuntimeSupervisorTransport on _NativeRuntimeSupervisor {
-  void _initializeHttpClient() {
-    final client = HttpClient()
-      ..connectionTimeout = _startupTimeout
-      ..maxConnectionsPerHost = 16
-      ..findProxy = (_) => 'DIRECT';
-    _httpClient = client;
+  Future<_NativePluginEndpoint> _initializePlugin(
+    _NativeRuntimeReady ready,
+    String id,
+  ) {
+    return _pluginInitializations.putIfAbsent(id, () async {
+      try {
+        final raw = await _invokeReadyRpc(
+          ready,
+          method: 'plugins.native.initialize.v1',
+          params: {'pluginId': id},
+          timeout: _NativeRuntimeSupervisor._startupTimeout,
+        );
+        return _resourceEndpoints.register(raw, id);
+      } on Object catch (error) {
+        if (error is PluginRuntimeException &&
+            error.code == 'plugin_init_failed')
+          await _breakWorker(error);
+        _pluginInitializations.remove(id);
+        rethrow;
+      }
+    });
   }
 
   Future<Object?> _invokeRpc({
@@ -19,7 +34,42 @@ extension _NativeRuntimeSupervisorTransport on _NativeRuntimeSupervisor {
     Duration timeout = const Duration(seconds: 5),
     PluginInvocationCancellation? cancellation,
   }) async {
+    cancellation?._throwIfCancelled();
     final ready = await _ensureStarted();
+    if (method.startsWith('source.') ||
+        method.startsWith('runtime.sourceResource.')) {
+      final route = method.startsWith('runtime.sourceResource.')
+          ? _SourceResourceUrl.require(params['url'] as String)
+          : null;
+      final id = route?.pluginId ?? params['pluginId'] as String;
+      if (route != null && route.engine != PluginEngine.native)
+        throw const PluginRuntimeException(
+          'invalid_request',
+          'Resource engine does not match its plugin.',
+        );
+      final endpoint = await _awaitPluginInvocation(
+        _initializePlugin(ready, id),
+        cancellation,
+      );
+      cancellation?._throwIfCancelled();
+      if (route != null) {
+        return method == 'runtime.sourceResource.resolve.v1'
+            ? {
+                'url': route.uri
+                    .replace(host: '127.0.0.1', port: endpoint.port)
+                    .toString(),
+              }
+            : {'pluginId': id, 'request': route.request};
+      }
+      return _invokeReadyRpc(
+        ready,
+        method: method,
+        params: params,
+        timeout: timeout,
+        cancellation: cancellation,
+        endpoint: endpoint,
+      );
+    }
     return _invokeReadyRpc(
       ready,
       method: method,
@@ -29,245 +79,163 @@ extension _NativeRuntimeSupervisorTransport on _NativeRuntimeSupervisor {
     );
   }
 
-  /// Sends a call after readiness without awaiting the memoized startup future.
-  /// Startup uses this to restore a saved proxy before admitting app calls.
   Future<Object?> _invokeReadyRpc(
     _NativeRuntimeReady ready, {
     required String method,
     required Map<String, Object?> params,
     Duration timeout = const Duration(seconds: 5),
     PluginInvocationCancellation? cancellation,
+    _NativePluginEndpoint? endpoint,
   }) async {
     cancellation?._throwIfCancelled();
-    final client = _httpClient;
-    if (client == null || !identical(ready, _ready)) {
+    if (!identical(ready, _ready))
       throw const PluginRuntimeException(
         'transport_disconnected',
-        'The native Runtime control connection is unavailable.',
+        'The native worker is unavailable.',
       );
-    }
-    final id =
-        'dart-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-'
-        '${++_invocationSequence}';
+    // A dedicated connection lets abort cancel exactly this request, including
+    // after headers arrive. Native HTTP never passes through the system proxy.
+    final client = HttpClient()
+      ..connectionTimeout = timeout
+      ..findProxy = (_) => 'DIRECT';
+    final id = 'local-${++_invocationSequence}';
     final pending = _NativeInFlight();
     _inFlight[id] = pending;
-    final operation = _postRpc(
-      client: client,
-      ready: ready,
-      id: id,
-      method: method,
-      params: params,
-      pending: pending,
-    );
+    void abort() {
+      pending.request?.abort();
+      client.close(force: true);
+    }
+
     try {
       return await _awaitPluginInvocation<Object?>(
-        Future.any<Object?>(<Future<Object?>>[
-          operation,
+        Future.any<Object?>([
+          _postRpc(
+            client: client,
+            ready: ready,
+            method: method,
+            params: params,
+            pending: pending,
+            endpoint: endpoint,
+          ),
           pending.failure.future.then<Object?>((error) => throw error),
         ]),
         cancellation,
-        onCancel: () => unawaited(_cancelInvocation(id, ready, pending)),
+        onCancel: abort,
       ).timeout(
         timeout,
         onTimeout: () {
-          unawaited(
-            _breakWorker(
-              const PluginRuntimeException(
-                'timeout',
-                'The native Runtime capability call timed out; the worker was stopped.',
-              ),
-            ),
-          );
+          abort();
           throw const PluginRuntimeException(
             'timeout',
-            'The native Runtime capability call timed out; the worker was stopped.',
+            'The native HTTP request timed out.',
           );
         },
       );
     } on PluginRuntimeException catch (error) {
-      if (error.code == 'transport_disconnected' || error.code == 'timeout') {
+      cancellation?._throwIfCancelled();
+      if (error.code == 'transport_disconnected' ||
+          (endpoint == null && error.code == 'timeout'))
         await _breakWorker(error);
-      }
       rethrow;
-    } on TimeoutException {
-      final failure = const PluginRuntimeException(
-        'timeout',
-        'The native Runtime capability call timed out; the worker was stopped.',
+    } on Object {
+      cancellation?._throwIfCancelled();
+      const failure = PluginRuntimeException(
+        'transport_disconnected',
+        'The native HTTP request failed.',
       );
       await _breakWorker(failure);
       throw failure;
-    } on Object {
-      const failure = PluginRuntimeException(
-        'transport_disconnected',
-        'The native Runtime control request failed.',
-      );
-      await _breakWorker(failure);
-      throw PluginRuntimeException(
-        failure.code,
-        failure.message,
-        diagnostics: latestDiagnostics,
-      );
     } finally {
       _inFlight.remove(id);
+      abort();
     }
   }
 
   Future<Object?> _postRpc({
     required HttpClient client,
     required _NativeRuntimeReady ready,
-    required String id,
     required String method,
     required Map<String, Object?> params,
     required _NativeInFlight pending,
+    _NativePluginEndpoint? endpoint,
   }) async {
-    final uri = Uri(
-      scheme: 'http',
-      host: '127.0.0.1',
-      port: ready.port,
-      path: '/rpc',
+    final request = await client.postUrl(
+      Uri(
+        scheme: 'http',
+        host: '127.0.0.1',
+        port: endpoint?.port ?? ready.port,
+        path: endpoint == null ? '/rpc' : '/invoke',
+      ),
     );
-    final request = await client.postUrl(uri);
     pending.request = request;
+    request.persistentConnection = false;
     request.headers
-      ..set(HttpHeaders.authorizationHeader, 'Bearer ${ready.token}')
+      ..set(
+        HttpHeaders.authorizationHeader,
+        'Bearer ${endpoint?.controlToken ?? ready.token}',
+      )
       ..contentType = ContentType.json;
-    request.write(
-      jsonEncode(<String, Object?>{
-        'id': id,
-        'method': method,
-        'params': params,
-      }),
-    );
+    request.write(jsonEncode({'method': method, 'params': params}));
     final response = await request.close();
     final body = await _readNativeResponse(response);
-    Object? decoded;
-    try {
-      decoded = jsonDecode(body);
-    } on FormatException {
-      throw const PluginRuntimeException(
-        'invalid_response',
-        'The native Runtime returned invalid JSON.',
-      );
-    }
-    final envelope = _nativeObject(decoded, 'Native Runtime response');
-    if (!identical(ready, _ready)) {
+    final envelope = _nativeObject(jsonDecode(body), 'Native HTTP response');
+    if (!identical(ready, _ready))
       throw const PluginRuntimeException(
         'transport_disconnected',
         'Native worker generation has changed.',
       );
-    }
     if (envelope['ok'] == true && envelope.containsKey('result')) {
-      _resourceEndpoints.register(envelope['resourceEndpoints']);
-      if (method.startsWith('source.')) {
-        _resourceEndpoints.validateResult(
+      if (endpoint != null) {
+        final result = _nativeObject(
           envelope['result'],
-          params['pluginId'] as String?,
+          'Native source result',
         );
-      }
-      if (method == 'runtime.sourceResource.decode.v1') {
-        _resourceEndpoints.validate(
-          params['url'] as String,
+        if (result['pluginId'] != params['pluginId'])
+          throw const PluginRuntimeException(
+            'invalid_response',
+            'Source result owner mismatch.',
+          );
+        _resourceEndpoints.validateResult(
+          result,
           params['pluginId'] as String?,
         );
       }
       return envelope['result'];
     }
     if (envelope['ok'] == false) {
-      final error = _nativeObject(envelope['error'], 'Native Runtime error');
-      final code = error['code'];
-      final message = error['message'];
+      final error = _nativeObject(envelope['error'], 'Native HTTP error');
+      final code = error['code'], message = error['message'];
       if (code is String &&
           RegExp(r'^[a-z0-9_]{1,64}$').hasMatch(code) &&
           message is String &&
           message.isNotEmpty &&
-          message.length <= _maxStructuredDiagnosticMessageLength) {
+          message.length <= _maxStructuredDiagnosticMessageLength)
         throw PluginRuntimeException(code, message);
-      }
     }
     throw const PluginRuntimeException(
       'invalid_response',
-      'The native Runtime returned an invalid response envelope.',
+      'Invalid native HTTP response.',
     );
   }
 
   Future<String> _readNativeResponse(HttpClientResponse response) async {
     if (response.contentLength >
-        _NativeRuntimeSupervisor._maxControlResponseBytes) {
+        _NativeRuntimeSupervisor._maxControlResponseBytes)
       throw const PluginRuntimeException(
         'response_too_large',
-        'The native Runtime response exceeded its allowed size.',
+        'Native response exceeds its size limit.',
       );
-    }
     final bytes = <int>[];
-    try {
-      await for (final chunk in response) {
-        if (bytes.length + chunk.length >
-            _NativeRuntimeSupervisor._maxControlResponseBytes) {
-          throw const PluginRuntimeException(
-            'response_too_large',
-            'The native Runtime response exceeded its allowed size.',
-          );
-        }
-        bytes.addAll(chunk);
-      }
-      return utf8.decode(bytes);
-    } on PluginRuntimeException {
-      rethrow;
-    } on Object {
-      throw const PluginRuntimeException(
-        'transport_disconnected',
-        'The native Runtime response could not be read.',
-      );
+    await for (final chunk in response) {
+      if (bytes.length + chunk.length >
+          _NativeRuntimeSupervisor._maxControlResponseBytes)
+        throw const PluginRuntimeException(
+          'response_too_large',
+          'Native response exceeds its size limit.',
+        );
+      bytes.addAll(chunk);
     }
-  }
-
-  Future<void> _cancelInvocation(
-    String id,
-    _NativeRuntimeReady ready,
-    _NativeInFlight pending,
-  ) async {
-    const stopped = PluginRuntimeException(
-      'cancelled_worker_stopped',
-      'The native Runtime worker was stopped because cancellation did not settle.',
-    );
-    final client = _httpClient;
-    if (client == null) {
-      pending.request?.abort();
-      if (identical(ready, _ready)) await _breakWorker(stopped);
-      return;
-    }
-    var settled = false;
-    try {
-      final request = await client.postUrl(
-        Uri(
-          scheme: 'http',
-          host: '127.0.0.1',
-          port: ready.port,
-          path: '/cancel',
-        ),
-      );
-      request.headers
-        ..set(HttpHeaders.authorizationHeader, 'Bearer ${ready.token}')
-        ..contentType = ContentType.json;
-      request.write(jsonEncode(<String, Object?>{'id': id}));
-      final response = await request.close().timeout(
-        _NativeRuntimeSupervisor._shutdownTimeout,
-      );
-      final body = await _readNativeResponse(
-        response,
-      ).timeout(_NativeRuntimeSupervisor._shutdownTimeout);
-      final result = _nativeObject(
-        jsonDecode(body),
-        'Native cancellation result',
-      );
-      settled = result['ok'] == true && result['settled'] == true;
-    } on Object {
-      // An unconfirmed cancellation cannot leave a possibly busy native job
-      // attached to a worker that may accept another capability call.
-    } finally {
-      pending.request?.abort();
-    }
-    if (!settled && identical(ready, _ready)) await _breakWorker(stopped);
+    return utf8.decode(bytes);
   }
 
   Future<void> _onProcessExit(
@@ -288,9 +256,8 @@ extension _NativeRuntimeSupervisorTransport on _NativeRuntimeSupervisor {
     _stopUnconfirmed = false;
     _ready = null;
     _resourceEndpoints.clear();
+    _pluginInitializations.clear();
     _startup = null;
-    _httpClient?.close(force: true);
-    _httpClient = null;
     _closeJobObject();
     if (!_disposed && !_intentionalStop) {
       const failure = PluginRuntimeException(
@@ -327,14 +294,12 @@ extension _NativeRuntimeSupervisorTransport on _NativeRuntimeSupervisor {
   }
 
   Future<void> _stopWorker({PluginRuntimeException? failure}) async {
-    final client = _httpClient;
     final process = _process;
     final job = _jobObject;
-    _httpClient = null;
     _ready = null;
     _resourceEndpoints.clear();
+    _pluginInitializations.clear();
     _startup = null;
-    client?.close(force: true);
     if (failure != null) {
       for (final pending in _inFlight.values) {
         if (!pending.failure.isCompleted) {
@@ -399,7 +364,7 @@ extension _NativeRuntimeSupervisorTransport on _NativeRuntimeSupervisor {
           timeout: _NativeRuntimeSupervisor._shutdownTimeout,
         );
       } on Object {
-        // A failed ABI shutdown still requires confirmed process termination.
+        // A failed HTTP shutdown still requires confirmed process termination.
       }
     }
     await _stopWorker();

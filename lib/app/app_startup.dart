@@ -537,7 +537,9 @@ final class DeferredBookshelfMembershipLoader implements BookshelfMembershipLoad
 }
 
 final class DeferredBookCoverBytesLoader implements BookCoverBytesLoader {
-  DeferredBookCoverBytesLoader(this._get, this._proxyManager);
+  DeferredBookCoverBytesLoader(this._get, this._proxyManager, {this.resolveResource});
+
+  final Future<Uri> Function(Uri)? resolveResource;
 
   final ContentLibraryGetter _get;
   final FlutterNetworkProxyManager _proxyManager;
@@ -570,6 +572,7 @@ final class DeferredBookCoverBytesLoader implements BookCoverBytesLoader {
 
   Future<ContentLibrarySourceCoverPersistence> _createPersistence() async => ContentLibrarySourceCoverPersistence(
     await _get(),
+    resolveResource: resolveResource,
     clientFactory: () => _proxyManager.createHttpClient(NetworkProxyTraffic.cover),
     clientConfigurationKey: () => _proxyManager.proxyUriFor(NetworkProxyTraffic.cover),
   );

@@ -19,54 +19,46 @@ fn directory() -> PathBuf {
 fn config(path: PathBuf) -> Config {
     Config {
         plugin_id: "fixture".into(),
+        source_name: "Fixture".into(),
         generation: "a".repeat(64),
+        control_token: "b".repeat(64),
+        capabilities: vec!["searchSuggestions".into()],
         cache_dir: path,
         upstream_proxy: None,
         test_mode: true,
     }
 }
-fn echo(_: &Call<'_>, input: Value) -> Result<Value> {
-    Ok(input)
+pub(crate) fn echo(_: Call, _: Value) -> SourceFuture {
+    Box::pin(async { Ok(json!({"items":[],"nextCursor":null})) })
 }
-fn fetch(call: &Call<'_>, input: Value) -> Result<Value> {
-    call.http(&input)
+fn fetch(call: Call, input: Value) -> SourceFuture {
+    Box::pin(async move {
+        if input["request"]["url"].is_string() {
+            call.http(&input["request"]).await?;
+        }
+        Ok(json!({"items":[],"nextCursor":null}))
+    })
 }
-fn unpack(buffer: Buffer) -> Value {
-    let result = unsafe {
-        serde_json::from_slice(std::slice::from_raw_parts(buffer.ptr, buffer.len)).unwrap()
-    };
-    unsafe {
-        mgread_native_abi::release(buffer);
-    }
-    result
-}
-
 #[test]
-fn initialization_buffers_cache_isolation_and_shutdown() {
+fn initialization_cache_isolation_and_shutdown() {
     let path = directory();
     let other = directory();
     let plugin = PluginInstance::new("fixture");
-    let wrong = serde_json::to_vec(
-        &json!({"pluginId":"wrong","generation":"a".repeat(64),"cacheDir":path}),
-    )
-    .unwrap();
+    assert_eq!(unsafe { plugin.init(std::ptr::null(), 0, echo) }.status, 1);
+    let input=serde_json::to_vec(&json!({"pluginId":"fixture","sourceName":"Fixture","capabilities":["searchSuggestions"],"generation":"a".repeat(64),"controlToken":"b".repeat(64),"cacheDir":path,"testMode":true})).unwrap();
+    let mut invalid_config: Value = serde_json::from_slice(&input).unwrap();
+    invalid_config["upstreamProxy"] = json!("invalid proxy");
+    let bad = serde_json::to_vec(&invalid_config).unwrap();
     assert_eq!(
-        unpack(unsafe { plugin.init(wrong.as_ptr(), wrong.len()) })["ok"],
-        false
+        unsafe { plugin.init(bad.as_ptr(), bad.len(), echo) }.status,
+        1
     );
+    assert!(plugin.context.lock().unwrap().is_none());
+    let ready = unsafe { plugin.init(input.as_ptr(), input.len(), echo) };
+    assert_eq!(ready.status, 0);
     assert_eq!(
-        unpack(unsafe { plugin.init(std::ptr::null(), 0) })["ok"],
-        false
-    );
-    let input = serde_json::to_vec(
-        &json!({"pluginId":"fixture","generation":"a".repeat(64),"cacheDir":path}),
-    )
-    .unwrap();
-    let ready = unpack(unsafe { plugin.init(input.as_ptr(), input.len()) });
-    assert_eq!(ready["ok"], true);
-    assert_eq!(
-        unpack(unsafe { plugin.init(input.as_ptr(), input.len()) })["ok"],
-        false
+        unsafe { plugin.init(input.as_ptr(), input.len(), echo) }.status,
+        1
     );
     let context = plugin.context.lock().unwrap().clone().unwrap();
     context.cache.write("../secret", "first").unwrap();
@@ -79,26 +71,30 @@ fn initialization_buffers_cache_isolation_and_shutdown() {
             .as_deref(),
         Some("second")
     );
-    assert_eq!(
+    assert!(
         cache::Cache::open(&other)
             .unwrap()
             .read("../secret")
-            .unwrap(),
-        None
+            .unwrap()
+            .is_none()
     );
     assert_eq!(std::fs::read_dir(&path).unwrap().count(), 1);
-    assert_eq!(
-        unpack(unsafe { plugin.invoke(1, input.as_ptr(), MAX_MESSAGE + 1, echo) })["ok"],
-        false
-    );
-    let port = ready["value"]["port"].as_u64().unwrap() as u16;
-    assert_eq!(unpack(plugin.shutdown())["ok"], true);
-    assert_eq!(unpack(plugin.shutdown())["ok"], true);
-    assert!(std::net::TcpStream::connect(("127.0.0.1", port)).is_err());
-    assert_eq!(
-        context.invoke(1, json!({}), echo).unwrap_err().code,
-        "plugin_closed"
-    );
+    context.executor.block_on(async {
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let response = client
+            .post(format!("http://127.0.0.1:{}/shutdown", ready.port))
+            .bearer_auth("b".repeat(64))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        tokio::time::timeout(Duration::from_secs(2), context.stop.cancelled())
+            .await
+            .unwrap();
+    });
+    context.shutdown();
+    context.shutdown();
+    assert!(std::net::TcpStream::connect(("127.0.0.1", ready.port)).is_err());
     drop(context);
     drop(plugin);
     std::fs::remove_dir_all(path).unwrap();
@@ -174,9 +170,9 @@ fn start_upstream(context: &Context) -> (String, tokio::task::JoinHandle<()>) {
 }
 
 #[test]
-fn real_resource_http_supports_head_ranges_hls_and_private_tokens() {
+fn real_resource_http_supports_head_ranges_hls_and_payloads() {
     let path = directory();
-    let context = Context::open(config(path.clone())).unwrap();
+    let context = Context::open(config(path.clone()), echo).unwrap();
     let (base, upstream) = start_upstream(&context);
     let resources = &context.resources;
     let video = resources.register(json!({"kind":"video","url":format!("{base}/movie"),"headers":{"Authorization":"Bearer upstream-secret"}})).unwrap();
@@ -232,15 +228,6 @@ fn real_resource_http_supports_head_ranges_hls_and_private_tokens() {
                 .status(),
             403
         );
-        assert_eq!(
-            client
-                .get(video.replace("/fixture/", "/wrong/"))
-                .send()
-                .await
-                .unwrap()
-                .status(),
-            404
-        );
         let master = client.get(&hls).send().await.unwrap().text().await.unwrap();
         assert!(!master.contains(&base));
         assert!(!master.contains("child.m3u8"));
@@ -289,39 +276,44 @@ fn real_resource_http_supports_head_ranges_hls_and_private_tokens() {
             .is_err()
     );
     upstream.abort();
-    context.shutdown().unwrap();
+    context.shutdown();
     drop(context);
     std::fs::remove_dir_all(path).unwrap();
 }
 
 #[test]
-fn cancellation_is_concurrent_but_source_invocation_is_serialized() {
+fn concurrent_http_calls_and_disconnect_cancel_upstream_without_cancel_rpc() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let path = directory();
-    let context = Context::open(config(path.clone())).unwrap();
-    let (base, upstream) = start_upstream(&context);
-    context.cancel(1);
-    assert_eq!(
-        context.invoke(1, json!({}), echo).unwrap_err().code,
-        "cancelled"
-    );
-    let worker = context.clone();
-    let job =
-        std::thread::spawn(move || worker.invoke(2, json!({"url":format!("{base}/slow")}), fetch));
-    for _ in 0..100 {
-        if context.calls.lock().unwrap().active.is_some() {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    }
-    assert_eq!(
-        context.invoke(3, json!({}), echo).unwrap_err().code,
-        "runtime_busy"
-    );
-    context.cancel(2);
-    assert_eq!(job.join().unwrap().unwrap_err().code, "cancelled");
-    assert!(context.invoke(4, json!({}), echo).is_ok());
-    upstream.abort();
-    context.shutdown().unwrap();
+    let context = Context::open(config(path.clone()), fetch).unwrap();
+    let accepted = Arc::new(AtomicUsize::new(0));
+    let disconnected = Arc::new(AtomicUsize::new(0));
+    context.executor.block_on(async {
+        let listener=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap(); let upstream=listener.local_addr().unwrap();
+        let received=accepted.clone(); let closed=disconnected.clone();
+        let server=tokio::spawn(async move { loop {
+            let (mut socket,_)=listener.accept().await.unwrap(); let received=received.clone(); let closed=closed.clone();
+            tokio::spawn(async move { let mut bytes=[0;8192]; let n=socket.read(&mut bytes).await.unwrap(); assert!(n>0); received.fetch_add(1,Ordering::SeqCst);
+                loop { match socket.read(&mut bytes).await { Ok(0)|Err(_) => {closed.fetch_add(1,Ordering::SeqCst);break}, _=>{} } }
+            });
+        }});
+        async fn wait(counter:&AtomicUsize,value:usize) { tokio::time::timeout(Duration::from_secs(3),async {while counter.load(Ordering::SeqCst)<value {tokio::time::sleep(Duration::from_millis(5)).await;}}).await.unwrap(); }
+        let port=context.resources.port;
+        let body=json!({"method":"source.searchSuggestions.v1","params":{"pluginId":"fixture","url":format!("http://{upstream}/slow")}}).to_string();
+        let wire=format!("POST /invoke HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}","b".repeat(64),body.len());
+        let mut first=tokio::net::TcpStream::connect(("127.0.0.1",port)).await.unwrap(); first.write_all(wire.as_bytes()).await.unwrap();
+        let mut second=tokio::net::TcpStream::connect(("127.0.0.1",port)).await.unwrap(); second.write_all(wire.as_bytes()).await.unwrap();
+        wait(&accepted,2).await; // Both upstream requests are alive at the same time.
+        drop(first); wait(&disconnected,1).await;
+        assert_eq!(disconnected.load(Ordering::SeqCst),1); // Other call was not killed.
+        let client=reqwest::Client::builder().no_proxy().build().unwrap();
+        let response=client.post(format!("http://127.0.0.1:{port}/invoke")).bearer_auth("b".repeat(64)).header("content-type","application/json")
+            .body(json!({"method":"source.searchSuggestions.v1","params":{"pluginId":"fixture"}}).to_string()).send().await.unwrap();
+        let result:Value=serde_json::from_str(&response.text().await.unwrap()).unwrap(); assert_eq!(result["ok"],true);
+        drop(second); wait(&disconnected,2).await; server.abort();
+    });
+    context.shutdown();
     drop(context);
     std::fs::remove_dir_all(path).unwrap();
 }

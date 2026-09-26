@@ -202,6 +202,21 @@ final class PluginRuntime {
       );
     }
     cancellation?._throwIfCancelled();
+    if (invocation is SourceResourceResolveInvocation) {
+      final url = (invocation as SourceResourceResolveInvocation).url;
+      if (_SourceResourceUrl.parse(url) == null) {
+        final uri = Uri.tryParse(url);
+        if (uri == null ||
+            !const {'http', 'https'}.contains(uri.scheme) ||
+            uri.host.isEmpty ||
+            uri.path.contains('/source-resource/'))
+          throw const PluginRuntimeException(
+            'invalid_request',
+            'Invalid resource URL.',
+          );
+        return Future<T>.value(url as T);
+      }
+    }
     return _supervisor.invoke(invocation, cancellation: cancellation);
   }
 

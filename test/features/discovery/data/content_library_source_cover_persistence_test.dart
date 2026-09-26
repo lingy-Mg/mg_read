@@ -10,6 +10,38 @@ import 'package:mg_read/features/network_proxy/application/network_proxy_setting
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
 void main() {
+  test('resolves a saved cover at fetch time and keeps its persisted identity', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-rebound-cover-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    final saved = Uri.parse('http://127.0.0.1:1111/v1/source-resource/descriptor');
+    final current = saved.replace(port: 2222);
+    var resolutions = 0;
+    var downloads = 0;
+    final loader = ContentLibrarySourceCoverPersistence(
+      library,
+      resolveResource: (uri) async {
+        expect(uri, saved);
+        resolutions++;
+        return current;
+      },
+      fetcher: (uri) async {
+        expect(uri, current);
+        downloads++;
+        return [1, 2, 3];
+      },
+    );
+    addTearDown(() async {
+      await loader.dispose();
+      await library.close();
+      await root.delete(recursive: true);
+    });
+    final request = BookCoverRequest(pluginId: 'fixture-source', pluginVersion: '1.0.0', remoteContentId: 'book', coverUrl: saved);
+    expect(await loader.resolve(request), [1, 2, 3]);
+    expect(await loader.resolve(request), [1, 2, 3]);
+    expect(resolutions, 1);
+    expect(downloads, 1);
+  });
+
   test('persists a source cover and reuses it after reopening', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-source-cover-');
     var library = await ContentLibrary.open(dataRoot: root);

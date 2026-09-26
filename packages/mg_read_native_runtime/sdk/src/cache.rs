@@ -1,5 +1,5 @@
 //! Plugin-owned disposable cache. The host creates the root; only hash-named
-//! files are used here. Writes are atomic, quota-bounded, and serialized by calls.
+//! files are used here. Writes are atomic, quota-bounded, and serialized only for cache mutations.
 use crate::error::{Result, invalid};
 use sha2::{Digest, Sha256};
 use std::{
@@ -10,6 +10,7 @@ use std::{
 
 pub struct Cache {
     root: PathBuf,
+    mutation: std::sync::Mutex<()>,
 }
 impl Cache {
     pub fn open(root: &Path) -> Result<Self> {
@@ -23,6 +24,7 @@ impl Cache {
         }
         Ok(Self {
             root: root.canonicalize()?,
+            mutation: std::sync::Mutex::new(()),
         })
     }
     fn path(&self, key: &str) -> PathBuf {
@@ -42,6 +44,7 @@ impl Cache {
         Ok(fs::read_to_string(path).ok())
     }
     pub fn write(&self, key: &str, value: &str) -> Result<()> {
+        let _guard = self.mutation.lock().unwrap();
         if value.len() > 8 * 1024 * 1024 {
             return Err(invalid("Cache entry exceeds its limit"));
         }
@@ -78,6 +81,7 @@ impl Cache {
         result.map_err(Into::into)
     }
     pub fn remove(&self, key: &str) -> Result<()> {
+        let _guard = self.mutation.lock().unwrap();
         match fs::remove_file(self.path(key)) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
             other => other.map_err(Into::into),

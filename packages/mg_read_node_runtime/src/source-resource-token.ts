@@ -66,6 +66,7 @@ export function decodeSourceResourceToken(
     return undefined;
   }
   if (!isRecord(decoded) || decoded.version !== TOKEN_VERSION) return undefined;
+  if (decoded.engine !== undefined && decoded.engine !== "node") return undefined;
   if (!isPluginId(decoded.pluginId) || !isJsonObject(decoded.request)) return undefined;
   return Object.freeze({ pluginId: decoded.pluginId, request: decoded.request });
 }

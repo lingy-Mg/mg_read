@@ -457,7 +457,7 @@ mod tests {
         let manifest = Manifest {
             format: "mgread-native".into(),
             engine: "native".into(),
-            abi: 2,
+            abi: mgread_native_abi::ABI_VERSION,
             id: "org.mgread.alice".into(),
             name: "Alice".into(),
             version: "0.1.0".into(),

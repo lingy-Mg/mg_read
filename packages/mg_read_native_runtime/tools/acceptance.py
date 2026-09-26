@@ -34,7 +34,15 @@ class Worker:
         return json.load(OPENER.open(request, timeout=110))
 
     def call(self, method, params=None, request_id=None):
-        return self.request("/rpc", {"id": request_id or uuid.uuid4().hex, "method": method, "params": params or {}})
+        params = params or {}
+        if method.startswith("source."):
+            initialized = self.call("plugins.native.initialize.v1", {"pluginId":params["pluginId"]})
+            if initialized.get("ok") is not True: return initialized
+            ready = initialized["result"]
+            request = urllib.request.Request(f"http://127.0.0.1:{ready['port']}/invoke", json.dumps({"method":method,"params":params}).encode(),
+                {"Authorization":"Bearer " + ready["controlToken"],"Content-Type":"application/json","Connection":"close"})
+            return json.load(OPENER.open(request,timeout=110))
+        return self.request("/rpc", {"method":method,"params":params})
 
     def ok(self, method, params=None):
         result = self.call(method, params)
@@ -130,7 +138,7 @@ def run(args):
         # complete archive but no extracted binary for the current platform.
         with zipfile.ZipFile(io.BytesIO(raw)) as package:
             target = json.loads(package.read("manifest.json"))["targets"]["windows-x86_64"]
-        version_root = root / "plugins" / PLUGIN_ID / "versions/0.2.0"
+        version_root = root / "plugins" / PLUGIN_ID / "versions/0.3.0"
         library = (version_root / target["path"]).resolve()
         assert library.is_relative_to(root.resolve())
         worker.stop(); library.unlink(); worker = Worker(args.host, root)
@@ -157,7 +165,7 @@ def run(args):
         offers = worker.ok("plugins.transfer.offers.v1")
         assert worker.ok("plugins.transfer.offers.plan.v1", {"offers": offers})[0]["action"] == "same"
         identity_rejected = worker.call("plugins.native.importBytes.v1", {"name": "wrong-identity.mgplugin",
-            "base64": base64.b64encode(raw).decode(), "expectedPluginId": "different.native.source", "expectedVersion": "0.2.0"})
+            "base64": base64.b64encode(raw).decode(), "expectedPluginId": "different.native.source", "expectedVersion": "0.3.0"})
         assert identity_rejected["ok"] is False
         assert len(worker.ok("plugins.list.v1")) == 1
         report["transferIdentityRejectedBeforeMutation"] = True
@@ -196,7 +204,7 @@ def run(args):
             worker.ok("runtime.native.proxy.v1", {"url":"http://127.0.0.1:1"})
             cached = worker.ok("source.getDetail.v1", {"pluginId": PLUGIN_ID, "id": book})
             assert cached["id"] == book and cached["coverUrl"] != old_url
-            assert worker.call("runtime.sourceResource.decode.v1", {"url":old_url})["ok"] is False
+            assert cached["coverUrl"].split("/v1/source-resource/")[1] == old_url.split("/v1/source-resource/")[1]
             report["cacheSurvivesRestartWithoutNetwork"] = True
         if args.abi_fixture:
             candidate = changed_archive(raw, version="0.9.0", binary=args.abi_fixture.read_bytes())
@@ -215,19 +223,19 @@ def run(args):
                     assert mode == "abort"
                 worker.stop(); worker = Worker(args.host, root)
                 rows = worker.ok("plugins.list.v1")
-                assert rows[0]["activeVersion"] == "0.2.0" and rows[0]["enabled"] is False
+                assert rows[0]["activeVersion"] == "0.3.0" and rows[0]["enabled"] is False
             report["abiInitFailureCrashQuarantineAndDisabledLazyLoad"] = True
-        upgraded = changed_archive(raw, version="0.2.1")
+        upgraded = changed_archive(raw, version="0.3.1")
         worker.ok("plugins.native.importBytes.v1", {"name": "upgrade.mgplugin", "base64": base64.b64encode(upgraded).decode()})
-        assert worker.ok("plugins.list.v1")[0]["pendingVersion"] == "0.2.1"
+        assert worker.ok("plugins.list.v1")[0]["pendingVersion"] == "0.3.1"
         worker.stop(); worker = Worker(args.host, root)
         worker.ok("plugins.setEnabled.v1", {"pluginId":PLUGIN_ID,"enabled":True})
         assert worker.ok("runtime.status.v1")["native"]["loadedPlugins"] == 0
         worker.ok("source.searchSuggestions.v1", {"pluginId":PLUGIN_ID,"cursor":"search-suggestions-page:2"})
-        assert worker.ok("plugins.list.v1")[0]["activeVersion"] == "0.2.1"
+        assert worker.ok("plugins.list.v1")[0]["activeVersion"] == "0.3.1"
         worker.stop(); worker = Worker(args.host, root)
         assert not version_root.exists()
-        assert worker.ok("plugins.list.v1")[0]["activeVersion"] == "0.2.1"
+        assert worker.ok("plugins.list.v1")[0]["activeVersion"] == "0.3.1"
         report["coldUpgrade"] = "passed"
         worker.ok("plugins.setEnabled.v1", {"pluginId": PLUGIN_ID, "enabled": False})
         assert worker.call("source.getDetail.v1", {"pluginId": PLUGIN_ID, "id": "novel:52801"})["error"]["code"] == "plugin_disabled"

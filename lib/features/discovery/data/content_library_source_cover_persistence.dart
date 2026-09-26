@@ -28,6 +28,7 @@ final class ContentLibrarySourceCoverPersistence implements BookCoverBytesLoader
   ContentLibrarySourceCoverPersistence(
     this._library, {
     SourceCoverFetcher? fetcher,
+    this.resolveResource,
     SourceCoverHttpClientFactory? clientFactory,
     SourceCoverHttpClientConfigurationKey? clientConfigurationKey,
     DateTime Function()? clock,
@@ -43,6 +44,7 @@ final class ContentLibrarySourceCoverPersistence implements BookCoverBytesLoader
 
   final ContentLibrary _library;
   final SourceCoverFetcher? _externalFetcher;
+  final Future<Uri> Function(Uri)? resolveResource;
   final SourceCoverHttpClientOwner? _httpClientOwner;
   final DateTime Function() _clock;
   final Map<String, Future<List<int>?>> _remoteLoads = <String, Future<List<int>?>>{};
@@ -87,7 +89,8 @@ final class ContentLibrarySourceCoverPersistence implements BookCoverBytesLoader
 
   Future<List<int>?> _fetchAndPersist(CoverKey key, Uri url) async {
     try {
-      final fetched = await (_externalFetcher?.call(url) ?? _httpClientOwner!.fetch(url));
+      final current = await resolveResource?.call(url) ?? url;
+      final fetched = await (_externalFetcher?.call(current) ?? _httpClientOwner!.fetch(current));
       if (_disposed) throw StateError('Source cover persistence is disposed.');
       if (fetched == null || fetched.isEmpty) {
         _rememberFailure(key.canonicalValue);
