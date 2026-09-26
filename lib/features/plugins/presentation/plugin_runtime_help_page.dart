@@ -73,7 +73,7 @@ class _PluginRuntimeHelpPageState extends ConsumerState<PluginRuntimeHelpPage> {
               AppSecondaryPageTopBar(
                 headerKey: const Key('data-source-help-top-bar'),
                 backButtonKey: const Key('data-source-help-back'),
-                title: '数据源说明',
+                title: '使用帮助',
                 onBack: () => Navigator.of(context).pop(),
               ),
               Expanded(
@@ -90,10 +90,10 @@ class _PluginRuntimeHelpPageState extends ConsumerState<PluginRuntimeHelpPage> {
                       icon: Icons.auto_stories_outlined,
                       title: '管理数据源',
                       body: const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME')
-                          ? '在管理页添加、启用或停用原生数据源。本构建只支持原生 .mgplugin 文件。'
+                          ? '点击“添加数据源”，选择原生 .mgplugin 文件导入；列表右侧开关控制启用状态。'
                           : Platform.isMacOS || const bool.fromEnvironment('MGREAD_NODE_ONLY')
-                          ? '在管理页添加、启用或停用 Node 数据源，可选择 .mgplugin.js 或 .mgplugin 文件。'
-                          : '在管理页分别添加 Node 数据源和原生数据源，两类可以同时使用。Node 包可为 .mgplugin.js 或 .mgplugin；原生包为 .mgplugin。',
+                          ? '点击“添加数据源”，选择 Node 数据源并导入 .mgplugin.js 或 .mgplugin 文件；列表右侧开关控制启用状态。'
+                          : '点击“添加数据源”，按提供方说明选择 Node 或原生类型，两类可以同时使用。Node 支持 .mgplugin.js 和 .mgplugin；原生支持 .mgplugin。列表右侧开关控制启用状态。',
                     ),
                     if (canSelectDevelopmentDirectory) ...<Widget>[
                       const SizedBox(height: AppSpacing.regular),

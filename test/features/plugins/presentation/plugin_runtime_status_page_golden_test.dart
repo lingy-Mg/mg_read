@@ -9,63 +9,52 @@ import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page
 
 import 'plugin_runtime_status_page_fixture.dart';
 
+/// Widget renders verify themes and action sheets without starting a Runtime.
 void main() {
   setUpAll(() async {
     final FontLoader miSans = FontLoader('packages/novel_reader_ui/MiSans')
-      ..addFont(
-        rootBundle.load('packages/novel_reader_ui/assets/fonts/MiSansVF.ttf'),
-      );
-    final FontLoader materialIcons = FontLoader('MaterialIcons')
-      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+      ..addFont(rootBundle.load('packages/novel_reader_ui/assets/fonts/MiSansVF.ttf'));
+    final FontLoader materialIcons = FontLoader('MaterialIcons')..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
     await Future.wait(<Future<void>>[miSans.load(), materialIcons.load()]);
   });
 
-  testWidgets('matches the compact light data-source management reference', (
-    WidgetTester tester,
-  ) async {
-    await _setViewport(tester);
-    await tester.pumpWidget(_host());
-    await tester.pumpAndSettle();
-
-    await expectLater(
-      find.byType(MaterialApp),
-      matchesGoldenFile('goldens/data_source_management_compact_light.png'),
-    );
-  });
+  for (final dark in [false, true]) {
+    final mode = dark ? 'dark' : 'light';
+    testWidgets('renders management and sheets in $mode theme', (tester) async {
+      await _setViewport(tester);
+      await tester.pumpWidget(_host(dark));
+      await tester.pumpAndSettle();
+      await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/data_source_management_compact_$mode.png'));
+      await tester.tap(find.byKey(const Key('data-source-more')));
+      await tester.pumpAndSettle();
+      await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/data_source_management_tools_$mode.png'));
+      Navigator.of(tester.element(find.text('数据源工具'))).pop();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('data-source-add')));
+      await tester.pumpAndSettle();
+      await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/data_source_management_import_$mode.png'));
+      expect(tester.takeException(), isNull);
+    });
+  }
 }
 
-Widget _host() {
-  return ProviderScope(
-    overrides: [
-      pluginRuntimeConnectionProvider.overrideWith(
-        (Ref ref) async => dataSourceManagementFixture,
-      ),
-    ],
-    child: MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
-      themeMode: ThemeMode.light,
-      builder: (BuildContext context, Widget? child) {
-        final MediaQueryData mediaQuery = MediaQuery.of(context);
-        return MediaQuery(
-          data: mediaQuery.copyWith(
-            padding: const EdgeInsets.only(
-              top: AppDetailMetrics.minimumTopInset,
-            ),
-            viewPadding: const EdgeInsets.only(
-              top: AppDetailMetrics.minimumTopInset,
-            ),
-          ),
-          child: child ?? const SizedBox.shrink(),
-        );
-      },
-      home: PluginRuntimeStatusPage(
-        onBackRequested: () {},
-        onDestinationRequested: (_) {},
-      ),
+Widget _host(bool dark) => ProviderScope(
+  overrides: [pluginRuntimeConnectionProvider.overrideWith((Ref ref) async => dataSourceManagementFixture)],
+  child: MaterialApp(
+    debugShowCheckedModeBanner: false,
+    theme: dark ? AppTheme.dark() : AppTheme.light(),
+    builder: (context, child) => MediaQuery(
+      data: MediaQuery.of(context).copyWith(padding: const EdgeInsets.only(top: AppDetailMetrics.minimumTopInset)),
+      child: child!,
     ),
-  );
-}
+    home: PluginRuntimeStatusPage(
+      onBackRequested: () {},
+      onDestinationRequested: (_) {},
+      onVerifyAllRequested: () {},
+      onRuntimeStatusRequested: () {},
+    ),
+  ),
+);
 
 Future<void> _setViewport(WidgetTester tester) async {
   tester.view.physicalSize = const Size(AppDetailMetrics.viewportWidth, 900);

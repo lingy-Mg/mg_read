@@ -6,11 +6,9 @@
 ///
 /// 注意：
 /// - 页面只调用应用层窄端口，不接触 Runtime HTTP 或资源 token。
-/// - 开发工具统一收纳到问号说明页，调试持久化仍归 Runtime 所有。
+/// - 低频工具统一收纳到更多面板；安装和卸载互斥，调试持久化仍归 Runtime 所有。
 ///
 library;
-
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,6 +20,7 @@ import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 
 import 'data_source_management_row.dart';
+import 'data_source_management_sheets.dart';
 import 'plugin_runtime_help_page.dart';
 import 'plugin_import_error_dialog.dart';
 import 'plugin_runtime_source_projection.dart';
@@ -43,6 +42,80 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
   final VoidCallback? onRuntimeStatusRequested;
   final VoidCallback? onVerifyAllRequested;
 
+  bool _managementBusy(WidgetRef ref) =>
+      ref.read(pluginRuntimeSourceImportProvider).isImporting || ref.read(pluginRuntimeSourceActionProvider).isNotEmpty;
+
+  Future<void> _openManagementTools(BuildContext context, WidgetRef ref) async {
+    final action = await showModalBottomSheet<DataSourceManagementAction>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => Consumer(
+        builder: (context, sheetRef, _) {
+          final connection = sheetRef.watch(pluginRuntimeConnectionProvider).asData?.value;
+          final sources = connection == null ? <DataSourceManagementRowData>[] : pluginManagementSourcesFromConnection(connection);
+          final importing = sheetRef.watch(pluginRuntimeSourceImportProvider).isImporting;
+          final pending = sheetRef.watch(pluginRuntimeSourceActionProvider);
+          return DataSourceManagementSheet(
+            canVerify: onVerifyAllRequested != null,
+            canDiagnose: onRuntimeStatusRequested != null,
+            canUninstall: sources.any((source) => !source.isDevelopment),
+            busy: importing || pending.isNotEmpty,
+          );
+        },
+      ),
+    );
+    if (!context.mounted) return;
+    switch (action) {
+      case DataSourceManagementAction.verify:
+        if (!_managementBusy(ref)) onVerifyAllRequested?.call();
+      case DataSourceManagementAction.diagnostics:
+        onRuntimeStatusRequested?.call();
+      case DataSourceManagementAction.help:
+        await Navigator.of(context).push<void>(MaterialPageRoute<void>(builder: (_) => const PluginRuntimeHelpPage()));
+      case DataSourceManagementAction.uninstall:
+        if (_managementBusy(ref)) return;
+        final current = ref.read(pluginRuntimeConnectionProvider).asData?.value;
+        if (current == null) return;
+        final installed = pluginManagementSourcesFromConnection(current);
+        if (installed.any((source) => !source.isDevelopment)) await _clearAllSources(context, ref, installed);
+      case null:
+        break;
+    }
+  }
+
+  Future<void> _clearAllSources(BuildContext context, WidgetRef ref, List<DataSourceManagementRowData> sources) async {
+    final installedSourceCount = sources.where((source) => !source.isDevelopment).length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('卸载全部数据源？'),
+        content: Text('将删除 $installedSourceCount 个已安装数据源及其运行数据、缓存和安装包。书架内容和开发数据源项目会保留。此操作无法撤销。'),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
+          FilledButton(
+            key: const Key('data-source-clear-all-confirm'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('确认卸载'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted || _managementBusy(ref)) return;
+    try {
+      await ref.read(pluginRuntimeSourceActionProvider.notifier).uninstallAll(totalItems: installedSourceCount);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已卸载 $installedSourceCount 个本地数据源。')));
+    } on Object {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('卸载失败，请稍后重试。')));
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AsyncValue<PluginRuntimeConnection> connection = ref.watch(pluginRuntimeConnectionProvider);
@@ -55,29 +128,14 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
               AppSecondaryPageTopBar(
                 headerKey: const Key('data-source-top-bar'),
                 backButtonKey: const Key('profile-detail-back'),
-                title: '管理数据源',
+                title: '数据源',
                 onBack: onBackRequested,
                 actions: <Widget>[
-                  if (onVerifyAllRequested != null)
-                    AppSecondaryPageIconButton(
-                      key: const Key('data-source-verify-all'),
-                      label: '检测全部',
-                      icon: Icons.fact_check_outlined,
-                      onPressed: onVerifyAllRequested!,
-                    ),
-                  if (onRuntimeStatusRequested != null)
-                    AppSecondaryPageIconButton(
-                      key: const Key('data-source-runtime-status'),
-                      label: '运行状态',
-                      icon: Icons.monitor_heart_outlined,
-                      onPressed: onRuntimeStatusRequested!,
-                    ),
                   AppSecondaryPageIconButton(
-                    key: const Key('data-source-management-help'),
-                    label: '数据源说明',
-                    icon: Icons.help_outline,
-                    onPressed: () =>
-                        Navigator.of(context).push<void>(MaterialPageRoute<void>(builder: (_) => const PluginRuntimeHelpPage())),
+                    key: const Key('data-source-more'),
+                    label: '更多管理',
+                    icon: Icons.more_horiz_rounded,
+                    onPressed: () => _openManagementTools(context, ref),
                   ),
                 ],
               ),
@@ -151,7 +209,14 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
     }
   }
 
-  Future<void> _importDataSource({bool native = false}) async {
+  Future<void> _importDataSource() async {
+    final native = await showDataSourceImportSheet(context);
+    if (!mounted ||
+        native == null ||
+        ref.read(pluginRuntimeSourceImportProvider).isImporting ||
+        ref.read(pluginRuntimeSourceActionProvider).isNotEmpty) {
+      return;
+    }
     try {
       final imported = await ref.read(pluginRuntimeSourceImportProvider.notifier).importLocalPlugin(native: native);
       if (!mounted || !imported) return;
@@ -159,34 +224,6 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
     } on Object catch (error) {
       if (!mounted) return;
       await showPluginImportErrorDialog(context, error);
-    }
-  }
-
-  Future<void> _clearAllSources() async {
-    final installedSourceCount = widget.sources.where((source) => !source.isDevelopment).length;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: const Text('清理全部本地数据源？'),
-        content: Text('将立即删除 $installedSourceCount 个已安装数据源及其 Runtime 私有数据、缓存和安装包。已保存到书架的内容不会受到影响；开发数据源项目也不会被删除。'),
-        actions: <Widget>[
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
-          FilledButton(
-            key: const Key('data-source-clear-all-confirm'),
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('全部清理'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    try {
-      await ref.read(pluginRuntimeSourceActionProvider.notifier).uninstallAll(totalItems: installedSourceCount);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已即时清理 $installedSourceCount 个本地数据源。')));
-    } on Object {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('清理本地数据源失败，请稍后重试。')));
     }
   }
 
@@ -224,21 +261,12 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
         _DataSourceOverviewCard(
           enabledCount: enabledCount,
           sourceCount: widget.sources.length,
-          installedSourceCount: widget.sources.where((source) => !source.isDevelopment).length,
           importState: importState,
-          onAddPressed: importState.isImporting ? null : () => _importDataSource(),
-          onNativeAddPressed:
-              importState.isImporting ||
-                  const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME') ||
-                  const bool.fromEnvironment('MGREAD_NODE_ONLY') ||
-                  (!Platform.isWindows && !Platform.isAndroid)
-              ? null
-              : () => _importDataSource(native: true),
+          onAddPressed: importState.isImporting || pendingSourceIds.isNotEmpty ? null : _importDataSource,
           isClearingAll: isClearingAll,
           removalProgress: removalProgress,
-          onClearAllPressed: isClearingAll || widget.sources.every((source) => source.isDevelopment) ? null : _clearAllSources,
         ),
-        const SizedBox(height: AppSpacing.section),
+        const SizedBox(height: AppSpacing.comfortable),
         _DataSourceSearchField(
           controller: _searchController,
           query: _query,
@@ -250,7 +278,7 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
         ),
         const SizedBox(height: AppSpacing.regular),
         _DataSourceFilterBar(selected: _filter, onSelected: (_DataSourceFilter value) => setState(() => _filter = value)),
-        const SizedBox(height: AppSpacing.section),
+        const SizedBox(height: AppSpacing.regular),
         _DataSourceListHeader(visibleCount: visibleSources.length, totalCount: widget.sources.length),
         const SizedBox(height: AppSpacing.regular),
         if (widget.sources.isEmpty)
@@ -283,7 +311,7 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
                   for (int index = 0; index < visibleSources.length; index++) ...<Widget>[
                     DataSourceManagementRow(
                       source: visibleSources[index],
-                      isPending: isClearingAll || pendingSourceIds.contains(visibleSources[index].id),
+                      isPending: importState.isImporting || isClearingAll || pendingSourceIds.contains(visibleSources[index].id),
                       onPressed: () => widget.onSourcePressed(visibleSources[index].id),
                       onChanged: (bool enabled) => _setSourceEnabled(visibleSources[index], enabled),
                     ),
@@ -377,140 +405,53 @@ class _DataSourceOverviewCard extends StatelessWidget {
   const _DataSourceOverviewCard({
     required this.enabledCount,
     required this.sourceCount,
-    required this.installedSourceCount,
     required this.importState,
     required this.onAddPressed,
-    required this.onNativeAddPressed,
     required this.isClearingAll,
     required this.removalProgress,
-    required this.onClearAllPressed,
   });
 
   final int enabledCount;
   final int sourceCount;
-  final int installedSourceCount;
   final PluginSourceImportState importState;
   final VoidCallback? onAddPressed;
-  final VoidCallback? onNativeAddPressed;
   final bool isClearingAll;
   final PluginSourceRemovalProgress removalProgress;
-  final VoidCallback? onClearAllPressed;
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final AppThemeTokens tokens = AppThemeTokens.of(context);
-    return DecoratedBox(
+    final theme = Theme.of(context);
+    final tokens = AppThemeTokens.of(context);
+    return Container(
       key: const Key('data-source-management-card'),
+      padding: const EdgeInsets.all(AppSpacing.comfortable),
       decoration: BoxDecoration(
         color: tokens.featureSurface,
         borderRadius: AppRadii.detailCard,
-        border: Border.all(color: tokens.dataSourceAccent.withValues(alpha: 0.14)),
+        border: Border.all(color: tokens.divider),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.comfortable),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                SizedBox.square(
-                  dimension: 48,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(color: tokens.dataSourceAccent, borderRadius: AppRadii.detailControl),
-                    child: Icon(Icons.hub_rounded, color: theme.colorScheme.onPrimary, size: 25),
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.regular),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text('我的数据源', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                      const SizedBox(height: AppSpacing.unit),
-                      Text(
-                        sourceCount == 0 ? '添加插件，扩展你的内容世界' : '集中管理已安装插件与启用范围',
-                        style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
-                      ),
-                    ],
-                  ),
-                ),
-                DecoratedBox(
-                  decoration: BoxDecoration(color: tokens.surface, borderRadius: AppRadii.pill),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.regular, vertical: AppSpacing.compact),
-                    child: Text(
-                      '已启用 $enabledCount/$sourceCount',
-                      key: const Key('data-source-enabled-count'),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: enabledCount == 0 ? tokens.mutedText : tokens.dataSourceAccent,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.comfortable),
-            _AddDataSourceButton(isImporting: importState.isImporting, onPressed: onAddPressed),
-            if (!const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME') &&
-                !const bool.fromEnvironment('MGREAD_NODE_ONLY') &&
-                (Platform.isWindows || Platform.isAndroid)) ...<Widget>[
-              const SizedBox(height: AppSpacing.compact),
-              OutlinedButton.icon(
-                key: const Key('data-source-add-native'),
-                onPressed: onNativeAddPressed,
-                icon: const Icon(Icons.memory_outlined),
-                label: const Text('添加原生数据源'),
-              ),
-            ],
-            if (installedSourceCount > 0) ...<Widget>[
-              const SizedBox(height: AppSpacing.regular),
-              _ClearAllDataSourcesButton(isClearing: isClearingAll, progress: removalProgress, onPressed: onClearAllPressed),
-              if (isClearingAll) ...<Widget>[
-                const SizedBox(height: AppSpacing.compact),
-                _DataSourceRemovalProgress(progress: removalProgress),
-              ],
-            ],
-            if (importState.isImporting) ...<Widget>[
-              const SizedBox(height: AppSpacing.regular),
-              _DataSourceImportProgress(state: importState),
-              if (importState.logs.isNotEmpty) ...<Widget>[
-                const SizedBox(height: AppSpacing.unit),
-                _DataSourceImportLog(logs: importState.logs),
-              ],
-            ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            sourceCount == 0 ? '添加你的第一个数据源' : '已添加 $sourceCount 个数据源',
+            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: AppSpacing.compact),
+          Text(
+            sourceCount == 0 ? '导入数据源后，即可搜索和浏览内容' : '$enabledCount 个已启用 · ${sourceCount - enabledCount} 个已停用',
+            key: const Key('data-source-enabled-count'),
+            style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
+          ),
+          const SizedBox(height: AppSpacing.comfortable),
+          _AddDataSourceButton(isImporting: importState.isImporting, onPressed: onAddPressed),
+          if (isClearingAll) ...[const SizedBox(height: AppSpacing.regular), _DataSourceRemovalProgress(progress: removalProgress)],
+          if (importState.isImporting) ...[
+            const SizedBox(height: AppSpacing.regular),
+            _DataSourceImportProgress(state: importState),
+            if (importState.logs.isNotEmpty) ...[const SizedBox(height: AppSpacing.unit), _DataSourceImportLog(logs: importState.logs)],
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ClearAllDataSourcesButton extends StatelessWidget {
-  const _ClearAllDataSourcesButton({required this.isClearing, required this.progress, this.onPressed});
-
-  final bool isClearing;
-  final PluginSourceRemovalProgress progress;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppThemeTokens.of(context);
-    return SizedBox(
-      height: AppSpacing.minimumTouchTarget,
-      child: OutlinedButton.icon(
-        key: const Key('data-source-clear-all'),
-        onPressed: onPressed,
-        icon: isClearing
-            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-            : const Icon(Icons.delete_sweep_outlined),
-        label: Text(isClearing ? '正在清理本地数据源…' : '清理全部本地数据源'),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: tokens.notification,
-          side: BorderSide(color: tokens.notification.withValues(alpha: 0.5)),
-          shape: const RoundedRectangleBorder(borderRadius: AppRadii.detailControl),
-        ),
+        ],
       ),
     );
   }
@@ -565,7 +506,7 @@ class _DataSourceSearchField extends StatelessWidget {
       onChanged: onChanged,
       textInputAction: TextInputAction.search,
       decoration: InputDecoration(
-        hintText: '搜索名称、类型或描述',
+        hintText: '搜索数据源',
         prefixIcon: const Icon(Icons.search_rounded, size: 21),
         suffixIcon: query.isEmpty
             ? null
@@ -636,7 +577,7 @@ class _DataSourceListHeader extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return Row(
       children: <Widget>[
-        Expanded(child: Text('已安装数据源', style: theme.textTheme.titleMedium)),
+        Expanded(child: Text('数据源列表', style: theme.textTheme.titleMedium)),
         Text(
           visibleCount == totalCount ? '共 $totalCount 个' : '$visibleCount / $totalCount',
           style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
@@ -690,8 +631,8 @@ class _AddDataSourceButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
-    return SizedBox(
-      height: AppSpacing.minimumTouchTarget,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: AppSpacing.minimumTouchTarget),
       child: FilledButton.icon(
         key: const Key('data-source-add'),
         onPressed: onPressed,
@@ -701,13 +642,7 @@ class _AddDataSourceButton extends StatelessWidget {
                 child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.onPrimary),
               )
             : const Icon(Icons.add_rounded, size: 21),
-        label: Text(
-          isImporting
-              ? '正在添加数据源…'
-              : const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME')
-              ? '添加原生数据源'
-              : '添加 Node 数据源',
-        ),
+        label: Text(isImporting ? '正在导入…' : '添加数据源'),
         style: FilledButton.styleFrom(
           backgroundColor: tokens.dataSourceAccent,
           foregroundColor: Theme.of(context).colorScheme.onPrimary,
