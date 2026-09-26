@@ -61,7 +61,7 @@ async function createProject(projectRoot, pluginId, prefix) {
     type: "module",
     main: "dist/index.mjs",
     scripts: { build: "node build.mjs" },
-    engines: { node: "24.16.0 || 24.21.0 || 26.9.0 || 26.10.0" },
+    engines: { node: ">=24" },
     mgread: {
       schemaVersion: 1,
       id: pluginId,

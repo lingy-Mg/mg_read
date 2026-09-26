@@ -61,7 +61,7 @@ export async function createRegistryPlugin(
     version: "1.0.0",
     type: "module",
     main: "dist/index.mjs",
-    engines: { node: "24.16.0 || 24.21.0 || 26.9.0 || 26.10.0" },
+    engines: { node: ">=24" },
     [dependencyField]: { "fixture-dependency": "1.0.0" },
     mgread: {
       schemaVersion: 1,
@@ -89,7 +89,7 @@ export async function createDelayedPlugin(root) {
     version: "1.0.0",
     type: "module",
     main: "dist/index.mjs",
-    engines: { node: "24.16.0 || 24.21.0 || 26.9.0 || 26.10.0" },
+    engines: { node: ">=24" },
     mgread: {
       schemaVersion: 1,
       id: "org.example.delayed",
@@ -136,7 +136,7 @@ export async function createDevelopmentPlugin(root, prefix) {
     version: "0.1.0",
     type: "module",
     main: "dist/index.mjs",
-    engines: { node: "24.16.0 || 24.21.0 || 26.9.0 || 26.10.0" },
+    engines: { node: ">=24" },
     mgread: {
       schemaVersion: 1,
       id: "org.example.live-source",

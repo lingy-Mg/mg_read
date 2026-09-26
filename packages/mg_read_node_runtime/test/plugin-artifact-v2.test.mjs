@@ -39,7 +39,7 @@ async function createSingleFileProject(root) {
     version: "2.1.0",
     type: "module",
     main: "dist/index.mjs",
-    engines: { node: "24.16.0 || 24.21.0 || 26.9.0 || 26.10.0" },
+    engines: { node: ">=24" },
     mgread: {
       schemaVersion: 1,
       id: "org.mgread.single-file-fixture",
@@ -73,30 +73,6 @@ export function getContent() { throw new Error("unused"); }
   ]);
   return { code, packageJson };
 }
-
-test("single-file Node 24 ranges and legacy declarations survive artifact parsing", async (t) => {
-  const root = await temporaryDirectory(t, "mgread-node-range-");
-  await createSingleFileProject(root);
-  const artifact = join(root, "current.mgplugin.js");
-  await createPluginSingleFile(root, artifact);
-  const bytes = await readFile(artifact);
-  const newline = bytes.indexOf(10);
-  const prefix = "// @mgread-plugin-v1 ";
-  const envelope = JSON.parse(Buffer.from(bytes.subarray(prefix.length, newline).toString(), "base64url"));
-  assert.equal(envelope.descriptor.engines.node, ">=24");
-  const ranges = [">=24", ">=24.0.0", "24.16.0 || 24.21.0 || 26.9.0 || 26.10.0", ">=24 <25", ">=22"];
-  for (const [index, node] of ranges.entries()) {
-    envelope.descriptor.engines.node = node;
-    const candidate = join(root, `range-${index}.mgplugin.js`);
-    const header = Buffer.from(`${prefix}${Buffer.from(JSON.stringify(envelope)).toString("base64url")}\n`);
-    await writeFile(candidate, Buffer.concat([header, bytes.subarray(newline + 1)]));
-    if (node === ">=22") {
-      await assert.rejects(parsePluginSingleFile(candidate), PluginSingleFileError);
-    } else {
-      assert.equal((await parsePluginSingleFile(candidate)).envelope.descriptor.engines.node, ">=24");
-    }
-  }
-});
 
 test("single-file artifact is canonical and installs into the shared cold-activation tree", async (t) => {
   const root = await temporaryDirectory(t, "mgread-single-file-");

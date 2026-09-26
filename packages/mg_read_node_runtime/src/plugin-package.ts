@@ -7,8 +7,6 @@
 import { access, lstat, readFile } from "node:fs/promises";
 import { isAbsolute, resolve, sep } from "node:path";
 
-import { legacyPluginNodeRange, supportedPluginNodeRange } from "./runtime-version.js";
-
 /** MgRead metadata schema supported by this Runtime release. */
 export const pluginPackageSchemaVersion = 1;
 
@@ -152,7 +150,6 @@ export function parsePluginPackageDescriptor(
   const name = packageJson.name;
   const version = packageJson.version;
   const entry = packageJson.main;
-  const engines = packageJson.engines;
   const mgread = packageJson.mgread;
   if (
     typeof name !== "string" ||
@@ -161,8 +158,6 @@ export function parsePluginPackageDescriptor(
     !isExactSemver(version) ||
     typeof entry !== "string" ||
     packageJson.type !== "module" ||
-    !isRecord(engines) ||
-    !isSupportedNodeRange(engines.node) ||
     !isRecord(mgread)
   ) {
     throw new PluginPackageError("plugin_package_invalid");
@@ -227,18 +222,6 @@ function isSupportedIconPath(value: unknown): value is string {
   } catch {
     return false;
   }
-}
-
-function isSupportedNodeRange(value: unknown): boolean {
-  return (
-    value === supportedPluginNodeRange ||
-    value === ">=24.0.0" ||
-    value === legacyPluginNodeRange ||
-    // Preserve installed artifacts created by the previous Node 24 host.
-    value === "24.16.0" ||
-    value === ">=24 <25" ||
-    value === ">=24.0.0 <25.0.0"
-  );
 }
 
 function isExactSemver(value: string): boolean {

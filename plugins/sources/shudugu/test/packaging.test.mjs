@@ -37,7 +37,6 @@ test('single-file artifact is canonical, deterministic, hashed, and self-contain
   assert.equal(envelope.descriptor.version, packageJson.version);
   assert.equal(envelope.descriptor.type, 'module');
   assert.equal(envelope.descriptor.main, 'dist/index.mjs');
-  assert.equal(envelope.descriptor.engines.node, '>=24');
   assert.equal(envelope.descriptor.mgread.packageMode, 'single-file');
   assert.equal(envelope.codeBytes, code.length);
   assert.equal(envelope.codeSha256, sha256(code));
