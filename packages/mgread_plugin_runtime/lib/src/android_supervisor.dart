@@ -7,7 +7,6 @@ const EventChannel _androidRuntimeProgressChannel = EventChannel(
   'mgread_plugin_runtime/android/progress',
 );
 const Duration _androidStartupTimeout = Duration(seconds: 30);
-const int _maxAndroidPluginTransferBatchItems = 32;
 
 /// Flutter-facing Android supervisor backed by the Runtime-owned Javet host.
 final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
@@ -488,27 +487,14 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
         }
       }
 
-      for (
-        var offset = 0;
-        offset < artifacts.length;
-        offset += _maxAndroidPluginTransferBatchItems
-      ) {
-        await _importPluginArtifactBatch(
-          artifacts.sublist(
-            offset,
-            min(offset + _maxAndroidPluginTransferBatchItems, artifacts.length),
-          ),
-        );
-      }
+      // Native IO closes completed files as they arrive. Activate once after
+      // the entire byte-bounded selection has been verified.
+      await _importPluginArtifactBatch(artifacts);
       _started = false;
-      return <PluginTransferImportResult>[
-        for (final item in artifacts)
-          PluginTransferImportResult(
-            pluginId: item.artifact.pluginId,
-            status: PluginTransferImportStatus.installed,
-            version: item.artifact.version,
-          ),
-      ];
+      return _pluginImportResults(
+        artifacts.map((item) => item.artifact),
+        await invoke(const InstalledPluginsInvocation()),
+      );
     } on PlatformException catch (error) {
       throw PluginRuntimeException(
         error.code,

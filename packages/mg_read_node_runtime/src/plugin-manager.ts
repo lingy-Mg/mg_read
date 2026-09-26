@@ -7,7 +7,7 @@
  *
  * 注意：
  * - 不暴露路径、端口、PID 或 raw transport 给 Flutter。
- * - 已确认的 current 版本在首次调用时单飞加载；pending 仍在冷启动激活并完成提交或回滚。
+ * - current 首次调用时单飞加载；pending 冷启动有界并发激活，各自提交或回滚。
  * - 开发项目冷启动只建立元数据快照，首次调用或传输时才创建私有 generation。
  * - 取消和超时必须只有一个终态。
  * - 客户端终态可以早于插件真实结束；未结束工作继续占用每插件有界容量。
@@ -660,7 +660,7 @@ export class PluginManager {
       !this.#development.has(record.snapshot.id),
     );
     const pendingStartedAt = performance.now();
-    for (const record of pending) await this.#activatePending(record);
+    await mapWithConcurrency(pending, this.#embedded ? 4 : 8, (record) => this.#activatePending(record));
     this.#syncInstalledSnapshots();
     this.#startupPhase(
       "pending_activation",
@@ -761,10 +761,12 @@ export class PluginManager {
       this.#installedLoaded.set(pluginId, loaded);
     } catch {
       const current = snapshot.activeVersion;
-      if (current === null) {
+      // A forced same-version replacement has no older version tree to fall
+      // back to. Never report that failed candidate as an active source.
+      if (current === null || current === pending) {
         const quarantined = Object.freeze({
           descriptor: record.descriptor,
-          snapshot: snapshotFrom(record.descriptor, pluginId, null, null, false, "quarantined"),
+          snapshot: snapshotFrom(record.descriptor, pluginId, current, null, false, "quarantined"),
           uninstallPending: false,
         } satisfies InstalledPluginCatalogRecord);
         await this.#catalog.quarantinePending(quarantined, pending);

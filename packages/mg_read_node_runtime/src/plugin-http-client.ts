@@ -13,6 +13,8 @@
  * Notes:
  * - the app supplies the upstream HTTP, HTTPS or SOCKS5 URL;
  * - existing requests retain the dispatcher sampled when they started.
+ * - Runtime shutdown aborts active and retiring dispatchers, including unread
+ *   response bodies; graceful proxy rebinding must not block a cold restart.
  * - undici 7's SOCKS5 agent passes IP literals as TLS SNI; Node 26 rejects
  *   those requests before a TLS handshake, so reject them without opening a
  *   proxy tunnel until upstream supports omitting SNI for IP destinations.
@@ -55,9 +57,10 @@ export interface PluginHttpEnvironmentProxyOptions {
 export class ConfigurablePluginHttpClient implements PluginRuntimeHttpClient {
   readonly #directAgent: Dispatcher;
   readonly #systemProxyAgent: Dispatcher;
+  readonly #shutdown = new AbortController();
   #proxyAgent: Dispatcher | undefined;
   #proxyUrl: string | undefined;
-  readonly #retiring = new Set<Promise<void>>();
+  readonly #retiring = new Map<Dispatcher, Promise<void>>();
 
   constructor(environmentProxy: PluginHttpEnvironmentProxyOptions = {}) {
     this.#directAgent = new Agent(http2TlsOptions);
@@ -101,7 +104,8 @@ export class ConfigurablePluginHttpClient implements PluginRuntimeHttpClient {
         ));
       }
     }
-    const requestInit = withDefaultUserAgent(init);
+    const requestInit = withDefaultUserAgent({ ...init, signal: init.signal == null
+      ? this.#shutdown.signal : AbortSignal.any([init.signal, this.#shutdown.signal]) });
     const dispatcher = proxyMode === "direct"
       ? this.#directAgent
       : this.#proxyAgent ?? this.#systemProxyAgent;
@@ -110,19 +114,21 @@ export class ConfigurablePluginHttpClient implements PluginRuntimeHttpClient {
   }
 
   async close(): Promise<void> {
+    // A gracefully closing Agent may already have detached its pools. The
+    // shared signal also cancels response bodies held by those retired pools.
+    this.#shutdown.abort();
     const current = this.#proxyAgent;
     this.#proxyAgent = undefined;
     this.#proxyUrl = undefined;
-    if (current !== undefined) this.#retire(current);
-    this.#retire(this.#directAgent);
-    this.#retire(this.#systemProxyAgent);
-    await Promise.allSettled([...this.#retiring]);
+    const agents = new Set([this.#directAgent, this.#systemProxyAgent, ...this.#retiring.keys()]);
+    if (current !== undefined) agents.add(current);
+    await Promise.allSettled([...agents].map((agent) => agent.destroy()));
   }
 
   #retire(agent: Dispatcher): void {
     let operation: Promise<void>;
-    operation = agent.close().catch(() => {}).finally(() => this.#retiring.delete(operation));
-    this.#retiring.add(operation);
+    operation = agent.close().catch(() => {}).finally(() => this.#retiring.delete(agent));
+    this.#retiring.set(agent, operation);
   }
 }
 

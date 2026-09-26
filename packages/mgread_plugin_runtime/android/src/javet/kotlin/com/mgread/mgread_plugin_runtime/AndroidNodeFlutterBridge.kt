@@ -42,7 +42,7 @@ internal class AndroidNodeFlutterBridge(
     private var pendingPicker: MethodChannel.Result? = null
     private val browser = AndroidBrowserSessionHost(context)
     private val dataRoot = File(context.filesDir, "mgread-runtime/data")
-    private val transfer = AndroidPluginArtifactTransfer(context, File(dataRoot, "import-inbox"))
+    private val transfer = AndroidPluginArtifactTransfer(File(dataRoot, "import-inbox"))
     private val process = AndroidNodeProcessController(context, assetRoot, ::progress, ::event)
     private val pickerListener = PluginRegistry.ActivityResultListener { requestCode, resultCode, data ->
         if (requestCode != PICKER_REQUEST) return@ActivityResultListener false

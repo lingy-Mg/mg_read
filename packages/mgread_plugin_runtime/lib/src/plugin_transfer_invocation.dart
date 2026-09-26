@@ -136,6 +136,35 @@ final class PluginTransferImportResult {
   final String version;
 }
 
+/// A restart can succeed while a candidate is rolled back or quarantined.
+/// Report the actual catalog state, preserving disabled pending upgrades.
+List<PluginTransferImportResult> _pluginImportResults(
+  Iterable<PluginTransferArtifact> artifacts,
+  List<InstalledPlugin> installed,
+) {
+  final byId = <String, InstalledPlugin>{
+    for (final item in installed) item.id: item,
+  };
+  return <PluginTransferImportResult>[
+    for (final artifact in artifacts)
+      PluginTransferImportResult(
+        pluginId: artifact.pluginId,
+        version: artifact.version,
+        status:
+            byId[artifact.pluginId]?.status == 'active' &&
+                    byId[artifact.pluginId]?.activeVersion ==
+                        artifact.version ||
+                byId[artifact.pluginId]?.status == 'disabled' &&
+                    (byId[artifact.pluginId]?.pendingVersion ==
+                            artifact.version ||
+                        byId[artifact.pluginId]?.activeVersion ==
+                            artifact.version)
+            ? PluginTransferImportStatus.installed
+            : PluginTransferImportStatus.failed,
+      ),
+  ];
+}
+
 @immutable
 final class PluginTransferListInvocation
     extends PluginInvocation<List<PluginTransferArtifact>> {

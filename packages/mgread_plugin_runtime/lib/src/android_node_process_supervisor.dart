@@ -452,26 +452,11 @@ final class _AndroidNodeProcessSupervisor implements _RuntimeSupervisor {
         );
       }
     }
-    for (
-      var offset = 0;
-      offset < artifacts.length;
-      offset += _maxAndroidPluginTransferBatchItems
-    ) {
-      await _importBatch(
-        artifacts.sublist(
-          offset,
-          min(offset + _maxAndroidPluginTransferBatchItems, artifacts.length),
-        ),
-      );
-    }
-    return <PluginTransferImportResult>[
-      for (final item in artifacts)
-        PluginTransferImportResult(
-          pluginId: item.artifact.pluginId,
-          status: PluginTransferImportStatus.installed,
-          version: item.artifact.version,
-        ),
-    ];
+    await _importBatch(artifacts);
+    return _pluginImportResults(
+      artifacts.map((item) => item.artifact),
+      await invoke(const InstalledPluginsInvocation()),
+    );
   }
 
   Future<void> _importBatch(

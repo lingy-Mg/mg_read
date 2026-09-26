@@ -309,10 +309,10 @@ final class PluginRuntime {
     PluginTransferOffer offer,
   ) => _supervisor.materializePluginArtifact(offer);
 
-  /// Accepts a byte-bounded batch and performs bounded Runtime cold activations.
+  /// Accepts a byte-bounded batch and activates it with one restart per engine.
   ///
-  /// Android divides large selections into native-safe sub-batches; callers
-  /// still receive one ordered result list for the complete selection.
+  /// Android stages the complete selection before restarting its Node Core or
+  /// service. Callers receive one ordered result list for the selection.
   Future<List<PluginTransferImportResult>> importPluginArtifacts(
     List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>
     artifacts, {
@@ -383,6 +383,11 @@ final class PluginRuntime {
       ),
     );
   }
+
+  /// Exercises the Javet adapter with package-owned mock platform channels.
+  @visibleForTesting
+  factory PluginRuntime.androidForTesting() =>
+      PluginRuntime._(_AndroidRuntimeSupervisor());
 
   /// Creates a native Rust Facade for package-owned tests.
   ///

@@ -6,7 +6,7 @@
  * - 按已安装 marker 对内置 artifact 执行幂等冷启动协调。
  *
  * 注意：
- * - 输入数量和单 artifact 大小有界，处理后一次性清理 inbox 文件。
+ * - 按单 artifact 与整批字节限制接收；不把一次传输拆成多个冷启动。
  * - 处理结果由 Runtime 统一返回。
  *
  */
@@ -17,6 +17,7 @@ import type { DesktopRuntimeProgressSink } from "./desktop-runtime.js";
 import { InstalledPluginCatalog } from "./plugin-catalog.js";
 import { PluginInstaller } from "./plugin-installer.js";
 import { MAX_PLUGIN_ARTIFACT_BYTES } from "./plugin-single-file.js";
+import { MAX_PLUGIN_ARTIFACT_TRANSFER_BATCH_BYTES } from "./plugin-artifact-transfer.js";
 
 interface BundledPluginArtifact {
   readonly path: string;
@@ -75,15 +76,22 @@ export async function installPluginArtifactInbox(
   const artifacts = (await readdir(inboxRoot, { withFileTypes: true }))
     .filter((entry) => entry.isFile() && /^[a-zA-Z0-9._-]+\.mgplugin(?:\.js)?$/.test(entry.name))
     .sort((left, right) => left.name.localeCompare(right.name));
-  if (artifacts.length > 32) throw new Error("Runtime plugin import inbox is over budget.");
+  // Validate the whole byte budget before committing the first artifact.
+  let totalBytes = 0;
+  for (const artifact of artifacts) {
+    const metadata = await stat(resolve(inboxRoot, artifact.name));
+    if (!metadata.isFile() || metadata.size <= 0 || metadata.size > MAX_PLUGIN_ARTIFACT_BYTES) {
+      throw new Error("Runtime plugin import artifact is over budget.");
+    }
+    totalBytes += metadata.size;
+    if (totalBytes > MAX_PLUGIN_ARTIFACT_TRANSFER_BATCH_BYTES) {
+      throw new Error("Runtime plugin import inbox is over budget.");
+    }
+  }
   const installer = new PluginInstaller(dataRoot, { catalog, onProgress });
   let installedCount = 0;
   for (const artifact of artifacts) {
     const path = resolve(inboxRoot, artifact.name);
-    const metadata = await stat(path);
-    if (!metadata.isFile() || metadata.size <= 0 || metadata.size > MAX_PLUGIN_ARTIFACT_BYTES) {
-      throw new Error("Runtime plugin import artifact is over budget.");
-    }
     try {
       await installer.installArtifact(path, { replaceExistingVersion: true });
       installedCount += 1;

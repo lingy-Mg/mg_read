@@ -38,6 +38,10 @@
   原生 transport 使用 `test/native_supervisor_test.dart` 和真实原生宿主验收；共享类型需覆盖旧 decoder 测试。
 - 双引擎并存或按来源路由变化：运行 `test/hybrid_runtime_test.dart`；Android 正常包的实际内容调用另用根目录
   `integration_test/android_hybrid_source_test.dart` 验证，不把单宿主或 native-only 结果当作并存证据。
+- Node 局域网导入按单文件 32 MiB、整批 512 MiB 限制，完整暂存并校验后只重启一次；Android 不按文件数
+  分批重启。Javet 重建 Core 并清理来源模块，进程后端重启私有 Service。返回结果须核对重启后的实际目录状态，
+  不能把隔离或回滚报为安装成功。回归入口为 `plugin_batch_import_test.dart`、`android_plugin_batch_test.dart`
+  与 Kotlin `AndroidPluginArtifactTransferTest`。
 - Android：执行目标 Gradle 编译；原生 Service 的启动、退出与重启需 Integration Test 验证真实进程生命周期，
   不能只用 Kotlin mock 代替。真实流程仍需用户明确授权。
 - Windows：增加 reverse-broker、Dart fake-platform/HTTP 和 Facade reverse-wire fixture；原生修改再构建

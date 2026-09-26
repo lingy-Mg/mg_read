@@ -26,6 +26,9 @@
 - Runtime 私有数据不得承载书架、目录、正文、进度、书签或主应用设置权威。
 - `PluginManager` 组合安装与 generation 生命周期；`PluginContentDispatcher` 独占来源能力调用、租约和结果关联校验，
   `PluginManagerStorage` 独占路径解析、占用测量与缓存清理。新增能力不得把这些职责重新堆回 Manager。
+- 批量收件箱共用 32 MiB/文件、512 MiB/批限制，不按 32 个文件截断；pending 冷激活并发上限为桌面 8、
+  embedded 4，各插件独立提交或回滚。HTTP 关闭先取消所有在途响应（包含换代理前的旧响应），避免重启等待响应体。
+  `plugin-batch-startup.test.mjs` 与 `plugin-http-shutdown.test.mjs` 覆盖这些边界；稳定目录命中仍不执行插件代码。
 - Runtime-only 任务不修改主应用 UI、Reader、模板或真实数据源，除非用户把对应公开边界纳入同一任务。
 
 ## 固定工具链与验证

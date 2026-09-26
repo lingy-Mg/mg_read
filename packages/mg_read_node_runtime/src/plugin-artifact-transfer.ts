@@ -306,17 +306,27 @@ export class PluginArtifactTransferManager {
     let names: string[];
     try { names = (await readdir(inbox)).filter(isArtifactName); }
     catch (error) { if (isMissing(error)) throw new PluginArtifactTransferError("plugin_transfer_artifact_missing"); throw error; }
-    const candidates = new Set(names.map((name) => resolve(inbox, name)));
+    // Index each candidate once. Equal-sized artifacts in a reversed batch
+    // must not repeatedly hash the same files before every restart.
+    const wanted = new Map<string, number>();
+    const sizes = new Set(incoming.map((artifact) => `${artifact.format}:${artifact.bytes}`));
     for (const artifact of incoming) {
-      let matched: string | undefined;
-      for (const path of candidates) {
-        if (formatForPath(path) !== artifact.format) continue;
-        const metadata = await stat(path).catch(() => undefined);
-        if (metadata?.isFile() && metadata.size === artifact.bytes && await hashFile(path) === artifact.checksum) { matched = path; break; }
-      }
-      if (matched === undefined) throw new PluginArtifactTransferError("plugin_transfer_checksum_mismatch");
-      candidates.delete(matched);
+      const key = `${artifact.format}:${artifact.bytes}:${artifact.checksum}`;
+      wanted.set(key, (wanted.get(key) ?? 0) + 1);
     }
+    for (const name of names) {
+      const path = resolve(inbox, name);
+      const metadata = await stat(path).catch(() => undefined);
+      if (!metadata?.isFile()) continue;
+      const prefix = `${formatForPath(path)}:${metadata.size}`;
+      if (!sizes.has(prefix)) continue;
+      const key = `${prefix}:${await hashFile(path)}`;
+      const count = wanted.get(key);
+      if (count === 1) wanted.delete(key);
+      else if (count !== undefined) wanted.set(key, count - 1);
+      if (wanted.size === 0) return;
+    }
+    if (wanted.size > 0) throw new PluginArtifactTransferError("plugin_transfer_checksum_mismatch");
   }
 
   consumeResource(token: string): PluginTransferResource | undefined {

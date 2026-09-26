@@ -180,6 +180,7 @@ final class _DesktopPluginArtifactIo {
         temporaryFiles.add(temporary);
         await _copyStream(item.bytes, temporary, artifact.bytes);
         await temporary.rename(target.path);
+        temporaryFiles.add(target);
       }
       await connection.request(
         method: 'plugins.transfer.verify.v2',
@@ -189,14 +190,10 @@ final class _DesktopPluginArtifactIo {
         timeout: const Duration(minutes: 2),
       );
       await _supervisor._restartForPluginImport();
-      return <PluginTransferImportResult>[
-        for (final item in artifacts)
-          PluginTransferImportResult(
-            pluginId: item.artifact.pluginId,
-            status: PluginTransferImportStatus.installed,
-            version: item.artifact.version,
-          ),
-      ];
+      return _pluginImportResults(
+        artifacts.map((item) => item.artifact),
+        await _supervisor.invoke(const InstalledPluginsInvocation()),
+      );
     } finally {
       for (final file in temporaryFiles) {
         try {

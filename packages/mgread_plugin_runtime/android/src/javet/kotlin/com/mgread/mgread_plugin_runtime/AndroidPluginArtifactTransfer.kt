@@ -1,8 +1,9 @@
 /**
  * Android plugin artifact transfer and Runtime inbox IO.
  *
- * Owns bounded byte-for-byte import/export sessions and artifact suffixes.
- * All methods are called only from AndroidRuntimeHost's dedicated Runtime thread.
+ * Owns byte-bounded import/export sessions and artifact suffixes. Completed
+ * files close immediately; the full selection is verified before publication
+ * and one Core/service restart. Each host calls this from its serial IO thread.
  */
 package com.mgread.mgread_plugin_runtime
 
@@ -14,15 +15,16 @@ import java.util.UUID
 import java.util.zip.CRC32
 
 internal class AndroidPluginArtifactTransfer(
-    private val context: Context,
-    private val inboxDirectory: File = File(context.filesDir, "mgread-runtime/import-inbox"),
+    private val inboxDirectory: File,
 ) {
+    constructor(context: Context) : this(File(context.filesDir, "mgread-runtime/import-inbox"))
+
     private data class ImportSession(
         val target: File,
         val temporary: File,
         val expectedBytes: Long,
         val expectedChecksum: String,
-        val output: FileOutputStream,
+        var output: FileOutputStream?,
         var receivedBytes: Long = 0,
         val digest: CRC32 = CRC32(),
     )
@@ -42,7 +44,9 @@ internal class AndroidPluginArtifactTransfer(
         validateIdentity(pluginId, version, format)
         check(expectedBytes in 1..MAX_ARTIFACT_BYTES) { "file_too_large" }
         check(expectedChecksum.matches(Regex("[a-f0-9]{8}"))) { "invalid_request" }
-        check(importSessions.size < MAX_TRANSFER_BATCH) { "transfer_batch_too_large" }
+        check(importSessions.values.sumOf { it.expectedBytes } + expectedBytes <= MAX_TRANSFER_BATCH_BYTES) {
+            "transfer_batch_too_large"
+        }
         val inbox = inboxDirectory.apply { mkdirs() }
         val id = UUID.randomUUID().toString().replace("-", "")
         val target = File(inbox, "transfer-$pluginId-$version-$id${artifactSuffix(format)}")
@@ -111,21 +115,34 @@ internal class AndroidPluginArtifactTransfer(
         check(session.receivedBytes + chunk.size <= session.expectedBytes) {
             "plugin_transfer_size_mismatch"
         }
-        session.temporary.parentFile?.mkdirs()
-        session.output.write(chunk)
+        if (chunk.isEmpty()) return
+        (session.output ?: error("plugin_transfer_size_mismatch")).write(chunk)
         session.digest.update(chunk)
         session.receivedBytes += chunk.size
+        if (session.receivedBytes == session.expectedBytes) {
+            session.output?.close()
+            session.output = null
+        }
     }
 
     fun finishImportBatch(ids: List<String>) {
-        check(ids.isNotEmpty() && ids.size <= MAX_TRANSFER_BATCH) { "transfer_batch_too_large" }
+        check(ids.isNotEmpty() && ids.size == ids.toSet().size) { "invalid_request" }
+        // Check every file before renaming any: a corrupt last file must not
+        // leave earlier files available to a later unrelated Runtime restart.
         ids.forEach { id ->
             val session = importSessions[id] ?: error("invalid_request")
             check(session.receivedBytes == session.expectedBytes) { "plugin_transfer_size_mismatch" }
             val actual = session.digest.value.toString(16).padStart(8, '0')
             check(actual == session.expectedChecksum) { "plugin_transfer_checksum_mismatch" }
-            session.output.close()
-            check(session.temporary.renameTo(session.target)) { "disk_full" }
+        }
+        try {
+            ids.forEach { id ->
+                val session = importSessions.getValue(id)
+                check(session.temporary.renameTo(session.target)) { "disk_full" }
+            }
+        } catch (error: Throwable) {
+            cancelImports(ids)
+            throw error
         }
         ids.forEach { importSessions.remove(it) }
     }
@@ -133,8 +150,9 @@ internal class AndroidPluginArtifactTransfer(
     fun cancelImports(ids: List<String>) {
         ids.forEach { id ->
             importSessions.remove(id)?.let { session ->
-                session.output.close()
+                session.output?.close()
                 session.temporary.delete()
+                session.target.delete()
             }
         }
     }
@@ -147,7 +165,7 @@ internal class AndroidPluginArtifactTransfer(
 
     private companion object {
         const val MAX_ARTIFACT_BYTES = 32L * 1024L * 1024L
-        const val MAX_TRANSFER_BATCH = 32
+        const val MAX_TRANSFER_BATCH_BYTES = 512L * 1024L * 1024L
         const val TRANSFER_CHUNK_BYTES = 64 * 1024
     }
 }
