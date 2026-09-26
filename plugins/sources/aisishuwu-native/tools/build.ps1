@@ -1,19 +1,16 @@
-# Build and package the Alice source for the three supported native targets.
+# Build and package the Alice source for Windows x64 and Android arm64.
 # Rust 1.97.1, Cargo.lock, target triples, and Android 16 KiB page alignment
-# are fixed here; packaging emits portable, Windows, and Android archives.
+# are fixed here; packaging emits one portable archive with two binaries.
 [CmdletBinding()]
 param(
   [string]$NdkHome = "$env:LOCALAPPDATA/Android/Sdk/ndk/28.2.13676358",
-  [string]$Output = (Join-Path $PSScriptRoot '..\dist\aisishuwu-native-0.1.0.mgplugin'),
-  [string]$WindowsOutput = (Join-Path $PSScriptRoot '..\dist\aisishuwu-native-0.1.0-windows.mgplugin'),
-  [string]$AndroidOutput = (Join-Path $PSScriptRoot '..\dist\aisishuwu-native-0.1.0-android.mgplugin')
+  [string]$Output = (Join-Path $PSScriptRoot '..\dist\aisishuwu-native-0.1.0.mgplugin')
 )
 
 $ErrorActionPreference = 'Stop'
 $toolchain = '1.97.1'
 $windowsTarget = 'x86_64-pc-windows-msvc'
 $arm64Target = 'aarch64-linux-android'
-$x64Target = 'x86_64-linux-android'
 $rustup = (Get-Command rustup -ErrorAction Stop).Source
 
 $rustcVersion = (& $rustup run $toolchain rustc --version).Trim()
@@ -25,7 +22,7 @@ if ($LASTEXITCODE -ne 0 -or $cargoVersion -notmatch '^cargo 1\.97\.1(?:\s|$)') {
   throw "Cargo toolchain $toolchain is unavailable or has an unexpected version."
 }
 
-$requiredTargets = @($windowsTarget, $arm64Target, $x64Target)
+$requiredTargets = @($windowsTarget, $arm64Target)
 $installedTargets = @(& $rustup target list --installed --toolchain $toolchain)
 if ($LASTEXITCODE -ne 0) { throw "Could not inspect installed Rust targets for $toolchain." }
 $missingTargets = @($requiredTargets | Where-Object { $_ -notin $installedTargets })
@@ -35,8 +32,7 @@ if ($missingTargets.Count -gt 0) {
 
 $ndkBin = Join-Path $NdkHome 'toolchains\llvm\prebuilt\windows-x86_64\bin'
 $arm64Clang = Join-Path $ndkBin 'aarch64-linux-android24-clang.cmd'
-$x64Clang = Join-Path $ndkBin 'x86_64-linux-android24-clang.cmd'
-foreach ($compiler in @($arm64Clang, $x64Clang)) {
+foreach ($compiler in @($arm64Clang)) {
   if (-not [System.IO.File]::Exists($compiler)) {
     throw "The Android NDK target linker was not found: $compiler"
   }
@@ -46,16 +42,12 @@ $crateRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $targetRoot = Join-Path $crateRoot 'target'
 $windowsDll = Join-Path $targetRoot "$windowsTarget\release\aisishuwu_native.dll"
 $arm64So = Join-Path $targetRoot "$arm64Target\release\libaisishuwu_native.so"
-$x64So = Join-Path $targetRoot "$x64Target\release\libaisishuwu_native.so"
 $environmentNames = @(
   'CARGO_INCREMENTAL',
   'RUSTFLAGS',
   'CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER',
-  'CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER',
   'CC_aarch64-linux-android',
-  'CC_aarch64_linux_android',
-  'CC_x86_64-linux-android',
-  'CC_x86_64_linux_android'
+  'CC_aarch64_linux_android'
 )
 $previousEnvironment = @{}
 foreach ($name in $environmentNames) {
@@ -77,17 +69,12 @@ try {
     & $rustup run $toolchain cargo build --locked --release --target $arm64Target
     if ($LASTEXITCODE -ne 0) { throw "Android arm64 native source build failed ($LASTEXITCODE)." }
 
-    [Environment]::SetEnvironmentVariable('CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER', $x64Clang, 'Process')
-    [Environment]::SetEnvironmentVariable('CC_x86_64-linux-android', $x64Clang, 'Process')
-    [Environment]::SetEnvironmentVariable('CC_x86_64_linux_android', $x64Clang, 'Process')
-    & $rustup run $toolchain cargo build --locked --release --target $x64Target
-    if ($LASTEXITCODE -ne 0) { throw "Android x86_64 native source build failed ($LASTEXITCODE)." }
   }
   finally {
     Pop-Location
   }
 
-  foreach ($library in @($windowsDll, $arm64So, $x64So)) {
+  foreach ($library in @($windowsDll, $arm64So)) {
     if (-not [System.IO.File]::Exists($library)) {
       throw "The expected native library was not produced: $library"
     }
@@ -96,10 +83,7 @@ try {
   & (Join-Path $PSScriptRoot 'package.ps1') `
     -WindowsDll $windowsDll `
     -AndroidArm64So $arm64So `
-    -AndroidX64So $x64So `
-    -Output $Output `
-    -WindowsOutput $WindowsOutput `
-    -AndroidOutput $AndroidOutput
+    -Output $Output
 }
 finally {
   foreach ($name in $environmentNames) {

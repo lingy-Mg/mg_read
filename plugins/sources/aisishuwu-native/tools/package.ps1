@@ -1,22 +1,22 @@
-# Deterministically package the already-built Alice libraries. The portable
-# archive retains all targets for later cross-platform sync; the Windows and
-# Android archives are small, directly importable distribution artifacts.
+# Package only Windows x64 and Android arm64 in one standard Deflate ZIP.
+# NanaZip 7.0 (2609.2) uses exhaustive Deflate passes for the smallest
+# compatible local-import archive; LAN sync sends only the receiver's binary.
 param(
   [string]$WindowsDll = (Join-Path $PSScriptRoot '..\target\x86_64-pc-windows-msvc\release\aisishuwu_native.dll'),
   [string]$AndroidArm64So = (Join-Path $PSScriptRoot '..\target\aarch64-linux-android\release\libaisishuwu_native.so'),
-  [string]$AndroidX64So = (Join-Path $PSScriptRoot '..\target\x86_64-linux-android\release\libaisishuwu_native.so'),
-  [string]$Output = (Join-Path $PSScriptRoot '..\dist\aisishuwu-native-0.1.0.mgplugin'),
-  [string]$WindowsOutput = (Join-Path $PSScriptRoot '..\dist\aisishuwu-native-0.1.0-windows.mgplugin'),
-  [string]$AndroidOutput = (Join-Path $PSScriptRoot '..\dist\aisishuwu-native-0.1.0-android.mgplugin')
+  [string]$Output = (Join-Path $PSScriptRoot '..\dist\aisishuwu-native-0.1.0.mgplugin')
 )
 
 $ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName System.IO.Compression
+$archiver = (Get-Command 7z -ErrorAction Stop).Source
+$archiverBanner = (& $archiver i | Where-Object { $_ -match '^NanaZip ' } | Select-Object -First 1)
+if ($archiverBanner -notmatch '^NanaZip 7\.0 , version 2609\.2 \(x64\)') {
+  throw 'Packaging requires NanaZip 7.0 version 2609.2 (x64) on PATH as 7z.'
+}
 
 $libraries = [ordered]@{
   'windows-x86_64' = @{ Path = $WindowsDll; ArchivePath = 'native/windows-x86_64/aisishuwu_native.dll' }
   'android-arm64-v8a' = @{ Path = $AndroidArm64So; ArchivePath = 'native/android-arm64-v8a/libaisishuwu_native.so' }
-  'android-x86_64' = @{ Path = $AndroidX64So; ArchivePath = 'native/android-x86_64/libaisishuwu_native.so' }
 }
 
 foreach ($target in $libraries.Keys) {
@@ -48,29 +48,36 @@ function Write-Package([string]$Path, [string[]]$SelectedTargets) {
   $outputPath = [System.IO.Path]::GetFullPath($Path)
   [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($outputPath)) | Out-Null
   $temporaryPath = "$outputPath.tmp"
-  if ([System.IO.File]::Exists($temporaryPath)) { [System.IO.File]::Delete($temporaryPath) }
-
-  $stream = [System.IO.File]::Open($temporaryPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+  $stage = Join-Path ([System.IO.Path]::GetDirectoryName($outputPath)) ('.alice-package-' + [Guid]::NewGuid().ToString('N'))
+  [System.IO.Directory]::CreateDirectory($stage) | Out-Null
   try {
-    $archive = [System.IO.Compression.ZipArchive]::new($stream, [System.IO.Compression.ZipArchiveMode]::Create, $true)
-    try {
-      $entries = [ordered]@{ 'manifest.json' = $manifestBytes }
-      foreach ($target in $SelectedTargets) {
-        $library = $libraries[$target]
-        $entries[$library.ArchivePath] = [System.IO.File]::ReadAllBytes($library.Path)
-      }
-      foreach ($entryName in $entries.Keys) {
-        $entry = $archive.CreateEntry($entryName, [System.IO.Compression.CompressionLevel]::SmallestSize)
-        $entry.LastWriteTime = [DateTimeOffset]::new(1980, 1, 1, 0, 0, 0, [TimeSpan]::Zero)
-        $entry.ExternalAttributes = 0
-        $entryStream = $entry.Open()
-        try { $entryStream.Write($entries[$entryName], 0, $entries[$entryName].Length) }
-        finally { $entryStream.Dispose() }
-      }
+    $archivePaths = @('manifest.json')
+    [System.IO.File]::WriteAllBytes((Join-Path $stage 'manifest.json'), $manifestBytes)
+    foreach ($target in $SelectedTargets) {
+      $library = $libraries[$target]
+      $destination = Join-Path $stage ($library.ArchivePath.Replace('/', [System.IO.Path]::DirectorySeparatorChar))
+      [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($destination)) | Out-Null
+      [System.IO.File]::Copy($library.Path, $destination)
+      $archivePaths += $library.ArchivePath
     }
-    finally { $archive.Dispose() }
+    foreach ($entry in $archivePaths) {
+      [System.IO.File]::SetLastWriteTimeUtc((Join-Path $stage $entry), [DateTime]::new(1980, 1, 1, 0, 0, 0, [DateTimeKind]::Utc))
+    }
+    if ([System.IO.File]::Exists($temporaryPath)) { [System.IO.File]::Delete($temporaryPath) }
+    Push-Location $stage
+    try {
+      & $archiver a -tzip $temporaryPath @archivePaths -mm=Deflate -mx=9 -mfb=258 -mpass=15 -mtc=off -mtm=off -mta=off | Out-Null
+      if ($LASTEXITCODE -ne 0) { throw "High-compression ZIP packaging failed ($LASTEXITCODE)." }
+    }
+    finally { Pop-Location }
   }
-  finally { $stream.Dispose() }
+  finally {
+    $outputDirectory = [System.IO.Path]::GetDirectoryName($outputPath).TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $stage.StartsWith($outputDirectory, [System.StringComparison]::OrdinalIgnoreCase)) {
+      throw "Package staging directory escaped the output directory: $stage"
+    }
+    [System.IO.Directory]::Delete($stage, $true)
+  }
 
   if ([System.IO.File]::Exists($outputPath)) { [System.IO.File]::Delete($outputPath) }
   [System.IO.File]::Move($temporaryPath, $outputPath)
@@ -78,8 +85,4 @@ function Write-Package([string]$Path, [string[]]$SelectedTargets) {
   Write-Output "SHA-256 $((Get-FileHash -LiteralPath $outputPath -Algorithm SHA256).Hash.ToLowerInvariant())"
 }
 
-$paths = @($Output, $WindowsOutput, $AndroidOutput) | ForEach-Object { [System.IO.Path]::GetFullPath($_) }
-if (($paths | Select-Object -Unique).Count -ne 3) { throw 'Package output paths must be distinct.' }
-Write-Package $Output @('windows-x86_64', 'android-arm64-v8a', 'android-x86_64')
-Write-Package $WindowsOutput @('windows-x86_64')
-Write-Package $AndroidOutput @('android-arm64-v8a', 'android-x86_64')
+Write-Package $Output @('windows-x86_64', 'android-arm64-v8a')

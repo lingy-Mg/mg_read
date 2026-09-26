@@ -18,12 +18,10 @@ import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 void main() {
   final windows = List<int>.filled(600, 1);
   final arm64 = List<int>.filled(700, 2);
-  final androidX64 = List<int>.filled(800, 3);
-  final binaries = <String, List<int>>{'windows-x86_64': windows, 'android-arm64-v8a': arm64, 'android-x86_64': androidX64};
+  final binaries = <String, List<int>>{'windows-x86_64': windows, 'android-arm64-v8a': arm64};
   final paths = <String, String>{
     'windows-x86_64': 'native/windows-x86_64/source.dll',
     'android-arm64-v8a': 'native/android-arm64-v8a/libsource.so',
-    'android-x86_64': 'native/android-x86_64/libsource.so',
   };
   final manifest = <String, Object?>{
     'format': 'mgread-native',
@@ -65,7 +63,7 @@ void main() {
       final resultManifest = jsonDecode(utf8.decode(zip.findFile('manifest.json')!.content)) as Map<String, dynamic>;
       final targets = resultManifest['targets'] as Map<String, dynamic>;
       expect(targets.keys, everyElement(startsWith('$platform-')));
-      expect(targets.length, platform == 'windows' ? 1 : 2);
+      expect(targets.length, 1);
       expect(zip.length, targets.length + 1);
       expect(bytes.length, result.descriptor.bytes);
       expect(lanSyncChecksum(bytes), result.descriptor.checksum);
