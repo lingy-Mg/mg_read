@@ -17,6 +17,8 @@ import 'source_verification_catalog.dart';
 import 'source_verification_models.dart';
 import 'source_verification_video_playback.dart';
 
+part 'source_verification_debug.dart';
+
 typedef SourceVerificationProgressCallback = void Function(SourceVerificationProgress progress);
 typedef SourceVerificationDebugCallback = void Function(SourceVerificationDebugRecord record);
 typedef SourceVerificationHttpClientFactory = HttpClient Function();
@@ -64,12 +66,27 @@ final class SourceVerificationEngine {
   }) async {
     final startedAt = DateTime.now();
     final stopwatch = Stopwatch()..start();
-    final sources = await _gateway.listSources().timeout(
-      stageTimeout,
-      onTimeout: () {
-        throw const SourceVerificationRunException('runtime_timeout');
-      },
-    );
+    final token = cancellationToken ?? SourceVerificationCancellationToken();
+    List<PluginSourceDescriptor> sources;
+    try {
+      sources = await token
+          .run(() => _gateway.listSources())
+          .timeout(
+            stageTimeout,
+            onTimeout: () {
+              throw const SourceVerificationRunException('runtime_timeout');
+            },
+          );
+    } on SourceVerificationRunException catch (error) {
+      if (error.code != 'cancelled') rethrow;
+      return SourceVerificationReport(
+        startedAt: startedAt,
+        duration: stopwatch.elapsed,
+        mode: pluginId == null ? 'all' : 'single',
+        sources: const [],
+        cancelled: true,
+      );
+    }
     final selected = pluginId == null
         ? (List<PluginSourceDescriptor>.of(sources)..sort((left, right) => left.id.compareTo(right.id)))
         : sources.where((source) => source.id == pluginId).toList(growable: false);
@@ -78,15 +95,36 @@ final class SourceVerificationEngine {
     }
     final results = <SourceVerificationSourceResult>[];
     for (final source in selected) {
-      if (cancellationToken?.isCancelled ?? false) break;
+      if (token.isCancelled) break;
       final result = await _runSource(
         source,
-        onProgress: onProgress,
+        onProgress: (progress) => onProgress?.call(
+          SourceVerificationProgress(
+            pluginId: progress.pluginId,
+            displayName: progress.displayName,
+            stage: progress.stage,
+            running: progress.running,
+            stages: progress.stages,
+            totalSources: selected.length,
+            completedSources: List.unmodifiable(results),
+          ),
+        ),
         onDebug: onDebug,
-        cancellationToken: cancellationToken,
+        cancellationToken: token,
         videoPlaybackProbe: videoPlaybackProbe,
       );
       results.add(result);
+      onProgress?.call(
+        SourceVerificationProgress(
+          pluginId: source.id,
+          displayName: source.displayName,
+          stage: 'complete',
+          running: false,
+          totalSources: selected.length,
+          completedSources: List.unmodifiable(results),
+          stages: result.stages,
+        ),
+      );
       if (result.status == SourceVerificationResultStatus.cancelled) break;
     }
     stopwatch.stop();
@@ -95,6 +133,8 @@ final class SourceVerificationEngine {
       duration: stopwatch.elapsed,
       mode: pluginId == null ? 'all' : 'single',
       sources: results,
+      cancelled: token.isCancelled,
+      totalSources: selected.length,
     );
   }
 
@@ -115,6 +155,7 @@ final class SourceVerificationEngine {
       ),
     ];
     final context = _SourceRunContext(
+      gateway: _gateway,
       source: source,
       stages: stages,
       stageTimeout: stageTimeout,
@@ -126,14 +167,14 @@ final class SourceVerificationEngine {
     try {
       final discovery = await context.stage<_DiscoverySelection>(
         'discover',
-        () => _loadDiscovery(source.id),
+        (token) => _loadDiscovery(source.id, token),
         summary: (value) => <String, Object?>{'items': value.items.length, 'followedTargets': value.followedTargets},
         debugData: (value) => _debugDiscover(value.result),
       );
       final discoveryCandidate = discovery.items.first.content;
       final search = await context.stage<PluginSearchResult>(
         'search',
-        () => _gateway.search(pluginId: source.id, query: discoveryCandidate.title, pageSize: 8),
+        (token) => _gateway.search(pluginId: source.id, query: discoveryCandidate.title, pageSize: 8),
         validate: (value) {
           if (value.items.isEmpty) throw const _VerificationFailure('search_empty');
         },
@@ -143,7 +184,7 @@ final class SourceVerificationEngine {
       final selected = search.items.first;
       final detail = await context.stage<PluginContentDetail>(
         'detail',
-        () => _gateway.getDetail(pluginId: source.id, id: selected.id),
+        (token) => _gateway.getDetail(pluginId: source.id, id: selected.id),
         validate: (value) {
           if (value.summary.id != selected.id || value.summary.title.trim().isEmpty) {
             throw const _VerificationFailure('detail_invalid');
@@ -154,7 +195,7 @@ final class SourceVerificationEngine {
       );
       final chapters = await context.stage<PluginChaptersResult>(
         'chapters',
-        () => loadVerificationCatalog(_gateway, source.id, selected.id),
+        (token) => loadVerificationCatalog(_gateway, source.id, selected.id, cancellationToken: token),
         validate: (value) => _validateChapters(detail, value),
         summary: (value) => <String, Object?>{'items': value.items.length, 'groups': value.groups.length},
         debugData: _debugChapters,
@@ -172,7 +213,7 @@ final class SourceVerificationEngine {
         };
         final content = await context.stage<PluginChapterContent>(
           'content.$sampleName',
-          () => _gateway.getContent(pluginId: source.id, id: selected.id, chapterId: chapter.id),
+          (token) => _gateway.getContent(pluginId: source.id, id: selected.id, chapterId: chapter.id),
           validate: (value) => _validateContent(detail, chapter, value),
           summary: (value) => <String, Object?>{'units': _contentUnits(value), 'contentKind': detail.summary.contentKind.code},
           debugData: _debugContent,
@@ -189,7 +230,7 @@ final class SourceVerificationEngine {
       } else {
         await context.stage<_ResourceProbeResult>(
           'resource.cover',
-          () => _probeAny(covers, expectedImage: true),
+          (token) => _probeAny(covers, expectedImage: true, token: token),
           summary: (value) => value.summary,
         );
       }
@@ -199,18 +240,24 @@ final class SourceVerificationEngine {
       } else {
         await context.stage<_ResourceProbeResult>(
           'resource.content',
-          () => _probeAny(contentResources, expectedImage: detail.summary.contentKind == PluginContentKind.manga),
+          (token) => _probeAny(contentResources, expectedImage: detail.summary.contentKind == PluginContentKind.manga, token: token),
           summary: (value) => value.summary,
         );
       }
       if (detail.summary.contentKind == PluginContentKind.video) {
         if (videoPlaybackProbe == null) {
-          await context.stage<void>('playback.video', () => throw const _VerificationFailure('video_playback_probe_unavailable'));
+          await context.stage<void>('playback.video', (token) => throw const _VerificationFailure('video_playback_probe_unavailable'));
         } else {
           final playback = SourceVerificationVideoPlaybackRunner(gateway: _gateway, probe: videoPlaybackProbe);
           await context.stage<SourceVerificationVideoPlaybackResult>(
             'playback.video',
-            () => playback.run(pluginId: source.id, contentId: selected.id, chapters: chapters, resolvedContents: contents),
+            (token) => playback.run(
+              pluginId: source.id,
+              contentId: selected.id,
+              chapters: chapters,
+              resolvedContents: contents,
+              cancellationToken: token,
+            ),
             timeout: const Duration(minutes: 5),
             validate: (value) {
               if (!value.passed) {
@@ -249,13 +296,15 @@ final class SourceVerificationEngine {
     );
   }
 
-  Future<_DiscoverySelection> _loadDiscovery(String pluginId) async {
+  Future<_DiscoverySelection> _loadDiscovery(String pluginId, SourceVerificationCancellationToken token) async {
+    token.throwIfCancelled();
     final root = await _gateway.discover(pluginId: pluginId, pageSize: 20);
     var result = root;
     var items = _collectDiscoveryItems(root);
     var followedTargets = 0;
     if (items.isEmpty && root is PluginDiscoveryDocumentResult) {
       for (final target in _collectDiscoveryTargets(root.document.components).take(6)) {
+        token.throwIfCancelled();
         final child = await _gateway.discover(pluginId: pluginId, target: target, pageSize: 20);
         result = child;
         followedTargets += 1;
@@ -267,7 +316,11 @@ final class SourceVerificationEngine {
     return _DiscoverySelection(result: result, items: items, followedTargets: followedTargets);
   }
 
-  Future<_ResourceProbeResult> _probeAny(List<Uri> candidates, {required bool expectedImage}) async {
+  Future<_ResourceProbeResult> _probeAny(
+    List<Uri> candidates, {
+    required bool expectedImage,
+    required SourceVerificationCancellationToken token,
+  }) async {
     final unique = <Uri>[];
     for (final candidate in candidates) {
       if ((candidate.scheme == 'http' || candidate.scheme == 'https') && !unique.contains(candidate)) unique.add(candidate);
@@ -276,7 +329,9 @@ final class SourceVerificationEngine {
     if (unique.isEmpty) throw const _VerificationFailure('resource_url_invalid');
     final statuses = <int>[];
     for (final candidate in unique) {
+      token.throwIfCancelled();
       final client = _httpClientFactory();
+      final remove = token.listen(() => client.close(force: true));
       try {
         final request = await client.getUrl(candidate).timeout(stageTimeout);
         request.followRedirects = true;
@@ -300,8 +355,10 @@ final class SourceVerificationEngine {
           return _ResourceProbeResult(attempts: statuses.length, status: response.statusCode, bytesRead: bytesRead);
         }
       } on Object {
+        token.throwIfCancelled();
         statuses.add(0);
       } finally {
+        remove();
         client.close(force: true);
       }
     }
@@ -327,6 +384,7 @@ bool _hasImageSignature(List<int> bytes) {
 
 final class _SourceRunContext {
   const _SourceRunContext({
+    required this.gateway,
     required this.source,
     required this.stages,
     required this.stageTimeout,
@@ -335,6 +393,7 @@ final class _SourceRunContext {
     required this.cancellationToken,
   });
 
+  final SourceContentGateway gateway;
   final PluginSourceDescriptor source;
   final List<SourceVerificationStageResult> stages;
   final Duration stageTimeout;
@@ -344,18 +403,29 @@ final class _SourceRunContext {
 
   Future<T> stage<T>(
     String stage,
-    Future<T> Function() action, {
+    Future<T> Function(SourceVerificationCancellationToken token) action, {
     void Function(T value)? validate,
     Map<String, Object?> Function(T value)? summary,
     Map<String, Object?> Function(T value)? debugData,
     Duration? timeout,
   }) async {
-    checkCancellation();
     onDebug?.call(SourceVerificationDebugRecord(event: 'stage_started', pluginId: source.id, stage: stage));
-    onProgress?.call(SourceVerificationProgress(pluginId: source.id, displayName: source.displayName, stage: stage, running: true));
+    onProgress?.call(
+      SourceVerificationProgress(
+        pluginId: source.id,
+        displayName: source.displayName,
+        stage: stage,
+        running: true,
+        stages: List.unmodifiable(stages),
+      ),
+    );
     final stopwatch = Stopwatch()..start();
+    final token = SourceVerificationCancellationToken();
+    final remove = cancellationToken?.listen(token.cancel);
     try {
-      final value = await action().timeout(timeout ?? stageTimeout);
+      final value = await token
+          .run(() => runCancellableSourceRequest(gateway, token.invocation, () => action(token)))
+          .timeout(timeout ?? stageTimeout);
       onDebug?.call(
         SourceVerificationDebugRecord(event: 'stage_response', pluginId: source.id, stage: stage, data: debugData?.call(value)),
       );
@@ -370,12 +440,20 @@ final class _SourceRunContext {
           summary: summary?.call(value) ?? const <String, Object?>{},
         ),
       );
-      onProgress?.call(SourceVerificationProgress(pluginId: source.id, displayName: source.displayName, stage: stage, running: false));
+      onProgress?.call(
+        SourceVerificationProgress(
+          pluginId: source.id,
+          displayName: source.displayName,
+          stage: stage,
+          running: false,
+          stages: List.unmodifiable(stages),
+        ),
+      );
       return value;
     } on Object catch (error, stackTrace) {
       stopwatch.stop();
-      final code = _stableErrorCode(error);
-      final cancelled = error is _VerificationCancelled;
+      final cancelled = cancellationToken?.isCancelled == true || error is _VerificationCancelled;
+      final code = cancelled ? 'cancelled' : _stableErrorCode(error);
       final interactionRequired =
           error is _VerificationFailure && error.interactionRequired || error is AppError && error.code == AppErrorCode.interactionRequired;
       stages.add(
@@ -387,7 +465,15 @@ final class _SourceRunContext {
           summary: error is _VerificationFailure ? error.summary : const <String, Object?>{},
         ),
       );
-      onProgress?.call(SourceVerificationProgress(pluginId: source.id, displayName: source.displayName, stage: stage, running: false));
+      onProgress?.call(
+        SourceVerificationProgress(
+          pluginId: source.id,
+          displayName: source.displayName,
+          stage: stage,
+          running: false,
+          stages: List.unmodifiable(stages),
+        ),
+      );
       onDebug?.call(
         SourceVerificationDebugRecord(
           event: 'stage_error',
@@ -408,6 +494,9 @@ final class _SourceRunContext {
         ),
       );
       throw _StageAbort(cancelled: cancelled, interactionRequired: interactionRequired);
+    } finally {
+      remove?.call();
+      token.cancel();
     }
   }
 
@@ -517,195 +606,6 @@ String _stableErrorCode(Object error) => switch (error) {
   TimeoutException() => 'timeout',
   AppError(:final code) => code.wireValue,
   _ => 'internal',
-};
-
-Map<String, Object?> _debugDiscover(PluginDiscoverResult result) => switch (result) {
-  PluginDiscoveryDocumentResult(:final document) => <String, Object?>{
-    'kind': 'document',
-    'pluginId': result.pluginId,
-    'sourceName': result.sourceName,
-    'document': <String, Object?>{'components': document.components.map(_debugDiscoveryComponent).toList(growable: false)},
-  },
-  PluginDiscoveryAppendResult(:final collectionId, :final items, :final continuation) => <String, Object?>{
-    'kind': 'append',
-    'pluginId': result.pluginId,
-    'sourceName': result.sourceName,
-    'collectionId': collectionId,
-    'items': items.map(_debugDiscoveryContentItem).toList(growable: false),
-    'continuation': continuation == null ? null : <String, Object?>{'target': continuation.target, 'cursor': continuation.cursor},
-  },
-};
-
-Map<String, Object?> _debugDiscoveryComponent(PluginDiscoveryComponent component) => switch (component) {
-  PluginDiscoveryTabsComponent(:final tabs, :final selectedTabId) => <String, Object?>{
-    'type': 'tabs',
-    'id': component.id,
-    'tabs': tabs
-        .map((tab) => <String, Object?>{'id': tab.id, 'label': tab.label, 'target': tab.target, 'icon': tab.icon?.code})
-        .toList(growable: false),
-    'selectedTabId': selectedTabId,
-  },
-  PluginDiscoverySectionComponent(:final title, :final subtitle, :final children, :final icon) => <String, Object?>{
-    'type': 'section',
-    'id': component.id,
-    'title': title,
-    'subtitle': subtitle,
-    'icon': icon?.code,
-    'children': children.map(_debugDiscoveryComponent).toList(growable: false),
-  },
-  PluginDiscoveryGroupComponent(:final layout, :final children) => <String, Object?>{
-    'type': 'group',
-    'id': component.id,
-    'layout': layout.code,
-    'children': children.map(_debugDiscoveryComponent).toList(growable: false),
-  },
-  PluginDiscoveryContentCollectionComponent(:final layout, :final items, :final continuation) => <String, Object?>{
-    'type': 'contentCollection',
-    'id': component.id,
-    'layout': layout.code,
-    'items': items.map(_debugDiscoveryContentItem).toList(growable: false),
-    'continuation': continuation == null ? null : <String, Object?>{'target': continuation.target, 'cursor': continuation.cursor},
-  },
-  PluginDiscoveryCategoryCollectionComponent(:final layout, :final categories) => <String, Object?>{
-    'type': 'categoryCollection',
-    'id': component.id,
-    'layout': layout.code,
-    'categories': categories
-        .map(
-          (category) => <String, Object?>{
-            'id': category.id,
-            'title': category.title,
-            'target': category.target,
-            'count': category.count,
-            'url': category.url?.toString(),
-            'icon': category.icon?.code,
-          },
-        )
-        .toList(growable: false),
-  },
-  PluginDiscoveryTextComponent(:final text) => <String, Object?>{'type': 'text', 'id': component.id, 'text': text},
-  PluginDiscoveryDividerComponent() => <String, Object?>{'type': 'divider', 'id': component.id},
-};
-
-Map<String, Object?> _debugDiscoveryContentItem(PluginDiscoveryContentItem item) => <String, Object?>{
-  'content': _debugSummary(item.content),
-  'rank': item.rank,
-  'metric': item.metric == null ? null : <String, Object?>{'label': item.metric!.label, 'value': item.metric!.value},
-  'recommendation': item.recommendation,
-};
-
-Map<String, Object?> _debugSearch(PluginSearchResult result) => <String, Object?>{
-  'pluginId': result.pluginId,
-  'sourceName': result.sourceName,
-  'items': result.items.map(_debugSummary).toList(growable: false),
-  'nextCursor': result.nextCursor,
-  'totalCount': result.totalCount,
-};
-
-Map<String, Object?> _debugDetail(PluginContentDetail result) => <String, Object?>{
-  'pluginId': result.pluginId,
-  'sourceName': result.sourceName,
-  'summary': _debugSummary(result.summary),
-  'aliases': result.aliases,
-  'catalogUrl': result.catalogUrl?.toString(),
-};
-
-Map<String, Object?> _debugChapters(PluginChaptersResult result) => <String, Object?>{
-  'pluginId': result.pluginId,
-  'sourceName': result.sourceName,
-  'items': result.items.map(_debugChapter).toList(growable: false),
-  'groups': result.groups
-      .map(
-        (group) => <String, Object?>{
-          'id': group.id,
-          'title': group.title,
-          'order': group.order,
-          'episodes': group.episodes.map(_debugChapter).toList(growable: false),
-        },
-      )
-      .toList(growable: false),
-};
-
-Map<String, Object?> _debugContent(PluginChapterContent result) => <String, Object?>{
-  'pluginId': result.pluginId,
-  'sourceName': result.sourceName,
-  'contentKind': result.contentKind.code,
-  'chapterId': result.chapterId,
-  'title': result.title,
-  'updatedAt': result.updatedAt?.toIso8601String(),
-  'text': result.text,
-  'pages': result.pages
-      .map(
-        (page) => <String, Object?>{
-          'id': page.id,
-          'index': page.index,
-          'url': page.url.toString(),
-          'mimeType': page.mimeType,
-          'width': page.width,
-          'height': page.height,
-          'resourcePolicy': page.resourcePolicy.code,
-          'expiresAt': page.expiresAt?.toIso8601String(),
-        },
-      )
-      .toList(growable: false),
-  'media': result.media == null
-      ? null
-      : <String, Object?>{
-          'url': result.media!.url.toString(),
-          'resourceType': result.media!.resourceType.code,
-          'resourcePolicy': result.media!.resourcePolicy.code,
-          'expiresAt': result.media!.expiresAt?.toIso8601String(),
-          'mimeType': result.media!.mimeType,
-          'headers': result.media!.headers,
-        },
-};
-
-Map<String, Object?> _debugSummary(PluginContentSummary result) => <String, Object?>{
-  'id': result.id,
-  'title': result.title,
-  'contentKind': result.contentKind.code,
-  'coverOrientation': result.coverOrientation.code,
-  'author': result.author,
-  'url': result.url?.toString(),
-  'coverUrl': result.coverUrl?.toString(),
-  'coverBytesLength': result.coverBytes?.length,
-  'description': result.description,
-  'language': result.language,
-  'status': result.status.code,
-  'access': result.access.code,
-  'wordCount': result.wordCount,
-  'chapterCount': result.chapterCount,
-  'publishedAt': result.publishedAt?.toIso8601String(),
-  'updatedAt': result.updatedAt?.toIso8601String(),
-  'latestChapter': result.latestChapter == null
-      ? null
-      : <String, Object?>{
-          'id': result.latestChapter!.id,
-          'title': result.latestChapter!.title,
-          'url': result.latestChapter!.url?.toString(),
-          'updatedAt': result.latestChapter!.updatedAt?.toIso8601String(),
-        },
-  'categories': result.categories,
-  'tags': result.tags,
-  'attributes': result.attributes.map(_debugAttribute).toList(growable: false),
-};
-
-Map<String, Object?> _debugChapter(PluginChapterSummary chapter) => <String, Object?>{
-  'id': chapter.id,
-  'title': chapter.title,
-  'order': chapter.order,
-  'url': chapter.url?.toString(),
-  'volumeTitle': chapter.volumeTitle,
-  'wordCount': chapter.wordCount,
-  'updatedAt': chapter.updatedAt?.toIso8601String(),
-  'isLocked': chapter.isLocked,
-  'attributes': chapter.attributes.map(_debugAttribute).toList(growable: false),
-};
-
-Map<String, Object?> _debugAttribute(PluginContentAttribute attribute) => <String, Object?>{
-  'key': attribute.key,
-  'label': attribute.label,
-  'value': attribute.value,
 };
 
 HttpClient _defaultHttpClient() => HttpClient();

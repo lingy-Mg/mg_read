@@ -3,15 +3,24 @@
 /// I/O and cache; this temporary projection is discarded with the verification.
 library;
 
+import 'source_verification_models.dart';
+
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 
-Future<PluginChaptersResult> loadVerificationCatalog(SourceContentGateway gateway, String pluginId, String id) async {
+Future<PluginChaptersResult> loadVerificationCatalog(
+  SourceContentGateway gateway,
+  String pluginId,
+  String id, {
+  SourceVerificationCancellationToken? cancellationToken,
+}) async {
+  cancellationToken?.throwIfCancelled();
   final initial = await gateway.getChapters(pluginId: pluginId, id: id);
   if (!initial.groups.any((group) => group.deferred)) return initial;
   if (gateway is! SourceChapterGroupGateway) throw StateError('Deferred catalog loading unavailable.');
   final groups = <PluginMediaGroup>[];
   for (final group in initial.groups) {
+    cancellationToken?.throwIfCancelled();
     if (!group.deferred) {
       groups.add(group);
     } else {

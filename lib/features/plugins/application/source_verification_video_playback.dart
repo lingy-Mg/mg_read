@@ -4,6 +4,8 @@
 /// 注意：稳定报告只包含样本序号、阶段、状态和安全错误分类；URL、headers、标题和原始播放器错误不得进入报告。
 library;
 
+import 'source_verification_models.dart';
+
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
@@ -107,12 +109,14 @@ final class SourceVerificationVideoPlaybackRunner {
     required String contentId,
     required PluginChaptersResult chapters,
     required List<PluginChapterContent> resolvedContents,
+    SourceVerificationCancellationToken? cancellationToken,
   }) async {
     final candidates = _selectCandidates(chapters, resolvedContents);
     final selected = candidates.take(maximumSamples).toList(growable: false);
     final resolvedById = <String, PluginChapterContent>{for (final content in resolvedContents) content.chapterId: content};
     final samples = <Map<String, Object?>>[];
     for (var index = 0; index < selected.length; index += 1) {
+      cancellationToken?.throwIfCancelled();
       final candidate = selected[index];
       PluginChapterContent content;
       try {
@@ -130,6 +134,7 @@ final class SourceVerificationVideoPlaybackRunner {
         });
         continue;
       }
+      cancellationToken?.throwIfCancelled();
       final media = content.media;
       if (content.contentKind != PluginContentKind.video || content.chapterId != candidate.chapter.id || media == null) {
         samples.add(<String, Object?>{

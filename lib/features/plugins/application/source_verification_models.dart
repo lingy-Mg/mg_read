@@ -3,9 +3,11 @@
 /// 职责：保存阶段状态、计数型摘要和可导出的紧凑报告。
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 enum SourceVerificationResultStatus {
   passed('passed'),
@@ -89,6 +91,8 @@ final class SourceVerificationReport {
     required this.mode,
     required List<SourceVerificationSourceResult> sources,
     this.failureCode,
+    this.cancelled = false,
+    this.totalSources,
   }) : sources = List<SourceVerificationSourceResult>.unmodifiable(sources);
 
   final DateTime startedAt;
@@ -96,23 +100,30 @@ final class SourceVerificationReport {
   final String mode;
   final List<SourceVerificationSourceResult> sources;
   final String? failureCode;
+  final bool cancelled;
+  final int? totalSources;
 
   int get passedCount => sources.where((source) => source.status == SourceVerificationResultStatus.passed).length;
   int get failedCount => sources.where((source) => source.status == SourceVerificationResultStatus.failed).length;
   int get interactionRequiredCount => sources.where((source) => source.status == SourceVerificationResultStatus.interactionRequired).length;
   int get cancelledCount => sources.where((source) => source.status == SourceVerificationResultStatus.cancelled).length;
-  bool get isSuccessful => failureCode == null && sources.isNotEmpty && passedCount == sources.length;
+  bool get isSuccessful => !cancelled && failureCode == null && sources.isNotEmpty && passedCount == sources.length;
 
   Map<String, Object?> toJson() => <String, Object?>{
     'schemaVersion': 1,
     'platform': Platform.isMacOS ? 'macos' : 'windows',
     'mode': mode,
-    'status': isSuccessful ? 'passed' : 'failed',
+    'status': cancelled
+        ? 'cancelled'
+        : isSuccessful
+        ? 'passed'
+        : 'failed',
     'startedAt': startedAt.toUtc().toIso8601String(),
     'durationMs': duration.inMilliseconds,
     if (failureCode != null) 'failure': <String, Object?>{'code': failureCode},
     'totals': <String, Object?>{
       'sources': sources.length,
+      if (totalSources != null) 'selected': totalSources,
       'passed': passedCount,
       'failed': failedCount,
       'interactionRequired': interactionRequiredCount,
@@ -124,19 +135,64 @@ final class SourceVerificationReport {
 
 @immutable
 final class SourceVerificationProgress {
-  const SourceVerificationProgress({required this.pluginId, required this.displayName, required this.stage, required this.running});
+  const SourceVerificationProgress({
+    required this.pluginId,
+    required this.displayName,
+    required this.stage,
+    required this.running,
+    this.totalSources = 0,
+    this.completedSources = const [],
+    this.stages = const [],
+  });
 
   final String pluginId;
   final String displayName;
   final String stage;
   final bool running;
+  final int totalSources;
+  final List<SourceVerificationSourceResult> completedSources;
+  final List<SourceVerificationStageResult> stages;
 }
 
 final class SourceVerificationCancellationToken {
-  bool _cancelled = false;
+  final invocation = PluginInvocationCancellation();
+  final Set<VoidCallback> _listeners = {};
 
-  bool get isCancelled => _cancelled;
-  void cancel() => _cancelled = true;
+  bool get isCancelled => invocation.isCancelled;
+  void cancel() {
+    if (isCancelled) return;
+    invocation.cancel();
+    final listeners = List<VoidCallback>.of(_listeners);
+    _listeners.clear();
+    for (final listener in listeners) {
+      listener();
+    }
+  }
+
+  void throwIfCancelled() {
+    if (isCancelled) throw const SourceVerificationRunException('cancelled');
+  }
+
+  /// The owner must remove listeners when its request or resource is released.
+  VoidCallback listen(VoidCallback listener) {
+    if (isCancelled) {
+      listener();
+      return () {};
+    }
+    _listeners.add(listener);
+    return () => _listeners.remove(listener);
+  }
+
+  Future<T> run<T>(Future<T> Function() action) async {
+    throwIfCancelled();
+    final cancelled = Completer<T>();
+    final remove = listen(() => cancelled.completeError(const SourceVerificationRunException('cancelled')));
+    try {
+      return await Future.any<T>([Future<T>.sync(action), cancelled.future]);
+    } finally {
+      remove();
+    }
+  }
 }
 
 final class SourceVerificationRunException implements Exception {

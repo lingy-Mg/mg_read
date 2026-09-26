@@ -1,8 +1,10 @@
 /// desktop 正式 App 内置的数据源自检页面。
 ///
-/// 职责：启动单源/全部来源的生产链路检查，展示逐阶段结果并导出 JSON 报告。
+/// 职责：持有一次检测会话，展示实时阶段和结果，确认退出并取消 Runtime 请求。
+/// 生命周期：返回、停止和 dispose 共用取消令牌；完成后保留本轮报告供筛选与导出。
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
@@ -12,6 +14,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/plugins/application/source_verification.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
+
+part 'source_verification_widgets.dart';
 
 class SourceVerificationPage extends ConsumerStatefulWidget {
   const SourceVerificationPage({required this.onBackRequested, this.pluginId, super.key});
@@ -30,6 +34,49 @@ class _SourceVerificationPageState extends ConsumerState<SourceVerificationPage>
   String? _runErrorCode;
   bool _running = false;
   bool _exporting = false;
+  bool _stopping = false;
+  bool _confirmingExit = false;
+  bool _leaving = false;
+  Completer<void>? _runFinished;
+  _ResultFilter _filter = _ResultFilter.all;
+
+  @override
+  void dispose() {
+    _cancellationToken?.cancel();
+    super.dispose();
+  }
+
+  void _stop() {
+    if (!_running || _stopping) return;
+    setState(() => _stopping = true);
+    _cancellationToken?.cancel();
+  }
+
+  Future<void> _requestBack() async {
+    if (_confirmingExit || _leaving) return;
+    if (_running) {
+      _confirmingExit = true;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('中断检测并退出？'),
+          content: const Text('当前检测尚未完成。退出将中断正在进行的请求，并停止后续检测。'),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('继续检测')),
+            FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('中断并退出')),
+          ],
+        ),
+      );
+      _confirmingExit = false;
+      if (!mounted || confirmed != true) return;
+      _stop();
+      await _runFinished?.future;
+      if (!mounted) return;
+    }
+    setState(() => _leaving = true);
+    await WidgetsBinding.instance.endOfFrame;
+    if (mounted) widget.onBackRequested();
+  }
 
   @override
   void initState() {
@@ -42,12 +89,16 @@ class _SourceVerificationPageState extends ConsumerState<SourceVerificationPage>
   Future<void> _start() async {
     if (_running) return;
     final token = SourceVerificationCancellationToken();
+    final finished = Completer<void>();
+    _runFinished = finished;
     setState(() {
       _cancellationToken = token;
       _progress = null;
       _report = null;
       _runErrorCode = null;
       _running = true;
+      _stopping = false;
+      _filter = _ResultFilter.all;
     });
     try {
       final report = await ref
@@ -69,10 +120,12 @@ class _SourceVerificationPageState extends ConsumerState<SourceVerificationPage>
       if (!mounted) return;
       setState(() => _runErrorCode = 'internal');
     } finally {
+      if (!finished.isCompleted) finished.complete();
       if (mounted) {
         setState(() {
           _running = false;
           _cancellationToken = null;
+          _stopping = false;
         });
       }
     }
@@ -104,29 +157,35 @@ class _SourceVerificationPageState extends ConsumerState<SourceVerificationPage>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: AppSecondaryPageContent(
-          child: Column(
-            children: <Widget>[
-              AppSecondaryPageTopBar(
-                headerKey: const Key('source-verification-top-bar'),
-                backButtonKey: const Key('source-verification-back'),
-                title: widget.pluginId == null ? '检测全部数据源' : '检测数据源',
-                onBack: widget.onBackRequested,
-                actions: <Widget>[
-                  if (_report != null)
-                    AppSecondaryPageIconButton(
-                      key: const Key('source-verification-export'),
-                      label: '导出报告',
-                      icon: Icons.file_download_outlined,
-                      onPressed: _exporting ? _ignore : _exportReport,
-                    ),
-                ],
-              ),
-              Expanded(child: _buildBody(context)),
-            ],
+    return PopScope(
+      canPop: !_running || _leaving,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) unawaited(_requestBack());
+      },
+      child: Scaffold(
+        body: SafeArea(
+          bottom: false,
+          child: AppSecondaryPageContent(
+            child: Column(
+              children: <Widget>[
+                AppSecondaryPageTopBar(
+                  headerKey: const Key('source-verification-top-bar'),
+                  backButtonKey: const Key('source-verification-back'),
+                  title: widget.pluginId == null ? '检测全部数据源' : '检测数据源',
+                  onBack: _requestBack,
+                  actions: <Widget>[
+                    if (_report != null)
+                      AppSecondaryPageIconButton(
+                        key: const Key('source-verification-export'),
+                        label: '导出报告',
+                        icon: Icons.file_download_outlined,
+                        onPressed: _exporting ? _ignore : _exportReport,
+                      ),
+                  ],
+                ),
+                Expanded(child: _buildBody(context)),
+              ],
+            ),
           ),
         ),
       ),
@@ -143,6 +202,19 @@ class _SourceVerificationPageState extends ConsumerState<SourceVerificationPage>
       );
     }
     final report = _report;
+    final completed = report?.sources ?? _progress?.completedSources ?? const <SourceVerificationSourceResult>[];
+    final visible = completed
+        .where(
+          (source) => switch (_filter) {
+            _ResultFilter.all => true,
+            _ResultFilter.issues =>
+              source.status == SourceVerificationResultStatus.failed || source.status == SourceVerificationResultStatus.interactionRequired,
+            _ResultFilter.passed => source.status == SourceVerificationResultStatus.passed,
+          },
+        )
+        .toList(growable: false);
+    final current = _progress;
+    final active = _running && current != null && !completed.any((source) => source.pluginId == current.pluginId);
     return ListView(
       key: const Key('source-verification-content'),
       padding: const EdgeInsets.fromLTRB(
@@ -151,37 +223,81 @@ class _SourceVerificationPageState extends ConsumerState<SourceVerificationPage>
         AppDetailMetrics.horizontalPadding,
         AppSpacing.section,
       ),
-      children: <Widget>[
-        _VerificationOverview(running: _running, progress: _progress, report: report, errorCode: _runErrorCode),
+      children: [
+        _VerificationOverview(running: _running, stopping: _stopping, progress: current, report: report, errorCode: _runErrorCode),
+        const SizedBox(height: AppSpacing.regular),
+        Wrap(
+          spacing: AppSpacing.regular,
+          runSpacing: AppSpacing.unit,
+          children: [
+            if (_running)
+              OutlinedButton.icon(
+                key: const Key('source-verification-cancel'),
+                onPressed: _stopping ? null : _stop,
+                icon: const Icon(Icons.stop_circle_outlined),
+                label: Text(_stopping ? '正在中断…' : '中断检测'),
+              )
+            else
+              FilledButton.icon(
+                key: const Key('source-verification-restart'),
+                onPressed: _start,
+                icon: const Icon(Icons.refresh),
+                label: const Text('重新检测'),
+              ),
+          ],
+        ),
         const SizedBox(height: AppSpacing.comfortable),
-        if (report != null)
-          for (final source in report.sources) ...<Widget>[_SourceResultCard(source: source), const SizedBox(height: AppSpacing.regular)],
         if (_runErrorCode != null)
           _VerificationMessage(
             key: const Key('source-verification-run-failure'),
             icon: Icons.error_outline,
-            title: '自检引擎未能启动',
+            title: _runErrorCode == 'source_list_empty' ? '暂无可检测的数据源' : '无法开始检测',
             message: _runErrorMessage(_runErrorCode!),
           ),
-        const SizedBox(height: AppSpacing.regular),
-        if (_running)
-          OutlinedButton.icon(
-            key: const Key('source-verification-cancel'),
-            onPressed: _cancellationToken?.cancel,
-            icon: const Icon(Icons.stop_circle_outlined),
-            label: const Text('完成当前请求后停止'),
-          )
-        else
-          FilledButton.icon(
-            key: const Key('source-verification-restart'),
-            onPressed: _start,
-            icon: const Icon(Icons.refresh),
-            label: Text(report == null && _runErrorCode == null ? '开始检测' : '重新检测'),
+        if (active) ...[
+          Text('当前检测', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: AppSpacing.regular),
+          _SourceResultCard(
+            source: SourceVerificationSourceResult(
+              pluginId: current.pluginId,
+              displayName: current.displayName,
+              version: '',
+              status: SourceVerificationResultStatus.passed,
+              duration: Duration.zero,
+              stages: current.stages,
+            ),
+            activeStage: current.running ? current.stage : 'next',
           ),
-        const SizedBox(height: AppSpacing.regular),
+          const SizedBox(height: AppSpacing.comfortable),
+        ],
+        if (completed.isNotEmpty) ...[
+          Text('检测结果 · ${completed.length}', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: AppSpacing.regular),
+          Wrap(
+            spacing: AppSpacing.unit,
+            runSpacing: AppSpacing.unit,
+            children: [
+              for (final filter in _ResultFilter.values)
+                ChoiceChip(
+                  label: Text(switch (filter) {
+                    _ResultFilter.all => '全部',
+                    _ResultFilter.issues => '异常 / 待处理',
+                    _ResultFilter.passed => '通过',
+                  }),
+                  selected: _filter == filter,
+                  onSelected: (_) => setState(() => _filter = filter),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.regular),
+          if (visible.isEmpty) const Padding(padding: EdgeInsets.all(AppSpacing.comfortable), child: Text('暂无符合条件的结果')),
+          for (final source in visible) ...[_SourceResultCard(source: source), const SizedBox(height: AppSpacing.regular)],
+        ],
+        const SizedBox(height: AppSpacing.comfortable),
+        Text('检测范围', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: AppSpacing.unit),
         Text(
-          '检测使用当前 App 的正式 Runtime、网络设置和已启用插件；不会写入书架。',
-          textAlign: TextAlign.center,
+          '使用当前网络设置，依次检查已启用数据源的发现、搜索、详情、完整目录、内容抽样及封面和内容资源。跳过的项目不代表验证通过；视频资源可访问不代表实际播放成功。检测不会写入书架。',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppThemeTokens.of(context).mutedText),
         ),
       ],
@@ -189,193 +305,6 @@ class _SourceVerificationPageState extends ConsumerState<SourceVerificationPage>
   }
 }
 
+enum _ResultFilter { all, issues, passed }
+
 bool get _supportsDesktopVerification => Platform.isWindows || Platform.isMacOS;
-
-class _VerificationOverview extends StatelessWidget {
-  const _VerificationOverview({required this.running, required this.progress, required this.report, required this.errorCode});
-
-  final bool running;
-  final SourceVerificationProgress? progress;
-  final SourceVerificationReport? report;
-  final String? errorCode;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppThemeTokens.of(context);
-    final current = progress;
-    final title = running
-        ? '正在执行全链路检测'
-        : report == null
-        ? errorCode == null
-              ? '准备检测'
-              : '检测未启动'
-        : report!.isSuccessful
-        ? '全部检测通过'
-        : '检测完成，存在异常';
-    final message = running && current != null
-        ? '${current.displayName} · ${_stageLabel(current.stage)}'
-        : report == null
-        ? '将依次检查 Runtime、发现、搜索、详情、目录、正文和资源代理。'
-        : '通过 ${report!.passedCount}，失败 ${report!.failedCount}，需人工操作 ${report!.interactionRequiredCount}。';
-    return DecoratedBox(
-      key: const Key('source-verification-overview'),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: AppRadii.detailCard,
-        border: Border.all(color: tokens.divider),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.comfortable),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            if (running)
-              const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5))
-            else
-              Icon(report?.isSuccessful == true ? Icons.verified_outlined : Icons.fact_check_outlined, color: tokens.dataSourceAccent),
-            const SizedBox(width: AppSpacing.regular),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(title, style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: AppSpacing.unit),
-                  Text(message, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SourceResultCard extends StatelessWidget {
-  const _SourceResultCard({required this.source});
-
-  final SourceVerificationSourceResult source;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppThemeTokens.of(context);
-    final passed = source.status == SourceVerificationResultStatus.passed;
-    return DecoratedBox(
-      key: ValueKey<String>('source-verification-result-${source.pluginId}'),
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: AppRadii.detailCard,
-        border: Border.all(color: passed ? tokens.dataSourceAccent.withValues(alpha: 0.45) : tokens.notification.withValues(alpha: 0.55)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.comfortable),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Icon(
-                  passed ? Icons.check_circle_outline : Icons.error_outline,
-                  color: passed ? tokens.dataSourceAccent : tokens.notification,
-                ),
-                const SizedBox(width: AppSpacing.regular),
-                Expanded(child: Text(source.displayName, style: Theme.of(context).textTheme.titleMedium)),
-                Text(_sourceStatusLabel(source.status), style: Theme.of(context).textTheme.labelLarge),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.regular),
-            for (final stage in source.stages)
-              Padding(
-                padding: const EdgeInsets.only(top: AppSpacing.unit),
-                child: Row(
-                  children: <Widget>[
-                    Icon(_stageIcon(stage.status), size: 18, color: _stageColor(tokens, stage.status)),
-                    const SizedBox(width: AppSpacing.regular),
-                    Expanded(child: Text(_stageLabel(stage.stage))),
-                    Text(
-                      stage.code == null ? _stageStatusLabel(stage.status) : '${_stageStatusLabel(stage.status)} · ${stage.code}',
-                      textAlign: TextAlign.right,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _VerificationMessage extends StatelessWidget {
-  const _VerificationMessage({required this.icon, required this.title, required this.message, super.key});
-
-  final IconData icon;
-  final String title;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.all(AppSpacing.section),
-    child: Column(
-      children: <Widget>[
-        Icon(icon, size: 40),
-        const SizedBox(height: AppSpacing.regular),
-        Text(title, style: Theme.of(context).textTheme.titleMedium, textAlign: TextAlign.center),
-        const SizedBox(height: AppSpacing.unit),
-        Text(message, textAlign: TextAlign.center),
-      ],
-    ),
-  );
-}
-
-String _stageLabel(String stage) {
-  if (stage.startsWith('content.')) return '首、中、末内容';
-  return switch (stage) {
-    'runtime' => 'Runtime 与插件状态',
-    'discover' => '发现',
-    'search' => '搜索',
-    'detail' => '详情',
-    'chapters' => '完整目录',
-    'content' => '首、中、末内容',
-    'resource.cover' => '封面资源',
-    'resource.content' => '正文或媒体资源',
-    _ => '数据源检查',
-  };
-}
-
-String _sourceStatusLabel(SourceVerificationResultStatus status) => switch (status) {
-  SourceVerificationResultStatus.passed => '通过',
-  SourceVerificationResultStatus.failed => '失败',
-  SourceVerificationResultStatus.interactionRequired => '需要人工操作',
-  SourceVerificationResultStatus.cancelled => '已取消',
-};
-
-String _stageStatusLabel(SourceVerificationStageStatus status) => switch (status) {
-  SourceVerificationStageStatus.passed => '通过',
-  SourceVerificationStageStatus.failed => '失败',
-  SourceVerificationStageStatus.skipped => '跳过',
-  SourceVerificationStageStatus.cancelled => '已取消',
-};
-
-IconData _stageIcon(SourceVerificationStageStatus status) => switch (status) {
-  SourceVerificationStageStatus.passed => Icons.check_circle_outline,
-  SourceVerificationStageStatus.failed => Icons.cancel_outlined,
-  SourceVerificationStageStatus.skipped => Icons.remove_circle_outline,
-  SourceVerificationStageStatus.cancelled => Icons.stop_circle_outlined,
-};
-
-Color _stageColor(AppThemeTokens tokens, SourceVerificationStageStatus status) => switch (status) {
-  SourceVerificationStageStatus.passed => tokens.dataSourceAccent,
-  SourceVerificationStageStatus.failed => tokens.notification,
-  SourceVerificationStageStatus.skipped || SourceVerificationStageStatus.cancelled => tokens.mutedText,
-};
-
-String _runErrorMessage(String code) => switch (code) {
-  'runtime_timeout' => 'Runtime 初始化超时，请检查 Node 状态后重试。',
-  'source_list_empty' => '当前没有可检测的已启用数据源。',
-  'source_not_found' => '该数据源未启用、未激活或已经移除。',
-  _ => '自检引擎出现内部错误，请查看应用诊断后重试。',
-};
-
-void _ignore() {}
