@@ -26,6 +26,7 @@ import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/data/deferred_lan_sync_gateway.dart';
 import 'package:mg_read/features/diagnostics/application/diagnostics_activation.dart';
+import 'package:mg_read/features/diagnostics/application/diagnostics_viewer_gateway.dart';
 
 import '../core/diagnostics/diagnostics_testkit.dart';
 import '../core/settings/settings_testkit.dart';
@@ -92,6 +93,29 @@ void main() {
     final diagnosticsRoot = Directory('${root.path}${Platform.pathSeparator}diagnostics');
     expect(await diagnosticsRoot.exists(), isFalse);
 
+    final live = container.read(diagnosticsLiveBufferProvider)!;
+    final appDiagnostics = container.read(diagnosticsManagerProvider);
+    final viewer = container.read(diagnosticsViewerGatewayProvider);
+    final capture = await viewer.startCapture(mode: DiagnosticsDetailMode.memoryOnly, source: DiagnosticsViewerSource.app);
+    appDiagnostics.emit(
+      AppDiagnosticEvents.routeChanged,
+      attributes: () => DiagnosticObjectValue({
+        'fromRoute': DiagnosticValue.nullValue,
+        'toRoute': DiagnosticValue.string('profile'),
+        'navigationType': DiagnosticValue.string('test'),
+      }),
+    );
+    appDiagnostics.emit(
+      AppDiagnosticEvents.unhandledError,
+      attributes: () =>
+          DiagnosticObjectValue({'boundary': DiagnosticValue.string('test'), 'errorCode': DiagnosticValue.string('memory_only')}),
+    );
+    await appDiagnostics.flush();
+    expect(live.eventCount, greaterThanOrEqualTo(2));
+    expect(await diagnosticsRoot.exists(), isFalse);
+    await viewer.stopCapture(capture);
+    expect(live.snapshot().every((event) => event.severity.index >= DiagnosticSeverity.warn.index), isTrue);
+
     final activation = container.read(diagnosticsActivationProvider)!;
     expect(activation.enabledForCurrentRun, isFalse);
     expect(await activation.enableForCurrentRun(), isTrue);
@@ -99,9 +123,29 @@ void main() {
     expect(manager.get(AppSettingKeys.diagnosticsEnabled), isTrue);
     expect(await diagnosticsRoot.exists(), isTrue);
     expect(await startup.ensureDiagnosticsReady(), isNotNull);
-    await activation.disableOnNextLaunch();
+    await activation.disableForCurrentRun();
     expect(manager.get(AppSettingKeys.diagnosticsEnabled), isFalse);
-    expect(activation.enabledForCurrentRun, isTrue);
+    expect(activation.enabledForCurrentRun, isFalse);
+    final diagnostics = container.read(diagnosticsManagerProvider);
+    final archive = container.read(diagnosticsLogArchiveProvider)!;
+    final files = await archive.listLogFiles();
+    final before = (await archive.listLogEvents(files.single.fileId)).items.length;
+    diagnostics.emit(
+      AppDiagnosticEvents.unhandledError,
+      attributes: () =>
+          DiagnosticObjectValue({'boundary': DiagnosticValue.string('test'), 'errorCode': DiagnosticValue.string('after_stop')}),
+    );
+    await diagnostics.flush();
+    expect((await archive.listLogEvents(files.single.fileId)).items.length, before);
+    expect(container.read(diagnosticsLiveBufferProvider)!.snapshot().last.severity, DiagnosticSeverity.error);
+    expect(await activation.enableForCurrentRun(), isTrue);
+    diagnostics.emit(
+      AppDiagnosticEvents.unhandledError,
+      attributes: () =>
+          DiagnosticObjectValue({'boundary': DiagnosticValue.string('test'), 'errorCode': DiagnosticValue.string('after_resume')}),
+    );
+    await diagnostics.flush();
+    expect((await archive.listLogEvents(files.single.fileId)).items.length, before + 1);
 
     final host = scope.child as AppSettingsLifecycleHost;
     await host.manager.close();

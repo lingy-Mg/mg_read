@@ -1,122 +1,99 @@
-/// 调试日志查看器的捕获与来源控件。
-///
-/// 职责：
-/// - 展示受限详情捕获模式及其运行状态。
-/// - 区分标准元数据日志与显式详情捕获。
-///
-/// 注意：
-/// - 仅通过显式回调改变捕获状态，不直接访问诊断存储或 Runtime。
-/// - 控件不保存异步状态，页面负责处理请求世代与生命周期。
-///
+/// Recording controls for the diagnostics page.
+/// The page owns asynchronous changes, file admission and capture lifetime;
+/// these controls keep detailed collection separate from explicit file saving.
 library;
 
 import 'package:flutter/material.dart';
-
 import 'package:mg_read/app/app_theme.dart';
-import 'package:mg_read/features/diagnostics/application/diagnostics_viewer_gateway.dart';
 
-/// Displays the explicit, bounded diagnostic detail-capture controls.
-class DiagnosticsViewerCapturePanel extends StatelessWidget {
-  const DiagnosticsViewerCapturePanel({
-    required this.mode,
+class DiagnosticsViewerRecordingPanel extends StatelessWidget {
+  const DiagnosticsViewerRecordingPanel({
+    required this.detailed,
+    required this.saving,
     required this.busy,
-    required this.onModeSelected,
-    this.warningCode,
+    required this.onDetailedChanged,
+    required this.onSavingChanged,
     this.errorCode,
     super.key,
   });
-
-  final DiagnosticsDetailMode mode;
+  final bool detailed;
+  final bool saving;
   final bool busy;
-  final String? warningCode;
+  final ValueChanged<bool> onDetailedChanged;
+  final ValueChanged<bool> onSavingChanged;
   final String? errorCode;
-  final ValueChanged<DiagnosticsDetailMode> onModeSelected;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = AppThemeTokens.of(context);
-    final (String title, String description, IconData icon) = switch (mode) {
-      DiagnosticsDetailMode.off => ('标准日志', '实时展示操作、阶段、结果和错误；大 JSON、HTML、HTTP 正文和小说正文不会进入日志。', Icons.article_outlined),
-      DiagnosticsDetailMode.memoryOnly => ('实时详情 · 仅内存', '最多 8 MiB / 15 分钟；关闭本窗口即停止并清空，不创建详情文件。', Icons.memory_rounded),
-      DiagnosticsDetailMode.persistToText => ('详细日志 · TXT', '最多 64 MiB / 15 分钟；详情写入独立 TXT，关闭本窗口停止捕获。', Icons.description_outlined),
-    };
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: tokens.surface,
+    return Material(
+      color: tokens.surface,
+      shape: RoundedRectangleBorder(
         borderRadius: AppRadii.detailCard,
-        border: Border.all(color: tokens.divider),
+        side: BorderSide(color: tokens.divider),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.regular),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Icon(icon, color: tokens.warning),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(AppSpacing.regular),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(detailed ? Icons.troubleshoot_rounded : Icons.shield_outlined, color: tokens.accent, size: 28),
                 const SizedBox(width: AppSpacing.compact),
-                Expanded(child: Text(title, style: theme.textTheme.titleMedium)),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(detailed ? '正在记录排查过程' : '仅关注异常', style: theme.textTheme.titleMedium),
+                      const SizedBox(height: AppSpacing.unit),
+                      Text(
+                        detailed ? '临时记录操作过程与诊断字段，可离开此页复现问题，15 分钟后自动停止。' : '只保留最近的警告与错误，普通操作不记录。',
+                        style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
+                      ),
+                      const SizedBox(height: AppSpacing.compact),
+                      Text(
+                        saving ? '文件保存已开启 · 可在历史记录中导出' : '仅在内存中保留 · 不写出日志文件',
+                        style: theme.textTheme.labelMedium?.copyWith(color: saving ? tokens.warning : tokens.mutedText),
+                      ),
+                    ],
+                  ),
+                ),
                 if (busy) const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)),
               ],
             ),
-            const SizedBox(height: AppSpacing.compact),
-            Text(description, style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText)),
-            const SizedBox(height: AppSpacing.regular),
-            Wrap(
-              spacing: AppSpacing.compact,
-              runSpacing: AppSpacing.compact,
-              children: <Widget>[
-                DiagnosticsViewerModeChip(
-                  label: '标准日志',
-                  selected: mode == DiagnosticsDetailMode.off,
-                  enabled: !busy,
-                  onSelected: () => onModeSelected(DiagnosticsDetailMode.off),
-                ),
-                DiagnosticsViewerModeChip(
-                  label: '实时详情',
-                  selected: mode == DiagnosticsDetailMode.memoryOnly,
-                  enabled: !busy,
-                  onSelected: () => onModeSelected(DiagnosticsDetailMode.memoryOnly),
-                ),
-                DiagnosticsViewerModeChip(
-                  label: '保存详情 TXT',
-                  selected: mode == DiagnosticsDetailMode.persistToText,
-                  enabled: !busy,
-                  onSelected: () => onModeSelected(DiagnosticsDetailMode.persistToText),
-                ),
-              ],
-            ),
-            if (warningCode != null || errorCode != null) ...<Widget>[
-              const SizedBox(height: AppSpacing.compact),
-              Text(
-                errorCode != null ? '模式切换失败：$errorCode' : '部分日志源未开启：$warningCode',
+          ),
+          Divider(height: 1, color: tokens.divider),
+          SwitchListTile.adaptive(
+            key: const Key('diagnostics-detail-switch'),
+            secondary: const Icon(Icons.manage_search_rounded),
+            title: const Text('详细记录'),
+            subtitle: const Text('排查时开启，15 分钟后停止'),
+            value: detailed,
+            onChanged: busy ? null : onDetailedChanged,
+          ),
+          SwitchListTile.adaptive(
+            key: const Key('diagnostics-master-switch'),
+            secondary: const Icon(Icons.save_outlined),
+            title: const Text('保存到文件'),
+            subtitle: Text(saving ? '保存当前记录级别，关闭后立即停止' : '需要重启后回看或导出时开启'),
+            value: saving,
+            onChanged: busy ? null : onSavingChanged,
+          ),
+          if (errorCode != null)
+            Padding(
+              padding: const EdgeInsets.all(AppSpacing.regular),
+              child: Text(
+                '设置未完成，请重试（$errorCode）',
                 key: const Key('diagnostics-capture-message'),
-                style: theme.textTheme.bodySmall?.copyWith(color: errorCode != null ? theme.colorScheme.error : tokens.warning),
+                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
               ),
-            ],
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
-}
-
-class DiagnosticsViewerModeChip extends StatelessWidget {
-  const DiagnosticsViewerModeChip({
-    required this.label,
-    required this.selected,
-    required this.enabled,
-    required this.onSelected,
-    super.key,
-  });
-
-  final String label;
-  final bool selected;
-  final bool enabled;
-  final VoidCallback onSelected;
-
-  @override
-  Widget build(BuildContext context) =>
-      ChoiceChip(label: Text(label), selected: selected, onSelected: enabled ? (_) => onSelected() : null);
 }

@@ -1,8 +1,8 @@
 /// Bounded process-local diagnostics used by the in-app debug viewer.
 ///
 /// Responsibilities:
-/// - Retain recent schema-validated metadata events even when file logging is
-///   disabled.
+/// - Default to recent warnings/errors (200 events / 256 KiB); detailed
+///   metadata is admitted only during an explicit recording session.
 /// - Notify the visible viewer without adding disk I/O to business paths.
 /// - Keep both event count and encoded bytes bounded.
 ///
@@ -20,14 +20,26 @@ import 'diagnostic_event.dart';
 import 'diagnostics_manager.dart';
 
 final class LiveDiagnosticsBuffer implements DiagnosticEventSink {
-  LiveDiagnosticsBuffer({this.minimumSeverity = DiagnosticSeverity.debug, this.maxEvents = 500, this.maxBytes = 512 * 1024, this.onEvent})
+  LiveDiagnosticsBuffer({this.minimumSeverity = DiagnosticSeverity.warn, this.maxEvents = 200, this.maxBytes = 256 * 1024, this.onEvent})
     : startedAtUtcMicros = DateTime.now().toUtc().microsecondsSinceEpoch {
     if (maxEvents <= 0 || maxBytes <= 0) {
       throw ArgumentError('Live diagnostics bounds must be positive.');
     }
   }
 
-  final DiagnosticSeverity minimumSeverity;
+  DiagnosticSeverity minimumSeverity;
+
+  /// Detailed recording is session-only. Returning to normal drops ordinary
+  /// events immediately so they cannot crowd out recent warnings and errors.
+  void setDetailedRecording(bool enabled) {
+    minimumSeverity = enabled ? DiagnosticSeverity.debug : DiagnosticSeverity.warn;
+    if (!enabled) {
+      _entries.removeWhere((entry) => entry.event.severity.index < DiagnosticSeverity.warn.index);
+      _storedBytes = _entries.fold(0, (sum, entry) => sum + entry.encodedBytes);
+    }
+    if (!_closed) _changes.add(null);
+  }
+
   final int maxEvents;
   final int maxBytes;
   final void Function(DiagnosticEvent event)? onEvent;

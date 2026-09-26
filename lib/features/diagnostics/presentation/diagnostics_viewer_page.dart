@@ -4,11 +4,11 @@
 /// - 默认展示当前进程的有界实时事件，并允许切换历史日志文件。
 /// - 管理当前来源的有界详情捕获和按需附件读取。
 /// - 集中提供数据源 Runtime 检查页开关与访问地址。
-/// - 恢复并保存“标准日志 / 实时详情”偏好。
+/// - 展示应用级临时记录状态，跨页面持续 15 分钟；文件保存独立控制并立即生效。
 ///
 /// 注意：
 /// - 文件列表不得加载事件；单文件损坏不能影响其他文件。
-/// - 页面销毁时必须停止自己创建的捕获会话，不能在 build() 中发起 IO。
+/// - 页面仅释放订阅；网关拥有捕获生命周期，不能在 build() 中发起 IO。
 ///
 library;
 
@@ -69,11 +69,20 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
   var _generation = 0;
   StreamSubscription<void>? _liveSubscription;
   Timer? _liveRefreshDebounce;
+  StreamSubscription<void>? _captureSubscription;
 
   @override
   void initState() {
     super.initState();
     _gateway = ref.read(diagnosticsViewerGatewayProvider);
+    _capture = _gateway.activeCapture;
+    _captureSubscription = _gateway.watchCaptureChanges().listen((_) {
+      if (!mounted) return;
+      setState(() {
+        _capture = _gateway.activeCapture;
+      });
+      _onLiveEvent(null);
+    });
     _capturePreferenceStore = ref.read(diagnosticsCapturePreferenceStoreProvider);
     _activation = ref.read(diagnosticsActivationProvider);
     _liveSubscription = _gateway.watchLiveEvents().listen(_onLiveEvent);
@@ -85,12 +94,9 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
   @override
   void dispose() {
     _generation += 1;
+    unawaited(_captureSubscription?.cancel());
     _liveRefreshDebounce?.cancel();
     unawaited(_liveSubscription?.cancel());
-    final capture = _capture;
-    if (capture != null) {
-      unawaited(_gateway.stopCapture(capture).catchError((_) {}));
-    }
     super.dispose();
   }
 
@@ -103,7 +109,7 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
         child: AppSecondaryPageContent(
           child: Column(
             children: <Widget>[
-              ProfileDetailTopBar(title: '调试中心', onBack: widget.onBackRequested),
+              ProfileDetailTopBar(title: '问题诊断', onBack: widget.onBackRequested),
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: _loadLogFiles,
@@ -119,19 +125,23 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
                         ),
                         sliver: SliverList.list(
                           children: <Widget>[
-                            _DiagnosticsLifecyclePanel(
-                              enabledPreference: _diagnosticsEnabled,
-                              enabledForCurrentRun: _activation?.enabledForCurrentRun ?? _diagnosticsEnabled,
-                              busy: _activationBusy,
-                              onChanged: _changeDiagnosticsEnabled,
-                            ),
-                            const SizedBox(height: AppSpacing.regular),
-                            DiagnosticsViewerCapturePanel(
-                              mode: _capture?.mode ?? DiagnosticsDetailMode.off,
-                              busy: _captureBusy,
-                              warningCode: _capture?.warningCode,
+                            DiagnosticsViewerRecordingPanel(
+                              detailed: _capture != null,
+                              saving: _diagnosticsEnabled,
+                              busy: _activationBusy || _captureBusy || _loading,
+                              onDetailedChanged: (enabled) => _changeCaptureMode(
+                                enabled
+                                    ? (_diagnosticsEnabled ? DiagnosticsDetailMode.persistToText : DiagnosticsDetailMode.memoryOnly)
+                                    : DiagnosticsDetailMode.off,
+                              ),
+                              onSavingChanged: _changeDiagnosticsEnabled,
                               errorCode: _captureError,
-                              onModeSelected: _changeCaptureMode,
+                            ),
+                            const SizedBox(height: AppSpacing.compact),
+                            const ExpansionTile(
+                              leading: Icon(Icons.developer_mode_rounded),
+                              title: Text('数据源检查工具'),
+                              children: [RuntimeDebugPanel()],
                             ),
                             const SizedBox(height: AppSpacing.regular),
                             _LogFilePicker(
@@ -167,8 +177,6 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
                                   label: Text(_loadingMore ? '正在读取…' : '读取更早日志'),
                                 ),
                               ),
-                            const SizedBox(height: AppSpacing.regular),
-                            const RuntimeDebugPanel(),
                           ],
                         ),
                       ),
@@ -189,13 +197,10 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
       final enabled = await _capturePreferenceStore.loadDiagnosticsEnabled();
       if (!mounted) return;
       setState(() {
-        _diagnosticsEnabled = enabled;
+        _diagnosticsEnabled = _activation?.enabledForCurrentRun ?? enabled;
         _loading = false;
       });
       await _loadLogFiles();
-      if (enabled || (_activation?.enabledForCurrentRun ?? false)) {
-        await _restoreCaptureMode();
-      }
     } on Object catch (error) {
       if (!mounted) return;
       setState(() {
@@ -206,41 +211,38 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
   }
 
   Future<void> _changeDiagnosticsEnabled(bool enabled) async {
-    if (_activationBusy) return;
+    if (_activationBusy || _captureBusy) return;
     setState(() {
       _activationBusy = true;
-      _loadError = null;
+      _captureError = null;
     });
+    final wasDetailed = _capture != null;
     try {
+      // Stop payload capture before closing file admission; switching modes
+      // never silently starts a file writer from an in-memory capture.
+      if (wasDetailed) await _changeCaptureMode(DiagnosticsDetailMode.off);
+      if (_capture != null) return;
+      final activation = _activation;
       if (enabled) {
-        final activation = _activation;
         final active = activation == null ? true : await activation.enableForCurrentRun();
-        if (!active) throw StateError('diagnostics_activation_failed');
-        if (activation == null) {
-          await _capturePreferenceStore.saveDiagnosticsEnabled(true);
-        }
-        if (!mounted) return;
-        setState(() {
-          _diagnosticsEnabled = true;
-        });
-        await _loadLogFiles();
+        if (!active) throw const DiagnosticsViewerException('file_recording_unavailable');
       } else {
-        final activation = _activation;
-        if (activation == null) {
-          await _capturePreferenceStore.saveDiagnosticsEnabled(false);
-        } else {
-          await activation.disableOnNextLaunch();
-        }
-        if (!mounted) return;
-        setState(() {
-          _diagnosticsEnabled = false;
-        });
+        await activation?.disableForCurrentRun();
       }
-    } on Object catch (error) {
+      if (activation == null) await _capturePreferenceStore.saveDiagnosticsEnabled(enabled);
       if (!mounted) return;
       setState(() {
-        _loadError = _viewerErrorCode(error);
+        _diagnosticsEnabled = enabled;
       });
+      if (wasDetailed) await _changeCaptureMode(enabled ? DiagnosticsDetailMode.persistToText : DiagnosticsDetailMode.memoryOnly);
+      await _loadLogFiles();
+    } on Object catch (error) {
+      if (mounted) {
+        setState(() {
+          _diagnosticsEnabled = _activation?.enabledForCurrentRun ?? _diagnosticsEnabled;
+          _captureError = _viewerErrorCode(error);
+        });
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -283,6 +285,18 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
   Future<void> _deleteSelectedLog() async {
     final file = _selectedLogFile;
     if (file == null || file.isCurrent) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除这份记录？'),
+        content: Text('${_formatFileDate(file.startedAtUtcMicros)}\n删除后无法恢复。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('删除')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
     try {
       await _gateway.deleteLogFile(file.fileId);
       await _loadLogFiles();
@@ -350,6 +364,12 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
       setState(() {
         final combined = reset ? page.items : <DiagnosticsViewerEvent>[..._events, ...page.items];
         _events = List<DiagnosticsViewerEvent>.unmodifiable(combined.take(_maximumRetainedEvents));
+        final visibleIds = _events.map((event) => event.identity).toSet();
+        _details.removeWhere((identity, _) => !visibleIds.contains(identity));
+        _detailErrors.removeWhere((identity, _) => !visibleIds.contains(identity));
+        if (!visibleIds.contains(_expandedEvent)) _expandedEvent = null;
+        final attachmentIds = _details.values.expand((detail) => detail.attachments).map((attachment) => attachment.identity).toSet();
+        _previews.removeWhere((identity, _) => !attachmentIds.contains(identity));
         _nextCursor = combined.length >= _maximumRetainedEvents ? null : page.nextCursor;
         _loading = false;
         _loadingMore = false;
@@ -366,95 +386,43 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
 
   void _onLiveEvent(void _) {
     if (!mounted || _selectedLogFile?.isLive != true) return;
-    _liveRefreshDebounce?.cancel();
+    if (_liveRefreshDebounce?.isActive ?? false) return;
     _liveRefreshDebounce = Timer(const Duration(milliseconds: 250), () {
       if (!mounted || _selectedLogFile?.isLive != true || _loading || _loadingMore) return;
       unawaited(_loadEvents(reset: true, passive: true));
     });
   }
 
-  Future<void> _restoreCaptureMode() async {
-    try {
-      final realtimeDetailsEnabled = await _capturePreferenceStore.loadRealtimeDetailsEnabled();
-      if (!mounted || !realtimeDetailsEnabled) return;
-      await _changeCaptureMode(DiagnosticsDetailMode.memoryOnly, persistPreference: false);
-    } on Object catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _captureError = _viewerErrorCode(error);
-      });
-    }
-  }
-
-  Future<void> _changeCaptureMode(DiagnosticsDetailMode mode, {bool persistPreference = true}) async {
-    if (!mounted) return;
-    if (_captureBusy || (_capture?.mode == mode && _capture?.source == _source)) {
-      return;
-    }
-    if (mode != DiagnosticsDetailMode.off && !(_activation?.enabledForCurrentRun ?? _diagnosticsEnabled)) {
-      setState(() {
-        _captureError = 'diagnostics_disabled';
-      });
-      return;
-    }
+  Future<void> _changeCaptureMode(DiagnosticsDetailMode mode) async {
+    if (!mounted || _captureBusy || (_capture?.mode ?? DiagnosticsDetailMode.off) == mode) return;
+    if (mode == DiagnosticsDetailMode.persistToText && !_diagnosticsEnabled) return;
     setState(() {
       _captureBusy = true;
       _captureError = null;
     });
-    final previous = _capture;
-    if (previous != null) {
-      try {
-        await _gateway.stopCapture(previous);
-      } on Object catch (error) {
+    try {
+      final previous = _capture;
+      if (previous != null) await _gateway.stopCapture(previous);
+      _capture = null;
+      if (!mounted) return;
+      if (mode != DiagnosticsDetailMode.off) {
+        final capture = await _gateway.startCapture(mode: mode, source: _source);
         if (!mounted) return;
+        _capture = capture;
+      }
+      await _loadEvents(reset: true, passive: true);
+    } on Object catch (error) {
+      if (mounted) {
         setState(() {
-          _captureBusy = false;
           _captureError = _viewerErrorCode(error);
         });
-        return;
       }
-      if (!mounted) return;
-      _capture = null;
-    }
-    if (mode == DiagnosticsDetailMode.off) {
-      setState(() {
-        _captureBusy = false;
-      });
-      if (persistPreference) {
-        await _saveCapturePreference(realtimeDetailsEnabled: false);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _captureBusy = false;
+        });
       }
-      return;
-    }
-    try {
-      final capture = await _gateway.startCapture(mode: mode, source: _source);
-      if (!mounted) {
-        unawaited(_gateway.stopCapture(capture).catchError((_) {}));
-        return;
-      }
-      setState(() {
-        _capture = capture;
-        _captureBusy = false;
-      });
-      if (persistPreference && mode == DiagnosticsDetailMode.memoryOnly) {
-        await _saveCapturePreference(realtimeDetailsEnabled: true);
-      }
-    } on Object catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _captureError = _viewerErrorCode(error);
-        _captureBusy = false;
-      });
-    }
-  }
-
-  Future<void> _saveCapturePreference({required bool realtimeDetailsEnabled}) async {
-    try {
-      await _capturePreferenceStore.saveRealtimeDetailsEnabled(realtimeDetailsEnabled);
-    } on Object catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _captureError = _viewerErrorCode(error);
-      });
     }
   }
 
@@ -478,6 +446,10 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
     try {
       final details = await _gateway.loadEventDetails(event);
       if (!mounted) return;
+      if (_selectedLogFile?.fileId != event.logFileId || !_events.any((item) => item.identity == event.identity)) {
+        _loadingDetails.remove(event.identity);
+        return;
+      }
       setState(() {
         _loadingDetails.remove(event.identity);
         _details[event.identity] = details;

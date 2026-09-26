@@ -20,6 +20,7 @@ final class DeferredDiagnosticEventSink implements DiagnosticEventSink {
     Set<String> traceComponents = const <String>{},
     this.bufferBeforeAttach = true,
     this.mirrorSink,
+    this.persistentAdmission,
   }) : traceComponents = Set<String>.unmodifiable(traceComponents) {
     if (maxEvents <= 0 || maxBytes <= 0) {
       throw ArgumentError('Deferred diagnostics bounds must be positive.');
@@ -39,6 +40,10 @@ final class DeferredDiagnosticEventSink implements DiagnosticEventSink {
   /// Optional best-effort observer, such as the developer Debug Console.
   /// It receives accepted events even while persistent diagnostics are off.
   final DiagnosticEventSink? mirrorSink;
+
+  /// The composition root owns the current recording policy. Closing this
+  /// gate stops new file events without closing the shared manager/live view.
+  final bool Function(DiagnosticSeverity severity)? persistentAdmission;
   DiagnosticEventSink? _fallbackSink;
   final ListQueue<_DeferredDiagnosticEvent> _events = ListQueue<_DeferredDiagnosticEvent>();
   DiagnosticEventSink? _attachedSink;
@@ -69,6 +74,7 @@ final class DeferredDiagnosticEventSink implements DiagnosticEventSink {
     if (_closing || _closed) return false;
     final mirror = mirrorSink;
     final mirrorEnabled = mirror != null && _isMirrorEnabled(mirror, component: component, severity: severity, payloadKind: payloadKind);
+    if (persistentAdmission?.call(severity) == false) return mirrorEnabled;
     if (!_enabled) {
       final fallback = _fallbackSink;
       if (fallback == null) return mirrorEnabled;
@@ -98,6 +104,7 @@ final class DeferredDiagnosticEventSink implements DiagnosticEventSink {
   bool add(DiagnosticEvent event) {
     if (_closing || _closed) return false;
     final mirrored = _forwardToMirror(event);
+    if (persistentAdmission?.call(event.severity) == false) return mirrored;
     if (!_enabled) return _forwardToFallback(event) || mirrored;
     final sink = _attachedSink;
     if (sink != null) return _forward(sink, event) || mirrored;

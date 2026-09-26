@@ -1,9 +1,8 @@
 /// Explicit App diagnostics activation boundary.
 ///
 /// The persisted preference remains in the ordinary settings store. This
-/// boundary only starts capture for the current process after a user opt-in;
-/// disabling is deliberately a next-launch setting so the active writer can
-/// finish and close its one run file safely.
+/// boundary starts file recording only after opt-in. Disabling closes event
+/// admission immediately and drains previously accepted writes before return.
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,7 +12,7 @@ abstract interface class DiagnosticsActivation {
 
   Future<bool> enableForCurrentRun();
 
-  Future<void> disableOnNextLaunch();
+  Future<void> disableForCurrentRun();
 }
 
 final diagnosticsActivationProvider = Provider<DiagnosticsActivation?>((ref) => null);

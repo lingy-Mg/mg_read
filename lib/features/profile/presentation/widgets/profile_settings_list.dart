@@ -143,7 +143,7 @@ class ProfileSettingsRow extends StatelessWidget {
       ProfileSettingsIcon.appearance => Icons.palette_outlined,
       ProfileSettingsIcon.importExport => Icons.import_export_rounded,
       ProfileSettingsIcon.backup => Icons.cloud_upload_outlined,
-      ProfileSettingsIcon.diagnostics => Icons.bug_report_outlined,
+      ProfileSettingsIcon.diagnostics => Icons.health_and_safety_outlined,
       ProfileSettingsIcon.about => Icons.info_outline_rounded,
       ProfileSettingsIcon.feedback => Icons.edit_note_outlined,
     };

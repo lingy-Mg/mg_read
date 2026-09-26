@@ -2,7 +2,8 @@
 ///
 /// 职责：
 /// - 将 App 的元数据文件列表和单文件按需读取映射为页面数据。
-/// - 创建和停止有时限的 App 详情捕获会话。
+/// - 内存排查仅开启有界元数据，不初始化文件服务；保存时显式捕获附件。
+/// - 网关拥有临时捕获及到期计时器；跨页面复现不终止记录，应用销毁时清理。
 ///
 /// 注意：
 /// - Runtime 的旧结构化事件 Facade 已移除；实时日志由 Runtime Debug 检查页提供。
@@ -135,6 +136,10 @@ final class DiagnosticsViewerCapture {
 }
 
 abstract interface class DiagnosticsViewerGateway {
+  DiagnosticsViewerCapture? get activeCapture;
+
+  Stream<void> watchCaptureChanges();
+
   Stream<void> watchLiveEvents();
 
   Future<List<DiagnosticsViewerLogFile>> listLogFiles();
@@ -154,15 +159,17 @@ abstract interface class DiagnosticsViewerGateway {
   Future<DiagnosticExportResult> exportLogFile(String logFileId);
 }
 
-final diagnosticsViewerGatewayProvider = Provider<DiagnosticsViewerGateway>(
-  (Ref ref) => DefaultDiagnosticsViewerGateway(
+final diagnosticsViewerGatewayProvider = Provider<DiagnosticsViewerGateway>((Ref ref) {
+  final gateway = DefaultDiagnosticsViewerGateway(
     ref.watch(diagnosticsQueryProvider),
     ref.watch(diagnosticsCaptureProvider),
     ref.watch(diagnosticsManagerProvider),
     ref.watch(diagnosticsLogArchiveProvider),
     ref.watch(diagnosticsLiveBufferProvider),
-  ),
-);
+  );
+  ref.onDispose(gateway.dispose);
+  return gateway;
+});
 
 final class DefaultDiagnosticsViewerGateway implements DiagnosticsViewerGateway {
   DefaultDiagnosticsViewerGateway(
@@ -189,6 +196,40 @@ final class DefaultDiagnosticsViewerGateway implements DiagnosticsViewerGateway 
   final DiagnosticsManager _diagnostics;
   final DiagnosticsLogArchive? _appArchive;
   final LiveDiagnosticsBuffer? _liveBuffer;
+  final _captureChanges = StreamController<void>.broadcast();
+  Timer? _captureTimer;
+  DiagnosticsViewerCapture? _activeCapture;
+  bool _disposed = false;
+
+  @override
+  DiagnosticsViewerCapture? get activeCapture => _activeCapture;
+
+  @override
+  Stream<void> watchCaptureChanges() => _captureChanges.stream;
+
+  void dispose() {
+    _disposed = true;
+    _captureTimer?.cancel();
+    final capture = _activeCapture;
+    if (capture != null) unawaited(stopCapture(capture).catchError((_) {}));
+    unawaited(_captureChanges.close());
+  }
+
+  DiagnosticsViewerCapture _activate(DiagnosticsViewerCapture capture) {
+    if (_disposed) {
+      if (capture.appSessionId case final sessionId?) {
+        unawaited(_appCapture?.stopCapture(sessionId).catchError((_) {}));
+      }
+      throw StateError('diagnostics_disposed');
+    }
+    _activeCapture = capture;
+    _liveBuffer?.setDetailedRecording(true);
+    _captureTimer = Timer(_captureDuration, () {
+      unawaited(stopCapture(capture).catchError((_) {}));
+    });
+    _captureChanges.add(null);
+    return capture;
+  }
 
   @override
   Stream<void> watchLiveEvents() => _liveBuffer?.changes ?? const Stream<void>.empty();
@@ -378,8 +419,18 @@ final class DefaultDiagnosticsViewerGateway implements DiagnosticsViewerGateway 
 
   @override
   Future<DiagnosticsViewerCapture> startCapture({required DiagnosticsDetailMode mode, required DiagnosticsViewerSource source}) async {
+    if (_disposed || _activeCapture != null) throw StateError('capture_unavailable');
     if (mode == DiagnosticsDetailMode.off) {
       throw ArgumentError.value(mode, 'mode', 'Capture mode cannot be off.');
+    }
+    if (mode == DiagnosticsDetailMode.memoryOnly && _liveBuffer != null) {
+      return _activate(
+        DiagnosticsViewerCapture(
+          mode: mode,
+          source: source,
+          expiresAtUtcMicros: DateTime.now().toUtc().add(_captureDuration).microsecondsSinceEpoch,
+        ),
+      );
     }
     final maxBytes = mode == DiagnosticsDetailMode.memoryOnly ? 8 * 1024 * 1024 : 64 * 1024 * 1024;
     final detailStorage = mode == DiagnosticsDetailMode.memoryOnly
@@ -401,11 +452,13 @@ final class DefaultDiagnosticsViewerGateway implements DiagnosticsViewerGateway 
               components: _appDetailComponents,
             ),
           );
-          return DiagnosticsViewerCapture(
-            mode: mode,
-            source: source,
-            appSessionId: session.sessionId,
-            expiresAtUtcMicros: DateTime.now().toUtc().add(_captureDuration).microsecondsSinceEpoch,
+          return _activate(
+            DiagnosticsViewerCapture(
+              mode: mode,
+              source: source,
+              appSessionId: session.sessionId,
+              expiresAtUtcMicros: DateTime.now().toUtc().add(_captureDuration).microsecondsSinceEpoch,
+            ),
           );
         } on Object catch (error, stackTrace) {
           Error.throwWithStackTrace(DiagnosticsViewerException(_stableErrorCode(error)), stackTrace);
@@ -415,6 +468,11 @@ final class DefaultDiagnosticsViewerGateway implements DiagnosticsViewerGateway 
 
   @override
   Future<void> stopCapture(DiagnosticsViewerCapture capture) async {
+    if (!identical(_activeCapture, capture)) return;
+    _activeCapture = null;
+    _captureTimer?.cancel();
+    _liveBuffer?.setDetailedRecording(false);
+    if (!_captureChanges.isClosed) _captureChanges.add(null);
     Object? firstError;
     if (capture.appSessionId case final sessionId?) {
       try {

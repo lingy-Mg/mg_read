@@ -5,38 +5,6 @@
 /// diagnostics viewer page; these widgets only render values and callbacks.
 part of '../diagnostics_viewer_page.dart';
 
-class _DiagnosticsLifecyclePanel extends StatelessWidget {
-  const _DiagnosticsLifecyclePanel({
-    required this.enabledPreference,
-    required this.enabledForCurrentRun,
-    required this.busy,
-    required this.onChanged,
-  });
-
-  final bool enabledPreference;
-  final bool enabledForCurrentRun;
-  final bool busy;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final detail = enabledForCurrentRun
-        ? enabledPreference
-              ? '实时内存日志始终可看；当前同时保存日志文件，后续启动会继续保存'
-              : '实时内存日志始终可看；当前文件正在收尾，关闭将在下次启动生效'
-        : '实时内存日志始终可看；开启后会额外保存日志文件，便于重启后回看和导出';
-    return Card(
-      child: SwitchListTile(
-        key: const Key('diagnostics-master-switch'),
-        value: enabledPreference,
-        onChanged: busy ? null : onChanged,
-        title: const Text('保存 App 日志文件'),
-        subtitle: Text(detail),
-      ),
-    );
-  }
-}
-
 class _LogFilePicker extends StatelessWidget {
   const _LogFilePicker({
     required this.files,
@@ -45,7 +13,6 @@ class _LogFilePicker extends StatelessWidget {
     required this.onDelete,
     required this.onExport,
   });
-
   final List<DiagnosticsViewerLogFile> files;
   final String? selectedFileId;
   final ValueChanged<DiagnosticsViewerLogFile> onSelected;
@@ -54,72 +21,63 @@ class _LogFilePicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    DiagnosticsViewerLogFile? selected;
-    for (final file in files) {
-      if (file.fileId == selectedFileId) {
-        selected = file;
-        break;
-      }
-    }
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.regular),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            const Text('日志文件', style: TextStyle(fontWeight: FontWeight.w600)),
-            const SizedBox(height: AppSpacing.compact),
-            if (files.isEmpty)
-              const Text('当前没有诊断日志文件')
-            else
-              Wrap(
-                spacing: AppSpacing.compact,
-                runSpacing: AppSpacing.compact,
-                children: <Widget>[
-                  for (final file in files)
-                    ChoiceChip(
-                      key: Key('diagnostics-log-${file.fileId}'),
-                      selected: selectedFileId == file.fileId,
-                      onSelected: (_) => onSelected(file),
-                      label: Text(
-                        file.isLive
-                            ? '本次运行 · 实时'
-                            : file.isCurrent
-                            ? '当前文件 · ${_formatTimestamp(file.startedAtUtcMicros)}'
-                            : '${_formatTimestamp(file.startedAtUtcMicros)} · ${_formatBytes(file.storedBytes)}',
+    final selected = files.where((file) => file.fileId == selectedFileId).firstOrNull;
+    final history = files.where((file) => !file.isLive).toList();
+    final live = selected?.isLive ?? true;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text(live ? '最近记录' : '已保存的记录', style: Theme.of(context).textTheme.titleMedium)),
+            if (history.isNotEmpty)
+              PopupMenuButton<DiagnosticsViewerLogFile>(
+                key: const Key('diagnostics-history'),
+                tooltip: '查看历史记录',
+                onSelected: onSelected,
+                itemBuilder: (context) => files
+                    .map(
+                      (file) => PopupMenuItem(
+                        key: Key('diagnostics-log-${file.fileId}'),
+                        value: file,
+                        child: Text(
+                          file.isLive
+                              ? '本次运行'
+                              : '${_formatFileDate(file.startedAtUtcMicros)} · ${_formatBytes(file.storedBytes)}${file.isCurrent ? ' · 当前' : ''}',
+                        ),
                       ),
-                    ),
-                ],
-              ),
-            if (selected != null) ...<Widget>[
-              const SizedBox(height: AppSpacing.compact),
-              Wrap(
-                spacing: AppSpacing.compact,
-                children: <Widget>[
-                  OutlinedButton.icon(
-                    onPressed: selected.isLive ? null : onExport,
-                    icon: const Icon(Icons.ios_share_rounded),
-                    label: Text(selected.isLive ? '内存日志不可导出' : '导出'),
+                    )
+                    .toList(),
+                child: const Padding(
+                  padding: EdgeInsets.all(AppSpacing.compact),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [Icon(Icons.history_rounded, size: 20), SizedBox(width: 6), Text('历史记录')],
                   ),
-                  OutlinedButton.icon(
-                    onPressed: selected.isCurrent || selected.isLive ? null : onDelete,
-                    icon: const Icon(Icons.delete_outline_rounded),
-                    label: Text(
-                      selected.isLive
-                          ? '实时日志自动清理'
-                          : selected.isCurrent
-                          ? '当前日志不可删除'
-                          : '删除',
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ],
           ],
         ),
-      ),
+        if (selected != null && !live) ...[
+          Text(_formatFileDate(selected.startedAtUtcMicros), style: Theme.of(context).textTheme.bodySmall),
+          Wrap(
+            spacing: AppSpacing.compact,
+            children: [
+              TextButton.icon(onPressed: onExport, icon: const Icon(Icons.ios_share_rounded), label: const Text('导出文件')),
+              if (!selected.isCurrent)
+                TextButton.icon(onPressed: onDelete, icon: const Icon(Icons.delete_outline_rounded), label: const Text('删除文件')),
+            ],
+          ),
+        ],
+        const SizedBox(height: AppSpacing.compact),
+      ],
     );
   }
+}
+
+String _formatFileDate(int micros) {
+  final date = DateTime.fromMicrosecondsSinceEpoch(micros, isUtc: true).toLocal();
+  return '${date.year}/${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')} ${_formatTimestamp(micros).substring(0, 8)}';
 }
 
 class _SelectLogFile extends StatelessWidget {
@@ -128,7 +86,7 @@ class _SelectLogFile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => const Padding(
     padding: EdgeInsets.all(AppSpacing.page),
-    child: Center(child: Text('请选择一个日志文件后按需读取')),
+    child: Center(child: Text('暂无记录')),
   );
 }
 
@@ -184,16 +142,19 @@ class _EventCard extends StatelessWidget {
                         decoration: BoxDecoration(color: severityColor.withValues(alpha: 0.12), borderRadius: AppRadii.pill),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.compact, vertical: AppSpacing.unit),
-                          child: Text(
-                            event.severity.toUpperCase(),
-                            style: theme.textTheme.labelSmall?.copyWith(color: severityColor, fontWeight: FontWeight.w700),
-                          ),
+                          child: Text(switch (event.severity) {
+                            'fatal' => '严重错误',
+                            'error' => '错误',
+                            'warn' => '警告',
+                            'info' => '信息',
+                            _ => '调试',
+                          }, style: theme.textTheme.labelSmall?.copyWith(color: severityColor, fontWeight: FontWeight.w700)),
                         ),
                       ),
                       const SizedBox(width: AppSpacing.compact),
                       Expanded(
                         child: Text(
-                          event.eventName,
+                          _componentTitle(event.component),
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
                         ),
@@ -206,13 +167,17 @@ class _EventCard extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: AppSpacing.compact),
-                  Text(event.summary, style: theme.textTheme.bodyMedium),
+                  Text(
+                    _eventTitle(event),
+                    style: theme.textTheme.bodyMedium,
+                    maxLines: expanded ? null : 3,
+                    overflow: expanded ? null : TextOverflow.ellipsis,
+                  ),
                   const SizedBox(height: AppSpacing.unit),
                   Text(
-                    '${event.component} · ${event.phase}'
-                    '${event.outcome == null ? '' : ' · ${event.outcome}'}'
-                    '${event.durationMicros == null ? '' : ' · ${_formatDuration(event.durationMicros!)}'}'
-                    '${event.attachmentCount == 0 ? '' : ' · ${event.attachmentCount} 个详情'}',
+                    event.eventName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
                   ),
                 ],
@@ -382,13 +347,48 @@ class _EmptyEvents extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.page),
       child: Text(
-        isLive ? '当前还没有日志事件。继续操作应用后会自动显示。' : '这个日志文件中没有可显示的事件。',
+        isLive ? '暂无记录\n出现警告或错误时会自动显示。' : '这个文件中没有可显示的记录。',
         key: const Key('diagnostics-viewer-empty'),
         textAlign: TextAlign.center,
         style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
       ),
     );
   }
+}
+
+String _componentTitle(String component) => switch (component) {
+  'feature.plugins' => '数据源',
+  'feature.library' || 'core.content-library' => '内容与书架',
+  'feature.reader' => '阅读器',
+  'app.bootstrap' => '应用启动',
+  'app.error' => '应用',
+  'app.settings' => '设置',
+  'app.persistence' => '本地存储',
+  'app.diagnostics' => '诊断',
+  _ => component,
+};
+
+String _eventTitle(DiagnosticsViewerEvent event) {
+  final name = event.eventName;
+  if (name == 'performance.slow') return '操作耗时较长';
+  if (name == 'app.error.unhandled') return '应用发生异常';
+  final operation = name.startsWith('runtime.facade.')
+      ? '数据源调用'
+      : name.startsWith('app.bootstrap.')
+      ? '应用启动'
+      : name.startsWith('library.')
+      ? '书架操作'
+      : null;
+  if (operation != null) {
+    return '$operation${switch (event.outcome) {
+      'error' => '失败',
+      'timeout' => '超时',
+      'success' => '完成',
+      'cancelled' => '已取消',
+      _ => '记录',
+    }}';
+  }
+  return event.summary;
 }
 
 Color _severityColor(BuildContext context, String severity) {
@@ -407,12 +407,6 @@ String _formatTimestamp(int micros) {
   String three(int number) => number.toString().padLeft(3, '0');
   return '${two(value.hour)}:${two(value.minute)}:${two(value.second)}.'
       '${three(value.millisecond)}';
-}
-
-String _formatDuration(int micros) {
-  if (micros < 1000) return '$micros µs';
-  if (micros < 1000 * 1000) return '${(micros / 1000).toStringAsFixed(1)} ms';
-  return '${(micros / (1000 * 1000)).toStringAsFixed(2)} s';
 }
 
 String _formatBytes(int bytes) {

@@ -9,11 +9,10 @@
 /// - Android 在挂载应用前读取 Runtime 宿主选择；这里只读启动偏好，不启动 VM。
 /// - 启动期资源失败必须关闭已打开的资源，不能让启动界面持有业务状态。
 ///
-/// - 无。
+/// - 默认仅缓存近期警告和错误；文件写入须显式开启，关闭即时切断事件接收。
 library;
 
 import 'dart:async';
-import 'dart:collection';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -111,12 +110,13 @@ Future<void> bootstrapMgReadApp({
   // application-support lookup or first-run database open.
   Future<Directory>? dataRootFuture;
   Future<Directory> resolveDataRoot() => dataRootFuture ??= dataRootResolver();
-  final debugConsole = kReleaseMode ? null : _DebugConsoleEventSink();
-  final liveDiagnostics = LiveDiagnosticsBuffer(onEvent: debugConsole?.add);
+  var fileRecordingEnabled = diagnosticsService != null;
+  final liveDiagnostics = LiveDiagnosticsBuffer();
   final deferredDiagnostics = DeferredDiagnosticEventSink(
     minimumSeverity: kReleaseMode ? DiagnosticSeverity.warn : DiagnosticSeverity.debug,
     bufferBeforeAttach: false,
     mirrorSink: liveDiagnostics,
+    persistentAdmission: (severity) => fileRecordingEnabled && severity.index >= liveDiagnostics.minimumSeverity.index,
   );
   final diagnostics =
       diagnosticsManager ??
@@ -156,6 +156,7 @@ Future<void> bootstrapMgReadApp({
   final resolvedManager = manager;
   late final AppStartupController startup;
   Future<AppDiagnosticsService?> openPersistentDiagnostics() async {
+    if (!fileRecordingEnabled) return null;
     final existing = persistentDiagnostics;
     if (existing != null) return existing;
     if (diagnosticsManager != null || diagnosticsServiceFactory == null) {
@@ -178,7 +179,7 @@ Future<void> bootstrapMgReadApp({
       startup.recordStage('diagnostics', resultState: 'ready');
       return service;
     } on Object {
-      await deferredDiagnostics.disable();
+      fileRecordingEnabled = false;
       startup.recordStage('diagnostics', resultState: 'failure', errorCode: 'diagnostics_unavailable');
       return null;
     }
@@ -208,6 +209,7 @@ Future<void> bootstrapMgReadApp({
       }
       startup.recordStage('settings', resultState: 'ready');
       if (resolvedManager.supports(AppSettingKeys.diagnosticsEnabled) && resolvedManager.get(AppSettingKeys.diagnosticsEnabled)) {
+        fileRecordingEnabled = true;
         attemptDiagnostics = await openPersistentDiagnostics();
       }
       return AppStartupResources(contentLibrary: attemptLibrary, persistence: attemptPersistence, diagnosticsService: attemptDiagnostics);
@@ -230,8 +232,17 @@ Future<void> bootstrapMgReadApp({
   );
   final diagnosticsActivation = _AppDiagnosticsActivation(
     settings: resolvedManager,
-    openForCurrentRun: openPersistentDiagnostics,
-    isCurrentRunEnabled: () => persistentDiagnostics != null,
+    openForCurrentRun: () async {
+      fileRecordingEnabled = true;
+      final service = await startup.ensureDiagnosticsReady();
+      fileRecordingEnabled = service != null;
+      return service;
+    },
+    stopForCurrentRun: () async {
+      fileRecordingEnabled = false;
+      await diagnostics.flush();
+    },
+    isCurrentRunEnabled: () => fileRecordingEnabled && persistentDiagnostics != null,
   );
   Future<ContentLibrary> getLibrary() => startup.contentLibrary;
   Future<AppPersistence> getPersistence() async {
@@ -411,11 +422,17 @@ Future<AppDiagnosticsService> _openDefaultDiagnostics(Directory dataRoot, {Diagn
     );
 
 final class _AppDiagnosticsActivation implements DiagnosticsActivation {
-  const _AppDiagnosticsActivation({required this._settings, required this._openForCurrentRun, required this._isCurrentRunEnabled});
+  const _AppDiagnosticsActivation({
+    required this._settings,
+    required this._openForCurrentRun,
+    required this._isCurrentRunEnabled,
+    required this._stopForCurrentRun,
+  });
 
   final AppSettingsManager _settings;
   final Future<AppDiagnosticsService?> Function() _openForCurrentRun;
   final bool Function() _isCurrentRunEnabled;
+  final Future<void> Function() _stopForCurrentRun;
 
   @override
   bool get enabledForCurrentRun => _isCurrentRunEnabled();
@@ -423,105 +440,25 @@ final class _AppDiagnosticsActivation implements DiagnosticsActivation {
   @override
   Future<bool> enableForCurrentRun() async {
     if (!_settings.supports(AppSettingKeys.diagnosticsEnabled)) return false;
-    await _settings.set(AppSettingKeys.diagnosticsEnabled, true);
-    await _settings.flush();
-    return await _openForCurrentRun() != null;
+    final service = await _openForCurrentRun();
+    if (service == null) return false;
+    try {
+      await _settings.set(AppSettingKeys.diagnosticsEnabled, true);
+      await _settings.flush();
+      return true;
+    } on Object {
+      await _stopForCurrentRun();
+      rethrow;
+    }
   }
 
   @override
-  Future<void> disableOnNextLaunch() async {
+  Future<void> disableForCurrentRun() async {
+    await _stopForCurrentRun();
     if (!_settings.supports(AppSettingKeys.diagnosticsEnabled)) return;
     await _settings.set(AppSettingKeys.diagnosticsEnabled, false);
     await _settings.flush();
   }
-}
-
-/// Bounded, best-effort developer-console output outside the app log queue.
-///
-/// This keeps console backpressure, encoding, and I/O out of the user-action
-/// path. On a VS Code desktop debug session [stderr] is the Debug Console;
-/// Flutter's platform tooling owns the corresponding device stream on mobile.
-final class _DebugConsoleEventMirror {
-  _DebugConsoleEventMirror() {
-    // A Windows GUI process launched without a console can accept writeln()
-    // synchronously and then fail the IOSink asynchronously with ERROR_INVALID_HANDLE.
-    // Observe that terminal error so best-effort diagnostics never reach the
-    // root uncaught-error boundary.
-    unawaited(
-      stderr.done.then<void>(
-        (_) {},
-        onError: (Object _, StackTrace _) {
-          _available = false;
-          _pending.clear();
-        },
-      ),
-    );
-  }
-
-  static const int _maximumQueuedEvents = 256;
-  static const int _maximumDrainBatch = 32;
-
-  final DiagnosticConsoleFormatter _formatter = const DiagnosticConsoleFormatter();
-  final ListQueue<String> _pending = ListQueue<String>();
-  var _drainScheduled = false;
-  var _available = true;
-
-  void add(DiagnosticEvent event) {
-    if (!_available || !_formatter.shouldMirror(event)) return;
-    final String line;
-    try {
-      line = _formatter.formatForConsole(event);
-    } on Object {
-      return;
-    }
-    if (_pending.length >= _maximumQueuedEvents) return;
-    _pending.addLast(line);
-    if (_drainScheduled) return;
-    _drainScheduled = true;
-    scheduleMicrotask(_drain);
-  }
-
-  void _drain() {
-    _drainScheduled = false;
-    if (!_available) {
-      _pending.clear();
-      return;
-    }
-    for (var index = 0; index < _maximumDrainBatch && _pending.isNotEmpty; index += 1) {
-      final line = _pending.removeFirst();
-      try {
-        stderr.writeln(line);
-      } on Object {
-        // Console output is strictly best-effort.
-      }
-    }
-    if (_pending.isNotEmpty) {
-      _drainScheduled = true;
-      scheduleMicrotask(_drain);
-    }
-  }
-}
-
-/// Debug-only terminal sink that remains available when persistent app logs
-/// are disabled. It mirrors warnings and errors without retaining them.
-final class _DebugConsoleEventSink implements DiagnosticEventSink {
-  final _DebugConsoleEventMirror _mirror = _DebugConsoleEventMirror();
-
-  @override
-  bool isEnabled({required String component, required DiagnosticSeverity severity, required DiagnosticPayloadKind payloadKind}) =>
-      severity.index >= DiagnosticSeverity.warn.index;
-
-  @override
-  bool add(DiagnosticEvent event) {
-    _mirror.add(event);
-    return true;
-  }
-
-  @override
-  Future<void> close({required Duration timeout}) => Future<void>.value();
-
-  @override
-  Future<void> flush({required Duration timeout}) => Future<void>.value();
 }
 
 Future<ContentLibrary> _openDefaultContentLibrary(Directory dataRoot, DiagnosticsManager diagnostics, AppPersistence? persistence) =>
