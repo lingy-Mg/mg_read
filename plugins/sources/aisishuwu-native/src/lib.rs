@@ -1,21 +1,21 @@
-//! Native Alice source entry. This module owns the C ABI and synchronous host
-//! adapter; pure parsing and route state remain in their dedicated modules.
+//! Native Alice source entry. ABI v2 initializes one plugin-owned HTTP/cache
+//! instance per worker. Source parsing remains serialized; resources use the
+//! SDK loopback service. No host I/O callbacks or host pointers are retained.
 mod parsing;
 mod source;
 
-use mgread_native_abi::{ABI_VERSION, Buffer, HostApi, MAX_MESSAGE, SourceApi};
+use mgread_native_abi::{ABI_VERSION, Buffer, MAX_MESSAGE, SourceApi};
+use mgread_native_sdk::{Call, PluginInstance};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const SOURCE_ID: &str = "org.mgread.aisishuwu.native";
-const SOURCE_VERSION: &str = "0.1.0";
+const SOURCE_VERSION: &str = "0.2.0";
 const BODY_LIMIT: usize = 4 * 1024 * 1024;
 const REQUEST_LIMIT: usize = 128;
 const STEPS_LIMIT: usize = 128;
 const HTTP_BATCH_LIMIT: usize = 4;
-const HOST_API_SIZE: usize = std::mem::size_of::<HostApi>();
 
 #[derive(Debug)]
 struct NativeError {
@@ -45,6 +45,7 @@ impl NativeError {
     }
 }
 
+#[cfg(test)]
 fn failure(error: NativeError) -> Value {
     json!({"ok":false,"error":{"code":error.code,"message":error.message}})
 }
@@ -71,86 +72,37 @@ fn cache_ttl_ms(method: &str) -> u64 {
     }
 }
 
-struct HostBuffer<'a> {
-    api: &'a HostApi,
-    ptr: *mut u8,
-    len: usize,
+// Source-local test seam; production uses the statically linked SDK directly.
+trait SourceIo {
+    fn cancelled(&self) -> bool;
+    fn http(&self, request: &Value) -> Result<Value, NativeError>;
+    fn read(&self, key: &str) -> Result<Option<String>, NativeError>;
+    fn write(&self, key: &str, value: &str) -> Result<(), NativeError>;
+    fn remove(&self, key: &str) -> Result<(), NativeError>;
+}
+fn sdk_error(error: mgread_native_sdk::error::Error) -> NativeError {
+    NativeError::new(error.code, error.message)
+}
+impl SourceIo for Call<'_> {
+    fn cancelled(&self) -> bool {
+        Call::cancelled(self)
+    }
+    fn http(&self, request: &Value) -> Result<Value, NativeError> {
+        Call::http(self, request).map_err(sdk_error)
+    }
+    fn read(&self, key: &str) -> Result<Option<String>, NativeError> {
+        self.cache().read(key).map_err(sdk_error)
+    }
+    fn write(&self, key: &str, value: &str) -> Result<(), NativeError> {
+        self.cache().write(key, value).map_err(sdk_error)
+    }
+    fn remove(&self, key: &str) -> Result<(), NativeError> {
+        self.cache().remove(key).map_err(sdk_error)
+    }
 }
 
-impl Drop for HostBuffer<'_> {
-    fn drop(&mut self) {
-        // The host allocated this buffer, so only HostApi.release may free it.
-        unsafe {
-            (self.api.release)(Buffer {
-                ptr: self.ptr,
-                len: self.len,
-            })
-        };
-    }
-}
-
-fn host_call(host: &HostApi, request: &Value) -> Result<Value, NativeError> {
-    let bytes = serde_json::to_vec(request)
-        .map_err(|_| NativeError::new("host_request_invalid", "The host request is invalid."))?;
-    if bytes.len() > MAX_MESSAGE {
-        return Err(NativeError::new(
-            "host_request_limit",
-            "The host request is too large.",
-        ));
-    }
-    let output = unsafe { (host.call)(host.context, bytes.as_ptr(), bytes.len()) };
-    let buffer = HostBuffer {
-        api: host,
-        ptr: output.ptr,
-        len: output.len,
-    };
-    if output.len > MAX_MESSAGE || (output.ptr.is_null() && output.len != 0) {
-        return Err(NativeError::new(
-            "host_response_limit",
-            "The host response is invalid or too large.",
-        ));
-    }
-    let bytes = if output.len == 0 {
-        &[][..]
-    } else {
-        unsafe { std::slice::from_raw_parts(output.ptr, output.len) }
-    };
-    let envelope: Value = serde_json::from_slice(bytes).map_err(|_| {
-        NativeError::new(
-            "host_response_invalid",
-            "The host response is not valid JSON.",
-        )
-    })?;
-    if envelope["ok"] == false {
-        let code = envelope["error"]["code"]
-            .as_str()
-            .filter(|code| !code.is_empty() && code.len() <= 64)
-            .unwrap_or("host_call_failed");
-        return Err(NativeError::new(code, "The native host operation failed."));
-    }
-    if envelope["ok"] != true || !envelope.get("value").is_some() {
-        return Err(NativeError::new(
-            "host_response_invalid",
-            "The host response envelope is invalid.",
-        ));
-    }
-    let value = envelope["value"].clone();
-    drop(buffer);
-    Ok(value)
-}
-
-fn cancelled(host: &HostApi) -> Result<bool, NativeError> {
-    let value = host_call(host, &json!({"op":"cancelled"}))?;
-    value.as_bool().ok_or_else(|| {
-        NativeError::new(
-            "host_response_invalid",
-            "The host cancellation state is invalid.",
-        )
-    })
-}
-
-fn check_cancelled(host: &HostApi) -> Result<(), NativeError> {
-    if cancelled(host)? {
+fn check_cancelled(host: &dyn SourceIo) -> Result<(), NativeError> {
+    if host.cancelled() {
         Err(NativeError::new(
             "cancelled",
             "The source call was cancelled.",
@@ -171,27 +123,24 @@ fn cache_path(method: &str, request: &Value) -> Result<String, NativeError> {
         use std::fmt::Write;
         let _ = write!(hex, "{byte:02x}");
     }
-    Ok(format!("aisishuwu-native/v1/{hex}.json"))
+    Ok(format!("aisishuwu-native/v2/{hex}.json"))
 }
 
 fn cached_result(
-    host: &HostApi,
+    host: &dyn SourceIo,
     method: &str,
     request: &Value,
 ) -> Result<Option<Value>, NativeError> {
     let path = cache_path(method, request)?;
-    let value = match host_call(
-        host,
-        &json!({"op":"storage.read","area":"cache","path":path}),
-    ) {
+    let value = match host.read(&path) {
         Ok(value) => value,
         Err(error) if error.code == "cancelled" => return Err(error),
         Err(_) => return Ok(None),
     };
-    let Some(text) = value.as_str() else {
+    let Some(text) = value else {
         return Ok(None);
     };
-    let record: Value = match serde_json::from_str(text) {
+    let record: Value = match serde_json::from_str(&text) {
         Ok(record) => record,
         Err(_) => return Ok(None),
     };
@@ -202,15 +151,12 @@ fn cached_result(
     {
         Ok(Some(record["value"].clone()))
     } else {
-        let _ = host_call(
-            host,
-            &json!({"op":"storage.remove","area":"cache","path":path}),
-        );
+        let _ = host.remove(&path);
         Ok(None)
     }
 }
 
-fn store_result(host: &HostApi, method: &str, request: &Value, value: &Value) {
+fn store_result(host: &dyn SourceIo, method: &str, request: &Value, value: &Value) {
     let ttl = cache_ttl_ms(method);
     if ttl == 0 {
         return;
@@ -225,10 +171,7 @@ fn store_result(host: &HostApi, method: &str, request: &Value, value: &Value) {
     if text.len() > MAX_MESSAGE {
         return;
     }
-    let _ = host_call(
-        host,
-        &json!({"op":"storage.write","area":"cache","path":path,"value":text}),
-    );
+    let _ = host.write(&path, &text);
 }
 
 fn checked_http_url(value: &Value) -> Result<&str, NativeError> {
@@ -251,11 +194,11 @@ fn checked_http_url(value: &Value) -> Result<&str, NativeError> {
     Ok(url)
 }
 
-fn http_response(host: &HostApi, request: &Value) -> Result<Value, NativeError> {
+fn http_response(host: &dyn SourceIo, request: &Value) -> Result<Value, NativeError> {
     check_cancelled(host)?;
     let url = checked_http_url(request)?;
     let headers = request.get("headers").cloned().unwrap_or_else(|| json!({}));
-    let value = host_call(host, &json!({"op":"http","url":url,"headers":headers}));
+    let value = host.http(&json!({"url":url,"headers":headers}));
     match value {
         Ok(response) => {
             let status = response["status"].as_u64().unwrap_or(0);
@@ -285,7 +228,7 @@ fn http_response(host: &HostApi, request: &Value) -> Result<Value, NativeError> 
     }
 }
 
-fn invoke_inner(host: &HostApi, input: Value) -> Result<Value, NativeError> {
+fn invoke_inner(host: &dyn SourceIo, input: Value) -> Result<Value, NativeError> {
     let method = input["method"]
         .as_str()
         .ok_or_else(|| NativeError::source("request_invalid"))?;
@@ -367,59 +310,37 @@ fn invoke_inner(host: &HostApi, input: Value) -> Result<Value, NativeError> {
     ))
 }
 
-unsafe extern "C" fn invoke(host: *const HostApi, input: *const u8, length: usize) -> Buffer {
-    let result = catch_unwind(AssertUnwindSafe(|| {
-        if host.is_null() || input.is_null() || length == 0 || length > MAX_MESSAGE {
-            return Err(NativeError::new(
-                "input_invalid",
-                "The source input or host API is invalid.",
-            ));
-        }
-        let host = unsafe { &*host };
-        if host.version != ABI_VERSION || host.size < HOST_API_SIZE {
-            return Err(NativeError::new(
-                "host_abi_invalid",
-                "The native host ABI version is unsupported.",
-            ));
-        }
-        let bytes = unsafe { std::slice::from_raw_parts(input, length) };
-        let input: Value = serde_json::from_slice(bytes)
-            .map_err(|_| NativeError::new("json_invalid", "The source input is not valid JSON."))?;
-        invoke_inner(host, input)
-    }));
-    let output = match result {
-        Ok(Ok(value)) => value,
-        Ok(Err(error)) => failure(error),
-        Err(_) => failure(NativeError::new(
-            "native_panic",
-            "The source stopped after an internal error.",
-        )),
-    };
-    let mut bytes = serde_json::to_vec(&output).unwrap_or_else(|_| br#"{"ok":false,"error":{"code":"result_invalid","message":"The source result could not be encoded."}}"#.to_vec());
-    if bytes.len() > MAX_MESSAGE {
-        bytes = serde_json::to_vec(&failure(NativeError::new(
-            "source_result_limit",
-            "The source result is too large.",
-        )))
-        .unwrap();
+static INSTANCE: PluginInstance = PluginInstance::new(SOURCE_ID);
+unsafe extern "C" fn init(input: *const u8, length: usize) -> Buffer {
+    unsafe { INSTANCE.init(input, length) }
+}
+unsafe extern "C" fn invoke(id: u64, input: *const u8, length: usize) -> Buffer {
+    unsafe {
+        INSTANCE.invoke(id, input, length, |call, input| {
+            invoke_inner(call, input)
+                .map(|result| result["value"].clone())
+                .map_err(|error| mgread_native_sdk::error::Error::new(&error.code, &error.message))
+        })
     }
-    Buffer::from_vec(bytes)
 }
-
-unsafe extern "C" fn release(buffer: Buffer) {
-    unsafe { mgread_native_abi::release(buffer) }
+unsafe extern "C" fn cancel(id: u64) {
+    INSTANCE.cancel(id);
 }
-
+unsafe extern "C" fn shutdown() -> Buffer {
+    INSTANCE.shutdown()
+}
 static SOURCE_API: SourceApi = SourceApi {
     version: ABI_VERSION,
     size: std::mem::size_of::<SourceApi>(),
+    init,
     invoke,
-    release,
+    cancel,
+    shutdown,
+    release: mgread_native_abi::release,
 };
-
-/// Returns the immutable C ABI v1 table. The table contains only function pointers.
+/// No I/O occurs until the host explicitly initializes this enabled source.
 #[unsafe(no_mangle)]
-pub extern "C" fn mg_source_get_api_v1() -> *const SourceApi {
+pub extern "C" fn mg_source_get_api_v2() -> *const SourceApi {
     &SOURCE_API
 }
 

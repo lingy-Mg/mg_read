@@ -41,10 +41,13 @@ pub struct Entry {
     pub pending: Option<Manifest>,
     #[serde(default)]
     pub removing: bool,
+    #[serde(default)]
+    pub loading: bool,
 }
 pub struct Catalog {
     pub root: PathBuf,
     pub entries: BTreeMap<String, Entry>,
+    pub recovered: usize,
 }
 pub fn target() -> &'static str {
     if cfg!(target_os = "android") {
@@ -124,7 +127,11 @@ impl Catalog {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => BTreeMap::new(),
             Err(e) => return Err(e.into()),
         };
-        let mut c = Self { root, entries };
+        let mut c = Self {
+            root,
+            entries,
+            recovered: 0,
+        };
         let removing = c
             .entries
             .iter()
@@ -135,9 +142,26 @@ impl Catalog {
             c.remove_files(&id)?;
             c.entries.remove(&id);
         }
+        // A crash while initializing foreign code quarantines that source.
+        for entry in c.entries.values_mut() {
+            if entry.loading
+                || (entry.enabled
+                    && entry.pending.as_ref().unwrap_or(&entry.manifest).abi
+                        != mgread_native_abi::ABI_VERSION)
+            {
+                entry.enabled = false;
+                entry.loading = false;
+                c.recovered += 1;
+            }
+        }
         // Only immutable files are inspected here. A pending invalid ABI is rejected
         // by the first explicit load, while the prior version remains installed.
         c.save()?;
+        // No library is loaded at this boundary. Keep current/pending only;
+        // failed candidates and superseded versions cannot retain DLL locks.
+        for id in c.entries.keys() {
+            c.prune_versions(id)?;
+        }
         Ok(c)
     }
     pub fn save(&self) -> Result<()> {
@@ -185,14 +209,19 @@ impl Catalog {
     pub fn validate_manifest(m: &Manifest) -> Result<()> {
         if m.format != "mgread-native"
             || m.engine != "native"
-            || m.abi != 1
+            || m.abi != mgread_native_abi::ABI_VERSION
             || !safe_name(&m.id)
             || !safe_name(&m.version)
             || semver::Version::parse(&m.version).is_err()
             || m.name.is_empty()
             || m.name.len() > 256
             || m.description.len() > 960
-            || m.content_kinds != ["novel"]
+            || m.content_kinds.is_empty()
+            || m.content_kinds.len() > 4
+            || m.content_kinds
+                .iter()
+                .any(|k| !["novel", "manga", "audio", "video"].contains(&k.as_str()))
+            || m.content_kinds.iter().collect::<HashSet<_>>().len() != m.content_kinds.len()
             || m.targets.is_empty()
             || m.targets.len() > 3
         {
@@ -298,9 +327,8 @@ impl Catalog {
             atomic_write(&stage.join("source.mgplugin"), bytes)?;
             fs::rename(&stage, &version_dir)?;
         }
-        // A malformed ABI never changes the confirmed catalog. No invocations
-        // exist on this short-lived validation handle; active libraries stay held.
-        crate::native::NativePlugin::load(&self.library(&manifest)?, &manifest)?;
+        // Installation validates bytes and metadata only. Disabled libraries
+        // must never execute constructors or ABI entry points during import.
         if let Some(e) = self.entries.get_mut(&manifest.id) {
             if e.manifest.version != manifest.version {
                 e.pending = Some(manifest.clone());
@@ -314,6 +342,7 @@ impl Catalog {
                     enabled: true,
                     pending: None,
                     removing: false,
+                    loading: false,
                 },
             );
         }
@@ -340,6 +369,32 @@ impl Catalog {
             .get(id)
             .filter(|e| !e.removing)
             .ok_or_else(|| Error::new("plugin_not_found", "Native plugin is not installed"))
+    }
+    fn prune_versions(&self, id: &str) -> Result<()> {
+        if !safe_name(id) {
+            return Err(invalid("Invalid plugin identifier"));
+        }
+        let entry = &self.entries[id];
+        let directory = self.versions(id);
+        if !directory.is_dir() {
+            return Ok(());
+        }
+        for child in fs::read_dir(directory)? {
+            let child = child?;
+            let name = child.file_name();
+            let Some(name) = name.to_str() else {
+                continue;
+            };
+            if name == entry.manifest.version
+                || entry.pending.as_ref().is_some_and(|m| m.version == name)
+            {
+                continue;
+            }
+            if child.file_type()?.is_dir() && safe_name(name) {
+                fs::remove_dir_all(child.path())?;
+            }
+        }
+        Ok(())
     }
     fn remove_files(&self, id: &str) -> Result<()> {
         if !safe_name(id) {
@@ -402,7 +457,7 @@ mod tests {
         let manifest = Manifest {
             format: "mgread-native".into(),
             engine: "native".into(),
-            abi: 1,
+            abi: 2,
             id: "org.mgread.alice".into(),
             name: "Alice".into(),
             version: "0.1.0".into(),

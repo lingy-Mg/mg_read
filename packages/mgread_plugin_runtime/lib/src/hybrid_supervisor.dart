@@ -162,12 +162,22 @@ final class _HybridRuntimeSupervisor implements _RuntimeSupervisor {
           as T;
     }
     if (invocation is SourceResourceDecodeInvocation) {
-      try {
-        return await _node.invoke(invocation, cancellation: cancellation);
-      } on PluginRuntimeException {
-        return _native.invoke(invocation, cancellation: cancellation);
+      final route = _SourceResourceUrl.require(
+        (invocation as SourceResourceDecodeInvocation).url,
+      );
+      final owner = await _owner(route.pluginId);
+      if (!identical(
+        owner,
+        route.engine == PluginEngine.native ? _native : _node,
+      )) {
+        throw const PluginRuntimeException(
+          'invalid_request',
+          'Resource engine does not match its plugin.',
+        );
       }
+      return owner.invoke(invocation, cancellation: cancellation);
     }
+
     final id = invocation._wireParams['pluginId'];
     if (id is String) {
       final owner = await _owner(id);

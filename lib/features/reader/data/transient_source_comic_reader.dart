@@ -7,7 +7,6 @@
 /// injected, and route disposal closes only the client owned here.
 library;
 
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -172,7 +171,8 @@ final class TransientSourceComicReaderDataSource implements ComicReaderDataSourc
     try {
       return await _fetchImage(page.url);
     } on Object catch (error) {
-      if (!refreshed && _isAuthorizationFailure(error)) {
+      if (!refreshed &&
+          shouldRefreshComicResourceAfterFailure(error, regenerable: page.resourcePolicy != PluginMangaPageResourcePolicy.durable)) {
         manifest = await _refreshManifest(chapterId, manifest);
         page = manifest.page(imageId);
         if (page == null) throw StateError('Source comic image is not in the refreshed chapter.');
@@ -276,9 +276,6 @@ final class _TransientChapterManifest {
   bool needsRefresh(PluginMangaPage page) =>
       page.resourcePolicy == PluginMangaPageResourcePolicy.refreshable && !page.expiresAt!.isAfter(DateTime.now().toUtc());
 }
-
-bool _isAuthorizationFailure(Object error) =>
-    error is ComicImageHttpStatusException && (error.statusCode == HttpStatus.unauthorized || error.statusCode == HttpStatus.forbidden);
 
 /// Route-lifetime state for an unsaved discovery comic session.
 final class TransientComicReaderStateStore implements ComicReaderStateStore {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -71,6 +72,24 @@ void main() {
     final contents = await Future.wait<ComicChapterContent>(<Future<ComicChapterContent>>[first, second]);
     expect(identical(contents.first, contents.last), isTrue);
     expect(gateway.contentCalls, 1);
+  });
+
+  test('expired resource tokens trigger only one fresh manifest attempt', () async {
+    final gateway = _Gateway();
+    var fetches = 0;
+    final reader = TransientSourceComicReaderDataSource(
+      detail: _detail,
+      catalog: _catalog,
+      gateway: gateway,
+      fetcher: (uri) async {
+        fetches++;
+        throw ComicImageHttpStatusException(HttpStatus.gone, uri);
+      },
+    );
+    await reader.loadChapterContent('manga-1', 'chapter-1');
+    await expectLater(reader.loadImageBytes('manga-1', 'chapter-1', 'image-1'), throwsA(isA<ReaderFailure>()));
+    expect(gateway.contentCalls, 2);
+    expect(fetches, 2);
   });
 
   test('refreshes and retries only once after an explicit authorization failure', () async {

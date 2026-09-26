@@ -2,8 +2,9 @@ part of mgread_plugin_runtime;
 
 /// Owns the Node-independent Rust host process and its authenticated loopback
 /// control requests. On Windows this object owns the child and Job Object; on
-/// Android the private service owns the process. The host owns plugin state,
-/// HTTP, storage, and resource loading. Dart owns only control-call lifetimes.
+/// Android the private service owns the process. The host owns plugin state and
+/// installation metadata. Each initialized plugin owns HTTP, cache and resources.
+/// Dart owns control-call lifetimes and confirmed worker restart boundaries.
 final class _NativeRuntimeSupervisor implements _RuntimeSupervisor {
   _NativeRuntimeSupervisor._({
     required bool isAndroid,
@@ -41,6 +42,8 @@ final class _NativeRuntimeSupervisor implements _RuntimeSupervisor {
   final List<RuntimeDiagnostic> _diagnostics = <RuntimeDiagnostic>[];
   final Map<String, _NativeInFlight> _inFlight = <String, _NativeInFlight>{};
 
+  final _resourceEndpoints = _NativeResourceEndpoints();
+  bool _stopUnconfirmed = false;
   _NativeRuntimeReady? _ready;
   HttpClient? _httpClient;
   Process? _process;
@@ -173,11 +176,7 @@ final class _NativeRuntimeSupervisor implements _RuntimeSupervisor {
       if (_ready == null) {
         await _ensureStarted();
       } else {
-        await _invokeRpc(
-          method: 'runtime.native.proxy.v1',
-          params: <String, Object?>{'url': proxyUri?.toString()},
-          timeout: const Duration(seconds: 5),
-        );
+        await _restartAfterManagementChange();
       }
     });
   }
@@ -194,18 +193,27 @@ final class _NativeRuntimeSupervisor implements _RuntimeSupervisor {
       return null as T;
     }
 
-    if (invocation._wireMethod == 'plugins.uninstall.v1' ||
-        invocation._wireMethod == 'plugins.uninstallAll.v1') {
+    if (const <String>{
+      'plugins.uninstall.v1',
+      'plugins.uninstallAll.v1',
+      'plugins.setEnabled.v1',
+      'plugins.cache.clear.v1',
+      'plugins.cache.clearAll.v1',
+    }.contains(invocation._wireMethod)) {
       return await _runLifecycleTransition<T>(() async {
-        final raw = await _invokeRpc(
-          method: invocation._wireMethod,
-          params: invocation._wireParams,
-          timeout: invocation._timeout,
-          cancellation: cancellation,
-        );
-        final result = invocation._decodeResult(raw);
-        await _restartAfterManagementChange();
-        return result;
+        try {
+          final raw = await _invokeRpc(
+            method: invocation._wireMethod,
+            params: invocation._wireParams,
+            timeout: invocation._timeout,
+            cancellation: cancellation,
+          );
+          return invocation._decodeResult(raw);
+        } finally {
+          // A failed cache clear may already have shut down plugin services.
+          // Retire that worker before admitting another source invocation.
+          await _restartAfterManagementChange();
+        }
       });
     }
 
@@ -346,6 +354,7 @@ final class _NativeRuntimeSupervisor implements _RuntimeSupervisor {
     _assertOpen();
     final cleanup = _cleanup;
     if (cleanup != null) await cleanup;
+    if (_stopUnconfirmed) await _stopWorker();
     return _startup ??= _start();
   }
 
@@ -610,7 +619,17 @@ final class _NativeRuntimeSupervisor implements _RuntimeSupervisor {
       final active = _activeInvocationLeases;
       if (active > 0) {
         _inFlightDrained ??= Completer<void>();
-        await _inFlightDrained!.future;
+        try {
+          await _inFlightDrained!.future.timeout(_shutdownTimeout);
+        } on TimeoutException {
+          await _breakWorker(
+            const PluginRuntimeException(
+              'runtime_restarting',
+              'Native worker is restarting.',
+            ),
+          );
+          await _inFlightDrained!.future.timeout(_shutdownTimeout);
+        }
       }
       return await action();
     } finally {

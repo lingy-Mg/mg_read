@@ -304,6 +304,28 @@ void main() {
     expect(fetched.map((uri) => uri.queryParameters['generation']), <String?>['1', '2']);
   });
 
+  test('refreshes a regenerable URL once after its worker connection disappears', () async {
+    final fixture = await _LibraryFixture.open();
+    addTearDown(fixture.close);
+    final gateway = _Gateway(pages: <PluginMangaPage>[_page(policy: PluginMangaPageResourcePolicy.sessionOnly)], varyUrlByCall: true);
+    final fetched = <Uri>[];
+    final adapter = ContentLibraryComicReaderDataSource(
+      library: fixture.library,
+      gateway: gateway,
+      item: fixture.manga,
+      fetcher: (uri) async {
+        fetched.add(uri);
+        if (fetched.length == 1) throw const SocketException('Old worker port closed');
+        return Uint8List.fromList(<int>[5]);
+      },
+    );
+    await adapter.loadChapterContent(fixture.manga.id.value, 'chapter-1');
+    expect(await adapter.loadImageBytes(fixture.manga.id.value, 'chapter-1', 'image-1'), <int>[5]);
+    expect(gateway.contentCalls, 2);
+    expect(fetched.map((uri) => uri.queryParameters['generation']), <String?>['1', '2']);
+    expect(shouldRefreshComicResourceAfterFailure(const SocketException('offline'), regenerable: false), isFalse);
+  });
+
   test('persists durable and refreshable resource metadata', () async {
     final fixture = await _LibraryFixture.open();
     addTearDown(fixture.close);

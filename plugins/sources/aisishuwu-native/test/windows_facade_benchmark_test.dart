@@ -14,7 +14,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 const _bookId = 'novel:52801';
 const _nativePluginId = 'org.mgread.aisishuwu.native';
-const _nativeVersion = '0.1.0';
+const _nativeVersion = '0.2.0';
 const _javascriptNodeVersion = '26.10.0';
 const _operations = <String>['detail', 'catalog', 'content'];
 final _unicodeWhitespace = RegExp(r'[\u0009-\u000D\u001C-\u001F\u0020\u0085\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]');

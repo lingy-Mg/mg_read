@@ -3,16 +3,11 @@
 use crate::{
     Runtime, catalog,
     error::{Error, Result, invalid, string},
-    io::{CallContext, http_client},
     native::NativePlugin,
-    resource,
 };
 use base64::Engine;
 use serde_json::{Value, json};
-use std::{
-    sync::{Arc, atomic::AtomicUsize},
-    time::Instant,
-};
+use std::sync::{Arc, atomic::Ordering};
 use tokio_util::sync::CancellationToken;
 
 pub fn control(
@@ -20,16 +15,17 @@ pub fn control(
     method: &str,
     params: &Value,
     cancel: CancellationToken,
+    call_id: u64,
 ) -> Result<Value> {
     match method {
         "runtime.ping" => Ok(
-            json!({"ok":true,"nodeVersion":"","runtimeVersion":"native-0.1.0","runtimeKind":"native-rust"}),
+            json!({"ok":true,"nodeVersion":"","runtimeVersion":"native-0.2.0","runtimeKind":"native-rust"}),
         ),
         "runtime.status.v1" => Ok(
-            json!({"ok":true,"nodeVersion":"","runtimeVersion":"native-0.1.0","runtimeKind":"native-rust",
+            json!({"ok":true,"nodeVersion":"","runtimeVersion":"native-0.2.0","runtimeKind":"native-rust",
             "platform":std::env::consts::OS,"arch":std::env::consts::ARCH,"uptimeMs":runtime.started.elapsed().as_millis() as u64,
             "plugins":runtime.catalog.lock().unwrap().list(),"memory":{"rss":rss(),"arrayBuffers":0,"external":0,"heapTotal":0,"heapUsed":0},
-            "native":{"httpRequests":runtime.http_requests.load(std::sync::atomic::Ordering::Relaxed),"inflight":runtime.jobs.lock().unwrap().len()}}),
+            "native":{"loadedPlugins":runtime.loaded.lock().unwrap().len(),"inflight":runtime.jobs.lock().unwrap().len()}}),
         ),
         "plugins.list.v1" => Ok(runtime.catalog.lock().unwrap().list()),
         "plugins.recovery.consume.v1" => Ok(
@@ -62,8 +58,19 @@ pub fn control(
         }
         "runtime.native.proxy.v1" => {
             let proxy = params["url"].as_str();
-            let client = http_client(proxy)?;
-            *runtime.client.write().unwrap() = client;
+            if !runtime.loaded.lock().unwrap().is_empty() {
+                return Err(Error::new(
+                    "restart_required",
+                    "Proxy changes require a worker restart",
+                ));
+            }
+            if let Some(proxy) = proxy {
+                let url = url::Url::parse(proxy).map_err(|_| invalid("Invalid upstream proxy"))?;
+                if !["http", "https", "socks5", "socks5h"].contains(&url.scheme()) {
+                    return Err(invalid("Unsupported upstream proxy"));
+                }
+            }
+            *runtime.proxy.lock().unwrap() = proxy.map(str::to_owned);
             Ok(json!({"configured":proxy.is_some()}))
         }
         "plugins.setEnabled.v1" => {
@@ -76,7 +83,6 @@ pub fn control(
             c.entries.get_mut(id).unwrap().enabled = enabled;
             c.save()?;
             if !enabled {
-                runtime.resources.lock().unwrap().remove_plugin(id);
                 runtime.cancel_plugin(id);
             }
             Ok(c.projection(&c.entries[id]))
@@ -92,7 +98,6 @@ pub fn control(
             };
             for id in &ids {
                 c.entries.get_mut(id).unwrap().removing = true;
-                runtime.resources.lock().unwrap().remove_plugin(id);
                 runtime.cancel_plugin(id);
             }
             c.save()?;
@@ -121,7 +126,9 @@ pub fn control(
             )
         }
         "plugins.cache.usage.v1" | "plugins.cache.clear.v1" | "plugins.cache.clearAll.v1" => {
-            let _guard = runtime.storage_lock.lock().unwrap();
+            if method != "plugins.cache.usage.v1" {
+                runtime.shutdown()?;
+            }
             let c = runtime.catalog.lock().unwrap();
             let ids = if let Some(id) = params["pluginId"].as_str() {
                 c.entry(id)?;
@@ -149,15 +156,24 @@ pub fn control(
             })
         }
         "runtime.sourceResource.decode.v1" => {
+            if runtime.stopping.load(Ordering::SeqCst) {
+                return Err(Error::new("runtime_stopping", "Native worker is stopping"));
+            }
             let url = string(params, "url")?;
-            let key = url.rsplit('/').next().unwrap_or("");
-            let (id, value) = runtime
-                .resources
+            let _gate = runtime.source_gate.lock().unwrap();
+            let plugin = runtime
+                .loaded
                 .lock()
                 .unwrap()
-                .get(key)
-                .ok_or_else(|| invalid("Unknown resource"))?;
-            Ok(json!({"pluginId":id,"request":value}))
+                .values()
+                .find(|p| p.validate_resource(url).is_ok())
+                .cloned()
+                .ok_or_else(|| invalid("Unknown or expired source resource"))?;
+            plugin.invoke(
+                call_id,
+                json!({"method":"resource.inspect","request":{"url":url}}),
+                &cancel,
+            )
         }
         "plugins.transfer.plan.v2" | "plugins.transfer.offers.plan.v1" => {
             crate::transfer::plan(&runtime.catalog.lock().unwrap(), params)
@@ -183,6 +199,7 @@ pub fn control(
             )
         }
         "runtime.native.shutdown.v1" => {
+            runtime.shutdown()?;
             std::thread::spawn(|| {
                 std::thread::sleep(std::time::Duration::from_millis(250));
                 std::process::exit(0);
@@ -190,18 +207,6 @@ pub fn control(
             Ok(json!({"stopping":true}))
         }
         "runtime.native.fault.v1" if runtime.test_mode => std::process::abort(),
-        "runtime.native.probe.v1" if runtime.test_mode => {
-            let id = string(params, "pluginId")?;
-            runtime.catalog.lock().unwrap().entry(id)?;
-            let context = CallContext {
-                runtime: runtime.clone(),
-                plugin_id: id.to_string(),
-                cancel,
-                started: Instant::now(),
-                requests: AtomicUsize::new(0),
-            };
-            context.call(params["request"].clone())
-        }
         _ => Err(Error::new(
             "unsupported",
             "Capability is not supported by the native runtime",
@@ -214,7 +219,15 @@ pub fn source(
     method: String,
     mut params: Value,
     cancel: CancellationToken,
+    call_id: u64,
 ) -> Result<Value> {
+    let _gate = runtime.source_gate.lock().unwrap();
+    if runtime.stopping.load(Ordering::SeqCst) {
+        return Err(Error::new("runtime_stopping", "Native worker is stopping"));
+    }
+    if cancel.is_cancelled() {
+        return Err(Error::new("cancelled", "Source call cancelled"));
+    }
     let id = string(&params, "pluginId")?.to_string();
     let manifest = {
         let c = runtime.catalog.lock().unwrap();
@@ -222,7 +235,13 @@ pub fn source(
         if !e.enabled {
             return Err(Error::new("plugin_disabled", "Native source is disabled"));
         }
-        e.manifest.clone()
+        if e.pending.is_some() && runtime.loaded.lock().unwrap().contains_key(&id) {
+            return Err(Error::new(
+                "restart_required",
+                "Source update requires worker restart",
+            ));
+        }
+        e.pending.clone().unwrap_or_else(|| e.manifest.clone())
     };
     let operation = method
         .strip_prefix("source.")
@@ -240,13 +259,64 @@ pub fn source(
     {
         return Err(Error::new("unsupported", "Unknown source operation"));
     }
-    let plugin = {
-        let mut loaded = runtime.loaded.lock().unwrap();
-        if !loaded.contains_key(&id) {
-            let path = runtime.catalog.lock().unwrap().library(&manifest)?;
-            loaded.insert(id.clone(), Arc::new(NativePlugin::load(&path, &manifest)?));
+    if !manifest.capabilities.iter().any(|c| c == operation) {
+        return Err(Error::new(
+            "unsupported",
+            "Source capability is not declared",
+        ));
+    }
+    let existing = runtime.loaded.lock().unwrap().get(&id).cloned();
+    let plugin = if let Some(plugin) = existing {
+        plugin
+    } else {
+        let path = {
+            let mut catalog = runtime.catalog.lock().unwrap();
+            let path = catalog.library(&manifest)?;
+            let entry = catalog.entries.get_mut(&id).unwrap();
+            entry.pending = None;
+            entry.loading = true;
+            catalog.save()?;
+            path
+        };
+        let generation = catalog::hash(
+            format!(
+                "{}:{}:{}:{:?}",
+                runtime.token,
+                id,
+                std::process::id(),
+                std::time::SystemTime::now()
+            )
+            .as_bytes(),
+        );
+        let loaded = crate::native::init_config(
+            &runtime.root,
+            &id,
+            &generation,
+            runtime.proxy.lock().unwrap().clone(),
+            runtime.test_mode,
+        )
+        .and_then(|config| NativePlugin::load(&path, &manifest, config));
+        let mut catalog = runtime.catalog.lock().unwrap();
+        let entry = catalog.entries.get_mut(&id).unwrap();
+        entry.loading = false;
+        match loaded {
+            Ok(plugin) => {
+                entry.manifest = manifest.clone();
+                catalog.save()?;
+                let plugin = Arc::new(plugin);
+                runtime
+                    .loaded
+                    .lock()
+                    .unwrap()
+                    .insert(id.clone(), plugin.clone());
+                plugin
+            }
+            Err(error) => {
+                entry.enabled = false;
+                catalog.save()?;
+                return Err(error);
+            }
         }
-        loaded[&id].clone()
     };
     let p = params
         .as_object_mut()
@@ -265,22 +335,19 @@ pub fn source(
         p.entry("target").or_insert(Value::Null);
         p.entry("collectionId").or_insert(Value::Null);
     }
-    let mut context = CallContext {
-        runtime: runtime.clone(),
-        plugin_id: id.clone(),
-        cancel: cancel.clone(),
-        started: Instant::now(),
-        requests: AtomicUsize::new(0),
-    };
     if cancel.is_cancelled() {
         return Err(Error::new("cancelled", "Source call cancelled"));
     }
-    let mut value = plugin.invoke(&mut context, json!({"method":operation,"request":params}))?;
+    let mut value = plugin.invoke(
+        call_id,
+        json!({"method":operation,"request":params}),
+        &cancel,
+    )?;
     if cancel.is_cancelled() {
         return Err(Error::new("cancelled", "Source call cancelled"));
     }
     crate::validation::validate(operation, &params, &value)?;
-    resource::resolve(&runtime, &id, &mut value, 0)?;
+    crate::native::validate_resources(&plugin, &value)?;
     let map = value
         .as_object_mut()
         .ok_or_else(|| invalid("Source result must be an object"))?;

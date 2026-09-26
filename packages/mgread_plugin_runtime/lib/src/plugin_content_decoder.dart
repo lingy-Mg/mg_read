@@ -237,8 +237,7 @@ PluginMediaResource _decodeMediaResource(Object? value) {
 }
 
 bool _isRuntimeMediaProxyUri(Uri url) =>
-    (url.host == '127.0.0.1' || url.host == 'localhost' || url.host == '::1') &&
-    RegExp(r'^/v1/source-resource/[A-Za-z0-9_-]{16,}$').hasMatch(url.path);
+    _SourceResourceUrl.parse(url.toString()) != null;
 
 PluginMediaGroup _decodeMediaGroup(Object? value) {
   const context = 'Source media group';

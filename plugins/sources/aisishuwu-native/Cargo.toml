@@ -1,6 +1,6 @@
 [package]
 name = "aisishuwu-native"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 publish = false
 
@@ -10,6 +10,7 @@ path = "src/lib.rs"
 
 [dependencies]
 base64 = "=0.22.1"
+mgread-native-sdk = { path = "../../../packages/mg_read_native_runtime/sdk" }
 mgread-native-abi = { path = "../../../packages/mg_read_native_runtime/abi" }
 scraper = { version = "=0.27.0", default-features = false }
 serde_json = "=1.0.151"

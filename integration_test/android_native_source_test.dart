@@ -24,7 +24,7 @@ void main() {
   const pluginId = 'org.mgread.aisishuwu.native';
   const nativeImportPath = String.fromEnvironment(
     'MGREAD_TEST_NATIVE_IMPORT_PATH',
-    defaultValue: '/data/user/0/com.mgread.mg_read/files/mgread-native/inbox/aisishuwu-native-0.1.0.mgplugin',
+    defaultValue: '/data/user/0/com.mgread.mg_read/files/mgread-native/inbox/aisishuwu-native-0.2.0.mgplugin',
   );
 
   testWidgets('native Rust Runtime imports and serves the Android source UI', (tester) async {

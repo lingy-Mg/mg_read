@@ -1,5 +1,9 @@
 # 爱丽丝独立原生数据源效果报告
 
+> 本文是 ABI v1 / 0.1.0 的历史验收记录，不代表当前 v2。当前设计及验证入口见
+> [v2 实现契约](../../../packages/mg_read_native_runtime/IMPLEMENTATION_CONTRACT.md)。
+
+
 > 当前交付说明（2026-09-26）：现行打包脚本只生成一份通用 `.mgplugin`，内含 Windows x64 与 Android arm64 两个目标；扫码或局域网传输时只发送接收平台对应的目标。使用 NanaZip 7.0（2609.2）以标准 ZIP Deflate 高压参数打包。下文是 2026-09-25 的历史验收记录，其中 Android x86_64 与旧包体积、哈希不代表当前交付。
 
 日期：2026-09-25。App 版本：0.10.0+370；原生来源：`org.mgread.aisishuwu.native` 0.1.0。

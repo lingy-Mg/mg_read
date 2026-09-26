@@ -3,6 +3,8 @@
  *
  * This package is type-only. Runtime owns the implementation and validation;
  * source packages must import these types instead of redeclaring projections.
+ * These context APIs are Node-facing. Native ABI v2 uses the same content
+ * semantics with plugin-owned HTTP/cache; see native-source-contract.md.
  */
 
 export type PluginJsonValue =

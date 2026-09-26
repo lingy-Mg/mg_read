@@ -67,6 +67,21 @@ void main() {
         holdNextPing = false;
         return;
       }
+      if (decoded['method'] == 'plugins.cache.clear.v1') {
+        request.response
+          ..headers.contentType = ContentType.json
+          ..write(
+            jsonEncode(<String, Object?>{
+              'ok': false,
+              'error': <String, Object?>{
+                'code': 'io_error',
+                'message': 'Cache removal failed after shutdown.',
+              },
+            }),
+          );
+        await request.response.close();
+        return;
+      }
       final result = switch (decoded['method']) {
         'runtime.ping' => <String, Object?>{
           'ok': true,
@@ -144,6 +159,27 @@ void main() {
       expect(requests.single['params'], isEmpty);
     },
   );
+
+  test('restarts a stopped worker after cache removal fails', () async {
+    final runtime = createRuntime();
+    addTearDown(runtime.debugDispose);
+    await runtime.invoke(const RuntimePingInvocation());
+    await expectLater(
+      runtime.invoke(const ClearPluginCacheInvocation(pluginId: 'native-test')),
+      throwsA(
+        isA<PluginRuntimeException>().having(
+          (error) => error.code,
+          'error code',
+          'io_error',
+        ),
+      ),
+    );
+    expect(runtime.debugDesktopProcessStartCount, 2);
+    expect(
+      (await runtime.invoke(const RuntimePingInvocation())).isHealthy,
+      isTrue,
+    );
+  });
 
   test(
     'accepts native runtime status through the shared typed decoder',

@@ -1,13 +1,12 @@
 //! Independent native worker. Owns its private authenticated loopback listener,
-//! immutable catalog, source libraries, network/storage and resource lifetimes.
+//! immutable catalog and serialized source calls. Plugins own upstream HTTP,
+//! caches and resource listeners; management changes retire this whole worker.
 #[cfg(target_os = "android")]
 mod android;
 pub mod catalog;
 mod dispatch;
 pub mod error;
-mod io;
 mod native;
-mod resource;
 mod transfer;
 mod validation;
 
@@ -16,7 +15,7 @@ use axum::{
     extract::{DefaultBodyLimit, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::post,
 };
 use error::{Error, Result, invalid};
 use native::NativePlugin;
@@ -26,8 +25,8 @@ use std::{
     collections::{BTreeMap, HashMap},
     path::PathBuf,
     sync::{
-        Arc, Mutex, RwLock,
-        atomic::{AtomicU64, AtomicUsize},
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
     time::Instant,
 };
@@ -36,69 +35,36 @@ use tokio_util::sync::CancellationToken;
 pub struct Runtime {
     root: PathBuf,
     token: String,
-    port: u16,
     test_mode: bool,
     started: Instant,
     catalog: Mutex<catalog::Catalog>,
     loaded: Mutex<BTreeMap<String, Arc<NativePlugin>>>,
-    client: RwLock<reqwest::Client>,
-    storage_lock: Mutex<()>,
-    resources: Mutex<resource::Resources>,
-    handle: tokio::runtime::Handle,
-    http_slots: tokio::sync::Semaphore,
-    jobs: Mutex<HashMap<String, (String, CancellationToken)>>,
-    http_requests: AtomicU64,
+    source_gate: Mutex<()>,
+    proxy: Mutex<Option<String>>,
+    stopping: AtomicBool,
+    sequence: AtomicU64,
+    jobs: Mutex<HashMap<String, (String, CancellationToken, u64)>>,
     recovered: AtomicUsize,
 }
 impl Runtime {
-    fn open(root: PathBuf, token: String, port: u16, test_mode: bool) -> Result<Arc<Self>> {
+    fn open(root: PathBuf, token: String, _port: u16, test_mode: bool) -> Result<Arc<Self>> {
         if token.len() < 32 || token.len() > 256 {
             return Err(invalid("Control token must contain at least 32 characters"));
         }
-        let mut catalog = catalog::Catalog::open(root)?;
-        let mut loaded = BTreeMap::new();
-        let mut recovered = 0;
-        let ids = catalog.entries.keys().cloned().collect::<Vec<_>>();
-        for id in ids {
-            if let Some(pending) = catalog.entries[&id].pending.clone() {
-                // Persist the last confirmed version before entering foreign
-                // code. An abort during activation must not repeat that load
-                // forever on the next worker start.
-                catalog.entries.get_mut(&id).unwrap().pending = None;
-                catalog.save()?;
-                match catalog
-                    .library(&pending)
-                    .and_then(|p| NativePlugin::load(&p, &pending))
-                {
-                    Ok(plugin) => {
-                        let e = catalog.entries.get_mut(&id).unwrap();
-                        e.manifest = pending;
-                        e.pending = None;
-                        loaded.insert(id, Arc::new(plugin));
-                    }
-                    Err(_) => {
-                        catalog.entries.get_mut(&id).unwrap().pending = None;
-                        recovered += 1;
-                    }
-                }
-            }
-        }
-        catalog.save()?;
+        let catalog = catalog::Catalog::open(root)?;
+        let recovered = catalog.recovered;
         Ok(Arc::new(Self {
             root: catalog.root.clone(),
             token,
-            port,
             test_mode,
             started: Instant::now(),
             catalog: Mutex::new(catalog),
-            loaded: Mutex::new(loaded),
-            client: RwLock::new(io::http_client(None)?),
-            storage_lock: Mutex::new(()),
-            resources: Mutex::new(resource::Resources::default()),
-            handle: tokio::runtime::Handle::current(),
-            http_slots: tokio::sync::Semaphore::new(16),
+            loaded: Mutex::new(BTreeMap::new()),
+            source_gate: Mutex::new(()),
+            proxy: Mutex::new(None),
+            stopping: AtomicBool::new(false),
+            sequence: AtomicU64::new(0),
             jobs: Mutex::new(HashMap::new()),
-            http_requests: AtomicU64::new(0),
             recovered: AtomicUsize::new(recovered),
         }))
     }
@@ -110,11 +76,46 @@ impl Runtime {
                 .is_some_and(|v| v == format!("Bearer {}", self.token))
     }
     fn cancel_plugin(&self, id: &str) {
-        for (plugin, token) in self.jobs.lock().unwrap().values() {
-            if plugin == id {
-                token.cancel();
+        let calls = self
+            .jobs
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|(plugin, _, _)| plugin == id)
+            .cloned()
+            .collect::<Vec<_>>();
+        for (_, token, call_id) in calls {
+            token.cancel();
+            if let Some(plugin) = self.loaded.lock().unwrap().get(id) {
+                plugin.cancel(call_id);
             }
         }
+    }
+    fn shutdown(&self) -> Result<()> {
+        self.stopping.store(true, Ordering::SeqCst);
+        let ids = self
+            .loaded
+            .lock()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        for id in &ids {
+            self.cancel_plugin(id);
+        }
+        let _gate = self.source_gate.lock().unwrap();
+        // An init already holding the gate may have completed during drain.
+        let plugins = self
+            .loaded
+            .lock()
+            .unwrap()
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        for plugin in plugins {
+            plugin.shutdown()?;
+        }
+        Ok(())
     }
 }
 #[derive(Deserialize)]
@@ -136,6 +137,7 @@ async fn rpc(
         return Json(invalid("Invalid control request").envelope()).into_response();
     }
     let cancel = CancellationToken::new();
+    let call_id = runtime.sequence.fetch_add(1, Ordering::Relaxed) + 1;
     {
         let mut jobs = runtime.jobs.lock().unwrap();
         if jobs.len() >= 64 || jobs.contains_key(&request.id) {
@@ -149,6 +151,7 @@ async fn rpc(
             (
                 request.params["pluginId"].as_str().unwrap_or("").into(),
                 cancel.clone(),
+                call_id,
             ),
         );
     }
@@ -158,9 +161,9 @@ async fn rpc(
     let result = tokio::task::spawn_blocking(move || {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             if request.method.starts_with("source.") {
-                dispatch::source(rt, request.method, request.params, cancel)
+                dispatch::source(rt, request.method, request.params, cancel, call_id)
             } else {
-                dispatch::control(&rt, &request.method, &request.params, cancel)
+                dispatch::control(&rt, &request.method, &request.params, cancel, call_id)
             }
         }))
         .unwrap_or_else(|_| Err(Error::new("runtime_error", "Native control call failed")));
@@ -172,7 +175,7 @@ async fn rpc(
     .await
     .unwrap_or_else(|_| Err(Error::new("runtime_error", "Native worker task failed")));
     Json(match result {
-        Ok(value) => json!({"ok":true,"result":value}),
+        Ok(value) => json!({"ok":true,"result":value,"resourceEndpoints":runtime.loaded.lock().unwrap().values().map(|p|p.endpoint.clone()).collect::<Vec<_>>()}),
         Err(e) => e.envelope(),
     })
     .into_response()
@@ -186,9 +189,11 @@ async fn cancel(
         return StatusCode::UNAUTHORIZED.into_response();
     }
     if let Some(id) = value["id"].as_str() {
-        {
-            if let Some((_, token)) = runtime.jobs.lock().unwrap().get(id) {
-                token.cancel();
+        let job = runtime.jobs.lock().unwrap().get(id).cloned();
+        if let Some((plugin_id, token, call_id)) = job {
+            token.cancel();
+            if let Some(plugin) = runtime.loaded.lock().unwrap().get(&plugin_id) {
+                plugin.cancel(call_id);
             }
         }
         // A cancellation acknowledgement is distinct from a finished native
@@ -215,7 +220,6 @@ pub async fn serve(
     let router = Router::new()
         .route("/rpc", post(rpc))
         .route("/cancel", post(cancel))
-        .route("/resource/{key}", get(resource::serve))
         .layer(DefaultBodyLimit::max(90 * 1024 * 1024))
         .with_state(runtime);
     ready(json!({"port":port,"token":token,"runtimeKind":"native-rust"}));

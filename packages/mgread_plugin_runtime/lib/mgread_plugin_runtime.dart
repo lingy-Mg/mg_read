@@ -45,6 +45,7 @@ part 'src/plugin_invocation.dart';
 part 'src/plugin_invocation_cancellation.dart';
 part 'src/plugin_transfer_invocation.dart';
 part 'src/plugin_runtime.dart';
+part 'src/source_resource_url.dart';
 part 'src/native_supervisor.dart';
 part 'src/native_supervisor_transport.dart';
 part 'src/runtime_error.dart';

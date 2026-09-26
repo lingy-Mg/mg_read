@@ -1,5 +1,5 @@
-//! Bounded public source contract checks before resources are projected. Flutter
-//! still performs its typed semantic decode; native v1 only advertises novels.
+//! Bounded public source contract checks after plugin-owned resource projection. Flutter
+//! performs the same final typed decode for Node and native content.
 use crate::error::{Result, invalid};
 use serde_json::Value;
 use std::collections::HashSet;
@@ -29,17 +29,51 @@ pub fn validate(method: &str, request: &Value, result: &Value) -> Result<()> {
             }
         }
         "getContent" => {
-            if result["chapterId"] != request["chapterId"]
-                || result["contentKind"] != "novel"
-                || !result["text"].is_string()
-            {
-                return Err(invalid("Invalid novel content"));
+            if result["chapterId"] != request["chapterId"] {
+                return Err(invalid("Content identity mismatch"));
             }
-            if result["text"].as_str().unwrap().len() > 1024 * 1024 {
-                return Err(invalid("Novel chapter exceeds 1 MiB"));
+            let pages = array(result, "pages", 5000)?;
+            match result["contentKind"].as_str() {
+                Some("novel")
+                    if result["text"].is_string()
+                        && pages.is_empty()
+                        && result["media"].is_null() =>
+                {
+                    if result["text"].as_str().unwrap().len() > 1024 * 1024 {
+                        return Err(invalid("Novel chapter exceeds 1 MiB"));
+                    }
+                }
+                Some("manga")
+                    if result["text"].is_null()
+                        && !pages.is_empty()
+                        && result["media"].is_null() =>
+                {
+                    unique(pages, "id")?;
+                    for (index, page) in pages.iter().enumerate() {
+                        required(page, "url")?;
+                        if page["index"].as_u64() != Some(index as u64)
+                            || page["resourcePolicy"] == "durable"
+                        {
+                            return Err(invalid("Invalid native manga page"));
+                        }
+                    }
+                }
+                Some("audio" | "video") if result["text"].is_null() && pages.is_empty() => {
+                    let media = &result["media"];
+                    required(media, "url")?;
+                    if !["audio", "video", "hls"]
+                        .contains(&media["resourceType"].as_str().unwrap_or(""))
+                        || !["sessionOnly", "refreshable"]
+                            .contains(&media["resourcePolicy"].as_str().unwrap_or(""))
+                        || !media["headers"].as_object().is_some_and(|h| h.is_empty())
+                    {
+                        return Err(invalid("Invalid native media resource"));
+                    }
+                }
+                _ => return Err(invalid("Inconsistent native content fields")),
             }
-            array(result, "pages", 0)?;
         }
+
         "search" => {
             let items = array(result, "items", 100)?;
             unique(items, "id")?;
@@ -99,7 +133,7 @@ fn unique(items: &[Value], k: &str) -> Result<()> {
 fn summary(v: &Value) -> Result<()> {
     required(v, "id")?;
     required(v, "title")?;
-    if v["contentKind"] != "novel" {
+    if !["novel", "manga", "audio", "video"].contains(&v["contentKind"].as_str().unwrap_or("")) {
         return Err(invalid("Unsupported native content kind"));
     }
     Ok(())

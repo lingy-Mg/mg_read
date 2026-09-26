@@ -23,7 +23,9 @@
 - Windows/Android 默认同时交付 Node 和 Rust 宿主，Facade 按来源引擎归属路由；两种来源 ID 必须全局唯一。
   `MGREAD_NATIVE_RUNTIME=true` 只用于原生独立性验收，该包不提供 Node 切换设置。Windows 按该 define
   裁剪 Node Runtime 资产；Android 正常包用 hybrid source set，独立性验收包用 nativeRuntime source set。
-  私有 Service 只经 Binder 引导 Rust 服务；控制 HTTP 与资源流属于 Rust，不能在 Dart 内新增回环代理。
+  私有 Service 只经 Binder 引导 Rust 服务；控制 HTTP 属于 worker，资源流属于已初始化插件，不能在 Dart 内新增回环代理。
+  资源归属统一由 `source_resource_url.dart` 解析；原生结果还需验证认证 worker 登记的插件、端口和世代。
+  原生启停、更新、卸载、清缓存、代理变更共用确认退出后的 worker 冷重启；未启用来源禁止加载。
   原生测试先构建 `tools/build_native_runtime.ps1` 的产物，再执行 native Facade/Android integration；修改
   Kotlin 停止语义必须验证 worker 真正退出后才允许下一次启动。
 - 区分宿主打包与来源装载：正常 App 预置两套宿主，来源 artifact 可在安装后导入，由归属引擎按需装载；

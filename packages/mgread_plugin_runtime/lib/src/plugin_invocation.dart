@@ -131,7 +131,13 @@ final class SourceResourceDecodeInvocation
   String get _wireMethod => 'runtime.sourceResource.decode.v1';
 
   @override
-  Map<String, Object?> get _wireParams => <String, Object?>{'url': url};
+  Map<String, Object?> get _wireParams {
+    final route = _SourceResourceUrl.require(url);
+    return <String, Object?>{
+      'url': url,
+      if (route.engine == PluginEngine.native) 'pluginId': route.pluginId,
+    };
+  }
 
   @override
   SourceResourceDecodeResult _decodeResult(Object? value) {

@@ -150,7 +150,26 @@ extension _NativeRuntimeSupervisorTransport on _NativeRuntimeSupervisor {
       );
     }
     final envelope = _nativeObject(decoded, 'Native Runtime response');
+    if (!identical(ready, _ready)) {
+      throw const PluginRuntimeException(
+        'transport_disconnected',
+        'Native worker generation has changed.',
+      );
+    }
     if (envelope['ok'] == true && envelope.containsKey('result')) {
+      _resourceEndpoints.register(envelope['resourceEndpoints']);
+      if (method.startsWith('source.')) {
+        _resourceEndpoints.validateResult(
+          envelope['result'],
+          params['pluginId'] as String?,
+        );
+      }
+      if (method == 'runtime.sourceResource.decode.v1') {
+        _resourceEndpoints.validate(
+          params['url'] as String,
+          params['pluginId'] as String?,
+        );
+      }
       return envelope['result'];
     }
     if (envelope['ok'] == false) {
@@ -266,7 +285,9 @@ extension _NativeRuntimeSupervisorTransport on _NativeRuntimeSupervisor {
     }
     if (!identical(_process, process)) return;
     _process = null;
+    _stopUnconfirmed = false;
     _ready = null;
+    _resourceEndpoints.clear();
     _startup = null;
     _httpClient?.close(force: true);
     _httpClient = null;
@@ -310,8 +331,8 @@ extension _NativeRuntimeSupervisorTransport on _NativeRuntimeSupervisor {
     final process = _process;
     final job = _jobObject;
     _httpClient = null;
-    _process = null;
     _ready = null;
+    _resourceEndpoints.clear();
     _startup = null;
     client?.close(force: true);
     if (failure != null) {
@@ -323,17 +344,14 @@ extension _NativeRuntimeSupervisorTransport on _NativeRuntimeSupervisor {
       }
     }
     _intentionalStop = true;
+    _stopUnconfirmed = true;
     try {
       if (_isAndroid) {
-        try {
-          await _NativeRuntimeSupervisor._channel
-              .invokeMethod<void>('stop')
-              .timeout(_NativeRuntimeSupervisor._shutdownTimeout);
-        } on Object {
-          // The Android service stop is best effort after its private process
-          // has already failed or been asked to shut down.
-        }
+        await _NativeRuntimeSupervisor._channel
+            .invokeMethod<void>('stop')
+            .timeout(_NativeRuntimeSupervisor._shutdownTimeout);
       }
+
       if (job != null) {
         try {
           job.close();
@@ -351,16 +369,17 @@ extension _NativeRuntimeSupervisorTransport on _NativeRuntimeSupervisor {
         process?.kill();
       }
       if (process != null) {
-        try {
-          await process.exitCode.timeout(
-            _NativeRuntimeSupervisor._shutdownTimeout,
-          );
-        } on TimeoutException {
-          process.kill();
-        } on Object {
-          // The process has already exited.
-        }
+        await process.exitCode.timeout(
+          _NativeRuntimeSupervisor._shutdownTimeout,
+        );
       }
+      _process = null;
+      _stopUnconfirmed = false;
+    } on Object {
+      throw const PluginRuntimeException(
+        'native_stop_unconfirmed',
+        'The native worker did not confirm exit; restart was stopped.',
+      );
     } finally {
       _jobObject = null;
       _intentionalStop = false;
@@ -372,6 +391,17 @@ extension _NativeRuntimeSupervisorTransport on _NativeRuntimeSupervisor {
   }
 
   Future<void> _restartAfterManagementChange() async {
+    if (_ready != null) {
+      try {
+        await _invokeRpc(
+          method: 'runtime.native.shutdown.v1',
+          params: const <String, Object?>{},
+          timeout: _NativeRuntimeSupervisor._shutdownTimeout,
+        );
+      } on Object {
+        // A failed ABI shutdown still requires confirmed process termination.
+      }
+    }
     await _stopWorker();
     await _ensureStarted();
   }

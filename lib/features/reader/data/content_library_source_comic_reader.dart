@@ -8,6 +8,7 @@
 /// HttpClient and closes it when the reader route disposes the data source.
 /// Durable or still-valid refreshable manifests open locally; session-only or
 /// expired manifests refresh through Runtime before their resources are used.
+/// A dead worker or expired resource permits one manifest refresh for regenerable pages.
 library;
 
 import 'dart:async';
@@ -370,7 +371,8 @@ final class ContentLibraryComicReaderDataSource
       _usedNetwork = true;
       bytes = await _fetchImage(uri);
     } on Object catch (error) {
-      if (!refreshed && _isAuthorizationFailure(error)) {
+      if (!refreshed &&
+          shouldRefreshComicResourceAfterFailure(error, regenerable: page.resource.persistencePolicy != PersistencePolicy.durable)) {
         manifest = await _refreshRuntimeManifest(chapterId, manifest);
         page = manifest.page(imageId);
         if (page == null) throw StateError('Comic image is not in the refreshed chapter manifest.');
@@ -750,8 +752,16 @@ Future<HttpClient> _createSystemComicHttpClient() => FlutterNetworkProxyManager(
 ComicImageHttpClientOwner createComicImageHttpClientOwner(ComicHttpClientFactory? factory) =>
     ComicImageHttpClientOwner(factory ?? _createSystemComicHttpClient);
 
-bool _isAuthorizationFailure(Object error) =>
-    error is ComicImageHttpStatusException && (error.statusCode == HttpStatus.unauthorized || error.statusCode == HttpStatus.forbidden);
+/// Shared bounded-refresh classification; callers enforce the single retry.
+/// Uses the resource's lifetime contract instead of interpreting engine URLs.
+bool shouldRefreshComicResourceAfterFailure(Object error, {required bool regenerable}) {
+  if (error is ComicImageHttpStatusException) {
+    return error.statusCode == HttpStatus.unauthorized ||
+        error.statusCode == HttpStatus.forbidden ||
+        (regenerable && (error.statusCode == HttpStatus.notFound || error.statusCode == HttpStatus.gone));
+  }
+  return regenerable && error is SocketException;
+}
 
 /// Owns one lazy HTTP client for a single reader data-source lifetime.
 final class ComicImageHttpClientOwner {

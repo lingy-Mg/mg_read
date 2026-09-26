@@ -27,7 +27,7 @@ void main() {
       final artifact = File(
         '${root.path}${Platform.pathSeparator}plugins${Platform.pathSeparator}'
         'sources${Platform.pathSeparator}aisishuwu-native${Platform.pathSeparator}'
-        'dist${Platform.pathSeparator}aisishuwu-native-0.1.0.mgplugin',
+        'dist${Platform.pathSeparator}aisishuwu-native-0.2.0.mgplugin',
       );
       expect(await hostExecutable.exists(), isTrue);
       expect(await artifact.exists(), isTrue);
@@ -60,7 +60,7 @@ void main() {
       final source = installed.singleWhere((item) => item.id == _pluginId);
       expect(source.status, 'active');
       expect(source.enabled, isTrue);
-      expect(source.activeVersion, '0.1.0');
+      expect(source.activeVersion, '0.2.0');
 
       final proxy = _environmentProxy();
       if (proxy != null) await runtime.configurePluginHttpProxy(proxy);
@@ -219,7 +219,7 @@ void main() {
       final recoveredSource = installedAfterCrash.singleWhere((item) => item.id == _pluginId);
       expect(recoveredSource.status, 'active');
       expect(recoveredSource.enabled, isTrue);
-      expect(recoveredSource.activeVersion, '0.1.0');
+      expect(recoveredSource.activeVersion, '0.2.0');
 
       final restartCacheWatch = Stopwatch()..start();
       final cachedDetail = await runtime.invoke(const SourceDetailInvocation(pluginId: _pluginId, id: _bookId));
@@ -227,16 +227,28 @@ void main() {
       expect(cachedDetail.summary.chapterCount, detail.summary.chapterCount);
       expect(offlineProxyRequests, 0);
       evidence['restartCacheDetailMs'] = restartCacheWatch.elapsedMilliseconds;
+      await expectLater(
+        runtime.invoke(const SourceDetailInvocation(pluginId: _pluginId, id: 'novel:987654321')),
+        throwsA(isA<PluginRuntimeException>()),
+      );
+      expect(offlineProxyRequests, greaterThan(0));
+      evidence['changedProxyUsedForUncachedRequest'] = true;
       await offlineProxy.close(force: true);
 
+      final startsBeforeDisable = runtime.debugDesktopProcessStartCount;
       final disabled = await runtime.invoke(const SetPluginEnabledInvocation(pluginId: _pluginId, enabled: false));
       expect(disabled.enabled, isFalse);
+      expect(runtime.debugDesktopProcessStartCount, startsBeforeDisable + 1);
       await expectLater(
         runtime.invoke(const SourceDetailInvocation(pluginId: _pluginId, id: _bookId)),
         throwsA(isA<PluginRuntimeException>().having((error) => error.code, 'code', 'plugin_disabled')),
       );
       final enabled = await runtime.invoke(const SetPluginEnabledInvocation(pluginId: _pluginId, enabled: true));
       expect(enabled.enabled, isTrue);
+      expect(runtime.debugDesktopProcessStartCount, startsBeforeDisable + 2);
+      final clearing = await runtime.invoke(const ClearPluginCacheInvocation(pluginId: _pluginId));
+      expect(clearing.items.single.bytesRemaining, 0);
+      expect(runtime.debugDesktopProcessStartCount, startsBeforeDisable + 3);
 
       await runtime.invoke(const UninstallPluginInvocation(pluginId: _pluginId));
       expect(await runtime.invoke(const InstalledPluginsInvocation()), isEmpty);
@@ -250,7 +262,7 @@ void main() {
             pluginId: _pluginId,
             provenance: PluginArtifactProvenance.installed,
             checksum: _crc32(packageBytes),
-            version: '0.1.0',
+            version: '0.2.0',
           ),
           bytes: Stream<List<int>>.value(packageBytes),
         ),

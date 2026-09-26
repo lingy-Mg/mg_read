@@ -85,12 +85,28 @@ void main() {
           'nextCursor': null,
           'totalCount': 0,
         },
+        'runtime.sourceResource.decode.v1' => <String, Object?>{
+          'pluginId': 'org.mgread.fixture.native',
+          'request': <String, Object?>{'engine': 'native'},
+        },
         'runtime.native.shutdown.v1' => <String, Object?>{},
         _ => <String, Object?>{},
       };
       request.response
         ..headers.contentType = ContentType.json
-        ..write(jsonEncode(<String, Object?>{'ok': true, 'result': result}));
+        ..write(
+          jsonEncode(<String, Object?>{
+            'ok': true,
+            'result': result,
+            'resourceEndpoints': <Object?>[
+              <String, Object?>{
+                'pluginId': 'org.mgread.fixture.native',
+                'generation': 'a' * 64,
+                'port': server.port,
+              },
+            ],
+          }),
+        );
       await request.response.close();
     });
 
@@ -146,6 +162,60 @@ void main() {
     expect(nativeSearch.items, isEmpty);
     expect(
       requests.where((method) => method == 'source.search.v1'),
+      hasLength(1),
+    );
+
+    final nodeToken = base64Url
+        .encode(
+          utf8.encode(
+            jsonEncode(<String, Object?>{
+              'version': 1,
+              'pluginId': 'org.mgread.android-runtime-fixture',
+              'request': <String, Object?>{
+                'kind': 'image',
+                'url': 'https://example.test/image',
+              },
+            }),
+          ),
+        )
+        .replaceAll('=', '');
+    final nodeResource = await hybrid.invoke(
+      SourceResourceDecodeInvocation(
+        url: 'http://127.0.0.1:12345/v1/source-resource/$nodeToken',
+      ),
+    );
+    expect(nodeResource.pluginId, 'org.mgread.android-runtime-fixture');
+    expect(
+      requests.where((method) => method == 'runtime.sourceResource.decode.v1'),
+      isEmpty,
+    );
+    final nativeUrl =
+        'http://127.0.0.1:${server.port}/v2/source-resource/native/org.mgread.fixture.native/${'a' * 64}/${'b' * 64}';
+    expect(
+      (await hybrid.invoke(
+        SourceResourceDecodeInvocation(url: nativeUrl),
+      )).pluginId,
+      'org.mgread.fixture.native',
+    );
+    await expectLater(
+      hybrid.invoke(
+        SourceResourceDecodeInvocation(
+          url: nativeUrl.replaceFirst(
+            'org.mgread.fixture.native',
+            'org.mgread.android-runtime-fixture',
+          ),
+        ),
+      ),
+      throwsA(
+        isA<PluginRuntimeException>().having(
+          (error) => error.code,
+          'code',
+          'invalid_request',
+        ),
+      ),
+    );
+    expect(
+      requests.where((method) => method == 'runtime.sourceResource.decode.v1'),
       hasLength(1),
     );
 

@@ -121,6 +121,8 @@ def run(args):
         worker.ok("plugins.native.import.v1", {"path": str(args.plugin)})
         rows = worker.ok("plugins.list.v1"); assert rows[0]["id"] == PLUGIN_ID
         report["installedVersion"] = rows[0]["activeVersion"]
+        assert worker.ok("runtime.status.v1")["native"]["loadedPlugins"] == 0
+        assert not any("aisishuwu_native" in n.lower() for n in modules(worker.process))
         # No-network source invocation loads the actual DLL and exercises public ABI.
         assert worker.ok("source.searchSuggestions.v1", {"pluginId": PLUGIN_ID, "cursor": "search-suggestions-page:2", "pageSize": 5})["items"] == []
         report["modules"] = modules(worker.process)
@@ -128,7 +130,7 @@ def run(args):
         # complete archive but no extracted binary for the current platform.
         with zipfile.ZipFile(io.BytesIO(raw)) as package:
             target = json.loads(package.read("manifest.json"))["targets"]["windows-x86_64"]
-        version_root = root / "plugins" / PLUGIN_ID / "versions/0.1.0"
+        version_root = root / "plugins" / PLUGIN_ID / "versions/0.2.0"
         library = (version_root / target["path"]).resolve()
         assert library.is_relative_to(root.resolve())
         worker.stop(); library.unlink(); worker = Worker(args.host, root)
@@ -143,30 +145,11 @@ def run(args):
         assert not library.exists()
         report["corruptRecoveryTargetRejected"] = True
         worker.stop(); stored_archive.write_bytes(raw); worker = Worker(args.host, root)
-        probe = lambda value: worker.ok("runtime.native.probe.v1", {"pluginId": PLUGIN_ID, "request": value})
-        probe({"op": "storage.write", "area": "data", "path": "acceptance/persistent.json", "value": "native-persistent-value"})
-        assert probe({"op": "storage.read", "area": "data", "path": "acceptance/persistent.json"}) == "native-persistent-value"
-        invalid = worker.call("runtime.native.probe.v1", {"pluginId": PLUGIN_ID, "request": {"op": "storage.write", "area": "data", "path": "../escape", "value": "bad"}})
-        assert invalid["ok"] is False
-        response = probe({"op": "http", "url": f"http://127.0.0.1:{fixture.server_port}/"})
-        assert response["body"] == "native-http-fixture"
-        request_id = uuid.uuid4().hex
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            begin = time.perf_counter()
-            future = pool.submit(worker.call, "runtime.native.probe.v1", {"pluginId": PLUGIN_ID,
-                "request": {"op": "http", "url": f"http://127.0.0.1:{fixture.server_port}/slow"}}, request_id)
-            time.sleep(.25)
-            assert worker.request("/cancel", {"id": request_id})["settled"] is True
-            response = future.result(timeout=3)
-            assert response["ok"] is False and response["error"]["code"] == "cancelled", response
-            report["cancelMs"] = (time.perf_counter() - begin) * 1000
         for name, bad in [("wrongAbi", changed_archive(raw, abi=999)), ("checksum", changed_archive(raw, corrupt=True))]:
             rejected = worker.call("plugins.native.importBytes.v1", {"name": "rejected.mgplugin", "base64": base64.b64encode(bad).decode()})
             assert rejected["ok"] is False
             report[name] = "rejected"
         worker.stop(); worker = Worker(args.host, root)
-        assert probe({"op": "storage.read", "area": "data", "path": "acceptance/persistent.json"}) == "native-persistent-value"
-        report["storageSurvivesRestart"] = True
         exported = worker.ok("plugins.native.export.v1", {"pluginId": PLUGIN_ID})
         assert base64.b64decode(exported["base64"]) == raw
         assert exported["checksum"] == f"{zlib.crc32(raw):08x}"
@@ -174,7 +157,7 @@ def run(args):
         offers = worker.ok("plugins.transfer.offers.v1")
         assert worker.ok("plugins.transfer.offers.plan.v1", {"offers": offers})[0]["action"] == "same"
         identity_rejected = worker.call("plugins.native.importBytes.v1", {"name": "wrong-identity.mgplugin",
-            "base64": base64.b64encode(raw).decode(), "expectedPluginId": "different.native.source", "expectedVersion": "0.1.0"})
+            "base64": base64.b64encode(raw).decode(), "expectedPluginId": "different.native.source", "expectedVersion": "0.2.0"})
         assert identity_rejected["ok"] is False
         assert len(worker.ok("plugins.list.v1")) == 1
         report["transferIdentityRejectedBeforeMutation"] = True
@@ -206,35 +189,45 @@ def run(args):
             assert len(long_text.encode()) > 48 * 1024
             report["longChapterBytes"] = len(long_text.encode())
             report["liveSeconds"] = time.perf_counter() - start
-            before = worker.ok("runtime.status.v1")["native"]["httpRequests"]
+            old_url = detail["coverUrl"]
             worker.stop(); worker = Worker(args.host, root)
+            # An invalid explicit proxy proves the persisted descriptor cache is
+            # usable without a new upstream request. URLs are freshly projected.
+            worker.ok("runtime.native.proxy.v1", {"url":"http://127.0.0.1:1"})
             cached = worker.ok("source.getDetail.v1", {"pluginId": PLUGIN_ID, "id": book})
-            assert cached["id"] == book and worker.ok("runtime.status.v1")["native"]["httpRequests"] == 0
-            report["cacheSurvivesRestartWithoutNetwork"] = True; report["liveHttpRequests"] = before
+            assert cached["id"] == book and cached["coverUrl"] != old_url
+            assert worker.call("runtime.sourceResource.decode.v1", {"url":old_url})["ok"] is False
+            report["cacheSurvivesRestartWithoutNetwork"] = True
         if args.abi_fixture:
             candidate = changed_archive(raw, version="0.9.0", binary=args.abi_fixture.read_bytes())
-            worker.stop(); worker = Worker(args.host, root, {"MGREAD_ABI_FIXTURE_MODE": "wrong"})
-            rejected = worker.call("plugins.native.importBytes.v1", {"name": "wrong-function-table.mgplugin", "base64": base64.b64encode(candidate).decode()})
-            assert rejected["ok"] is False
-            assert worker.ok("plugins.list.v1")[0]["activeVersion"] == "0.1.0"
-            report["binaryFunctionTableAbiRejected"] = True
-            worker.stop(); worker = Worker(args.host, root)
-            worker.ok("plugins.native.importBytes.v1", {"name": "crash-on-activation.mgplugin", "base64": base64.b64encode(candidate).decode()})
-            worker.stop(); worker = None
-            try:
-                worker = Worker(args.host, root, {"MGREAD_ABI_FIXTURE_MODE": "abort"})
-            except RuntimeError:
-                pass
-            else:
-                raise AssertionError("The test activation did not crash")
-            worker = Worker(args.host, root)
-            assert worker.ok("plugins.list.v1")[0]["activeVersion"] == "0.1.0"
-            report["activationCrashRollsBack"] = True
-        upgraded = changed_archive(raw, version="0.1.1")
+            invoke = lambda: worker.call("source.searchSuggestions.v1", {"pluginId":PLUGIN_ID,"cursor":"search-suggestions-page:2"})
+            for mode in ["wrong", "init-fail", "abort"]:
+                worker.stop(); worker = Worker(args.host, root, {"MGREAD_ABI_FIXTURE_MODE":mode})
+                worker.ok("plugins.native.importBytes.v1", {"base64":base64.b64encode(candidate).decode()})
+                worker.ok("plugins.setEnabled.v1", {"pluginId":PLUGIN_ID,"enabled":False})
+                assert not any("aisishuwu_native" in n.lower() for n in modules(worker.process))
+                assert invoke()["error"]["code"] == "plugin_disabled"
+                worker.ok("plugins.setEnabled.v1", {"pluginId":PLUGIN_ID,"enabled":True})
+                try:
+                    result = invoke()
+                    assert mode != "abort" and result["ok"] is False
+                except (ConnectionError, OSError):
+                    assert mode == "abort"
+                worker.stop(); worker = Worker(args.host, root)
+                rows = worker.ok("plugins.list.v1")
+                assert rows[0]["activeVersion"] == "0.2.0" and rows[0]["enabled"] is False
+            report["abiInitFailureCrashQuarantineAndDisabledLazyLoad"] = True
+        upgraded = changed_archive(raw, version="0.2.1")
         worker.ok("plugins.native.importBytes.v1", {"name": "upgrade.mgplugin", "base64": base64.b64encode(upgraded).decode()})
-        assert worker.ok("plugins.list.v1")[0]["pendingVersion"] == "0.1.1"
+        assert worker.ok("plugins.list.v1")[0]["pendingVersion"] == "0.2.1"
         worker.stop(); worker = Worker(args.host, root)
-        assert worker.ok("plugins.list.v1")[0]["activeVersion"] == "0.1.1"
+        worker.ok("plugins.setEnabled.v1", {"pluginId":PLUGIN_ID,"enabled":True})
+        assert worker.ok("runtime.status.v1")["native"]["loadedPlugins"] == 0
+        worker.ok("source.searchSuggestions.v1", {"pluginId":PLUGIN_ID,"cursor":"search-suggestions-page:2"})
+        assert worker.ok("plugins.list.v1")[0]["activeVersion"] == "0.2.1"
+        worker.stop(); worker = Worker(args.host, root)
+        assert not version_root.exists()
+        assert worker.ok("plugins.list.v1")[0]["activeVersion"] == "0.2.1"
         report["coldUpgrade"] = "passed"
         worker.ok("plugins.setEnabled.v1", {"pluginId": PLUGIN_ID, "enabled": False})
         assert worker.call("source.getDetail.v1", {"pluginId": PLUGIN_ID, "id": "novel:52801"})["error"]["code"] == "plugin_disabled"
