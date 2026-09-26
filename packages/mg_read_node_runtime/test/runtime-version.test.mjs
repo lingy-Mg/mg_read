@@ -53,17 +53,19 @@ test("loads backend-specific Runtime metadata through pinned Node ESM", async ()
   assert.equal(recorded.desktop.macos.node, nodeVersionByBackend.macos);
 });
 
-test("plugin node declaration pins every backend and retains old artifacts", async () => {
+test("plugin node declaration allows Node 24 and newer and retains old artifacts", async () => {
   const source = JSON.parse(await readFile(
     new URL("./fixtures/standard-plugin/package.json", import.meta.url), "utf8"));
-  assert.equal(source.engines.node, supportedPluginNodeRange);
-  for (const node of [supportedPluginNodeRange, "24.16.0", ">=24 <25", ">=24.0.0 <25.0.0"]) {
+  assert.equal(supportedPluginNodeRange, ">=24");
+  for (const node of [supportedPluginNodeRange, ">=24.0.0", source.engines.node, "24.16.0", ">=24 <25", ">=24.0.0 <25.0.0"]) {
     assert.equal(parsePluginPackageDescriptor({ ...source, engines: { node } }, runtimeRoot).id,
       source.mgread.id);
   }
-  assert.throws(() => parsePluginPackageDescriptor({
-    ...source, engines: { node: ">=24 <27" },
-  }, runtimeRoot));
+  for (const node of [undefined, "", ">=22", ">=26", ">=24 <27", "invalid"]) {
+    assert.throws(() => parsePluginPackageDescriptor({
+      ...source, engines: { node },
+    }, runtimeRoot));
+  }
 });
 
 test("Flutter package declares Runtime assets and excludes development npm", async () => {

@@ -17,6 +17,7 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import type { InstalledPluginSnapshot } from "./plugin-manager-contract.js";
+import { supportedPluginNodeRange } from "./runtime-version.js";
 import {
   parsePluginPackageDescriptor,
   type PluginPackageDescriptor,
@@ -377,7 +378,7 @@ function decodeDescriptor(value: unknown, pluginId: string, dataRoot: string): P
   }
   const projectRoot = resolve(dataRoot, "plugins", pluginId, "versions", value.version);
   return parsePluginPackageDescriptor({
-    engines: { node: "24.16.0 || 24.21.0 || 26.9.0 || 26.10.0" },
+    engines: { node: supportedPluginNodeRange },
     main: value.entry,
     mgread: {
       contentKinds: value.contentKinds,

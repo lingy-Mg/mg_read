@@ -4,6 +4,7 @@
 artifact 模式以 Node 来源 `package.json.mgread` 或原生来源构建生成的 `manifest.json` 为准，文件局部边界写入口源码头。
 
 - Node 来源构建必须输出单个 JS 并内联使用的全部第三方 npm 包，仅 Node.js 内置模块可外置。
+  来源 `engines.node` 统一声明 `>=24`；构建与验证仍使用仓库固定 Node/npm。
   `.mgplugin.js` 和 `.mgplugin` 压缩包共用此要求；后者只包装单个 JS、元数据与图标，不恢复 npm 依赖。
   开发用 package/lock/node_modules 留在项目中，不进入 artifact 或 Runtime generation。
   禁止新增依赖引用扫描、动态导入检查或自定义 loader；通过构建配置落实 bundle 和禁用 splitting。

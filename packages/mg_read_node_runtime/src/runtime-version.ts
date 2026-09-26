@@ -25,8 +25,11 @@ export function runtimeNodeVersion(embedded: boolean): string {
   return process.platform === "darwin" ? nodeVersionByBackend.macos : nodeVersionByBackend.windows;
 }
 
-/** Published plugins declare only the precise backend versions they support. */
-export const supportedPluginNodeRange =
+/** Plugin compatibility starts at Node 24; backend binaries remain pinned above. */
+export const supportedPluginNodeRange = ">=24";
+
+/** Preserve artifacts published before the open-ended Node 24 declaration. */
+export const legacyPluginNodeRange =
   "24.16.0 || 24.21.0 || 26.9.0 || 26.10.0";
 
 /** The version of the Runtime-owned loopback control protocol. */

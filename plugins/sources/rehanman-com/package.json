@@ -1,12 +1,12 @@
 {
   "name": "@mgread-plugin/rehanman-com",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "description": "MgRead source for public Rehanman webtoons.",
   "type": "module",
   "main": "dist/index.mjs",
   "packageManager": "npm@11.19.1",
-  "engines": { "node": "24.16.0 || 24.21.0 || 26.9.0 || 26.10.0", "npm": "11.13.0 || 11.19.1" },
+  "engines": { "node": ">=24", "npm": "11.13.0 || 11.19.1" },
   "scripts": {
     "build": "tsc -p tsconfig.json && node tools/mgread.mjs build",
     "typecheck": "tsc -p tsconfig.json --noEmit",

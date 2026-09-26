@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/yinghuadongman",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "private": true,
   "description": "MgRead video source for Yinghua Dongman.",
   "type": "module",
@@ -10,7 +10,7 @@
   },
   "packageManager": "npm@11.19.1",
   "engines": {
-    "node": "24.16.0 || 24.21.0 || 26.9.0 || 26.10.0",
+    "node": ">=24",
     "npm": "11.13.0 || 11.19.1"
   },
   "scripts": {

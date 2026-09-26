@@ -15,8 +15,8 @@
 | `@types/node` | `24.13.3` |
 | protocol marker | `1.0` |
 
-每个后端只接受自己的精确 Node 版本；不得回退用户 PATH 或全局 Node。插件 `engines.node` 显式列出这四个
-受支持版本，旧版 `>=24 <25` artifact 继续可读取。
+每个后端只接受自己的精确 Node 版本；不得回退用户 PATH 或全局 Node。插件 `engines.node` 统一声明 `>=24`，
+表示兼容 Node 24 及以上；这不改变宿主固定工具链。旧版精确版本列表和 `>=24 <25` artifact 继续可读取。
 
 ## 平台与 ABI
 

@@ -7,7 +7,7 @@
 import { access, lstat, readFile } from "node:fs/promises";
 import { isAbsolute, resolve, sep } from "node:path";
 
-import { supportedPluginNodeRange } from "./runtime-version.js";
+import { legacyPluginNodeRange, supportedPluginNodeRange } from "./runtime-version.js";
 
 /** MgRead metadata schema supported by this Runtime release. */
 export const pluginPackageSchemaVersion = 1;
@@ -232,6 +232,8 @@ function isSupportedIconPath(value: unknown): value is string {
 function isSupportedNodeRange(value: unknown): boolean {
   return (
     value === supportedPluginNodeRange ||
+    value === ">=24.0.0" ||
+    value === legacyPluginNodeRange ||
     // Preserve installed artifacts created by the previous Node 24 host.
     value === "24.16.0" ||
     value === ">=24 <25" ||

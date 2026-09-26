@@ -10,6 +10,7 @@
  *
  * 注意：
  * - esbuild 只在开发机运行，每次构建后必须停止 helper。
+ * - 新来源声明 Node >=24；继续接受旧的固定后端版本声明用于重新打包。
  * - single-file 只允许纯 JavaScript/JSON 和 Node builtin；图标是唯一声明式资源。
  */
 
@@ -258,7 +259,8 @@ function validatePackage(value, mode, versionOverride) {
   if (
     typeof value?.name !== 'string' || value.name.trim().length === 0 ||
     typeof version !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(version) ||
-    value?.type !== 'module' || value?.main !== 'dist/index.mjs' || value?.engines?.node !== '24.16.0 || 24.21.0 || 26.9.0 || 26.10.0' ||
+    value?.type !== 'module' || value?.main !== 'dist/index.mjs' ||
+    !['>=24', '>=24.0.0', '24.16.0 || 24.21.0 || 26.9.0 || 26.10.0'].includes(value?.engines?.node) ||
     value?.mgread?.schemaVersion !== 1 || value?.mgread?.pluginApi !== 1 ||
     typeof value?.mgread?.id !== 'string' || !/^[a-z0-9]+(?:[.-][a-z0-9]+)+$/u.test(value.mgread.id) ||
     typeof value?.mgread?.displayName !== 'string' || value.mgread.displayName.trim().length === 0 ||
