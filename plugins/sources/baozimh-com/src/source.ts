@@ -1,7 +1,8 @@
 /**
  * Baozimh manga parser and HTTP/resource boundary.
  * Requests start from the current public entry; redirects and parsed resources retain their complete URLs without an origin or protocol gate.
- * Detail and catalog share one bounded book-page projection; image bytes are fetched and streamed only by Runtime.
+ * Detail and catalog share one bounded book-page projection; the detail page splits its catalog between the initial
+ * `#chapter-items` list and the expandable `#chapters_other_list` list, while image bytes are fetched and streamed only by Runtime.
  * HTML, manga pages, credentials, signed media URLs, and user input are handled by this source.
  */
 import { Buffer } from 'node:buffer';
@@ -145,7 +146,7 @@ export class BaozimhSource {
         aliases: Object.freeze([]), catalogUrl: finalUrl.toString(),
       });
       const chapters: Array<Readonly<Record<string, unknown>>> = []; const seen = new Set<string>();
-      $('#chapter-items a.comics-chapters__item[href]').each((_, element) => {
+      $('#chapter-items a[href], #chapters_other_list a[href]').each((_, element) => {
         const link = $(element); const href = link.attr('href'); const chapterTitle = clean(link.find('span').first().text()) ?? clean(link.text());
         if (href === undefined || chapterTitle === null) return;
         const direct = directChapterUrl(new URL(decodeEntities(href), finalUrl));

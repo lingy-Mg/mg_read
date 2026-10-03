@@ -9,7 +9,7 @@ test('fixtures cover categories search detail redirected catalog ordered pages a
   const discovery = await plugin.discover({ target: 'category:china', cursor: null, collectionId: null, pageSize: 20 }); assert.equal(discovery.document.components[0].children[0].items[0].content.title, 'Fixture Comic');
   await plugin.discover({ target: 'category:china', cursor: null, collectionId: null, pageSize: 20 }); assert.equal(calls.filter(({ url }) => url.pathname === '/classify').length, 1);
   const search = await plugin.search({ query: 'fixture', cursor: null, pageSize: 20 }); await plugin.search({ query: 'fixture', cursor: null, pageSize: 20 }); assert.equal(calls.filter(({ url }) => url.pathname === '/search').length, 1); const [detailResult, chapters] = await Promise.all([plugin.getDetail({ id: search.items[0].id }), plugin.getChapters({ id: search.items[0].id })]); assert.equal(detailResult.status, 'ongoing'); assert.equal(detailResult.url, 'http://mirror.example/comic/fixture-comic');
-  assert.deepEqual(chapters.items.map((chapter) => chapter.title), ['Fixture One', 'Fixture Two']); assert.equal(calls.filter(({ url }) => url.pathname === '/comic/fixture-comic').length, 1);
+  assert.deepEqual(chapters.items.map((chapter) => chapter.title), ['Fixture One', 'Fixture Two', 'Fixture Three']); assert.equal(calls.filter(({ url }) => url.pathname === '/comic/fixture-comic').length, 1);
   const chapter = await plugin.getContent({ id: detailResult.id, chapterId: chapters.items[0].id }); assert.equal(chapter.text, null); assert.deepEqual(chapter.pages.map((page) => [page.index, page.width, page.height]), [[0, 800, 1200], [1, 640, 960]]); assert.ok(chapter.pages.every((page) => page.url.startsWith('http://127.0.0.1/resource/')));
   const resourceRequest = resources.find((request) => request.url.includes('/scomic/fixture/1.jpg')); assert.ok(resourceRequest); assert.equal(resourceRequest.kind, 'image'); assert.equal(resourceRequest.url, 'http://images.example/scomic/fixture/1.jpg'); assert.equal(resourceRequest.headers.Referer, 'http://mirror.example/comic/chapter/fixture-comic_real/0_0.html'); assert.match(resourceRequest.headers.Accept, /^image\//u);
   assert.ok(calls.some(({ url }) => url.hostname === 'www.baozimh.com')); assert.ok(calls.some(({ url }) => url.hostname === 'mirror.example'));
@@ -45,12 +45,12 @@ test('AMP continuation drains each page, follows next URLs and excludes already 
  assert.deepEqual(calls.filter(x=>x.pathname.includes('/api/')).map(x=>x.searchParams.get('page')),['2','3']);
 });
 
-test('gatekeeper responses fall back to the public WebView page', async () => {
+test('gatekeeper responses fall back to a hidden public WebView page', async () => {
   const list = await readFile(new URL('./fixtures/list.html', import.meta.url), 'utf8');
   const calls = []; const navigations = []; let currentUrl = 'https://www.baozimh.com/verified';
   const source = new BaozimhSource({
     http: { async fetch(input) { calls.push(new URL(input).toString()); return new Response(JSON.stringify({ challenge_url: '/__gatekeeper_challenge/start?token=fixture', error: 'challenge_required' }), { status: 403 }); } },
-    webview: { async open(options) { assert.deepEqual(options, { visible: false, timeoutMs: 30_000 }); return {
+    webview: { async open(options) { assert.deepEqual(options, { visible: false, timeoutMs: 30_000 }); assert.equal(options.visible, false); return {
       async navigate(url) { navigations.push(url); currentUrl = url.includes('/__gatekeeper_challenge/') ? 'https://www.baozimh.com/verified' : url; }, async getHtml() { return list; }, async getUrl() { return currentUrl; },
     }; } },
     errors: { raise(error) { throw new Error(`${error.code}:${error.message}`); } },

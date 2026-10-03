@@ -6769,7 +6769,7 @@ var BaozimhSource = class {
       });
       const chapters = [];
       const seen = /* @__PURE__ */ new Set();
-      $("#chapter-items a.comics-chapters__item[href]").each((_, element) => {
+      $("#chapter-items a[href], #chapters_other_list a[href]").each((_, element) => {
         const link = $(element);
         const href = link.attr("href");
         const chapterTitle = clean(link.find("span").first().text()) ?? clean(link.text());
