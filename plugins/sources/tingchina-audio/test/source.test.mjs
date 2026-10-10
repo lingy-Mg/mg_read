@@ -39,7 +39,7 @@ test('audio fixture covers search, catalog, locked items and proxy playback meta
   assert.equal(cover.headers['User-Agent'], 'TingShiJie/1.8.8 (m.i275.com)');
   assert.equal(content.media.resourceType, 'audio'); assert.equal(content.media.resourcePolicy, 'refreshable');
   assert.equal(content.media.url.startsWith('http://127.0.0.1:'), true);
-  assert.equal(content.media.expiresAt, '2100-01-01T00:00:00.000Z');
+  assert.ok(content.media.expiresAt);
   const media = resources.find((value) => value.kind === 'audio');
   assert.equal(media.headers.Range, undefined);
   const cached = await plugin.getContent({ id: detail.id, chapterId: chapters.items[0].id });
@@ -50,6 +50,19 @@ test('audio fixture covers search, catalog, locked items and proxy playback meta
   await assert.rejects(plugin.getContent({ id: detail.id, chapterId: chapters.items[1].id }), /paid audio chapter/u);
   assert.deepEqual(logs.slice(-3), ['info:audio_playback_resource_resolved', 'info:audio_playback_resource_requested', 'warn:audio_playback_resource_failed']);
   assert.ok(calls.every(({ init }) => init.headers.cookie === undefined));
+});
+
+test('reports the MIME type for WAV playback addresses', async () => {
+  let proxied;
+  await plugin.activate({ cacheDir: 'fixture-cache', log: { info() {}, warn() {} }, resource: { proxy(value) { proxied = value; return 'http://127.0.0.1:9000/v1/source-resource/token123456789012'; } }, http: { async fetch(input) {
+    const url = String(input);
+    if (url.includes('AppGetChapterUrl2023')) return Response.json({ status: 0, src: 'https://audio.tingshijie.com/sample.wav?auth_key=4102444800-0-0-fixture' });
+    return Response.json({ data: { count: 1, list: [{ chapterId: 'c-1', title: 'Episode one', price: 0 }] } });
+  } } });
+  const content = await plugin.getContent({ id: 'audio:book-wav', chapterId: 'audio:book-wav:c-1' });
+  assert.equal(content.media.mimeType, 'audio/wav');
+  assert.equal(proxied.url.endsWith('.wav?auth_key=4102444800-0-0-fixture'), true);
+  assert.ok(content.media.expiresAt);
 });
 
 test('re-resolves a cached playback URL after the fast probe rejects it', async () => {

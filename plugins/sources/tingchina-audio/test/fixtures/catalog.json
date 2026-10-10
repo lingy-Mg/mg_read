@@ -3,5 +3,5 @@
   "home": { "data": { "best": { "list": [{ "bookId": "book-a", "bookTitle": "Sample Audio", "count": 2 }] } } },
   "book": { "data": { "bookData": { "bookId": "book-a", "bookTitle": "Sample Audio", "bookAnchor": "Narrator", "count": 2, "bookUpdateStatus": "1" } } },
   "chapters": { "data": { "count": 2, "list": [{ "chapterId": "c-1", "title": "Episode one", "price": 0 }, { "chapterId": "c-2", "title": "Episode two", "price": 2 }] } },
-  "play": { "status": 0, "src": "https://audio.tingshijie.com/sample.mp3?duration=120&expires=4102444800" }
+  "play": { "status": 0, "src": "https://audio.tingshijie.com/sample.m4a?auth_key=4102444800-0-0-fixture" }
 }

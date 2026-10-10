@@ -6,7 +6,7 @@
  * IO：来源请求和快速音频探测都走 ctx.http；媒体地址只经 ctx.resource.proxy 输出，不缓存媒体主体。
  * 发现：首页封面比例不一，内容区使用按原图高度排布的封面网格。
  * 缓存：章节投影进入 Runtime 注入的持久化插件缓存，一天内直接命中；过期章节先返回旧目录并后台刷新。
- * 缓存：签名地址按上游失效时间（无法解析时使用短 TTL）管理；未过期的地址每次播放前用 HEAD 快速探测。
+ * 缓存：只有响应或 URL 明确提供的失效字段才作为媒体失效时间；auth_key 是签名字段，未确认其时间段语义，不将其当作失效时间。未知失效时间的地址每次播放前用 HEAD 快速探测，并以本地缓存窗口作为播放器刷新期限。
  */
 import { createHash } from 'node:crypto';
 import { PluginCache, type PluginCachePolicy } from '@mgread/plugin-cache';
@@ -23,7 +23,9 @@ const coverHeaders = {
   Referer: base + '/',
   'User-Agent': appHeaders['User-Agent'],
 };
-const audioHeaders = { Accept: '*/*', 'User-Agent': 'okhttp/4.9.3' };
+// 每个 Range 都经 Runtime 本地资源代理转发；上游偶发提前关闭复用连接，
+// 明确要求短连接，避免播放器在同一失效连接上继续取片。
+const audioHeaders = { Accept: '*/*', 'User-Agent': 'okhttp/4.9.3', Connection: 'close' };
 const playKey = 'J9gSpfUlzYxE8Hn5IXiGaD2jVMrwAm0K';
 const categories = Object.freeze([['popular', '热门', null], ['6', '玄幻', '6'], ['7', '奇幻', '7'], ['8', '武侠', '8'], ['13', '历史', '13'], ['14', '恐怖', '14'], ['31', '评书', '31'], ['50', '儿童', '50']] as const);
 const homeSections = [['best', '热门听书', 'popular'], ['xuanhuan', '玄幻', '6'], ['qihuan', '奇幻', '7'], ['wuxia', '武侠', '8'], ['lishi', '历史', '13'], ['kongbu', '恐怖', '14'], ['pingshu', '评书', '31'], ['ertong', '儿童', '50']] as const;
@@ -31,10 +33,10 @@ const playbackCacheTtlMs = 10 * 60 * 1000;
 const playbackExpirySafetyMs = 5 * 1000;
 const playbackProbeTimeoutMs = 1500;
 const playbackCacheMaxEntries = 256;
-// AppGetChapterUrl2023 以来源 IP 限制请求频率；实测一次成功后 30 秒窗口内会返回 429，
-// 且响应没有 Retry-After，因此在来源边界串行并保留一个有界的 31 秒重试窗口。
-const playbackRequestIntervalMs = 31_000;
-const playbackRateLimitRetryDelayMs = 31_000;
+// 播放地址解析属于 Runtime 30 秒能力调用，不能人为等待一个接近调用期限的固定间隔。
+// 请求仍保持串行；只有上游明确返回 429 时才短暂重试，避免章节切换被 Runtime 取消。
+const playbackRequestIntervalMs = 0;
+const playbackRateLimitRetryDelayMs = 1_500;
 const chapterPageConcurrency = 6;
 const chapterCacheTtlMs = 24 * 60 * 60 * 1000;
 const chapterCachePolicy = Object.freeze({ namespace: 'audio-chapters-v3', staleAfterMs: chapterCacheTtlMs, serveStaleWhileRevalidate: true, allowStaleOnError: true } satisfies PluginCachePolicy);
@@ -183,7 +185,7 @@ export async function getContent(request: { id: string; chapterId: string }) {
     if (chapterLocks.get(request.chapterId) === true) throw new Error('unsupported: paid audio chapter requires an account.');
     const playback = await getPlayback(bookId, chapterId);
     const result = frozen({ chapterId: request.chapterId, contentKind: 'audio', title: null, updatedAt: null, text: null, pages: [], media: {
-      url: ctx.resource.proxy({ kind: 'audio', url: playback.url, headers: playback.headers }), resourceType: 'audio', resourcePolicy: playback.mediaExpiresAt === null ? 'sessionOnly' : 'refreshable', expiresAt: playback.mediaExpiresAt === null ? null : new Date(playback.mediaExpiresAt).toISOString(), mimeType: mime(playback.url), headers: playback.headers,
+      url: ctx.resource.proxy({ kind: 'audio', url: playback.url, headers: playback.headers }), resourceType: 'audio', resourcePolicy: 'refreshable', expiresAt: new Date(playback.expiresAt).toISOString(), mimeType: mime(playback.url), headers: playback.headers,
     } });
     ctx.log.info('audio_playback_resource_resolved');
     return result;
@@ -285,9 +287,7 @@ function urlExpiresAt(value: string): number | null {
       const result = timestamp(parsed.searchParams.get(key));
       if (result !== null) return result;
     }
-    const authKey = parsed.searchParams.get('auth_key');
-    const embedded = authKey?.split('-')[1];
-    return timestamp(embedded);
+    return null;
   } catch { return null; }
 }
 
@@ -347,7 +347,15 @@ function chapterIdFrom(id: string, bookId: string) { const match = new RegExp(`^
 function pageFromCursor(cursor: string | null, target: string) { if (cursor === null) return 1; const value = Number(new RegExp(`^${escape(target)}:(\\d+)$`, 'u').exec(cursor)?.[1]); if (!Number.isSafeInteger(value) || value < 2 || value > 50) throw new Error('Discovery cursor is invalid.'); return value; }
 function trustedAudio(value: string) { try { const host = new URL(value).hostname.toLowerCase(); return ['xmcdn.com', 'tingshijie.com', '365ting.com', 'tingchina.com', 'stream.tencentmusic.com'].some((suffix) => host === suffix || host.endsWith(`.${suffix}`)); } catch { return false; } }
 function imageUrl(value: string | null) { if (value === null) return null; try { const url = new URL(value, base); return ['http:', 'https:'].includes(url.protocol) ? url.toString() : null; } catch { return null; } }
-function mime(url: string) { return /\.m4a(?:$|\?)/iu.test(url) ? 'audio/mp4' : /\.aac(?:$|\?)/iu.test(url) ? 'audio/aac' : 'audio/mpeg'; }
+function mime(url: string) {
+  if (/\.m4a(?:$|[?#])/iu.test(url)) return 'audio/mp4';
+  if (/\.aac(?:$|[?#])/iu.test(url)) return 'audio/aac';
+  if (/\.wav(?:$|[?#])/iu.test(url)) return 'audio/wav';
+  if (/\.flac(?:$|[?#])/iu.test(url)) return 'audio/flac';
+  if (/\.ogg(?:$|[?#])/iu.test(url)) return 'audio/ogg';
+  if (/\.opus(?:$|[?#])/iu.test(url)) return 'audio/opus';
+  return 'audio/mpeg';
+}
 function md5(value: string) { return createHash('md5').update(value).digest('hex'); }
 function clamp(value: number) { return Math.max(1, Math.min(100, Math.floor(value))); }
 function status(value: unknown) { return String(value) === '1' ? 'completed' : String(value) === '2' ? 'ongoing' : 'unknown'; }

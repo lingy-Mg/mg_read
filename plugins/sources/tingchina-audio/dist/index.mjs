@@ -216,7 +216,7 @@ var coverHeaders = {
   Referer: base + "/",
   "User-Agent": appHeaders["User-Agent"]
 };
-var audioHeaders = { Accept: "*/*", "User-Agent": "okhttp/4.9.3" };
+var audioHeaders = { Accept: "*/*", "User-Agent": "okhttp/4.9.3", Connection: "close" };
 var playKey = "J9gSpfUlzYxE8Hn5IXiGaD2jVMrwAm0K";
 var categories = Object.freeze([["popular", "热门", null], ["6", "玄幻", "6"], ["7", "奇幻", "7"], ["8", "武侠", "8"], ["13", "历史", "13"], ["14", "恐怖", "14"], ["31", "评书", "31"], ["50", "儿童", "50"]]);
 var homeSections = [["best", "热门听书", "popular"], ["xuanhuan", "玄幻", "6"], ["qihuan", "奇幻", "7"], ["wuxia", "武侠", "8"], ["lishi", "历史", "13"], ["kongbu", "恐怖", "14"], ["pingshu", "评书", "31"], ["ertong", "儿童", "50"]];
@@ -224,8 +224,8 @@ var playbackCacheTtlMs = 10 * 60 * 1e3;
 var playbackExpirySafetyMs = 5 * 1e3;
 var playbackProbeTimeoutMs = 1500;
 var playbackCacheMaxEntries = 256;
-var playbackRequestIntervalMs = 31e3;
-var playbackRateLimitRetryDelayMs = 31e3;
+var playbackRequestIntervalMs = 0;
+var playbackRateLimitRetryDelayMs = 1500;
 var chapterPageConcurrency = 6;
 var chapterCacheTtlMs = 24 * 60 * 60 * 1e3;
 var chapterCachePolicy = Object.freeze({ namespace: "audio-chapters-v3", staleAfterMs: chapterCacheTtlMs, serveStaleWhileRevalidate: true, allowStaleOnError: true });
@@ -357,8 +357,8 @@ async function getContent(request) {
     const result = frozen({ chapterId: request.chapterId, contentKind: "audio", title: null, updatedAt: null, text: null, pages: [], media: {
       url: ctx.resource.proxy({ kind: "audio", url: playback.url, headers: playback.headers }),
       resourceType: "audio",
-      resourcePolicy: playback.mediaExpiresAt === null ? "sessionOnly" : "refreshable",
-      expiresAt: playback.mediaExpiresAt === null ? null : new Date(playback.mediaExpiresAt).toISOString(),
+      resourcePolicy: "refreshable",
+      expiresAt: new Date(playback.expiresAt).toISOString(),
       mimeType: mime(playback.url),
       headers: playback.headers
     } });
@@ -465,9 +465,7 @@ function urlExpiresAt(value) {
       const result = timestamp(parsed.searchParams.get(key));
       if (result !== null) return result;
     }
-    const authKey = parsed.searchParams.get("auth_key");
-    const embedded = authKey?.split("-")[1];
-    return timestamp(embedded);
+    return null;
   } catch {
     return null;
   }
@@ -572,7 +570,13 @@ function imageUrl(value) {
   }
 }
 function mime(url) {
-  return /\.m4a(?:$|\?)/iu.test(url) ? "audio/mp4" : /\.aac(?:$|\?)/iu.test(url) ? "audio/aac" : "audio/mpeg";
+  if (/\.m4a(?:$|[?#])/iu.test(url)) return "audio/mp4";
+  if (/\.aac(?:$|[?#])/iu.test(url)) return "audio/aac";
+  if (/\.wav(?:$|[?#])/iu.test(url)) return "audio/wav";
+  if (/\.flac(?:$|[?#])/iu.test(url)) return "audio/flac";
+  if (/\.ogg(?:$|[?#])/iu.test(url)) return "audio/ogg";
+  if (/\.opus(?:$|[?#])/iu.test(url)) return "audio/opus";
+  return "audio/mpeg";
 }
 function md5(value) {
   return createHash2("md5").update(value).digest("hex");
