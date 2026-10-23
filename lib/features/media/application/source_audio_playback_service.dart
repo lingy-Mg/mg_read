@@ -12,6 +12,8 @@
 /// - Media URLs, request headers and Runtime authorization remain memory-only.
 /// - The live remember-position preference gates shelf progress in the store;
 ///   toggling it never replaces the engine or seeks the current audio.
+/// - Ordinary progress writes are throttled to 10 seconds; pause, selection,
+///   backgrounding and exit still flush. Abrupt termination may lose the tail.
 /// - The native Android foreground service remains provided by audio_service.
 library;
 
@@ -284,6 +286,7 @@ final class SourceAudioPlaybackService extends Notifier<SourceAudioPlaybackState
         backend: ref.read(sourceAudioPlaybackBackendFactoryProvider)?.call(),
         proxyUri: proxyUri,
         observer: observer,
+        saveInterval: const Duration(seconds: 10),
         prefetchBatchSize: 1,
         prefetchLeadTime: const Duration(seconds: 30),
       );

@@ -12,6 +12,33 @@ import 'package:mg_read/features/media/application/transient_source_audio_playba
 import 'package:mg_read_audio_player/mg_read_audio_player.dart';
 
 void main() {
+  testWidgets('ten-second throttle saves the latest tick and pause flushes immediately', (tester) async {
+    final backend = _Backend();
+    final store = _RecordingStore();
+    final engine = AudioPlayerEngine(
+      collectionId: 'audio-1',
+      dataSource: const _Playlist(),
+      backend: backend,
+      stateStore: store,
+      saveInterval: const Duration(seconds: 10),
+      recoveryStallTimeout: const Duration(minutes: 1),
+    );
+    try {
+      await engine.initialize();
+      await backend.seek(const Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 9));
+      expect(store.saved, isEmpty);
+      await backend.seek(const Duration(seconds: 14));
+      await tester.pump(const Duration(seconds: 1));
+      expect(store.saved.single.position, const Duration(seconds: 14));
+      await backend.seek(const Duration(seconds: 16));
+      await engine.controller.pause();
+      expect(store.saved.last.position, const Duration(seconds: 16));
+    } finally {
+      await engine.close();
+    }
+  });
+
   for (final enabled in <bool>[true, false]) {
     test('engine lifecycle honors recording=$enabled and preserves the restart position', () async {
       final root = await Directory.systemTemp.createTemp('mg-read-audio-resume-lifecycle-');
@@ -145,6 +172,16 @@ final class _Playlist implements AudioPlayerDataSource {
         AudioTrack(id: 'chapter-$index', title: '第 $index 章', resource: Uri.parse('https://example.test/$index.mp3')),
     ],
   );
+}
+
+final class _RecordingStore implements AudioPlaybackStateStore {
+  final saved = <AudioPlaybackProgress>[];
+
+  @override
+  Future<AudioPlaybackProgress?> loadProgress(String collectionId) async => null;
+
+  @override
+  Future<void> saveProgress(AudioPlaybackProgress progress) async => saved.add(progress);
 }
 
 final class _Backend implements AudioPlaybackBackend {
