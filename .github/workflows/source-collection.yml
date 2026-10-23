@@ -47,16 +47,32 @@ jobs:
             echo "No eligible Node source packages found" >&2
             exit 1
           fi
+          mkdir -p dist/package-success dist/package-failed
           printf '%s\0' "${packages[@]}" |
             xargs -0 -n 1 -P 3 bash -euo pipefail -c '
               package="$1"
               echo "Packing ${package}"
-              npm ci --prefer-offline --no-audit --no-fund --prefix "${package}"
-              npm run pack:plugin --prefix "${package}"
+              name="${package##*/}"
+              if npm ci --prefer-offline --no-audit --no-fund --prefix "${package}" &&
+                 npm run pack:plugin --prefix "${package}"; then
+                touch "dist/package-success/${name}"
+              else
+                status=$?
+                echo "::warning title=Source packaging skipped::${package} failed with exit code ${status}" >&2
+                touch "dist/package-failed/${name}"
+              fi
             ' _
+          mapfile -t successful_packages < <(find dist/package-success -maxdepth 1 -type f -printf '%f\n' | sort)
+          if ((${#successful_packages[@]} == 0)); then
+            echo "All eligible Node source packages failed to build" >&2
+            exit 1
+          fi
+          printf '%s\n' "${successful_packages[@]}" > dist/successful-packages.txt
+          failed_count="$(find dist/package-failed -maxdepth 1 -type f | wc -l)"
+          echo "Successfully packaged ${#successful_packages[@]} of ${#packages[@]} Node sources; skipped ${failed_count}."
 
       - name: Create source collection
-        run: python tools/package_source_collection.py --sources plugins/sources --output dist/mgread-sources.mgplugins
+        run: python tools/package_source_collection.py --sources plugins/sources --include-packages-file dist/successful-packages.txt --output dist/mgread-sources.mgplugins
 
       - name: Create standalone online repository
         env:
@@ -66,6 +82,7 @@ jobs:
           set -euo pipefail
           python tools/package_source_collection.py \
             --sources plugins/sources \
+            --include-packages-file dist/successful-packages.txt \
             --online-output dist/online \
             --release-base-url "https://github.com/${REPOSITORY}/releases/download/source-catalog"
           python -c "import shutil; shutil.make_archive('dist/mgread-online-catalog', 'zip', 'dist/online')"

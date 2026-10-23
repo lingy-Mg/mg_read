@@ -63,10 +63,25 @@ def eligible_packages(sources: Path) -> list[tuple[Path, dict]]:
     return found
 
 
-def build_collection(sources: Path, output: Path, artifact_root: Path | None = None) -> list[dict]:
+def select_packages(packages: list[tuple[Path, dict]], include_names: set[str] | None) -> list[tuple[Path, dict]]:
+    if include_names is None:
+        return packages
+    available_names = {project.name for project, _ in packages}
+    unknown_names = include_names - available_names
+    if unknown_names:
+        raise ValueError(f"Package selection contains unknown source directories: {', '.join(sorted(unknown_names))}")
+    selected = [(project, package) for project, package in packages if project.name in include_names]
+    if not selected:
+        raise ValueError("No successfully packaged Node source packages were selected")
+    return selected
+
+
+def build_collection(sources: Path, output: Path, artifact_root: Path | None = None,
+                     include_names: set[str] | None = None) -> list[dict]:
     packages = eligible_packages(sources)
     if not packages:
         raise ValueError("No eligible Node source packages were found")
+    packages = select_packages(packages, include_names)
     if len(packages) > MAX_PLUGINS:
         raise ValueError(f"Collection exceeds {MAX_PLUGINS} Node source packages")
     ids: set[str] = set()
@@ -128,11 +143,13 @@ def build_collection(sources: Path, output: Path, artifact_root: Path | None = N
 
 
 def build_online_catalog(sources: Path, output_dir: Path, release_base_url: str,
-                         artifact_root: Path | None = None) -> list[dict]:
+                         artifact_root: Path | None = None,
+                         include_names: set[str] | None = None) -> list[dict]:
     """Create a static GitHub-hosted catalog and independently downloadable plugins."""
     packages = eligible_packages(sources)
     if not packages:
         raise ValueError("No eligible Node source packages were found")
+    packages = select_packages(packages, include_names)
     if len(packages) > MAX_PLUGINS:
         raise ValueError(f"Online catalog exceeds {MAX_PLUGINS} Node source packages")
     base_url = release_base_url.rstrip("/")
@@ -209,6 +226,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--artifact-root", type=Path, help="optional root containing <source>/artifacts")
     parser.add_argument("--online-output", type=Path, help="write standalone plugins and catalog.json for a static repository")
     parser.add_argument("--release-base-url", help="HTTPS GitHub Release download URL used by --online-output")
+    parser.add_argument("--include-packages-file", type=Path,
+                        help="newline-delimited source directory names to include in release artifacts")
     parser.add_argument("--list-packages", action="store_true", help="print eligible package directories")
     args = parser.parse_args(argv)
     try:
@@ -218,13 +237,21 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.output is None and args.online_output is None:
             parser.error("--output or --online-output is required unless --list-packages is used")
+        include_names = None
+        if args.include_packages_file is not None:
+            include_names = {line.strip() for line in args.include_packages_file.read_text(encoding="utf-8").splitlines()
+                             if line.strip()}
+            if not include_names:
+                raise ValueError("Package selection file is empty")
         if args.output is not None:
-            entries = build_collection(args.sources, args.output, args.artifact_root)
+            entries = build_collection(args.sources, args.output, args.artifact_root, include_names)
             print(f"Created {args.output} with {len(entries)} plugins")
         if args.online_output is not None:
             if args.release_base_url is None:
                 parser.error("--release-base-url is required with --online-output")
-            online_entries = build_online_catalog(args.sources, args.online_output, args.release_base_url, args.artifact_root)
+            online_entries = build_online_catalog(
+                args.sources, args.online_output, args.release_base_url, args.artifact_root, include_names,
+            )
             print(f"Created online catalog in {args.online_output} with {len(online_entries)} standalone plugins")
         return 0
     except (OSError, ValueError, zipfile.BadZipFile) as exc:

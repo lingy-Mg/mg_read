@@ -137,6 +137,32 @@ class PackageSourceCollectionTests(unittest.TestCase):
                 "https://github.com/example/mg_read/releases/download/source-catalog",
             )
 
+    def test_builders_can_include_only_successfully_packaged_sources(self):
+        alpha_payload = b"// @mgread-plugin-v1 eyJ2ZXJzaW9uIjoiMS4yLjMifQ==\nexport default {};"
+        self.add_plugin("alpha", "org.mgread.alpha", payload=alpha_payload)
+        self.add_plugin("failed", "org.mgread.failed", payload=b"stale artifact from an earlier build")
+        include_names = {"alpha"}
+
+        collection = self.root / "selected.mgplugins"
+        pack.build_collection(self.sources, collection, include_names=include_names)
+        with zipfile.ZipFile(collection) as archive:
+            manifest = json.loads(archive.read("manifest.json"))
+            self.assertEqual([plugin["id"] for plugin in manifest["plugins"]], ["org.mgread.alpha"])
+
+        online = self.root / "selected-online"
+        entries = pack.build_online_catalog(
+            self.sources,
+            online,
+            "https://github.com/example/mg_read/releases/download/source-catalog",
+            include_names=include_names,
+        )
+        self.assertEqual([entry["id"] for entry in entries], ["org.mgread.alpha"])
+
+        with self.assertRaisesRegex(ValueError, "unknown source directories"):
+            pack.build_collection(self.sources, self.root / "unknown.mgplugins", include_names={"missing"})
+        with self.assertRaisesRegex(ValueError, "No successfully packaged"):
+            pack.build_collection(self.sources, self.root / "empty.mgplugins", include_names=set())
+
     def test_incomplete_or_unsupported_node_packages_fail_closed(self):
         project = self.add_plugin("incomplete", "org.mgread.incomplete")
         package_file = project / "package.json"
