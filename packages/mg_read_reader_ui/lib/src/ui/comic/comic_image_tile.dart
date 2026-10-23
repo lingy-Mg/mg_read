@@ -1,3 +1,10 @@
+/// 漫画图片单元与会话内解码像素预算。
+///
+/// 同时挂载的图片按需求比例共享预算，不能因先到先占把后续图片解码成纯色色块。
+/// 分配变化在帧结束后通知单元自行重解码；编码字节与布局尺寸仍由缓存及父列表持有。
+/// 单元销毁或更换预算时释放预留，延迟通知只访问仍登记的单元。
+library;
+
 import 'dart:typed_data';
 import 'dart:math' as math;
 
@@ -12,24 +19,67 @@ import 'comic_image_cache.dart';
 import 'comic_reader_strings.dart';
 
 class ComicDecodedImageBudget {
-  ComicDecodedImageBudget({this.maximumPixels = 12 * 1024 * 1024});
+  ComicDecodedImageBudget({this.maximumPixels = 12 * 1024 * 1024})
+    : assert(maximumPixels > 0);
 
   final int maximumPixels;
-  final Map<Object, int> _reservations = <Object, int>{};
-  int _usedPixels = 0;
+  final Map<Object, _ComicDecodeReservation> _reservations =
+      <Object, _ComicDecodeReservation>{};
+  bool _notificationScheduled = false;
 
-  int reserve(Object owner, int desiredPixels) {
-    _usedPixels -= _reservations.remove(owner) ?? 0;
-    final int available = (maximumPixels - _usedPixels).clamp(0, maximumPixels);
-    final int granted = desiredPixels.clamp(1, available < 1 ? 1 : available);
-    _reservations[owner] = granted;
-    _usedPixels += granted;
-    return granted;
+  int allocationFor(Object owner) => _reservations[owner]?.grantedPixels ?? 0;
+
+  int reserve(Object owner, int desiredPixels, {VoidCallback? onChanged}) {
+    final int desired = math.max(1, desiredPixels);
+    final _ComicDecodeReservation? previous = _reservations[owner];
+    if (previous != null && previous.desiredPixels == desired) {
+      previous.onChanged = onChanged;
+      return previous.grantedPixels;
+    }
+    _reservations[owner] = _ComicDecodeReservation(desired, onChanged);
+    _rebalance();
+    return allocationFor(owner);
   }
 
   void release(Object owner) {
-    _usedPixels -= _reservations.remove(owner) ?? 0;
+    if (_reservations.remove(owner) != null) _rebalance();
   }
+
+  void _rebalance() {
+    final int desiredTotal = _reservations.values.fold<int>(
+      0,
+      (total, reservation) => total + reservation.desiredPixels,
+    );
+    bool notify = false;
+    for (final _ComicDecodeReservation reservation in _reservations.values) {
+      final int granted = desiredTotal <= maximumPixels
+          ? reservation.desiredPixels
+          : reservation.desiredPixels * maximumPixels ~/ desiredTotal;
+      if (granted != reservation.grantedPixels) {
+        reservation.grantedPixels = granted;
+        notify = notify || reservation.onChanged != null;
+      }
+    }
+    if (!notify || _notificationScheduled) return;
+    _notificationScheduled = true;
+    // reserve/release can run while Flutter builds or removes a list cell.
+    // Publish the final allocation after that frame instead of calling
+    // setState on a sibling that is still in the middle of its build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _notificationScheduled = false;
+      for (final Object owner in _reservations.keys.toList()) {
+        _reservations[owner]?.onChanged?.call();
+      }
+    });
+    WidgetsBinding.instance.scheduleFrame();
+  }
+}
+
+class _ComicDecodeReservation {
+  _ComicDecodeReservation(this.desiredPixels, this.onChanged);
+  final int desiredPixels;
+  int grantedPixels = 0;
+  VoidCallback? onChanged;
 }
 
 /// Private progressive image cell used by the comic reader surface.
@@ -81,6 +131,7 @@ class _ComicProgressiveImageTileState extends State<ComicProgressiveImageTile> {
   double? _decodedAspectRatio;
   int? _decodeWidth;
   int? _decodeHeight;
+  int? _reservedPixels;
   bool _reportedError = false;
   bool _presented = false;
   late bool _cacheHit;
@@ -95,6 +146,10 @@ class _ComicProgressiveImageTileState extends State<ComicProgressiveImageTile> {
   @override
   void didUpdateWidget(covariant ComicProgressiveImageTile oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.decodeBudget, widget.decodeBudget)) {
+      oldWidget.decodeBudget.release(this);
+      _reservedPixels = null;
+    }
     if (oldWidget.cache != widget.cache ||
         oldWidget.chapterId != widget.chapterId ||
         oldWidget.image.id != widget.image.id ||
@@ -123,6 +178,15 @@ class _ComicProgressiveImageTileState extends State<ComicProgressiveImageTile> {
     _decodeWidth = null;
     _decodeHeight = null;
     if (provider != null) provider.evict().ignore();
+  }
+
+  void _handleDecodeBudgetChanged() {
+    if (!mounted ||
+        _reservedPixels == null ||
+        widget.decodeBudget.allocationFor(this) == _reservedPixels) {
+      return;
+    }
+    setState(() {});
   }
 
   void _retry() {
@@ -167,13 +231,20 @@ class _ComicProgressiveImageTileState extends State<ComicProgressiveImageTile> {
           final int maxDecodedPixels = widget.decodeBudget.reserve(
             this,
             idealPixels.clamp(1, 4 * 1024 * 1024),
+            onChanged: _handleDecodeBudgetChanged,
           );
+          _reservedPixels = maxDecodedPixels;
+          if (maxDecodedPixels == 0) {
+            return _placeholder(
+              const CircularProgressIndicator(strokeWidth: 2),
+            );
+          }
           final double pixelSafeWidth = math.sqrt(
             maxDecodedPixels * logicalRatio,
           );
           final int decodeWidth =
               (idealWidth < pixelSafeWidth ? idealWidth : pixelSafeWidth)
-                  .round()
+                  .floor()
                   .clamp(1, 8192);
           // Limit decode width only. Supplying a height derived from source
           // metadata can distort an image whose declared dimensions are stale.
