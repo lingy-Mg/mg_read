@@ -1,4 +1,4 @@
-/// 漫画图片内存策略：低于 4GB 的设备给 200 MiB，4GB 档给 500 MiB，
+/// 漫画图片内存策略：4GB 及以下设备统一给 500 MiB，
 /// 超过 4GB 取消总解码与单图解码软上限（null）；编码缓存仍保持有界。
 /// 物理内存向上取整至 GiB 以容纳系统预留；压力状态优先临时收缩。
 /// 预算按需使用，不预分配内存，也不修改 Flutter 全局 ImageCache。
@@ -15,9 +15,9 @@ class ComicImageMemoryPolicy {
 
   static const int mib = 1024 * 1024;
   static const fallback = ComicImageMemoryPolicy(
-    decodedBytes: 200 * mib,
-    singleImageDecodedBytes: 50 * mib,
-    encodedCacheBytes: 50 * mib,
+    decodedBytes: 500 * mib,
+    singleImageDecodedBytes: 125 * mib,
+    encodedCacheBytes: 125 * mib,
   );
   static const pressure = ComicImageMemoryPolicy(
     decodedBytes: 32 * mib,
@@ -36,12 +36,7 @@ class ComicImageMemoryPolicy {
         encodedCacheBytes: 128 * mib,
       );
     }
-    final int decoded = (deviceGiB == 4 ? 500 : 200) * mib;
-    return ComicImageMemoryPolicy(
-      decodedBytes: decoded,
-      singleImageDecodedBytes: decoded ~/ 4,
-      encodedCacheBytes: (decoded ~/ 4).clamp(8 * mib, 128 * mib),
-    );
+    return fallback;
   }
 
   final int? decodedBytes;

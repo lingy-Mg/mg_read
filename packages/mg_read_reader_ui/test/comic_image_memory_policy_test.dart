@@ -31,9 +31,9 @@ ReaderDeviceMemoryInfo _memory(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   for (final tier in <int, int?>{
-    1: 200,
-    2: 200,
-    3: 200,
+    1: 500,
+    2: 500,
+    3: 500,
     4: 500,
     6: null,
     8: null,
@@ -102,7 +102,7 @@ void main() {
       );
       expect(policy.decodedBytes, 500 * _mib);
       final smaller = ComicImageMemoryPolicy.forDevice(_memory(3));
-      expect(smaller.decodedBytes, 200 * _mib);
+      expect(smaller.decodedBytes, 500 * _mib);
     },
   );
 
@@ -170,7 +170,7 @@ void main() {
       for (var frame = 0; frame < 10; frame++) {
         await tester.pump(const Duration(milliseconds: 16));
       }
-      expect(_tile(tester).decodeBudget.maximumPixels! * 4, 200 * _mib);
+      expect(_tile(tester).decodeBudget.maximumPixels! * 4, 500 * _mib);
       tester.binding.handleMemoryPressure();
       pending.complete(_memory(16));
       await tester.pump();

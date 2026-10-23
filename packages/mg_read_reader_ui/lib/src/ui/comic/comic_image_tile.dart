@@ -21,8 +21,8 @@ import 'comic_reader_strings.dart';
 
 class ComicDecodedImageBudget {
   ComicDecodedImageBudget({
-    int? maximumPixels = 50 * 1024 * 1024,
-    int? maximumImagePixels = 50 * 1024 * 1024 ~/ 4,
+    int? maximumPixels = 500 * 1024 * 1024 ~/ 4,
+    int? maximumImagePixels = 125 * 1024 * 1024 ~/ 4,
   }) : assert(maximumPixels == null || maximumPixels > 0),
        assert(maximumImagePixels == null || maximumImagePixels > 0),
        _maximumPixels = maximumPixels,
