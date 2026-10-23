@@ -99,9 +99,11 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
     _lifecycleState = normalized;
     _foreground = normalized == ReaderLifecycleState.foreground;
     if (_foreground) {
+      unawaited(_refreshMemoryBudget());
       _startChapterPreload();
       unawaited(_syncAwake());
     } else {
+      _stopMemoryBudgetRefresh();
       _preloader?.cancel();
       unawaited(_releaseAwake());
       unawaited(_flushProgress());

@@ -1,3 +1,6 @@
+/// 阅读器平台端口；内存探测仅提供设备快照，预算策略由漫画会话拥有。
+library;
+
 import 'dart:async';
 
 import 'package:flutter/services.dart';
@@ -21,6 +24,9 @@ abstract class ReaderPlatform extends PlatformInterface {
   /// Private platform capability result. Unsupported platforms never receive a channel call.
   Future<ReaderPlatformCapabilities> capabilities() async =>
       const ReaderPlatformCapabilities();
+
+  /// Optional snapshot; unsupported hosts retain the reader's fallback budget.
+  Future<ReaderDeviceMemoryInfo?> deviceMemoryInfo() async => null;
 
   Future<void> setReaderSystemUi({
     required bool keepScreenOn,
@@ -65,6 +71,22 @@ class ReaderPlatformCapabilities {
   });
   final bool keepScreenOn;
   final bool immersiveMode;
+}
+
+@immutable
+class ReaderDeviceMemoryInfo {
+  const ReaderDeviceMemoryInfo({
+    required this.totalPhysicalBytes,
+    required this.availableBytes,
+    this.lowRamDevice = false,
+    this.lowMemory = false,
+    this.addressBits = 64,
+  });
+  final int totalPhysicalBytes;
+  final int availableBytes;
+  final bool lowRamDevice;
+  final bool lowMemory;
+  final int addressBits;
 }
 
 class MethodChannelReaderPlatform extends ReaderPlatform {
@@ -116,6 +138,32 @@ class MethodChannelReaderPlatform extends ReaderPlatform {
     return ReaderPlatformCapabilities(
       keepScreenOn: result?['keepScreenOn'] == true,
       immersiveMode: result?['immersiveMode'] == true,
+    );
+  }
+
+  @override
+  Future<ReaderDeviceMemoryInfo?> deviceMemoryInfo() async {
+    if (!supportsKeepScreenOn) return null;
+    final Map<Object?, Object?>? values = await _channel
+        .invokeMapMethod<Object?, Object?>('getDeviceMemoryInfo');
+    if (values == null) return null;
+    final Object? total = values['totalPhysicalBytes'];
+    final Object? available = values['availableBytes'];
+    final Object? bits = values['addressBits'];
+    if (total is! int ||
+        total <= 0 ||
+        available is! int ||
+        available < 0 ||
+        available > total ||
+        (bits != 32 && bits != 64)) {
+      return null;
+    }
+    return ReaderDeviceMemoryInfo(
+      totalPhysicalBytes: total,
+      availableBytes: available,
+      lowRamDevice: values['lowRamDevice'] == true,
+      lowMemory: values['lowMemory'] == true,
+      addressBits: bits as int,
     );
   }
 

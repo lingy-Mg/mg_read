@@ -19,15 +19,38 @@ import 'comic_image_cache.dart';
 import 'comic_reader_strings.dart';
 
 class ComicDecodedImageBudget {
-  ComicDecodedImageBudget({this.maximumPixels = 12 * 1024 * 1024})
-    : assert(maximumPixels > 0);
+  ComicDecodedImageBudget({
+    int maximumPixels = 32 * 1024 * 1024,
+    int maximumImagePixels = 8 * 1024 * 1024,
+  }) : assert(maximumPixels > 0),
+       assert(maximumImagePixels > 0),
+       _maximumPixels = maximumPixels,
+       _maximumImagePixels = maximumImagePixels;
 
-  final int maximumPixels;
+  int _maximumPixels;
+  int _maximumImagePixels;
+  int get maximumPixels => _maximumPixels;
+  int get maximumImagePixels => _maximumImagePixels;
   final Map<Object, _ComicDecodeReservation> _reservations =
       <Object, _ComicDecodeReservation>{};
   bool _notificationScheduled = false;
 
   int allocationFor(Object owner) => _reservations[owner]?.grantedPixels ?? 0;
+
+  void updateLimits({
+    required int maximumPixels,
+    required int maximumImagePixels,
+  }) {
+    assert(maximumPixels > 0 && maximumImagePixels > 0);
+    if (_maximumPixels == maximumPixels &&
+        _maximumImagePixels == maximumImagePixels) {
+      return;
+    }
+    _maximumPixels = maximumPixels;
+    _maximumImagePixels = maximumImagePixels;
+    _rebalance();
+    _scheduleNotification();
+  }
 
   int reserve(Object owner, int desiredPixels, {VoidCallback? onChanged}) {
     final int desired = math.max(1, desiredPixels);
@@ -60,7 +83,11 @@ class ComicDecodedImageBudget {
         notify = notify || reservation.onChanged != null;
       }
     }
-    if (!notify || _notificationScheduled) return;
+    if (notify) _scheduleNotification();
+  }
+
+  void _scheduleNotification() {
+    if (_notificationScheduled) return;
     _notificationScheduled = true;
     // reserve/release can run while Flutter builds or removes a list cell.
     // Publish the final allocation after that frame instead of calling
@@ -132,6 +159,7 @@ class _ComicProgressiveImageTileState extends State<ComicProgressiveImageTile> {
   int? _decodeWidth;
   int? _decodeHeight;
   int? _reservedPixels;
+  int? _reservedImagePixelLimit;
   bool _reportedError = false;
   bool _presented = false;
   late bool _cacheHit;
@@ -183,7 +211,9 @@ class _ComicProgressiveImageTileState extends State<ComicProgressiveImageTile> {
   void _handleDecodeBudgetChanged() {
     if (!mounted ||
         _reservedPixels == null ||
-        widget.decodeBudget.allocationFor(this) == _reservedPixels) {
+        (widget.decodeBudget.allocationFor(this) == _reservedPixels &&
+            widget.decodeBudget.maximumImagePixels ==
+                _reservedImagePixelLimit)) {
       return;
     }
     setState(() {});
@@ -230,10 +260,11 @@ class _ComicProgressiveImageTileState extends State<ComicProgressiveImageTile> {
               .round();
           final int maxDecodedPixels = widget.decodeBudget.reserve(
             this,
-            idealPixels.clamp(1, 4 * 1024 * 1024),
+            idealPixels.clamp(1, widget.decodeBudget.maximumImagePixels),
             onChanged: _handleDecodeBudgetChanged,
           );
           _reservedPixels = maxDecodedPixels;
+          _reservedImagePixelLimit = widget.decodeBudget.maximumImagePixels;
           if (maxDecodedPixels == 0) {
             return _placeholder(
               const CircularProgressIndicator(strokeWidth: 2),

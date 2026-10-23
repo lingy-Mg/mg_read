@@ -1,3 +1,6 @@
+// The public cache-size argument hides its mutable backing field.
+// ignore_for_file: prefer_initializing_formals
+
 import 'dart:async';
 import 'dart:collection';
 import 'dart:typed_data';
@@ -18,17 +21,26 @@ class ComicImageByteCache {
     required this.bookId,
     required this.dataSource,
     this.maxEntries = 1000,
-    this.maxBytes = 48 * 1024 * 1024,
+    int maxBytes = 48 * 1024 * 1024,
     this.maxSingleImageBytes = 8 * 1024 * 1024,
     this.maxConcurrentLoads = 4,
     this.maxQueuedLoads = 32,
     this.onDimensionsChanged,
-  });
+  }) : _maxBytes = maxBytes;
 
   final String bookId;
   final ComicReaderDataSource dataSource;
   final int maxEntries;
-  final int maxBytes;
+  int _maxBytes;
+  int get maxBytes => _maxBytes;
+
+  /// Live policy changes only trim retained encoded bytes, never active cells.
+  void updateByteLimit(int maxBytes) {
+    if (maxBytes <= 0) throw ArgumentError.value(maxBytes, 'maxBytes');
+    _maxBytes = maxBytes;
+    _trim();
+  }
+
   final int maxSingleImageBytes;
   final int maxConcurrentLoads;
   final int maxQueuedLoads;
@@ -283,6 +295,10 @@ class ComicImageByteCache {
     if (bytes.lengthInBytes > maxBytes) return;
     _entries[key] = bytes;
     _bytes += bytes.lengthInBytes;
+    _trim();
+  }
+
+  void _trim() {
     while (_entries.length > maxEntries || _bytes > maxBytes) {
       final String oldest = _entries.keys.first;
       _bytes -= _entries.remove(oldest)!.lengthInBytes;

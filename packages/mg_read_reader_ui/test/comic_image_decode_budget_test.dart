@@ -10,6 +10,31 @@ import 'package:novel_reader_ui/src/ui/comic/comic_image_tile.dart';
 import 'package:novel_reader_ui/src/ui/reader_theme.dart';
 
 void main() {
+  testWidgets(
+    'changing the single-image limit redecodes mounted bytes and cache shrink preserves visible content',
+    (tester) async {
+      final source = _PatternSource(await _patternBytes(tester));
+      final cache = ComicImageByteCache(bookId: 'book', dataSource: source);
+      final budget = ComicDecodedImageBudget(
+        maximumPixels: 4096,
+        maximumImagePixels: 256,
+      );
+      await _mount(tester, cache, budget);
+      await _waitForDecode(tester, width: 16);
+      budget.updateLimits(maximumPixels: 4096, maximumImagePixels: 4096);
+      await _waitForDecode(tester, width: 64);
+      cache.updateByteLimit(1);
+      expect(cache.entryCount, 0);
+      budget.updateLimits(maximumPixels: 1024, maximumImagePixels: 256);
+      await _waitForDecode(tester, width: 16);
+      final colors = await _sampleCorners(tester);
+      expect(colors.$1, isNot(colors.$2));
+      expect(source.calls, 1);
+      await tester.pumpWidget(const SizedBox.shrink());
+      cache.dispose();
+    },
+  );
+
   test(
     'decoded pixels remain bounded and allocation does not depend on arrival order',
     () {

@@ -8,6 +8,7 @@
 /// 注意：
 /// - 不直接访问网络、文件或数据库；异步结果必须验证会话世代。
 /// - 图片缓存、滚动控制器、监听器和常亮资源必须在会话结束时成对释放。
+/// - 设备内存快照只调整图片上限；前台周期评估，后台/销毁取消，内存压力立即收缩。
 ///
 library;
 
@@ -37,11 +38,13 @@ import 'comic_image_cache.dart';
 import 'comic_chapter_preloader.dart';
 import 'comic_image_retry_coordinator.dart';
 import 'comic_image_tile.dart';
+import 'comic_image_memory_policy.dart';
 import 'comic_reader_strings.dart';
 import 'comic_scroll_physics.dart';
 
 part 'comic_reader_session.dart';
 part 'comic_reader_preferences.dart';
+part 'comic_reader_memory.dart';
 part 'comic_reader_catalog.dart';
 part 'comic_reader_chrome.dart';
 part 'comic_reader_page_turning.dart';
@@ -144,6 +147,12 @@ class _ComicReaderViewState extends State<ComicReaderView>
   StreamSubscription<ReaderVolumeKey>? _volumeKeySubscription;
   final ScrollController _scrollController = ScrollController();
   final ComicDecodedImageBudget _decodeBudget = ComicDecodedImageBudget();
+  ComicImageMemoryPolicy _imageMemoryPolicy = ComicImageMemoryPolicy.fallback;
+  Timer? _memoryBudgetTimer;
+  Timer? _memoryProbeTimer;
+  Completer<ReaderDeviceMemoryInfo?>? _memoryProbeStop;
+  int _memoryBudgetGeneration = 0;
+  bool _memoryInfoSupported = false;
   final ComicImageRetryCoordinator _imageRetryCoordinator =
       ComicImageRetryCoordinator();
   final List<ComicChapterInfo> _catalog = <ComicChapterInfo>[];
@@ -242,6 +251,7 @@ class _ComicReaderViewState extends State<ComicReaderView>
       bookId: widget.bookId,
       dataSource: widget.dataSource,
       maxSingleImageBytes: _maxSingleImageBytes,
+      maxBytes: _imageMemoryPolicy.encodedCacheBytes,
       onDimensionsChanged: _scheduleDimensionsUpdate,
     );
     _bindController();
@@ -252,6 +262,7 @@ class _ComicReaderViewState extends State<ComicReaderView>
     WidgetsBinding.instance.addObserver(this);
     _lifecycleListener = AppLifecycleListener(onStateChange: _handleLifecycle);
     unawaited(_loadPlatformCapabilities());
+    unawaited(_refreshMemoryBudget());
     unawaited(_initialize());
   }
 
@@ -307,6 +318,7 @@ class _ComicReaderViewState extends State<ComicReaderView>
         bookId: widget.bookId,
         dataSource: widget.dataSource,
         maxSingleImageBytes: _maxSingleImageBytes,
+        maxBytes: _imageMemoryPolicy.encodedCacheBytes,
         onDimensionsChanged: _scheduleDimensionsUpdate,
       );
       unawaited(_restart(preferenceOverride: preferenceOverride));
@@ -323,12 +335,16 @@ class _ComicReaderViewState extends State<ComicReaderView>
 
   @override
   void didHaveMemoryPressure() {
+    _stopMemoryBudgetRefresh();
+    _applyImageMemoryPolicy(ComicImageMemoryPolicy.pressure);
     _preloader?.cancel();
     _imageCache.handleMemoryPressure();
+    _scheduleMemoryBudgetRefresh(force: true);
   }
 
   @override
   void dispose() {
+    _stopMemoryBudgetRefresh();
     _preloader?.cancel();
     _disposed = true;
     _sessionGeneration++;

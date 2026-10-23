@@ -1,3 +1,5 @@
+// Reader display policy and physical-memory snapshots. Dart owns all cache
+// sizing and low-memory recovery; these calls allocate no reader resources.
 #include "novel_reader_ui_plugin.h"
 
 #include <windows.h>
@@ -7,6 +9,7 @@
 #include <flutter/standard_method_codec.h>
 
 #include <memory>
+#include <cstdint>
 
 namespace novel_reader_ui {
 
@@ -41,6 +44,25 @@ void NovelReaderUiPlugin::HandleMethodCall(
     capabilities[flutter::EncodableValue("keepScreenOn")] = flutter::EncodableValue(true);
     capabilities[flutter::EncodableValue("immersiveMode")] = flutter::EncodableValue(false);
     result->Success(flutter::EncodableValue(capabilities));
+    return;
+  }
+  if (method_call.method_name() == "getDeviceMemoryInfo") {
+    MEMORYSTATUSEX memory{};
+    memory.dwLength = sizeof(memory);
+    if (!GlobalMemoryStatusEx(&memory)) {
+      result->Error("memory_info_unavailable", "Cannot query device memory.");
+      return;
+    }
+    flutter::EncodableMap snapshot;
+    snapshot[flutter::EncodableValue("totalPhysicalBytes")] =
+        flutter::EncodableValue(static_cast<int64_t>(memory.ullTotalPhys));
+    snapshot[flutter::EncodableValue("availableBytes")] =
+        flutter::EncodableValue(static_cast<int64_t>(memory.ullAvailPhys));
+    snapshot[flutter::EncodableValue("lowRamDevice")] = flutter::EncodableValue(false);
+    snapshot[flutter::EncodableValue("lowMemory")] = flutter::EncodableValue(memory.dwMemoryLoad >= 90);
+    snapshot[flutter::EncodableValue("addressBits")] =
+        flutter::EncodableValue(static_cast<int>(sizeof(void*) * 8));
+    result->Success(flutter::EncodableValue(snapshot));
     return;
   }
   if (method_call.method_name() != "setReaderSystemUi") {

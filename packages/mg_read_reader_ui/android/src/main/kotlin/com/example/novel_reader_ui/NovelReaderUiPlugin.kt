@@ -1,9 +1,11 @@
 package com.example.novel_reader_ui
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.content.Context
 import android.os.Build
 import android.os.PowerManager
+import android.os.Process
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
@@ -23,12 +25,14 @@ import io.flutter.plugin.common.MethodChannel
  * the legacy dim wake-lock level because the modern window flag explicitly
  * keeps the display bright. Every owned flag and wake lock is released on
  * activity or engine detach.
+ * Device memory queries expose a snapshot only and retain no Activity.
  */
 class NovelReaderUiPlugin :
     FlutterPlugin,
     ActivityAware,
     MethodChannel.MethodCallHandler {
     private lateinit var channel: MethodChannel
+    private var applicationContext: Context? = null
     private var activity: Activity? = null
     private var keepScreenOn = false
     private var allowScreenDimming = false
@@ -42,6 +46,7 @@ class NovelReaderUiPlugin :
     private var volumeKeyPageTurningEnabled = false
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        applicationContext = binding.applicationContext
         channel = MethodChannel(binding.binaryMessenger, "novel_reader_ui/system")
         channel.setMethodCallHandler(this)
     }
@@ -49,6 +54,7 @@ class NovelReaderUiPlugin :
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "getCapabilities" -> result.success(mapOf("keepScreenOn" to true, "immersiveMode" to true))
+            "getDeviceMemoryInfo" -> readDeviceMemory(result)
             "setReaderSystemUi" -> {
                 val args = call.arguments as? Map<*, *> ?: run { result.error("invalid_argument", "A settings map is required.", null); return }
                 val enabled = args["keepScreenOn"] as? Boolean ?: run { result.error("invalid_argument", "A keepScreenOn boolean is required.", null); return }
@@ -129,6 +135,30 @@ class NovelReaderUiPlugin :
         immersiveMode = false
         volumeKeyPageTurningEnabled = false
         channel.setMethodCallHandler(null)
+        applicationContext = null
+    }
+
+    private fun readDeviceMemory(result: MethodChannel.Result) {
+        val manager = applicationContext?.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        if (manager == null) {
+            result.success(null)
+            return
+        }
+        try {
+            val memory = ActivityManager.MemoryInfo()
+            manager.getMemoryInfo(memory)
+            result.success(
+                mapOf(
+                    "totalPhysicalBytes" to memory.totalMem,
+                    "availableBytes" to memory.availMem,
+                    "lowRamDevice" to manager.isLowRamDevice,
+                    "lowMemory" to memory.lowMemory,
+                    "addressBits" to if (Process.is64Bit()) 64 else 32,
+                ),
+            )
+        } catch (error: Exception) {
+            result.error("memory_info_unavailable", "Cannot query device memory.", null)
+        }
     }
 
     private fun dispatchVolumeKey(
