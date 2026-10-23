@@ -34,6 +34,7 @@ extension _TextReaderSession on _TextReaderViewState {
     _completeChapterTransition(ReaderChapterPerformanceOutcome.cancelled);
     _requestGeneration++;
     final int generation = ++_sessionGeneration;
+    _cancelChapterRequests();
     _navigationGeneration++;
     _commentGeneration++;
     _fontLoadGeneration++;
@@ -65,6 +66,7 @@ extension _TextReaderSession on _TextReaderViewState {
     _pages = const <ReaderPage>[];
     _progress = null;
     _failure = null;
+    _retryChapterLoad = null;
     _runtimeFontFamily = null;
     _runtimeFontDescriptor = null;
     _chapterIndex = -1;
@@ -459,9 +461,8 @@ extension _TextReaderSession on _TextReaderViewState {
     final int session = _sessionGeneration;
     final TextReaderDataSource dataSource = widget.dataSource;
     final String bookId = widget.bookId;
-    final ReaderChapterInfo chapter = await dataSource.loadChapterAtIndex(
-      bookId,
-      index,
+    final ReaderChapterInfo chapter = await _awaitChapterRequest(
+      dataSource.loadChapterAtIndex(bookId, index),
     );
     if (!_isSessionCurrent(session) ||
         !identical(dataSource, widget.dataSource) ||
@@ -651,6 +652,8 @@ extension _TextReaderSession on _TextReaderViewState {
     final TextReaderDataSource dataSource = widget.dataSource;
     final String bookId = widget.bookId;
     _HorizontalChapterHandoff? stagedHandoff;
+    _retryChapterLoad = null;
+    _failure = null;
     _changingChapter = true;
     _chapterLoadingOverlayVisible = showLoadingOverlay;
     if (!initial && mounted) setState(() {});
@@ -659,7 +662,9 @@ extension _TextReaderSession on _TextReaderViewState {
       if (forceRefresh) {
         final capability = widget.extensions.chapterRefreshCapability;
         if (capability == null) return;
-        chapter = await capability.refreshChapter(bookId, chapterId);
+        chapter = await _awaitChapterRequest<TextChapterContent>(
+          capability.refreshChapter(bookId, chapterId),
+        );
       } else {
         chapter = _takeCached(chapterId);
         chapter ??= await _loadChapterContent(dataSource, bookId, chapterId);
@@ -819,13 +824,22 @@ extension _TextReaderSession on _TextReaderViewState {
       _stopAutoReading();
       _awaitingPreviousChapterTail = false;
       _clearHorizontalChapterHandoff(stagedHandoff);
-      final ReaderFailure failure = _asFailure(error, ReaderFailureKind.data);
-      _failure = failure;
-      if (mounted) setState(() {});
-      await _reportFailure(failure);
+      if (initial) rethrow;
+      _showChapterLoadFailure(
+        error,
+        () => _openChapter(
+          chapterId,
+          forceRefresh: forceRefresh,
+          openAtEnd: openAtEnd,
+          targetChapterFraction: targetChapterFraction,
+          restoreProgress: restoreProgress,
+          dismissControls: true,
+          showLoadingOverlay: true,
+        ),
+      );
       unawaited(_refreshLoadedChapterStates(chapterId: chapterId, force: true));
     } finally {
-      if (_isCurrent(generation)) {
+      if (_isCurrent(generation) && navigation == _navigationGeneration) {
         _changingChapter = false;
         _chapterLoadingOverlayVisible = false;
         if (mounted) setState(() {});

@@ -1,4 +1,5 @@
 /// 文本阅读器主视图。
+/// 章节等待有上限；失败保留原阅读锚点并允许重试原跳转目标。
 ///
 /// 职责：
 /// - 组合正文排版、章节分页、阅读工具栏与设置入口。
@@ -54,6 +55,7 @@ import 'settings/reader_settings_sheet.dart';
 import 'settings/reader_settings_tokens.dart';
 
 part 'text_reader_session.dart';
+part 'text_reader_chapter_recovery.dart';
 part 'text_reader_pagination.dart';
 part 'text_reader_progress_navigation.dart';
 part 'text_reader_adjacent_pagination.dart';
@@ -252,6 +254,8 @@ class _TextReaderViewState extends State<TextReaderView>
   TextReaderPreferences _preferences = TextReaderPreferences.defaults;
   ReaderProgress? _progress;
   ReaderFailure? _failure;
+  Future<void> Function()? _retryChapterLoad;
+  final Set<VoidCallback> _chapterRequestCancellations = <VoidCallback>{};
   ReaderLayoutFingerprint? _layoutFingerprint;
   int _chapterIndex = -1;
   int _pageIndex = 0;
@@ -591,6 +595,8 @@ class _TextReaderViewState extends State<TextReaderView>
   @override
   void dispose() {
     _disposed = true;
+    _cancelChapterRequests();
+    _retryChapterLoad = null;
     _cancelSlowChapterPreload(clearAttempts: true);
     _completeChapterTransition(ReaderChapterPerformanceOutcome.cancelled);
     _cancelAdjacentPreparation();

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
@@ -5,6 +7,37 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 import 'package:mg_read/features/reader/data/transient_source_text_reader.dart';
 
 void main() {
+  test('trial reader retries a transient chapter failure before returning text', () async {
+    var attempts = 0;
+    final reader = TransientSourceTextReader(
+      detail: PluginContentDetail(
+        pluginId: 'org.example.source',
+        sourceName: '示例',
+        summary: _summary(),
+        aliases: const <String>[],
+        catalogUrl: null,
+      ),
+      catalog: _chapters(items: <PluginChapterSummary>[_chapter('chapter-1', '第一章')]),
+      loadChapterContent: (chapterId) async {
+        if (++attempts == 1) throw TimeoutException('网络波动');
+        return PluginChapterContent(
+          pluginId: 'org.example.source',
+          sourceName: '示例',
+          contentKind: PluginContentKind.novel,
+          chapterId: chapterId,
+          title: null,
+          updatedAt: null,
+          text: '恢复后的正文',
+          pages: const <PluginMangaPage>[],
+        );
+      },
+    );
+    final request = reader.createLaunchRequest(initialChapterId: 'chapter-1');
+    final chapter = await request.dataSource.loadChapterContent(request.bookId, 'chapter-1');
+    expect(chapter.paragraphs.single.text, '恢复后的正文');
+    expect(attempts, 2);
+  });
+
   test('adapts Runtime source chapters into a route-lifetime text reader', () async {
     var contentCalls = 0;
     final reader = TransientSourceTextReader(

@@ -410,6 +410,7 @@ Future<void> _openTransientSourceTextReader(
   final session = TransientSourceTextReader(
     detail: detail,
     catalog: firstCatalogPage,
+    gateway: gateway,
     entryCoverBytes: entryCoverBytes,
     chapterPreloadCount: container.read(appSettingsProvider).get(AppSettingKeys.novelPreloadChapterCount),
     loadChapterContent: (String chapterId) {

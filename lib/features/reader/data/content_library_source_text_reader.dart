@@ -3,6 +3,8 @@
 /// Durable chapter bodies remain owned by Content Library. The live adapter
 /// keeps at most two recently used bodies within a 128 KiB logical UTF-16
 /// budget, without scanning or encoding text on the first-content path.
+/// Remote reads use bounded retries; shared loads expire so a stalled request
+/// cannot keep later page turns attached to the same Future indefinitely.
 library;
 
 import 'dart:async';
@@ -23,6 +25,7 @@ import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 import 'package:mg_read/features/reader/application/shelf_reader_launch_coordinator.dart';
 import 'package:mg_read/features/reader/data/bounded_reader_session_cache.dart';
 import 'package:mg_read/features/reader/data/content_library_text_reader_state_store.dart';
+import 'package:mg_read/features/reader/data/novel_chapter_request.dart';
 
 /// Opens a shelf novel with app-owned reading state and a typed source gateway.
 ///
@@ -433,9 +436,11 @@ final class _SessionNovelChapterAccess
   Future<PluginChapterContent> _load(String chapterId) {
     final active = _loading[chapterId];
     if (active != null) return active;
-    final task = _loadAndCache(chapterId);
+    final task = _loadAndCache(chapterId).timeout(const Duration(seconds: 65));
     _loading[chapterId] = task;
-    return task.whenComplete(() => _loading.remove(chapterId));
+    return task.whenComplete(() {
+      if (identical(_loading[chapterId], task)) _loading.remove(chapterId);
+    });
   }
 
   Future<PluginChapterContent> _loadAndCache(String chapterId) async {
@@ -450,7 +455,10 @@ final class _SessionNovelChapterAccess
       return _pluginContent(entry, text);
     }
     try {
-      final remote = await gateway.getContent(pluginId: source.pluginId, id: source.remoteContentId, chapterId: chapterId);
+      final remote = await requestNovelChapter(
+        () => gateway.getContent(pluginId: source.pluginId, id: source.remoteContentId, chapterId: chapterId),
+        gateway: gateway,
+      );
       if (remote.contentKind != PluginContentKind.novel || remote.text == null) {
         throw StateError('The source chapter is not a text-reader chapter.');
       }
@@ -499,7 +507,10 @@ final class _SessionNovelChapterAccess
     }
     final entry = await session.itemByRemoteIdentity(chapterId);
     if (entry == null) throw ArgumentError.value(chapterId, 'chapterId', 'Unknown chapter.');
-    final remote = await gateway.getContent(pluginId: source.pluginId, id: source.remoteContentId, chapterId: chapterId);
+    final remote = await requestNovelChapter(
+      () => gateway.getContent(pluginId: source.pluginId, id: source.remoteContentId, chapterId: chapterId),
+      gateway: gateway,
+    );
     if (remote.contentKind != PluginContentKind.novel || remote.text == null) {
       throw StateError('The source chapter is not a text-reader chapter.');
     }

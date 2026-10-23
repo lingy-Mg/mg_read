@@ -22,6 +22,36 @@ import 'package:mg_read/features/reader/data/content_library_text_reader_state_s
 import '../../../core/settings/settings_testkit.dart';
 
 void main() {
+  test('shelf chapter retries transient failure and releases failed shared loads for manual retry', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-chapter-retry-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    addTearDown(() async {
+      await library.close();
+      await root.delete(recursive: true);
+    });
+    final item = await _addNovelItem(library, 'retry-book');
+    await library.syncNovelCatalog(
+      itemId: item.id,
+      chapters: const <SourceNovelCatalogChapter>[
+        SourceNovelCatalogChapter(remoteIdentity: 'chapter-1', title: '第一章', index: 0),
+        SourceNovelCatalogChapter(remoteIdentity: 'chapter-2', title: '第二章', index: 1),
+      ],
+    );
+    final session = (await library.openNovelReaderSession(item.id))!;
+    await session.cacheChapter(entry: session.initialChapter, text: '当前正文');
+    final gateway = _RetryContentGateway();
+    final request = await ContentLibrarySourceTextReader(library, gateway).launch(item.id.value);
+    await expectLater(request.dataSource.loadChapterContent(item.id.value, 'chapter-2'), throwsA(isA<TimeoutException>()));
+    expect(gateway.attempts, 3);
+    gateway.failuresRemaining = 1;
+    final results = await Future.wait([
+      request.dataSource.loadChapterContent(item.id.value, 'chapter-2'),
+      request.dataSource.loadChapterContent(item.id.value, 'chapter-2'),
+    ]);
+    expect(results.every((chapter) => chapter.chapterId == 'chapter-2'), isTrue);
+    expect(gateway.attempts, 5, reason: 'manual retry starts fresh and concurrent consumers share its retry budget');
+  });
+
   test('shares and round-trips global reader preferences across book stores', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-reader-settings-');
     final registry = RecordDocumentRegistry(<RecordDocumentCodec>[
@@ -607,6 +637,18 @@ Future<LibraryItem> _addNovelItem(ContentLibrary library, String remoteId) => li
     remoteContentId: remoteId,
   ),
 );
+
+final class _RetryContentGateway extends _FakeGateway {
+  int attempts = 0;
+  int failuresRemaining = 3;
+
+  @override
+  Future<PluginChapterContent> getContent({required String pluginId, required String id, required String chapterId}) async {
+    attempts++;
+    if (failuresRemaining-- > 0) throw TimeoutException('网络波动');
+    return super.getContent(pluginId: pluginId, id: id, chapterId: chapterId);
+  }
+}
 
 final class _CatalogFailureGateway extends _FakeGateway {
   @override

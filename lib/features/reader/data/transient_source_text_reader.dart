@@ -1,7 +1,12 @@
+/// 临时小说会话适配；正文由宿主执行有界重试，目录与阅读状态只保留在路由内存。
+library;
+
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
+import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/reader/data/novel_chapter_request.dart';
 
 /// Loads one Runtime-owned source chapter without exposing transport to reader UI.
 typedef SourceChapterContentLoader = Future<PluginChapterContent> Function(String chapterId);
@@ -16,6 +21,7 @@ final class TransientSourceTextReader {
     required this.detail,
     required PluginChaptersResult catalog,
     required SourceChapterContentLoader loadChapterContent,
+    SourceContentGateway? gateway,
     List<int>? entryCoverBytes,
     String? bookId,
     this.chapterPreloadCount = 1,
@@ -24,6 +30,7 @@ final class TransientSourceTextReader {
          detail: detail,
          catalog: catalog,
          loadChapterContent: loadChapterContent,
+         gateway: gateway,
          bookId: bookId ?? 'source:${detail.pluginId}:${detail.summary.id}',
        );
 
@@ -66,6 +73,7 @@ final class _TransientSourceTextReaderDataSource implements TextReaderDataSource
     required this.detail,
     required PluginChaptersResult catalog,
     required this._loadChapterContent,
+    required this.gateway,
     required this.bookId,
   }) {
     _cacheCatalog(catalog);
@@ -74,6 +82,7 @@ final class _TransientSourceTextReaderDataSource implements TextReaderDataSource
   final PluginContentDetail detail;
   final String bookId;
   final SourceChapterContentLoader _loadChapterContent;
+  final SourceContentGateway? gateway;
   late final PluginChaptersResult _catalog;
   final Map<int, PluginChapterSummary> _chapterByIndex = <int, PluginChapterSummary>{};
   final Map<String, int> _indexByChapterId = <String, int>{};
@@ -144,7 +153,7 @@ final class _TransientSourceTextReaderDataSource implements TextReaderDataSource
     if (chapter == null) throw ArgumentError.value(chapterId, 'chapterId');
     final PluginChapterContent content;
     try {
-      content = await _loadChapterContent(chapterId);
+      content = await requestNovelChapter(() => _loadChapterContent(chapterId), gateway: gateway);
     } on ReaderFailure {
       rethrow;
     } on Object catch (error) {

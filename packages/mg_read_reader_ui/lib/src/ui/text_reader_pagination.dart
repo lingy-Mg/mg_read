@@ -603,7 +603,10 @@ extension _TextReaderPagination on _TextReaderViewState {
       }
       _restoreCurrentHorizontalPage();
       _endChapterLookup(navigation);
-      await _reportFailure(_asFailure(error, ReaderFailureKind.data));
+      _showChapterLoadFailure(
+        error,
+        () => _nextChapter(dismissControls: true, showLoadingOverlay: true),
+      );
       _completeChapterTransition(
         ReaderChapterPerformanceOutcome.error,
         expectedOperationId: operationId,
@@ -679,7 +682,10 @@ extension _TextReaderPagination on _TextReaderViewState {
       }
       _restoreCurrentHorizontalPage();
       _endChapterLookup(navigation);
-      await _reportFailure(_asFailure(error, ReaderFailureKind.data));
+      _showChapterLoadFailure(
+        error,
+        () => _previousChapter(dismissControls: true, showLoadingOverlay: true),
+      );
       _completeChapterTransition(
         ReaderChapterPerformanceOutcome.error,
         expectedOperationId: operationId,
@@ -691,6 +697,8 @@ extension _TextReaderPagination on _TextReaderViewState {
     required bool dismissControls,
     required bool showLoadingOverlay,
   }) {
+    _retryChapterLoad = null;
+    _failure = null;
     if (dismissControls) _setControlsVisible(false);
     _changingChapter = true;
     _chapterLoadingOverlayVisible = showLoadingOverlay;
@@ -732,6 +740,7 @@ extension _TextReaderPagination on _TextReaderViewState {
     _changingChapter = false;
     _chapterLoadingOverlayVisible = false;
     _failure = null;
+    _retryChapterLoad = null;
     if (mounted) setState(() {});
     await _releaseAwake();
     _scheduleProgressSave(immediate: true);

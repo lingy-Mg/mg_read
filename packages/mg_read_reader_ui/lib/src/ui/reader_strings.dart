@@ -2,6 +2,10 @@ abstract final class ReaderStrings {
   static const loading = '正在打开书籍…';
   static const loadingChapter = '正在加载章节…';
   static const retry = '重新加载';
+  static const retryChapter = '重试加载';
+  static const chapterLoadFailed = '章节加载失败';
+  static const chapterLoadTimedOut = '章节加载超时，请检查网络后重试。';
+  static const continueReading = '继续阅读当前章';
   static const loadFailed = '暂时无法加载内容';
   static const emptyChapter = '本章暂无正文';
   static const previousChapter = '上一章';

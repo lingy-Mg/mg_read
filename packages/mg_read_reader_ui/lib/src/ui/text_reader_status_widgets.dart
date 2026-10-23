@@ -5,6 +5,7 @@ part of 'text_reader_view.dart';
 /// 职责：
 /// - 提供阅读器页面使用的无业务状态组件。
 /// - 保持边界 spinner 与反向章节定位提示的一致几何。
+/// - 加载失败时提供显式重试和返回当前章入口，回调由会话持有。
 ///
 /// 注意：
 /// - 组件只接收不可变显示数据，不执行 IO 或修改会话状态。
@@ -71,6 +72,72 @@ class _ChapterLoadingMask extends StatelessWidget {
             message: ReaderStrings.loadingChapter,
             indicatorColor: palette.accent,
             textColor: palette.secondaryText,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _ChapterLoadFailureMask extends StatelessWidget {
+  const _ChapterLoadFailureMask({
+    required this.palette,
+    required this.message,
+    required this.onRetry,
+    required this.onDismiss,
+  });
+
+  final ReaderPalette palette;
+  final String message;
+  final VoidCallback onRetry;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) => Positioned.fill(
+    child: ColoredBox(
+      key: const ValueKey<String>('reader-chapter-load-failure'),
+      color: palette.background,
+      child: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Icon(
+                      Icons.cloud_off_rounded,
+                      size: 34,
+                      color: palette.accent,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      ReaderStrings.chapterLoadFailed,
+                      style: TextStyle(color: palette.text, fontSize: 18),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      message,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: palette.secondaryText),
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      key: const ValueKey<String>('reader-retry-chapter'),
+                      onPressed: onRetry,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text(ReaderStrings.retryChapter),
+                    ),
+                    TextButton(
+                      onPressed: onDismiss,
+                      child: const Text(ReaderStrings.continueReading),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
       ),

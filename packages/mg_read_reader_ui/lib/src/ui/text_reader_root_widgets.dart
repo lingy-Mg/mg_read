@@ -97,6 +97,13 @@ extension _TextReaderRootWidgets on _TextReaderViewState {
                             _PreviousChapterTailMask(palette: palette),
                           if (_chapterLoadingOverlayVisible)
                             _ChapterLoadingMask(palette: palette),
+                          if (_retryChapterLoad != null && !_changingChapter)
+                            _ChapterLoadFailureMask(
+                              palette: palette,
+                              message: _failure!.message,
+                              onRetry: _retryFailedChapter,
+                              onDismiss: _dismissChapterLoadFailure,
+                            ),
                           if (_noticeMessage != null)
                             _ReaderNotice(message: _noticeMessage!),
                         ],

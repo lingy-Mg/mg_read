@@ -121,7 +121,7 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
             ],
             const SizedBox(height: 10),
             FilledButton.tonal(
-              onPressed: _initialize,
+              onPressed: _restart,
               child: const Text(ReaderStrings.retry),
             ),
           ],

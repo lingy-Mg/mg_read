@@ -12,6 +12,7 @@ part of 'text_reader_view.dart';
 /// - 慢加载不保留远端正文，只触发宿主持久化；快速和主动路径占用时必须让出。
 /// - 正文完成或失败均回到相邻准备协调器，由下一真实阅读事件决定是否继续。
 /// - 网络、文件和持久化仍由宿主数据源拥有。
+/// - 共享 Future 设会话等待上限并按身份释放，迟到结果不得占住后续手动重试。
 ///
 
 extension _TextReaderChapterPrefetch on _TextReaderViewState {
@@ -36,9 +37,10 @@ extension _TextReaderChapterPrefetch on _TextReaderViewState {
     final String key = '$bookId\u0000$chapterId';
     final Future<TextChapterContent>? existing = _chapterLoads[key];
     if (reuseInFlight && existing != null) return existing;
-    final Future<TextChapterContent> request = dataSource.loadChapterContent(
-      bookId,
-      chapterId,
+    final Future<TextChapterContent> request = _awaitChapterRequest(
+      Future<TextChapterContent>.sync(
+        () => dataSource.loadChapterContent(bookId, chapterId),
+      ),
     );
     _chapterLoads[key] = request;
     try {
