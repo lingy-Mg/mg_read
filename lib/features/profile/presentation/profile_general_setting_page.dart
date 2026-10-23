@@ -2,7 +2,7 @@
 ///
 /// 职责：
 /// - 以真实能力提供阅读和外观设置，不展示“功能建设中”占位。
-/// - 直接持久化小说预加载、音频退出和书架布局设置。
+/// - 直接持久化小说预加载、音频续播/退出和书架布局设置。
 /// - 将阅读器内设置与应用级设置边界解释清楚。
 library;
 
@@ -90,6 +90,11 @@ class ProfileGeneralSettingPage extends ConsumerWidget {
       onChanged: (String value) async {
         await settings.set(AppSettingKeys.audioMiniPlayerStyle, value);
       },
+    ),
+    const SizedBox(height: AppSpacing.regular),
+    _AudioRememberPositionCard(
+      value: settings.get(AppSettingKeys.audioRememberPosition),
+      onChanged: (bool value) => settings.set(AppSettingKeys.audioRememberPosition, value),
     ),
     const SizedBox(height: AppSpacing.regular),
     const _InlineNotice(icon: Icons.tune_rounded, message: '字体、主题、排版、翻页和评论入口，请打开书籍后在阅读器工具栏的“设置”中调整。它们不会在这里重复显示。'),

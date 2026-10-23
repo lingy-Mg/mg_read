@@ -53,6 +53,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(settings.get(AppSettingKeys.audioMiniPlayerStyle), 'square');
 
+    final rememberPosition = find.byKey(const Key('profile-audio-remember-position'));
+    await tester.scrollUntilVisible(rememberPosition, 200, scrollable: scrollable);
+    expect(tester.widget<SwitchListTile>(rememberPosition).value, isTrue);
+    await tester.tap(rememberPosition);
+    await tester.pumpAndSettle();
+    expect(settings.get(AppSettingKeys.audioRememberPosition), isFalse);
+    expect(tester.widget<SwitchListTile>(rememberPosition).value, isFalse);
+
     expect(settings.get(AppSettingKeys.bookshelfCatalogRefreshIntervalHours), 24);
   });
 

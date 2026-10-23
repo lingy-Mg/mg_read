@@ -1,3 +1,7 @@
+/// Typed application preferences; storage and change notifications are owned by
+/// AppSettingsManager. Audio resume is enabled by default for existing installs.
+library;
+
 import 'setting_key.dart';
 import 'settings_registry.dart';
 
@@ -223,6 +227,16 @@ final class AppSettingKeys {
     validator: _validateBool,
   );
 
+  /// Controls durable audio progress reads/writes, preserving existing records
+  /// while disabled. In-session playback recovery remains available.
+  static const audioRememberPosition = SettingKey<bool>(
+    id: 'mediaPlayback.audioRememberPosition',
+    documentKind: 'settings.mediaPlayback',
+    defaultValue: true,
+    codec: SettingCodec<bool>(_boolEncode, _boolDecode),
+    validator: _validateBool,
+  );
+
   /// Shape of the app-global in-app audio playback overlay.
   ///
   /// `bar` keeps the title and collection visible, while `square` uses the
@@ -257,6 +271,7 @@ final class AppSettingKeys {
     comicReaderPreferences,
     audioExitBehavior,
     audioKeepScreenOn,
+    audioRememberPosition,
     audioMiniPlayerStyle,
   ];
 

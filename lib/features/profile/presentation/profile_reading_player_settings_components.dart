@@ -1,8 +1,64 @@
 /// 阅读器与播放器设置页的真实可修改控件。
 ///
-/// 本文件只承载章节预加载和音频退出行为两个应用级设置；书内字体、
+/// 本文件承载章节预加载、音频续播、退出行为与迷你播放条应用级设置；书内字体、
 /// 主题、排版等偏好仍由阅读器自己的设置面板负责。
 part of 'profile_general_setting_page.dart';
+
+class _AudioRememberPositionCard extends StatefulWidget {
+  const _AudioRememberPositionCard({required this.value, required this.onChanged});
+
+  final bool value;
+  final Future<void> Function(bool) onChanged;
+
+  @override
+  State<_AudioRememberPositionCard> createState() => _AudioRememberPositionCardState();
+}
+
+class _AudioRememberPositionCardState extends State<_AudioRememberPositionCard> {
+  late bool _value = widget.value;
+  bool _saving = false;
+
+  @override
+  void didUpdateWidget(covariant _AudioRememberPositionCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value) _value = widget.value;
+  }
+
+  Future<void> _change(bool value) async {
+    final previous = _value;
+    setState(() {
+      _value = value;
+      _saving = true;
+    });
+    try {
+      await widget.onChanged(value);
+    } on Object {
+      if (mounted) setState(() => _value = previous);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppThemeTokens.of(context);
+    return Material(
+      color: tokens.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: AppRadii.detailCard,
+        side: BorderSide(color: tokens.divider),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: SwitchListTile(
+        key: const Key('profile-audio-remember-position'),
+        title: const Text('记住上次播放位置'),
+        subtitle: const Text('书架音频下次从上次章节和时间点继续；关闭后从所选章节开头播放，保留已有记录。'),
+        value: _value,
+        onChanged: _saving ? null : _change,
+      ),
+    );
+  }
+}
 
 class _NovelPreloadChapterCountCard extends StatefulWidget {
   const _NovelPreloadChapterCountCard({required this.value, required this.onChanged});

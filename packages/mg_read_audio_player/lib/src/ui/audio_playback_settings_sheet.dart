@@ -4,6 +4,7 @@
 /// - Present rate, volume and sleep-timer state as one compact control surface.
 /// - Keep controls visually distinct while preserving stable automation keys.
 /// - Forward changes immediately through the public player controller.
+/// - Forward durable position preferences to the host without changing playback.
 ///
 /// Notes:
 /// - This package-private surface owns only optimistic sheet-local presentation.
@@ -28,6 +29,8 @@ Future<void> showAudioPlaybackSettingsSheet(
   required AudioPlayerController controller,
   required bool keepScreenOn,
   Future<void> Function(bool enabled)? onKeepScreenOnChanged,
+  bool rememberPosition = true,
+  Future<void> Function(bool enabled)? onRememberPositionChanged,
 }) => showModalBottomSheet<void>(
   context: context,
   isScrollControlled: true,
@@ -38,6 +41,8 @@ Future<void> showAudioPlaybackSettingsSheet(
     controller: controller,
     keepScreenOn: keepScreenOn,
     onKeepScreenOnChanged: onKeepScreenOnChanged,
+    rememberPosition: rememberPosition,
+    onRememberPositionChanged: onRememberPositionChanged,
   ),
 );
 
@@ -47,12 +52,16 @@ final class _AudioPlaybackSettingsSheet extends StatefulWidget {
     required this.controller,
     required this.keepScreenOn,
     this.onKeepScreenOnChanged,
+    required this.rememberPosition,
+    this.onRememberPositionChanged,
   });
 
   final AudioPlayerSnapshot snapshot;
   final AudioPlayerController controller;
   final bool keepScreenOn;
   final Future<void> Function(bool enabled)? onKeepScreenOnChanged;
+  final bool rememberPosition;
+  final Future<void> Function(bool enabled)? onRememberPositionChanged;
 
   @override
   State<_AudioPlaybackSettingsSheet> createState() =>
@@ -76,6 +85,8 @@ final class _AudioPlaybackSettingsSheetState
   late double _lastAudibleVolume;
   Duration? _timer;
   late bool _keepScreenOn;
+  late bool _rememberPosition;
+  bool _savingRememberPosition = false;
 
   @override
   void initState() {
@@ -85,6 +96,7 @@ final class _AudioPlaybackSettingsSheetState
     _lastAudibleVolume = _volume > 0 ? _volume : 1;
     _timer = widget.snapshot.sleepTimerDuration;
     _keepScreenOn = widget.keepScreenOn;
+    _rememberPosition = widget.rememberPosition;
   }
 
   @override
@@ -113,7 +125,10 @@ final class _AudioPlaybackSettingsSheetState
             child: Column(
               children: <Widget>[
                 const _SettingsHandle(),
-                _SettingsHeader(onClose: _close),
+                _SettingsHeader(
+                  onClose: _close,
+                  hasRememberPosition: widget.onRememberPositionChanged != null,
+                ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
                   child: _SessionSummary(
@@ -129,6 +144,21 @@ final class _AudioPlaybackSettingsSheetState
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                     child: Column(
                       children: <Widget>[
+                        if (widget.onRememberPositionChanged != null) ...[
+                          _SettingsCard(
+                            key: const Key('audio-remember-position'),
+                            icon: Icons.history_rounded,
+                            title: '记住上次播放位置',
+                            value: _rememberPosition ? '已开启' : '已关闭',
+                            child: _RememberPositionControl(
+                              enabled: _rememberPosition,
+                              onChanged: _savingRememberPosition
+                                  ? null
+                                  : _setRememberPosition,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                        ],
                         _SettingsCard(
                           key: const Key('audio-keep-screen-on'),
                           icon: Icons.light_mode_rounded,
@@ -239,4 +269,19 @@ final class _AudioPlaybackSettingsSheetState
   }
 
   void _close() => Navigator.of(context).pop();
+
+  Future<void> _setRememberPosition(bool value) async {
+    final previous = _rememberPosition;
+    setState(() {
+      _rememberPosition = value;
+      _savingRememberPosition = true;
+    });
+    try {
+      await widget.onRememberPositionChanged!(value);
+    } on Object {
+      if (mounted) setState(() => _rememberPosition = previous);
+    } finally {
+      if (mounted) setState(() => _savingRememberPosition = false);
+    }
+  }
 }

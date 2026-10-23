@@ -115,11 +115,29 @@ void main() {
     await tester.tap(find.byKey(const Key('audio-settings')));
     await _pumpUntil(tester, () => find.byKey(const Key('audio-settings-sheet')).evaluate().isNotEmpty);
     expect(find.byKey(const Key('audio-settings-sheet')), findsOneWidget);
+    final rememberToggle = find.byKey(const Key('audio-remember-position-switch'));
+    await tester.ensureVisible(rememberToggle);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.widget<Switch>(rememberToggle).value, isTrue);
+    final originalEngine = service.engine;
+    await tester.tap(rememberToggle);
+    await tester.pump();
+    expect(settings.get(AppSettingKeys.audioRememberPosition), isFalse);
+    expect(tester.widget<Switch>(rememberToggle).value, isFalse);
+    expect(service.engine, same(originalEngine));
     final Future<bool> settingsBackHandled = backButtonDispatcher.invokeCallback(Future<bool>.value(false));
     await tester.pump();
     expect(await settingsBackHandled, isTrue);
     await _pumpUntil(tester, () => find.byKey(const Key('audio-settings-sheet')).evaluate().isEmpty);
     expect(find.byKey(const Key('audio-settings-sheet')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('audio-settings')));
+    await _pumpUntil(tester, () => find.byKey(const Key('audio-settings-sheet')).evaluate().isNotEmpty);
+    expect(tester.widget<Switch>(rememberToggle).value, isFalse);
+    final closeSettings = backButtonDispatcher.invokeCallback(Future<bool>.value(false));
+    await tester.pump();
+    expect(await closeSettings, isTrue);
+    await _pumpUntil(tester, () => find.byKey(const Key('audio-settings-sheet')).evaluate().isEmpty);
 
     await tester.ensureVisible(find.byKey(const Key('audio-back')));
     await tester.pump(const Duration(milliseconds: 300));

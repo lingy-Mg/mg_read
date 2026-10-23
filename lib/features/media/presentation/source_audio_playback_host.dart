@@ -9,6 +9,7 @@
 /// - Android recovery also uses the system media notification; Windows relies
 ///   on this app-global mini player after its window is restored.
 /// - No system overlay permission is requested on either platform.
+/// - Playback settings callbacks persist host preferences without reloads.
 /// - Mini-player bounds include scaled bar text and fixed square touch targets.
 library;
 
@@ -260,6 +261,8 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
         resourceUrlDecoder: _decodeSourceResourceUrl,
         keepScreenOn: playback.keepScreenOn,
         onKeepScreenOnChanged: _service.setKeepScreenOn,
+        rememberPosition: playback.rememberPosition,
+        onRememberPositionChanged: _service.setRememberPosition,
       ),
     );
   }

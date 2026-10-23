@@ -7,6 +7,7 @@
 ///
 /// Notes:
 /// - Content, persistence, artwork I/O and background services remain host-owned.
+/// - Remember-position controls are exposed only with a host change callback.
 /// - Essential state changes stay immediate when animations are disabled.
 library;
 
@@ -63,6 +64,8 @@ class AudioPlayerView extends StatefulWidget {
     this.prefetchLeadTime,
     this.keepScreenOn = true,
     this.onKeepScreenOnChanged,
+    this.rememberPosition = true,
+    this.onRememberPositionChanged,
     super.key,
   }) : controlled = false;
 
@@ -77,6 +80,8 @@ class AudioPlayerView extends StatefulWidget {
     this.resourceUrlDecoder,
     this.keepScreenOn = true,
     this.onKeepScreenOnChanged,
+    this.rememberPosition = true,
+    this.onRememberPositionChanged,
     super.key,
   }) : collectionId = null,
        dataSource = null,
@@ -121,6 +126,10 @@ class AudioPlayerView extends StatefulWidget {
   final Duration? prefetchLeadTime;
   final bool keepScreenOn;
   final Future<void> Function(bool enabled)? onKeepScreenOnChanged;
+
+  /// Host-owned durable progress preference; does not alter session recovery.
+  final bool rememberPosition;
+  final Future<void> Function(bool enabled)? onRememberPositionChanged;
   final bool controlled;
 
   @override
@@ -473,6 +482,9 @@ class _AudioViewState extends State<AudioPlayerView>
                               keepScreenOn: widget.keepScreenOn,
                               onKeepScreenOnChanged:
                                   widget.onKeepScreenOnChanged,
+                              rememberPosition: widget.rememberPosition,
+                              onRememberPositionChanged:
+                                  widget.onRememberPositionChanged,
                             ),
                           ),
                         ],

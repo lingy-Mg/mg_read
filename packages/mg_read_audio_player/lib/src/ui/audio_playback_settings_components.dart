@@ -31,9 +31,13 @@ final class _SettingsHandle extends StatelessWidget {
 }
 
 final class _SettingsHeader extends StatelessWidget {
-  const _SettingsHeader({required this.onClose});
+  const _SettingsHeader({
+    required this.onClose,
+    this.hasRememberPosition = false,
+  });
 
   final VoidCallback onClose;
+  final bool hasRememberPosition;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -54,7 +58,9 @@ final class _SettingsHeader extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                '防止自动锁屏会保存，其余仅作用于当前会话',
+                hasRememberPosition
+                    ? '续播和防止自动锁屏会保存，其余仅作用于当前会话'
+                    : '防止自动锁屏会保存，其余仅作用于当前会话',
                 style: Theme.of(
                   context,
                 ).textTheme.bodySmall?.copyWith(color: AudioPlayerColors.muted),
@@ -258,6 +264,37 @@ final class _SettingsIcon extends StatelessWidget {
   );
 }
 
+final class _RememberPositionControl extends StatelessWidget {
+  const _RememberPositionControl({
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final bool enabled;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: <Widget>[
+      Expanded(
+        child: Text(
+          '书架音频下次从上次章节和时间点继续；关闭后从所选章节开头播放，保留已有记录。',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: AudioPlayerColors.muted,
+            height: 1.35,
+          ),
+        ),
+      ),
+      const SizedBox(width: 12),
+      Switch(
+        key: const Key('audio-remember-position-switch'),
+        value: enabled,
+        onChanged: onChanged,
+      ),
+    ],
+  );
+}
+
 final class _KeepScreenOnControl extends StatelessWidget {
   const _KeepScreenOnControl({required this.enabled, required this.onChanged});
 
@@ -301,7 +338,7 @@ final class _RateTrack extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SizedBox(
-    height: 48,
+    height: 48 + math.max(0, MediaQuery.textScalerOf(context).scale(16) - 16),
     child: Stack(
       alignment: Alignment.topCenter,
       children: <Widget>[

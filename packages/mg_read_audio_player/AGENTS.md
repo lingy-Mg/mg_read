@@ -8,6 +8,8 @@
   Controller；受控 View 只能监听和发指令，销毁时不得关闭 Engine、后端或数据源。
 - UI 不访问宿主数据库、Service Locator 或路由；内容、进度、后台音频服务、通知、音频焦点策略及
   下载均由宿主通过公开契约提供。
+- `AudioPlayerView` 的 `rememberPosition` 与 `onRememberPositionChanged` 只投影宿主续播偏好；
+  没有回调时隐藏开关。宿主控制持久进度读写，关闭后保留旧记录和当前会话恢复，不重建 Engine。
 - 默认后端固定使用 `media_kit: 1.2.6`，本 package 不依赖任何 `media_kit_libs_*`。原生库由最终宿主
   选择；`media_kit_libs_audio` 与 `media_kit_libs_video` 不得同时安装。
 - 异步结果提交前检查会话世代和关闭状态；Stream、Timer、Controller 与后端必须成对释放。高频位置

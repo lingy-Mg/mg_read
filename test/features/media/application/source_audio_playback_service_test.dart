@@ -38,6 +38,17 @@ void main() {
     await _waitUntil(() => service.controller?.snapshot.status == AudioPlayerStatus.ready && service.controller!.snapshot.playing);
     final originalController = service.controller;
 
+    expect(container.read(sourceAudioPlaybackServiceProvider).rememberPosition, isTrue);
+    await service.setRememberPosition(false);
+    expect(settings.get(AppSettingKeys.audioRememberPosition), isFalse);
+    expect(container.read(sourceAudioPlaybackServiceProvider).rememberPosition, isFalse);
+    expect(service.controller, same(originalController));
+    expect(backend.openCalls, 1);
+    expect(backend.pauseCalls, 0);
+    // The profile settings entrance updates the same active session projection.
+    await settings.set(AppSettingKeys.audioRememberPosition, true);
+    expect(container.read(sourceAudioPlaybackServiceProvider).rememberPosition, isTrue);
+
     service.minimize(container.read(sourceAudioPlaybackServiceProvider).sessionId!);
     await originalController!.next();
 

@@ -10,6 +10,8 @@
 /// Notes:
 /// - Durable state contains only stable content/chapter IDs and position.
 /// - Media URLs, request headers and Runtime authorization remain memory-only.
+/// - The live remember-position preference gates shelf progress in the store;
+///   toggling it never replaces the engine or seeks the current audio.
 /// - The native Android foreground service remains provided by audio_service.
 library;
 
@@ -57,6 +59,7 @@ final class SourceAudioPlaybackState {
   const SourceAudioPlaybackState._({
     required this.presentation,
     required this.keepScreenOn,
+    required this.rememberPosition,
     this.sessionId,
     this.request,
     this.controller,
@@ -65,13 +68,15 @@ final class SourceAudioPlaybackState {
     this.exitDecisionRequested = false,
   });
 
-  const SourceAudioPlaybackState.inactive() : this._(presentation: SourceAudioPresentation.inactive, keepScreenOn: true);
+  const SourceAudioPlaybackState.inactive()
+    : this._(presentation: SourceAudioPresentation.inactive, keepScreenOn: true, rememberPosition: true);
 
   const SourceAudioPlaybackState.active({
     required int sessionId,
     required SourceAudioPlaybackRequest request,
     required SourceAudioPresentation presentation,
     required bool keepScreenOn,
+    bool rememberPosition = true,
     AudioPlayerController? controller,
     AudioPlayerFailure? setupFailure,
     bool playerPresented = false,
@@ -85,6 +90,7 @@ final class SourceAudioPlaybackState {
          playerPresented: playerPresented,
          exitDecisionRequested: exitDecisionRequested,
          keepScreenOn: keepScreenOn,
+         rememberPosition: rememberPosition,
        );
 
   final SourceAudioPresentation presentation;
@@ -95,6 +101,7 @@ final class SourceAudioPlaybackState {
   final bool playerPresented;
   final bool exitDecisionRequested;
   final bool keepScreenOn;
+  final bool rememberPosition;
 
   bool get isActive => presentation != SourceAudioPresentation.inactive && sessionId != null && request != null;
 
@@ -107,6 +114,7 @@ final class SourceAudioPlaybackState {
     bool? playerPresented,
     bool? exitDecisionRequested,
     bool? keepScreenOn,
+    bool? rememberPosition,
   }) {
     final currentSessionId = sessionId;
     final currentRequest = request;
@@ -122,6 +130,7 @@ final class SourceAudioPlaybackState {
       playerPresented: playerPresented ?? this.playerPresented,
       exitDecisionRequested: exitDecisionRequested ?? this.exitDecisionRequested,
       keepScreenOn: keepScreenOn ?? this.keepScreenOn,
+      rememberPosition: rememberPosition ?? this.rememberPosition,
     );
   }
 }
@@ -155,8 +164,16 @@ final class SourceAudioPlaybackService extends Notifier<SourceAudioPlaybackState
   @override
   SourceAudioPlaybackState build() {
     WidgetsBinding.instance.addObserver(this);
+    final settings = ref.read(appSettingsProvider);
+    final preferenceSubscription = settings.changes.listen((_) {
+      if (!_disposed && state.isActive) {
+        final enabled = _rememberPosition(settings);
+        if (enabled != state.rememberPosition) state = state.copyWith(rememberPosition: enabled);
+      }
+    });
     ref.onDispose(() {
       _disposed = true;
+      unawaited(preferenceSubscription.cancel());
       _operationGeneration++;
       WidgetsBinding.instance.removeObserver(this);
       unawaited(_disposeCurrentResources());
@@ -180,6 +197,7 @@ final class SourceAudioPlaybackService extends Notifier<SourceAudioPlaybackState
       request: request,
       presentation: SourceAudioPresentation.expanded,
       keepScreenOn: keepScreenOn,
+      rememberPosition: _rememberPosition(settings),
     );
     unawaited(_prepare(sessionId, request));
     await completion.future;
@@ -215,6 +233,7 @@ final class SourceAudioPlaybackService extends Notifier<SourceAudioPlaybackState
 
   Future<void> _prepare(int sessionId, SourceAudioPlaybackRequest request) async {
     final generation = ++_operationGeneration;
+    final settings = ref.read(appSettingsProvider);
     AudioPlayerController? localController;
     SourceAudioPlaylistDataSource? localDataSource;
     try {
@@ -237,6 +256,7 @@ final class SourceAudioPlaybackService extends Notifier<SourceAudioPlaybackState
         initialTrackId: request.chapter.id,
         library: library,
         libraryItemId: itemId,
+        rememberPosition: () => _rememberPosition(settings),
       );
       localController = AudioPlayerController();
       final serviceObserver = _SourceAudioPlaybackServiceObserver(
@@ -394,6 +414,11 @@ final class SourceAudioPlaybackService extends Notifier<SourceAudioPlaybackState
   }
 
   Future<void> setKeepScreenOn(bool enabled) => _screenLifecycle?.setKeepScreenOn(enabled) ?? Future<void>.value();
+
+  static bool _rememberPosition(AppSettingsManager settings) =>
+      settings.supports(AppSettingKeys.audioRememberPosition) ? settings.get(AppSettingKeys.audioRememberPosition) : true;
+
+  Future<void> setRememberPosition(bool enabled) => ref.read(appSettingsProvider).set(AppSettingKeys.audioRememberPosition, enabled);
 
   void _completeCurrent() {
     final completion = _completion;
