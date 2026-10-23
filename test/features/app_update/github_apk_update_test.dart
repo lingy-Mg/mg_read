@@ -34,6 +34,13 @@ void main() {
     expect(isGitHubApkUpdateCheckDue(checkedAt, checkedAt.add(const Duration(minutes: 30))), isTrue);
   });
 
+  test('release APK asset name follows the GitHub workflow without the tag prefix', () {
+    expect(
+      githubAndroidApkAssetName(const AppVersionInfo(platform: AppUpdatePlatform.android, version: '0.10.23', buildNumber: 393)),
+      'MgRead-0.10.23+393-android-arm64.apk',
+    );
+  });
+
   test('non-Android platforms never read app version or check GitHub', () async {
     var currentVersionRead = false;
     final coordinator = GitHubApkUpdateCoordinator(

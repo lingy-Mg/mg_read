@@ -29,6 +29,9 @@ const Duration _requestTimeout = Duration(seconds: 12);
 bool isGitHubApkUpdateCheckDue(DateTime? lastCheck, DateTime now) =>
     lastCheck == null || now.difference(lastCheck) >= githubApkUpdateCheckInterval;
 
+String githubAndroidApkAssetName(AppVersionInfo version) =>
+    'MgRead-${version.version}${version.buildNumber > 0 ? '+${version.buildNumber}' : ''}-android-arm64.apk';
+
 final githubApkUpdateCoordinatorProvider = Provider<GitHubApkUpdateCoordinator>((ref) {
   final service = ref.watch(appUpdateServiceProvider);
   return GitHubApkUpdateCoordinator(
@@ -62,6 +65,8 @@ final class GitHubApkRelease {
     required this.targetCommitish,
     required this.releaseNotes,
     required this.assets,
+    this.authorUrl,
+    this.authorAvatarUrl,
     this.releaseId,
     this.createdAt,
     this.commitSha,
@@ -81,6 +86,8 @@ final class GitHubApkRelease {
   final Uri tagUrl;
   final DateTime publishedAt;
   final String author;
+  final Uri? authorUrl;
+  final Uri? authorAvatarUrl;
   final String targetCommitish;
   final String releaseNotes;
   final List<GitHubApkReleaseAsset> assets;
@@ -102,7 +109,12 @@ final class GitHubApkRelease {
     'publishedAt': publishedAt.toUtc().toIso8601String(),
     'createdAt': createdAt?.toUtc().toIso8601String(),
     'author': author,
+    'authorUrl': authorUrl?.toString(),
+    'authorAvatarUrl': authorAvatarUrl?.toString(),
     'targetCommitish': targetCommitish,
+    'latest': true,
+    'draft': false,
+    'prerelease': false,
     'commitSha': commitSha,
     'releaseUrl': releaseUrl.toString(),
     'tagUrl': tagUrl.toString(),
@@ -126,7 +138,12 @@ final class GitHubApkRelease {
       '发布时间: ${publishedAt.toUtc().toIso8601String()}',
       if (createdAt != null) '创建时间: ${createdAt!.toUtc().toIso8601String()}',
       '发布者: $author',
+      if (authorUrl != null) '发布者主页: $authorUrl',
+      if (authorAvatarUrl != null) '发布者头像: $authorAvatarUrl',
       '目标提交: $targetCommitish',
+      '最新发布: 是',
+      '草稿: 否',
+      '预发布: 否',
       if (commitSha != null) '提交 SHA: $commitSha',
       'Release 地址: $releaseUrl',
       '标签地址: $tagUrl',
@@ -307,6 +324,8 @@ final class GitHubApkUpdateCoordinator {
         tagUrl: release.tagUrl,
         publishedAt: release.publishedAt,
         author: release.author,
+        authorUrl: release.authorUrl,
+        authorAvatarUrl: release.authorAvatarUrl,
         targetCommitish: release.targetCommitish,
         releaseNotes: release.releaseNotes,
         assets: release.assets,
@@ -358,7 +377,7 @@ final class GitHubApkUpdateCoordinator {
         version: versionMatch.group(1)!,
         buildNumber: int.tryParse(versionMatch.group(2) ?? '') ?? 0,
       );
-      final apkName = 'MgRead-$tag-android-arm64.apk';
+      final apkName = githubAndroidApkAssetName(version);
       Map<String, dynamic>? apk;
       Map<String, dynamic>? checksums;
       final releaseAssets = <GitHubApkReleaseAsset>[];
@@ -389,6 +408,8 @@ final class GitHubApkUpdateCoordinator {
       if (apkUrl == null || checksumUrl == null || releaseUrl == null || publishedAt == null) return null;
       final authorRecord = release['author'];
       final authorName = authorRecord is Map<String, dynamic> ? authorRecord['login'] : null;
+      final authorUrl = authorRecord is Map<String, dynamic> ? _githubUri(authorRecord['html_url']) : null;
+      final avatarUrl = authorRecord is Map<String, dynamic> ? _githubAvatarUri(authorRecord['avatar_url']) : null;
       final releaseNotes = release['body'] is String ? release['body'] as String : '';
       final compareMatch = RegExp(r'https://github\.com/lingy-Mg/mg_read/compare/[^\s)]+').firstMatch(releaseNotes);
       final targetCommitish = release['target_commitish'] is String ? release['target_commitish'] as String : '';
@@ -405,6 +426,8 @@ final class GitHubApkUpdateCoordinator {
         tagUrl: Uri.https('github.com', '/lingy-Mg/mg_read/tree/${Uri.encodeComponent(tag)}'),
         publishedAt: publishedAt,
         author: authorName is String ? authorName : 'unknown',
+        authorUrl: authorUrl,
+        authorAvatarUrl: avatarUrl,
         targetCommitish: targetCommitish,
         releaseNotes: releaseNotes,
         assets: List<GitHubApkReleaseAsset>.unmodifiable(releaseAssets),
@@ -441,6 +464,13 @@ Uri? _githubUri(Object? value) {
   if (value is! String) return null;
   final uri = Uri.tryParse(value);
   if (uri == null || uri.scheme != 'https' || uri.host != 'github.com') return null;
+  return uri;
+}
+
+Uri? _githubAvatarUri(Object? value) {
+  if (value is! String) return null;
+  final uri = Uri.tryParse(value);
+  if (uri == null || uri.scheme != 'https' || uri.host != 'avatars.githubusercontent.com') return null;
   return uri;
 }
 
