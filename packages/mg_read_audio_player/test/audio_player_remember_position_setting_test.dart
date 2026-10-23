@@ -56,6 +56,30 @@ void main() {
     );
   });
 
+  for (final fails in <bool>[false, true]) {
+    testWidgets(
+      'closing the sheet during a pending update is safe, fails=$fails',
+      (tester) async {
+        final gate = Completer<void>();
+        await _open(tester, initial: true, onChanged: (_) => gate.future);
+        await tester.tap(
+          find.byKey(const Key('audio-remember-position-switch')),
+        );
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('audio-settings-done')));
+        await tester.pumpAndSettle();
+        if (fails) {
+          gate.completeError(StateError('late settings failure'));
+        } else {
+          gate.complete();
+        }
+        await tester.pump();
+        expect(find.byKey(const Key('audio-settings-sheet')), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'compact screen with large text can reach controls and completion',
     (tester) async {
