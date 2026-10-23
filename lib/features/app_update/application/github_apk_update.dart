@@ -21,9 +21,8 @@ import 'package:mg_read/features/lan_sync/data/lan_sync_checksum.dart';
 import 'package:mg_read/features/lan_sync/domain/app_update_models.dart';
 
 const Duration githubApkUpdateCheckInterval = Duration(minutes: 30);
-const String _releaseApiUrl = 'https://api.github.com/repos/lingy-Mg/mg_read/releases/latest';
+const String githubApkUpdateManifestUrl = 'https://github.com/lingy-Mg/mg_read/releases/latest/download/update.json';
 const int _maxReleaseMetadataBytes = 256 * 1024;
-const int _maxChecksumFileBytes = 32 * 1024;
 const Duration _requestTimeout = Duration(seconds: 12);
 
 bool isGitHubApkUpdateCheckDue(DateTime? lastCheck, DateTime now) =>
@@ -259,10 +258,12 @@ final class GitHubApkUpdateCoordinator {
     Future<Directory> Function()? supportDirectory,
     DateTime Function()? clock,
     HttpClient Function()? httpClientFactory,
+    Uri? manifestUri,
     bool? isAndroid,
   }) : _supportDirectory = supportDirectory ?? getApplicationSupportDirectory,
        _clock = clock ?? DateTime.now,
        _httpClientFactory = httpClientFactory ?? HttpClient.new,
+       _manifestUri = manifestUri ?? Uri.parse(githubApkUpdateManifestUrl),
        _isAndroid = isAndroid ?? Platform.isAndroid;
 
   final Future<AppVersionInfo> Function() _currentVersion;
@@ -270,6 +271,7 @@ final class GitHubApkUpdateCoordinator {
   final Future<Directory> Function() _supportDirectory;
   final DateTime Function() _clock;
   final HttpClient Function() _httpClientFactory;
+  final Uri _manifestUri;
   final bool _isAndroid;
   Future<GitHubApkRelease?>? _checkInFlight;
   Future<void>? _installInFlight;
@@ -292,50 +294,18 @@ final class GitHubApkUpdateCoordinator {
 
     final client = _httpClientFactory();
     try {
-      final request = await client.getUrl(Uri.parse(_releaseApiUrl)).timeout(_requestTimeout);
-      request.headers.set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
+      final request = await client.getUrl(_manifestUri).timeout(_requestTimeout);
+      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      request.headers.set(HttpHeaders.cacheControlHeader, 'no-cache');
       request.headers.set(HttpHeaders.userAgentHeader, 'MgRead-Android-Updater');
       final response = await request.close().timeout(_requestTimeout);
       if (response.statusCode != HttpStatus.ok) return null;
       final body = await _readBounded(response, _maxReleaseMetadataBytes);
-      final release = _parseRelease(body);
+      final release = _parseManifest(body);
       if (release == null) return null;
       final local = await _currentVersion();
       if (local.platform != AppUpdatePlatform.android || !isRemoteAppUpgrade(release.version, local)) return null;
-      final commitSha = release.commitSha ?? await _resolveCommitSha(client, release.tag);
-      final checksumUrl = release.checksumUrl;
-      if (checksumUrl == null) return null;
-      final checksumRequest = await client.getUrl(checksumUrl).timeout(_requestTimeout);
-      checksumRequest.headers.set(HttpHeaders.userAgentHeader, 'MgRead-Android-Updater');
-      final checksumResponse = await checksumRequest.close().timeout(_requestTimeout);
-      if (checksumResponse.statusCode != HttpStatus.ok) return null;
-      final checksums = utf8.decode(await _readBounded(checksumResponse, _maxChecksumFileBytes));
-      final expectedHash = _readExpectedSha256(checksums, release.apkName);
-      if (expectedHash == null) return null;
-      return GitHubApkRelease(
-        version: release.version,
-        apkUrl: release.apkUrl,
-        apkName: release.apkName,
-        sha256: expectedHash,
-        repository: release.repository,
-        title: release.title,
-        tag: release.tag,
-        releaseUrl: release.releaseUrl,
-        tagUrl: release.tagUrl,
-        publishedAt: release.publishedAt,
-        author: release.author,
-        authorUrl: release.authorUrl,
-        authorAvatarUrl: release.authorAvatarUrl,
-        targetCommitish: release.targetCommitish,
-        releaseNotes: release.releaseNotes,
-        assets: release.assets,
-        releaseId: release.releaseId,
-        createdAt: release.createdAt,
-        commitSha: commitSha,
-        commitUrl: commitSha == null ? release.commitUrl : Uri.https('github.com', '/lingy-Mg/mg_read/commit/$commitSha'),
-        compareUrl: release.compareUrl,
-        checksumUrl: release.checksumUrl,
-      );
+      return release;
     } on Object {
       return null;
     } finally {
@@ -363,100 +333,94 @@ final class GitHubApkUpdateCoordinator {
     }
   }
 
-  GitHubApkRelease? _parseRelease(List<int> bytes) {
+  /// Parses the `mgread.android-update.v1` asset uploaded with each GitHub Release.
+  ///
+  /// Required fields: schema, repository, version, buildNumber, tag,
+  /// publishedAt, and apk.name/apk.sha256. APK and release URLs are derived
+  /// from the fixed repository and tag to keep the manifest compact.
+  GitHubApkRelease? _parseManifest(List<int> bytes) {
     try {
-      final release = jsonDecode(utf8.decode(bytes));
-      if (release is! Map<String, dynamic> || release['draft'] == true || release['prerelease'] == true) return null;
-      final tag = release['tag_name'];
-      final assets = release['assets'];
-      if (tag is! String || assets is! List<dynamic>) return null;
-      final versionMatch = RegExp(r'^v(\d+\.\d+\.\d+)(?:\+(\d+))?$').firstMatch(tag);
-      if (versionMatch == null) return null;
-      final version = AppVersionInfo(
-        platform: AppUpdatePlatform.android,
-        version: versionMatch.group(1)!,
-        buildNumber: int.tryParse(versionMatch.group(2) ?? '') ?? 0,
-      );
-      final apkName = githubAndroidApkAssetName(version);
-      Map<String, dynamic>? apk;
-      Map<String, dynamic>? checksums;
-      final releaseAssets = <GitHubApkReleaseAsset>[];
-      for (final asset in assets.whereType<Map<String, dynamic>>()) {
-        if (asset['name'] == apkName) apk = asset;
-        if (asset['name'] == 'SHA256SUMS.txt') checksums = asset;
-        final name = asset['name'];
-        final downloadUrl = _githubUri(asset['browser_download_url']);
-        if (name is String && downloadUrl != null) {
-          releaseAssets.add(
-            GitHubApkReleaseAsset(
-              name: name,
-              downloadUrl: downloadUrl,
-              size: asset['size'] is int ? asset['size'] as int : 0,
-              downloadCount: asset['download_count'] is int ? asset['download_count'] as int : 0,
-              contentType: asset['content_type'] is String ? asset['content_type'] as String : '',
-              createdAt: DateTime.tryParse(asset['created_at'] as String? ?? ''),
-              updatedAt: DateTime.tryParse(asset['updated_at'] as String? ?? ''),
-            ),
-          );
-        }
+      final manifest = jsonDecode(utf8.decode(bytes));
+      if (manifest is! Map<String, dynamic> ||
+          manifest['schema'] != 'mgread.android-update.v1' ||
+          manifest['repository'] != 'lingy-Mg/mg_read') {
+        return null;
       }
-      if (apk == null || checksums == null) return null;
-      final apkUrl = _githubUri(apk['browser_download_url']);
-      final checksumUrl = _githubUri(checksums['browser_download_url']);
-      final releaseUrl = _githubUri(release['html_url']);
-      final publishedAt = DateTime.tryParse(release['published_at'] as String? ?? '');
-      if (apkUrl == null || checksumUrl == null || releaseUrl == null || publishedAt == null) return null;
-      final authorRecord = release['author'];
-      final authorName = authorRecord is Map<String, dynamic> ? authorRecord['login'] : null;
-      final authorUrl = authorRecord is Map<String, dynamic> ? _githubUri(authorRecord['html_url']) : null;
-      final avatarUrl = authorRecord is Map<String, dynamic> ? _githubAvatarUri(authorRecord['avatar_url']) : null;
-      final releaseNotes = release['body'] is String ? release['body'] as String : '';
-      final compareMatch = RegExp(r'https://github\.com/lingy-Mg/mg_read/compare/[^\s)]+').firstMatch(releaseNotes);
-      final targetCommitish = release['target_commitish'] is String ? release['target_commitish'] as String : '';
-      final targetSha = RegExp(r'^[a-fA-F0-9]{40}$').hasMatch(targetCommitish) ? targetCommitish.toLowerCase() : null;
+      final versionText = manifest['version'];
+      final buildNumber = manifest['buildNumber'];
+      final tag = manifest['tag'];
+      final apk = manifest['apk'];
+      final publishedAt = DateTime.tryParse(manifest['publishedAt'] as String? ?? '');
+      if (versionText is! String ||
+          !RegExp(r'^\d+\.\d+\.\d+$').hasMatch(versionText) ||
+          buildNumber is! int ||
+          buildNumber < 0 ||
+          buildNumber > 2147483647 ||
+          tag is! String ||
+          tag != 'v$versionText+$buildNumber' ||
+          apk is! Map<String, dynamic> ||
+          publishedAt == null) {
+        return null;
+      }
+      final version = AppVersionInfo(platform: AppUpdatePlatform.android, version: versionText, buildNumber: buildNumber);
+      final apkName = githubAndroidApkAssetName(version);
+      final sha256 = apk['sha256'];
+      if (apk['name'] != apkName || sha256 is! String || !RegExp(r'^[a-fA-F0-9]{64}$').hasMatch(sha256)) return null;
+      final apkUrl = Uri.parse('https://github.com/lingy-Mg/mg_read/releases/latest/download/${Uri.encodeComponent(apkName)}');
+      final releaseUrl = Uri.parse('https://github.com/lingy-Mg/mg_read/releases/tag/${Uri.encodeComponent(tag)}');
+      final tagUrl = Uri.parse('https://github.com/lingy-Mg/mg_read/tree/${Uri.encodeComponent(tag)}');
+      final author = manifest['author'] is String ? manifest['author'] as String : 'unknown';
+      final authorUrl = _githubUri(manifest['authorUrl']);
+      final avatarUrl = _githubAvatarUri(manifest['authorAvatarUrl']);
+      final releaseNotes = manifest['releaseNotes'] is String ? manifest['releaseNotes'] as String : '';
+      final targetCommitish = manifest['targetCommitish'] is String ? manifest['targetCommitish'] as String : 'main';
+      final commitShaValue = manifest['commitSha'];
+      final commitSha = commitShaValue is String && RegExp(r'^[a-fA-F0-9]{40}$').hasMatch(commitShaValue)
+          ? commitShaValue.toLowerCase()
+          : null;
+      final commitUrl = commitSha == null
+          ? _githubUri(manifest['commitUrl'])
+          : Uri.https('github.com', '/lingy-Mg/mg_read/commit/$commitSha');
+      final compareUrl = _githubUri(manifest['compareUrl']);
+      final createdAt = DateTime.tryParse(manifest['createdAt'] as String? ?? '');
+      final assetSize = apk['size'] is int && (apk['size'] as int) > 0 ? apk['size'] as int : 0;
+      final assets = <GitHubApkReleaseAsset>[
+        GitHubApkReleaseAsset(
+          name: apkName,
+          downloadUrl: apkUrl,
+          size: assetSize,
+          downloadCount: 0,
+          contentType: 'application/vnd.android.package-archive',
+          createdAt: createdAt,
+          updatedAt: createdAt,
+        ),
+      ];
       return GitHubApkRelease(
         version: version,
         apkUrl: apkUrl,
         apkName: apkName,
-        sha256: '',
+        sha256: sha256.toLowerCase(),
         repository: 'lingy-Mg/mg_read',
-        title: release['name'] is String && (release['name'] as String).isNotEmpty ? release['name'] as String : tag,
+        title: manifest['title'] is String && (manifest['title'] as String).isNotEmpty ? manifest['title'] as String : tag,
         tag: tag,
         releaseUrl: releaseUrl,
-        tagUrl: Uri.https('github.com', '/lingy-Mg/mg_read/tree/${Uri.encodeComponent(tag)}'),
+        tagUrl: tagUrl,
         publishedAt: publishedAt,
-        author: authorName is String ? authorName : 'unknown',
+        author: author,
         authorUrl: authorUrl,
         authorAvatarUrl: avatarUrl,
         targetCommitish: targetCommitish,
         releaseNotes: releaseNotes,
-        assets: List<GitHubApkReleaseAsset>.unmodifiable(releaseAssets),
-        releaseId: release['id'] is int ? release['id'] as int : null,
-        createdAt: DateTime.tryParse(release['created_at'] as String? ?? ''),
-        commitSha: targetSha,
-        commitUrl: targetSha == null ? null : Uri.https('github.com', '/lingy-Mg/mg_read/commit/$targetSha'),
-        compareUrl: compareMatch == null ? null : Uri.tryParse(compareMatch.group(0)!),
-        checksumUrl: checksumUrl,
+        assets: List<GitHubApkReleaseAsset>.unmodifiable(assets),
+        releaseId: manifest['releaseId'] is int ? manifest['releaseId'] as int : null,
+        createdAt: createdAt,
+        commitSha: commitSha,
+        commitUrl: commitUrl,
+        compareUrl: compareUrl,
       );
     } on Object {
       return null;
     }
-  }
-}
-
-Future<String?> _resolveCommitSha(HttpClient client, String tag) async {
-  try {
-    final request = await client.getUrl(Uri.https('api.github.com', '/repos/lingy-Mg/mg_read/commits/$tag')).timeout(_requestTimeout);
-    request.headers.set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
-    request.headers.set(HttpHeaders.userAgentHeader, 'MgRead-Android-Updater');
-    final response = await request.close().timeout(_requestTimeout);
-    if (response.statusCode != HttpStatus.ok) return null;
-    final decoded = jsonDecode(utf8.decode(await _readBounded(response, 16 * 1024)));
-    if (decoded is! Map<String, dynamic>) return null;
-    final sha = decoded['sha'];
-    return sha is String && RegExp(r'^[a-fA-F0-9]{40}$').hasMatch(sha) ? sha.toLowerCase() : null;
-  } on Object {
-    return null;
   }
 }
 
@@ -472,14 +436,6 @@ Uri? _githubAvatarUri(Object? value) {
   final uri = Uri.tryParse(value);
   if (uri == null || uri.scheme != 'https' || uri.host != 'avatars.githubusercontent.com') return null;
   return uri;
-}
-
-String? _readExpectedSha256(String contents, String fileName) {
-  for (final line in contents.split(RegExp(r'\r?\n'))) {
-    final match = RegExp(r'^([a-fA-F0-9]{64})\s+\*?(.+)$').firstMatch(line.trim());
-    if (match != null && match.group(2) == fileName) return match.group(1)!.toLowerCase();
-  }
-  return null;
 }
 
 Future<List<int>> _readBounded(HttpClientResponse response, int limit) async {
