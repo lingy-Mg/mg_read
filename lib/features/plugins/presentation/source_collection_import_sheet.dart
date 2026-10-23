@@ -7,25 +7,29 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/plugins/application/source_collection_import.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
-Future<SourceCollectionSelection?> showSourceCollectionImportSheet(BuildContext context, List<SourceCollectionCandidate> candidates) =>
-    showModalBottomSheet<SourceCollectionSelection>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => _SourceCollectionSelector(candidates: candidates),
-    );
+Future<SourceCollectionSelection?> showSourceCollectionImportSheet(
+  BuildContext context,
+  List<SourceCollectionCandidate> candidates, {
+  bool onlineRepository = false,
+}) => showModalBottomSheet<SourceCollectionSelection>(
+  context: context,
+  isScrollControlled: true,
+  showDragHandle: true,
+  builder: (_) => _SourceCollectionSelector(candidates: candidates, onlineRepository: onlineRepository),
+);
 
 Future<void> showSourceCollectionImportResults(
   BuildContext context,
   List<PluginTransferImportResult> results,
-  List<SourceCollectionCandidate> candidates,
-) => showDialog<void>(
+  List<SourceCollectionCandidate> candidates, {
+  bool onlineRepository = false,
+}) => showDialog<void>(
   context: context,
   builder: (dialogContext) {
     final failed = results.where((item) => item.status == PluginTransferImportStatus.failed).length;
     final names = <String, String>{for (final item in candidates) item.plugin.id: item.plugin.name};
     return AlertDialog(
-      title: Text(failed == 0 ? '合集导入完成' : '合集导入部分失败'),
+      title: Text(onlineRepository ? (failed == 0 ? '在线数据源安装完成' : '在线数据源安装部分失败') : (failed == 0 ? '合集导入完成' : '合集导入部分失败')),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxHeight: 360),
         child: SingleChildScrollView(
@@ -52,9 +56,10 @@ Future<void> showSourceCollectionImportResults(
 );
 
 class _SourceCollectionSelector extends StatefulWidget {
-  const _SourceCollectionSelector({required this.candidates});
+  const _SourceCollectionSelector({required this.candidates, required this.onlineRepository});
 
   final List<SourceCollectionCandidate> candidates;
+  final bool onlineRepository;
 
   @override
   State<_SourceCollectionSelector> createState() => _SourceCollectionSelectorState();
@@ -91,9 +96,9 @@ class _SourceCollectionSelectorState extends State<_SourceCollectionSelector> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Text('导入数据源合集', style: Theme.of(context).textTheme.titleLarge),
+              Text(widget.onlineRepository ? '在线插件仓库' : '导入数据源合集', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: AppSpacing.unit),
-              Text('${widget.candidates.length} 个数据源 · 选择要导入的项目', style: Theme.of(context).textTheme.bodyMedium),
+              Text('${widget.candidates.length} 个数据源 · 选择要安装或更新的项目', style: Theme.of(context).textTheme.bodyMedium),
               const SizedBox(height: AppSpacing.compact),
               Wrap(
                 spacing: AppSpacing.compact,
@@ -130,8 +135,8 @@ class _SourceCollectionSelectorState extends State<_SourceCollectionSelector> {
                       PluginTransferPlanAction.unavailable => '不可用',
                     };
                     final detail = candidate.isInstalled
-                        ? '已安装 ${candidate.installedName ?? plugin.id} · 当前 v${candidate.plan.receiverVersion} → 合集 v${plugin.version}${candidate.plan.action == PluginTransferPlanAction.same ? '（相同版本，需明确覆盖）' : ''}'
-                        : '合集版本 v${plugin.version}';
+                        ? '已安装 ${candidate.installedName ?? plugin.id} · 当前 v${candidate.plan.receiverVersion} → 可用 v${plugin.version}${candidate.plan.action == PluginTransferPlanAction.same ? '（相同版本，需明确覆盖）' : ''}'
+                        : '可用版本 v${plugin.version}';
                     return CheckboxListTile(
                       key: Key('source-collection-${plugin.id}'),
                       value: checked,
@@ -141,7 +146,7 @@ class _SourceCollectionSelectorState extends State<_SourceCollectionSelector> {
                       controlAffinity: ListTileControlAffinity.leading,
                       title: Text('$titlePrefix：${plugin.name}'),
                       subtitle: Text(
-                        '$detail\n${enabled ? (candidate.requiresOverwriteChoice ? '勾选即明确同意替换已安装版本。' : '可导入') : _blockedReason(candidate.plan.action)}',
+                        '$detail\n${enabled ? (candidate.requiresOverwriteChoice ? '勾选即明确同意替换已安装版本。' : '可安装') : _blockedReason(candidate.plan.action)}',
                       ),
                       isThreeLine: true,
                     );

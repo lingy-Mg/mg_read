@@ -594,9 +594,12 @@ final class PluginRuntimeSourceImportController extends Notifier<PluginSourceImp
 
   /// Keeps the existing import lock active across bundle selection, planning,
   /// confirmation and the single Runtime batch handoff.
-  Future<List<PluginTransferImportResult>?> importSourceCollection(Future<List<PluginTransferImportResult>?> Function() operation) async {
+  Future<List<PluginTransferImportResult>?> importSourceCollection(
+    Future<List<PluginTransferImportResult>?> Function() operation, {
+    String initialMessage = '正在准备数据源合集',
+  }) async {
     if (state.isImporting) return null;
-    state = const PluginSourceImportState(isImporting: true, message: '正在准备数据源合集', logs: <String>['正在准备数据源合集']);
+    state = PluginSourceImportState(isImporting: true, message: initialMessage, logs: <String>[initialMessage]);
     try {
       final results = await operation();
       if (results != null && results.isNotEmpty) {

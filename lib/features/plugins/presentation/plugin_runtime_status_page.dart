@@ -221,11 +221,14 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
       return;
     }
     try {
-      if (choice == DataSourceImportChoice.collection) {
+      final useOnlineRepository = choice == DataSourceImportChoice.onlineRepository;
+      if (choice == DataSourceImportChoice.collection || useOnlineRepository) {
         if (!supportsSourceCollectionImport) return;
         List<SourceCollectionCandidate>? candidates;
         final results = await ref.read(pluginRuntimeSourceImportProvider.notifier).importSourceCollection(() async {
-          final collection = await ref.read(sourceCollectionImportServiceProvider).pickCollection();
+          final collection = useOnlineRepository
+              ? await ref.read(onlineSourceCatalogServiceProvider).loadCatalog()
+              : await ref.read(sourceCollectionImportServiceProvider).pickCollection();
           if (collection == null || !mounted) return null;
           final plan = await ref
               .read(pluginRuntimeFacadeProvider)
@@ -235,14 +238,19 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
           final connection = await ref.read(pluginRuntimeConnectionProvider.future);
           candidates = planSourceCollection(collection: collection, plan: plan, installed: connection.plugins);
           if (!mounted) return null;
-          final selection = await showSourceCollectionImportSheet(context, candidates!);
+          final selection = await showSourceCollectionImportSheet(context, candidates!, onlineRepository: useOnlineRepository);
           if (selection == null || !mounted) return null;
           return ref
               .read(pluginRuntimeFacadeProvider)
               .importPluginArtifacts(selection.artifacts, forceUpgradePluginIds: selection.forceUpgradePluginIds);
-        });
+        }, initialMessage: useOnlineRepository ? '正在读取在线插件仓库' : '正在准备数据源合集');
         if (!mounted || results == null) return;
-        await showSourceCollectionImportResults(context, results, candidates ?? const <SourceCollectionCandidate>[]);
+        await showSourceCollectionImportResults(
+          context,
+          results,
+          candidates ?? const <SourceCollectionCandidate>[],
+          onlineRepository: useOnlineRepository,
+        );
       } else {
         final imported = await ref
             .read(pluginRuntimeSourceImportProvider.notifier)
@@ -252,12 +260,18 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
       }
     } on Object catch (error) {
       if (!mounted) return;
-      if (choice == DataSourceImportChoice.collection) {
+      if (choice == DataSourceImportChoice.collection || choice == DataSourceImportChoice.onlineRepository) {
         await showDialog<void>(
           context: context,
           builder: (dialogContext) => AlertDialog(
-            title: const Text('数据源合集无法导入'),
-            content: SelectableText(error is SourceCollectionImportException ? error.message : 'Runtime 未能完成合集批量安装，请稍后重试。'),
+            title: Text(choice == DataSourceImportChoice.onlineRepository ? '在线插件仓库无法使用' : '数据源合集无法导入'),
+            content: SelectableText(
+              error is SourceCollectionImportException
+                  ? error.message
+                  : choice == DataSourceImportChoice.onlineRepository
+                  ? 'Runtime 未能完成在线数据源安装，请稍后重试。'
+                  : 'Runtime 未能完成合集批量安装，请稍后重试。',
+            ),
             actions: <Widget>[TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('知道了'))],
           ),
         );

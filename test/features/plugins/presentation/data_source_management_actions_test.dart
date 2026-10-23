@@ -129,6 +129,25 @@ void main() {
     expect(result, DataSourceImportChoice.collection);
   });
 
+  testWidgets('add-data-source chooser exposes the online plugin repository', (tester) async {
+    DataSourceImportChoice? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(onPressed: () async => result = await showDataSourceImportSheet(context), child: const Text('open')),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('data-source-add-online-repository')));
+    await tester.pumpAndSettle();
+    expect(result, DataSourceImportChoice.onlineRepository);
+  });
+
   testWidgets('320dp large text keeps header clear and all tools reachable', (tester) async {
     tester.view.physicalSize = const Size(320, 640);
     tester.view.devicePixelRatio = 1;

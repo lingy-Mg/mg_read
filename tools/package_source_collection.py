@@ -15,6 +15,7 @@ import json
 import re
 import stat
 import sys
+import zlib
 import zipfile
 from pathlib import Path, PurePosixPath
 
@@ -126,6 +127,72 @@ def build_collection(sources: Path, output: Path, artifact_root: Path | None = N
     return entries
 
 
+def build_online_catalog(sources: Path, output_dir: Path, release_base_url: str,
+                         artifact_root: Path | None = None) -> list[dict]:
+    """Create a static GitHub-hosted catalog and independently downloadable plugins."""
+    packages = eligible_packages(sources)
+    if not packages:
+        raise ValueError("No eligible Node source packages were found")
+    if len(packages) > MAX_PLUGINS:
+        raise ValueError(f"Online catalog exceeds {MAX_PLUGINS} Node source packages")
+    base_url = release_base_url.rstrip("/")
+    if not base_url.startswith("https://"):
+        raise ValueError("Online catalog release base URL must use HTTPS")
+
+    entries: list[dict] = []
+    ids: set[str] = set()
+    total = 0
+    plugins_dir = output_dir / "plugins"
+    plugins_dir.mkdir(parents=True, exist_ok=True)
+    for project, package in packages:
+        meta = package["mgread"]
+        plugin_id, version = meta["id"], package["version"]
+        if plugin_id in ids:
+            raise ValueError(f"Duplicate source id: {plugin_id}")
+        ids.add(plugin_id)
+        if meta.get("packageMode", "single-file") != "single-file":
+            # The online repository serves standalone JS files. Archives remain
+            # available through the existing offline collection download.
+            continue
+        filename = f"{plugin_id}.mgplugin.js"
+        artifact_dir = (artifact_root / project.name / "artifacts") if artifact_root else (project / "artifacts")
+        artifact = artifact_dir / f"{plugin_id}-{version}.mgplugin.js"
+        if artifact.is_symlink() or not artifact.is_file():
+            raise ValueError(f"Missing regular artifact file: {artifact}")
+        if artifact_dir.resolve() not in artifact.resolve().parents:
+            raise ValueError(f"Artifact path escapes its source directory: {artifact}")
+        data = artifact.read_bytes()
+        if not data.startswith(b"// @mgread-plugin-v1 "):
+            raise ValueError(f"Artifact is missing the MgRead online plugin tag: {artifact}")
+        if not data or len(data) > MAX_PLUGIN_BYTES:
+            raise ValueError(f"Artifact is empty or exceeds 32 MiB: {artifact}")
+        total += len(data)
+        if total > MAX_TOTAL_BYTES:
+            raise ValueError(f"Online catalog artifacts exceed 512 MiB ({total} bytes)")
+        (plugins_dir / filename).write_bytes(data)
+        entries.append({
+            "id": plugin_id,
+            "name": meta["displayName"],
+            "version": version,
+            "format": "singleFile",
+            "path": f"plugins/{filename}",
+            "url": f"{base_url}/{filename}",
+            "bytes": len(data),
+            "crc32": f"{zlib.crc32(data) & 0xffffffff:08x}",
+            "sha256": hashlib.sha256(data).hexdigest(),
+        })
+    if not entries:
+        raise ValueError("No single-file Node sources are available for the online catalog")
+    entries.sort(key=lambda item: item["id"])
+    manifest = {"format": "mgread-online-plugin-catalog", "schemaVersion": 1, "plugins": entries}
+    manifest_bytes = (json.dumps(manifest, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+    if len(manifest_bytes) > MAX_MANIFEST_BYTES:
+        raise ValueError("Online catalog manifest exceeds 1 MiB")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "catalog.json").write_bytes(manifest_bytes)
+    return entries
+
+
 def _write_entry(archive: zipfile.ZipFile, name: str, data: bytes) -> None:
     info = zipfile.ZipInfo(name, date_time=ZIP_TIME)
     info.compress_type = zipfile.ZIP_DEFLATED
@@ -140,6 +207,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sources", type=Path, required=True, help="plugins/sources directory")
     parser.add_argument("--output", type=Path, help="output .mgplugins ZIP")
     parser.add_argument("--artifact-root", type=Path, help="optional root containing <source>/artifacts")
+    parser.add_argument("--online-output", type=Path, help="write standalone plugins and catalog.json for a static repository")
+    parser.add_argument("--release-base-url", help="HTTPS GitHub Release download URL used by --online-output")
     parser.add_argument("--list-packages", action="store_true", help="print eligible package directories")
     args = parser.parse_args(argv)
     try:
@@ -147,10 +216,16 @@ def main(argv: list[str] | None = None) -> int:
             for project, _ in eligible_packages(args.sources):
                 print(project.as_posix())
             return 0
-        if args.output is None:
-            parser.error("--output is required unless --list-packages is used")
-        entries = build_collection(args.sources, args.output, args.artifact_root)
-        print(f"Created {args.output} with {len(entries)} plugins")
+        if args.output is None and args.online_output is None:
+            parser.error("--output or --online-output is required unless --list-packages is used")
+        if args.output is not None:
+            entries = build_collection(args.sources, args.output, args.artifact_root)
+            print(f"Created {args.output} with {len(entries)} plugins")
+        if args.online_output is not None:
+            if args.release_base_url is None:
+                parser.error("--release-base-url is required with --online-output")
+            online_entries = build_online_catalog(args.sources, args.online_output, args.release_base_url, args.artifact_root)
+            print(f"Created online catalog in {args.online_output} with {len(online_entries)} standalone plugins")
         return 0
     except (OSError, ValueError, zipfile.BadZipFile) as exc:
         print(f"source collection: {exc}", file=sys.stderr)

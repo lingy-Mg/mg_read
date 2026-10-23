@@ -107,6 +107,10 @@ plugins/sources/                    真实数据源及其他能力参考实现
   `manifest.json` 的 `format=mgread-source-collection`、`schemaVersion=1`，`plugins` 数组逐项声明
   `id/name/version/format/path/bytes/sha256`；每项仍是原始自包含的单来源 artifact。App 在安装前校验清单、
   条目、大小和 SHA-256，让用户选择新增及覆盖项，再交给 Runtime 批量安装。合集暂不包含原生来源。
+- 在线 Node 插件仓库直接托管在 GitHub Release，无需应用服务器。发布流程使用已有 `@mgread-plugin-v1`
+  单文件 artifact 头，上传各自独立的 `.mgplugin.js` 和 `catalog.json`；清单固定声明版本、下载 URL、大小、CRC32
+  与 SHA-256。App 只下载用户选择的插件，校验后沿用合集计划、覆盖确认和 Runtime 批量安装流程；
+  `source-catalog` Release 是当前仓库目录。
 - 插件缓存使用来源声明的展示投影策略；stale 可离线读取，刷新异步单飞，缓存失败按 miss 处理。
 
 ## 插件内容 API

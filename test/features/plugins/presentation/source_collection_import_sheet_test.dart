@@ -42,6 +42,31 @@ void main() {
     expect(find.byKey(const Key('source-collection-import-selected')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('online catalog selector labels versions as install or update choices', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async => await showSourceCollectionImportSheet(context, _candidates(), onlineRepository: true),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('在线插件仓库'), findsOneWidget);
+    final newSource = tester.widget<CheckboxListTile>(find.byKey(const Key('source-collection-org.example.new')));
+    expect((newSource.subtitle! as Text).data, contains('可用版本 v1.0.0'));
+    final installedSource = tester.widget<CheckboxListTile>(find.byKey(const Key('source-collection-org.example.same')));
+    expect((installedSource.subtitle! as Text).data, contains('当前 v1.0.0 → 可用 v1.0.0'));
+    expect(tester.takeException(), isNull);
+  });
 }
 
 List<SourceCollectionCandidate> _candidates() {

@@ -54,10 +54,30 @@ jobs:
       - name: Create source collection
         run: python tools/package_source_collection.py --sources plugins/sources --output dist/mgread-sources.mgplugins
 
+      - name: Create standalone online repository
+        env:
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/package_source_collection.py \
+            --sources plugins/sources \
+            --online-output dist/online \
+            --release-base-url "https://github.com/${REPOSITORY}/releases/download/source-catalog"
+          python -c "import shutil; shutil.make_archive('dist/mgread-online-catalog', 'zip', 'dist/online')"
+
       - name: Upload source collection
         uses: actions/upload-artifact@v7
         with:
           path: dist/mgread-sources.mgplugins
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload online catalog package
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist/mgread-online-catalog.zip
           archive: false
           if-no-files-found: error
           retention-days: 30
@@ -69,7 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
-      group: source-collection-release-${{ github.sha }}
+      group: source-collection-release
       cancel-in-progress: false
     permissions:
       contents: write
@@ -78,6 +98,12 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: mgread-sources.mgplugins
+          path: release
+
+      - name: Download online catalog package
+        uses: actions/download-artifact@v8
+        with:
+          name: mgread-online-catalog.zip
           path: release
 
       - name: Publish GitHub Release
@@ -90,10 +116,19 @@ jobs:
           set -euo pipefail
 
           release_file="release/mgread-sources.mgplugins"
+          online_archive="release/mgread-online-catalog.zip"
           if [[ ! -s "$release_file" ]]; then
             echo "Source collection is missing or empty: $release_file" >&2
             exit 1
           fi
+          if [[ ! -s "$online_archive" ]]; then
+            echo "Online catalog package is missing or empty: $online_archive" >&2
+            exit 1
+          fi
+          mkdir -p release/online
+          unzip -q "$online_archive" -d release/online
+          test -s release/online/catalog.json
+          compgen -G 'release/online/plugins/*.mgplugin.js' >/dev/null
 
           (
             cd release
@@ -113,6 +148,22 @@ jobs:
               --target "$SOURCE_COMMIT" \
               --title "$title" \
               --notes "$notes" \
+              --latest=false
+          fi
+
+          catalog_tag="source-catalog"
+          catalog_title="MgRead online plugin catalog"
+          catalog_notes="Static Node plugin repository. The app downloads catalog.json and standalone verified .mgplugin.js assets directly from this GitHub Release; no application server is required."
+          catalog_assets=(release/online/catalog.json release/online/plugins/*.mgplugin.js)
+          if gh release view "$catalog_tag" --repo "$REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$catalog_tag" "${catalog_assets[@]}" \
+              --repo "$REPOSITORY" --clobber
+          else
+            gh release create "$catalog_tag" "${catalog_assets[@]}" \
+              --repo "$REPOSITORY" \
+              --target "$SOURCE_COMMIT" \
+              --title "$catalog_title" \
+              --notes "$catalog_notes" \
               --latest=false
           fi
 

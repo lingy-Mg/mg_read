@@ -7,6 +7,7 @@ import shutil
 import tempfile
 import unittest
 import zipfile
+import zlib
 from pathlib import Path
 
 MODULE_PATH = Path(__file__).with_name("package_source_collection.py")
@@ -102,6 +103,39 @@ class PackageSourceCollectionTests(unittest.TestCase):
             manifest = json.loads(archive.read("manifest.json"))
             self.assertEqual(manifest["plugins"][0]["format"], "archive")
             self.assertEqual(manifest["plugins"][0]["path"], "plugins/org.mgread.archive-1.2.3.mgplugin")
+
+    def test_online_catalog_publishes_tagged_standalone_plugins_with_integrity_metadata(self):
+        payload = b"// @mgread-plugin-v1 eyJ2ZXJzaW9uIjoiMS4yLjMifQ==\nexport default {};"
+        self.add_plugin("alpha", "org.mgread.alpha", payload=payload)
+        self.add_plugin("archived", "org.mgread.archived", mode="archive", payload=b"archive")
+        output = self.root / "online"
+
+        entries = pack.build_online_catalog(
+            self.sources,
+            output,
+            "https://github.com/example/mg_read/releases/download/source-catalog",
+        )
+
+        self.assertEqual([entry["id"] for entry in entries], ["org.mgread.alpha"])
+        self.assertEqual((output / "plugins/org.mgread.alpha.mgplugin.js").read_bytes(), payload)
+        manifest = json.loads((output / "catalog.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["format"], "mgread-online-plugin-catalog")
+        self.assertEqual(manifest["schemaVersion"], 1)
+        entry = manifest["plugins"][0]
+        self.assertEqual(entry["url"], "https://github.com/example/mg_read/releases/download/source-catalog/org.mgread.alpha.mgplugin.js")
+        self.assertEqual(entry["bytes"], len(payload))
+        self.assertEqual(entry["crc32"], f"{zlib.crc32(payload) & 0xffffffff:08x}")
+        self.assertEqual(entry["sha256"], hashlib.sha256(payload).hexdigest())
+
+    def test_online_catalog_rejects_artifacts_without_plugin_tag(self):
+        self.add_plugin("alpha", "org.mgread.alpha", payload=b"export default {};")
+
+        with self.assertRaisesRegex(ValueError, "missing the MgRead online plugin tag"):
+            pack.build_online_catalog(
+                self.sources,
+                self.root / "online",
+                "https://github.com/example/mg_read/releases/download/source-catalog",
+            )
 
     def test_incomplete_or_unsupported_node_packages_fail_closed(self):
         project = self.add_plugin("incomplete", "org.mgread.incomplete")

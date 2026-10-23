@@ -1,11 +1,12 @@
-/// Reads and validates Node-only source collections before Runtime import.
+/// Reads offline Node collections and the static GitHub plugin catalog.
 ///
-/// The archive is treated as untrusted input. ZIP metadata is checked before
-/// any payload is decompressed; Runtime still performs its own artifact checks.
+/// Catalog metadata and downloaded plugin hashes are validated before Runtime
+/// import. ZIP metadata is checked before any payload is decompressed.
 library;
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
@@ -13,6 +14,9 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
+
+import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
+import 'package:mg_read/features/network_proxy/application/network_proxy_settings.dart';
 
 import 'plugin_runtime_models.dart';
 
@@ -22,6 +26,14 @@ const int sourceCollectionMaxPlugins = 256;
 
 final sourceCollectionImportServiceProvider = Provider<SourceCollectionImportService>(
   (Ref ref) => const SourceCollectionImportService(PlatformSourceCollectionFilePicker()),
+);
+
+final Uri defaultOnlinePluginCatalogUri = Uri.https('github.com', '/lingy-Mg/mg_read/releases/download/source-catalog/catalog.json');
+
+final onlineSourceCatalogServiceProvider = Provider<OnlineSourceCatalogService>(
+  (Ref ref) => OnlineSourceCatalogService(
+    httpClientFactory: () => ref.read(configuredFlutterNetworkProxyManagerProvider).createHttpClient(NetworkProxyTraffic.sourceHttp),
+  ),
 );
 
 abstract interface class SourceCollectionFilePicker {
@@ -64,6 +76,165 @@ final class SourceCollectionImportService {
       throw const SourceCollectionImportException('无法读取所选数据源合集文件。请检查文件权限后重试。');
     }
   }
+}
+
+/// Reads the static GitHub plugin repository and verifies each selected asset.
+final class OnlineSourceCatalogService {
+  OnlineSourceCatalogService({required this.httpClientFactory, Uri? catalogUri}) : catalogUri = catalogUri ?? defaultOnlinePluginCatalogUri;
+
+  final Future<HttpClient> Function() httpClientFactory;
+  final Uri catalogUri;
+
+  Future<SourceCollection> loadCatalog() async {
+    final client = await httpClientFactory();
+    try {
+      final request = await client.getUrl(catalogUri).timeout(const Duration(seconds: 30));
+      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      final response = await request.close().timeout(const Duration(seconds: 30));
+      if (response.statusCode != HttpStatus.ok) {
+        throw const SourceCollectionImportException('GitHub 插件仓库暂时无法访问。');
+      }
+      final bytes = await _readBoundedResponse(response, sourceCollectionMaxManifestBytes);
+      return _parseOnlineCatalog(bytes, (entry) => _downloadOnlinePlugin(entry));
+    } on SourceCollectionImportException {
+      rethrow;
+    } on Object {
+      throw const SourceCollectionImportException('无法读取 GitHub 插件仓库，请检查网络后重试。');
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Stream<List<int>> _downloadOnlinePlugin(_OnlineCatalogEntry entry) async* {
+    final client = await httpClientFactory();
+    try {
+      final request = await client.getUrl(entry.url).timeout(const Duration(seconds: 30));
+      request.headers.set(HttpHeaders.acceptHeader, 'application/javascript, text/javascript');
+      final response = await request.close().timeout(const Duration(seconds: 30));
+      if (response.statusCode != HttpStatus.ok) {
+        throw const SourceCollectionImportException('GitHub 插件文件下载失败。');
+      }
+      final bytes = await _readBoundedResponse(response, maxPluginTransferBytes);
+      if (bytes.length != entry.bytes ||
+          sha256.convert(bytes).toString() != entry.sha256 ||
+          getCrc32(bytes).toRadixString(16).padLeft(8, '0') != entry.crc32) {
+        throw const SourceCollectionImportException('插件文件与仓库清单中的大小或校验值不匹配。');
+      }
+      yield bytes;
+    } on SourceCollectionImportException {
+      rethrow;
+    } on Object {
+      throw const SourceCollectionImportException('插件文件下载中断，请检查网络后重试。');
+    } finally {
+      client.close(force: true);
+    }
+  }
+}
+
+Future<Uint8List> _readBoundedResponse(HttpClientResponse response, int maxBytes) async {
+  if (response.contentLength > maxBytes) {
+    throw const SourceCollectionImportException('GitHub 返回的文件超过允许大小。');
+  }
+  final builder = BytesBuilder(copy: false);
+  await for (final chunk in response.timeout(const Duration(seconds: 60))) {
+    if (builder.length + chunk.length > maxBytes) {
+      throw const SourceCollectionImportException('GitHub 返回的文件超过允许大小。');
+    }
+    builder.add(chunk);
+  }
+  final bytes = builder.takeBytes();
+  if (bytes.isEmpty) throw const SourceCollectionImportException('GitHub 返回了空文件。');
+  return bytes;
+}
+
+SourceCollection _parseOnlineCatalog(Uint8List bytes, Stream<List<int>> Function(_OnlineCatalogEntry) openBytes) {
+  late final Object? decoded;
+  try {
+    decoded = jsonDecode(utf8.decode(bytes, allowMalformed: false));
+  } on Object {
+    throw const SourceCollectionImportException('GitHub 插件仓库清单无法解析。');
+  }
+  if (decoded is! Map<String, dynamic> ||
+      decoded.keys.toSet().difference(<String>{'format', 'schemaVersion', 'plugins'}).isNotEmpty ||
+      decoded['format'] != 'mgread-online-plugin-catalog' ||
+      decoded['schemaVersion'] != 1 ||
+      decoded['plugins'] is! List<dynamic>) {
+    throw const SourceCollectionImportException('GitHub 插件仓库清单格式或版本不受支持。');
+  }
+  final rows = decoded['plugins'] as List<dynamic>;
+  if (rows.isEmpty || rows.length > sourceCollectionMaxPlugins) {
+    throw const SourceCollectionImportException('GitHub 插件仓库项目数量无效。');
+  }
+  final ids = <String>{};
+  var totalBytes = 0;
+  final plugins = <SourceCollectionPlugin>[];
+  for (final row in rows) {
+    if (row is! Map<String, dynamic> ||
+        row.keys.toSet().difference(<String>{'id', 'name', 'version', 'format', 'path', 'url', 'bytes', 'crc32', 'sha256'}).isNotEmpty) {
+      throw const SourceCollectionImportException('GitHub 插件仓库包含无效项目。');
+    }
+    final id = row['id'];
+    final name = row['name'];
+    final version = row['version'];
+    final format = row['format'];
+    final path = row['path'];
+    final url = Uri.tryParse(row['url'] is String ? row['url'] as String : '');
+    final size = row['bytes'];
+    final crc32 = row['crc32'];
+    final sha = row['sha256'];
+    if (id is! String ||
+        !RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$').hasMatch(id) ||
+        !ids.add(id) ||
+        name is! String ||
+        name.trim().isEmpty ||
+        name.length > 200 ||
+        version is! String ||
+        !RegExp(r'^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$').hasMatch(version) ||
+        format != 'singleFile' ||
+        path != 'plugins/$id.mgplugin.js' ||
+        url == null ||
+        url.scheme != 'https' ||
+        url.host != 'github.com' ||
+        !url.path.startsWith('/lingy-Mg/mg_read/releases/download/source-catalog/') ||
+        url.userInfo.isNotEmpty ||
+        url.hasQuery ||
+        url.hasFragment ||
+        size is! int ||
+        size <= 0 ||
+        size > maxPluginTransferBytes ||
+        crc32 is! String ||
+        !RegExp(r'^[a-f0-9]{8}$').hasMatch(crc32) ||
+        sha is! String ||
+        !RegExp(r'^[a-f0-9]{64}$').hasMatch(sha)) {
+      throw const SourceCollectionImportException('GitHub 插件仓库清单字段无效或包含重复项目。');
+    }
+    totalBytes += size;
+    if (totalBytes > maxPluginTransferBatchBytes) {
+      throw const SourceCollectionImportException('GitHub 插件仓库总大小超过 512 MiB。');
+    }
+    final entry = _OnlineCatalogEntry(url: url, bytes: size, crc32: crc32, sha256: sha);
+    plugins.add(
+      SourceCollectionPlugin(
+        id: id,
+        name: name.trim(),
+        version: version,
+        format: 'singleFile',
+        byteLength: size,
+        checksum: crc32,
+        openBytes: () => openBytes(entry),
+      ),
+    );
+  }
+  return SourceCollection(List<SourceCollectionPlugin>.unmodifiable(plugins));
+}
+
+final class _OnlineCatalogEntry {
+  const _OnlineCatalogEntry({required this.url, required this.bytes, required this.crc32, required this.sha256});
+
+  final Uri url;
+  final int bytes;
+  final String crc32;
+  final String sha256;
 }
 
 @immutable

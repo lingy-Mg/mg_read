@@ -12,7 +12,7 @@ import 'package:mg_read/app/app_theme.dart';
 
 enum DataSourceManagementAction { verify, diagnostics, help, uninstall }
 
-enum DataSourceImportChoice { node, native, collection }
+enum DataSourceImportChoice { node, native, collection, onlineRepository }
 
 bool get supportsNativeSourceImport =>
     !const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME') &&
@@ -27,7 +27,7 @@ Future<DataSourceImportChoice?> showDataSourceImportSheet(BuildContext context) 
   showDragHandle: true,
   builder: (context) => _ActionSheet(
     title: '添加数据源',
-    description: '从设备选择数据源文件，按提供方注明的类型导入。',
+    description: '从 GitHub 仓库或设备文件安装数据源。',
     children: [
       _ActionTile(
         actionKey: const Key('data-source-add-node'),
@@ -36,6 +36,14 @@ Future<DataSourceImportChoice?> showDataSourceImportSheet(BuildContext context) 
         subtitle: const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME') ? '选择 .mgplugin 安装包' : '选择 .mgplugin.js 或 .mgplugin 文件',
         onTap: () => Navigator.pop(context, DataSourceImportChoice.node),
       ),
+      if (supportsSourceCollectionImport)
+        _ActionTile(
+          actionKey: const Key('data-source-add-online-repository'),
+          icon: Icons.cloud_download_outlined,
+          title: '在线插件仓库',
+          subtitle: '从 GitHub 浏览、安装或更新数据源',
+          onTap: () => Navigator.pop(context, DataSourceImportChoice.onlineRepository),
+        ),
       if (supportsSourceCollectionImport)
         _ActionTile(
           actionKey: const Key('data-source-add-collection'),
