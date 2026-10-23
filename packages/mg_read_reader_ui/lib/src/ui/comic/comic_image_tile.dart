@@ -3,6 +3,7 @@
 /// 同时挂载的图片按需求比例共享预算，不能因先到先占把后续图片解码成纯色色块。
 /// 分配变化在帧结束后通知单元自行重解码；编码字节与布局尺寸仍由缓存及父列表持有。
 /// 单元销毁或更换预算时释放预留，延迟通知只访问仍登记的单元。
+/// 总量或单图上限为 null 时不施加对应软上限，仍允许内存压力后切回有限预算。
 library;
 
 import 'dart:typed_data';
@@ -20,17 +21,17 @@ import 'comic_reader_strings.dart';
 
 class ComicDecodedImageBudget {
   ComicDecodedImageBudget({
-    int maximumPixels = 32 * 1024 * 1024,
-    int maximumImagePixels = 8 * 1024 * 1024,
-  }) : assert(maximumPixels > 0),
-       assert(maximumImagePixels > 0),
+    int? maximumPixels = 50 * 1024 * 1024,
+    int? maximumImagePixels = 50 * 1024 * 1024 ~/ 4,
+  }) : assert(maximumPixels == null || maximumPixels > 0),
+       assert(maximumImagePixels == null || maximumImagePixels > 0),
        _maximumPixels = maximumPixels,
        _maximumImagePixels = maximumImagePixels;
 
-  int _maximumPixels;
-  int _maximumImagePixels;
-  int get maximumPixels => _maximumPixels;
-  int get maximumImagePixels => _maximumImagePixels;
+  int? _maximumPixels;
+  int? _maximumImagePixels;
+  int? get maximumPixels => _maximumPixels;
+  int? get maximumImagePixels => _maximumImagePixels;
   final Map<Object, _ComicDecodeReservation> _reservations =
       <Object, _ComicDecodeReservation>{};
   bool _notificationScheduled = false;
@@ -38,10 +39,11 @@ class ComicDecodedImageBudget {
   int allocationFor(Object owner) => _reservations[owner]?.grantedPixels ?? 0;
 
   void updateLimits({
-    required int maximumPixels,
-    required int maximumImagePixels,
+    required int? maximumPixels,
+    required int? maximumImagePixels,
   }) {
-    assert(maximumPixels > 0 && maximumImagePixels > 0);
+    assert(maximumPixels == null || maximumPixels > 0);
+    assert(maximumImagePixels == null || maximumImagePixels > 0);
     if (_maximumPixels == maximumPixels &&
         _maximumImagePixels == maximumImagePixels) {
       return;
@@ -75,9 +77,10 @@ class ComicDecodedImageBudget {
     );
     bool notify = false;
     for (final _ComicDecodeReservation reservation in _reservations.values) {
-      final int granted = desiredTotal <= maximumPixels
+      final int? maximum = maximumPixels;
+      final int granted = maximum == null || desiredTotal <= maximum
           ? reservation.desiredPixels
-          : reservation.desiredPixels * maximumPixels ~/ desiredTotal;
+          : reservation.desiredPixels * maximum ~/ desiredTotal;
       if (granted != reservation.grantedPixels) {
         reservation.grantedPixels = granted;
         notify = notify || reservation.onChanged != null;
@@ -260,7 +263,9 @@ class _ComicProgressiveImageTileState extends State<ComicProgressiveImageTile> {
               .round();
           final int maxDecodedPixels = widget.decodeBudget.reserve(
             this,
-            idealPixels.clamp(1, widget.decodeBudget.maximumImagePixels),
+            widget.decodeBudget.maximumImagePixels == null
+                ? math.max(1, idealPixels)
+                : idealPixels.clamp(1, widget.decodeBudget.maximumImagePixels!),
             onChanged: _handleDecodeBudgetChanged,
           );
           _reservedPixels = maxDecodedPixels;

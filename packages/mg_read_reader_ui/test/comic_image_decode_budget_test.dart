@@ -11,6 +11,34 @@ import 'package:novel_reader_ui/src/ui/reader_theme.dart';
 
 void main() {
   testWidgets(
+    'unlimited decoding can shrink under pressure and recover without a parent rebuild',
+    (tester) async {
+      final source = _PatternSource(await _patternBytes(tester));
+      final cache = ComicImageByteCache(bookId: 'book', dataSource: source);
+      final budget = ComicDecodedImageBudget(
+        maximumPixels: null,
+        maximumImagePixels: null,
+      );
+      final other = Object();
+      budget.reserve(other, 1000000000);
+      await _mount(tester, cache, budget);
+      await _waitForDecode(tester, width: 64);
+      expect(budget.allocationFor(other), 1000000000);
+      expect(budget.maximumPixels, isNull);
+      budget.release(other);
+      budget.updateLimits(maximumPixels: 256, maximumImagePixels: 256);
+      await _waitForDecode(tester, width: 16);
+      budget.updateLimits(maximumPixels: null, maximumImagePixels: null);
+      await _waitForDecode(tester, width: 64);
+      final colors = await _sampleCorners(tester);
+      expect(colors.$1, isNot(colors.$2));
+      expect(source.calls, 1);
+      await tester.pumpWidget(const SizedBox.shrink());
+      cache.dispose();
+    },
+  );
+
+  testWidgets(
     'changing the single-image limit redecodes mounted bytes and cache shrink preserves visible content',
     (tester) async {
       final source = _PatternSource(await _patternBytes(tester));

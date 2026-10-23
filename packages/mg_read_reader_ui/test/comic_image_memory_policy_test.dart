@@ -30,44 +30,55 @@ ReaderDeviceMemoryInfo _memory(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  for (final tier in <int, int>{
-    4: 128,
-    6: 192,
-    8: 256,
-    12: 384,
-    16: 512,
-    32: 512,
+  for (final tier in <int, int?>{
+    1: 200,
+    2: 200,
+    3: 200,
+    4: 500,
+    6: null,
+    8: null,
+    12: null,
+    16: null,
+    32: null,
   }.entries) {
     test(
       '${tier.key} GiB device scales decoded, single-image and byte caches',
       () {
         final policy = ComicImageMemoryPolicy.forDevice(_memory(tier.key));
-        expect(policy.decodedBytes, tier.value * _mib);
-        expect(policy.singleImageDecodedBytes, policy.decodedBytes ~/ 4);
-        expect(policy.encodedCacheBytes, policy.decodedBytes ~/ 4);
-        expect(policy.maximumPixels * 4, policy.decodedBytes);
+        if (tier.value == null) {
+          expect(policy.decodedBytes, isNull);
+          expect(policy.maximumPixels, isNull);
+          expect(policy.maximumImagePixels, isNull);
+          expect(policy.singleImageDecodedBytes, isNull);
+          expect(policy.encodedCacheBytes, 128 * _mib);
+        } else {
+          expect(policy.decodedBytes, tier.value! * _mib);
+          expect(policy.singleImageDecodedBytes, policy.decodedBytes! ~/ 4);
+          expect(policy.encodedCacheBytes, policy.decodedBytes! ~/ 4);
+          expect(policy.maximumPixels! * 4, policy.decodedBytes);
+        }
       },
     );
   }
 
   test(
-    'available memory, low-RAM and address space bound high-memory devices',
+    'high-memory devices have no proportional, low-RAM or address-space soft cap outside pressure',
     () {
       expect(
         ComicImageMemoryPolicy.forDevice(
           _memory(16, available: 512 * _mib),
         ).decodedBytes,
-        64 * _mib,
+        isNull,
       );
       expect(
         ComicImageMemoryPolicy.forDevice(
           _memory(16, lowRam: true),
         ).decodedBytes,
-        64 * _mib,
+        isNull,
       );
       expect(
         ComicImageMemoryPolicy.forDevice(_memory(16, bits: 32)).decodedBytes,
-        128 * _mib,
+        isNull,
       );
       expect(
         ComicImageMemoryPolicy.forDevice(_memory(16, lowMemory: true)),
@@ -77,6 +88,21 @@ void main() {
         ComicImageMemoryPolicy.forDevice(_memory(16, available: 0)),
         same(ComicImageMemoryPolicy.pressure),
       );
+    },
+  );
+
+  test(
+    'reserved system RAM still maps a nominal 4 GiB device to the 500 MiB tier',
+    () {
+      final policy = ComicImageMemoryPolicy.forDevice(
+        const ReaderDeviceMemoryInfo(
+          totalPhysicalBytes: 3800 * _mib,
+          availableBytes: 1500 * _mib,
+        ),
+      );
+      expect(policy.decodedBytes, 500 * _mib);
+      final smaller = ComicImageMemoryPolicy.forDevice(_memory(3));
+      expect(smaller.decodedBytes, 200 * _mib);
     },
   );
 
@@ -119,16 +145,17 @@ void main() {
       final platform = _MemoryPlatform()..memory = _memory(8);
       await _mount(tester, platform);
       await tester.pumpAndSettle();
-      expect(_tile(tester).decodeBudget.maximumPixels * 4, 256 * _mib);
-      expect(_tile(tester).decodeBudget.maximumImagePixels * 4, 64 * _mib);
-      expect(_tile(tester).cache.maxBytes, 64 * _mib);
+      expect(_tile(tester).decodeBudget.maximumPixels, isNull);
+      expect(_tile(tester).decodeBudget.maximumImagePixels, isNull);
+      expect(_tile(tester).cache.maxBytes, 128 * _mib);
       tester.binding.handleMemoryPressure();
       await tester.pump();
-      expect(_tile(tester).decodeBudget.maximumPixels * 4, 32 * _mib);
+      expect(_tile(tester).decodeBudget.maximumPixels! * 4, 32 * _mib);
       expect(_tile(tester).cache.maxBytes, 8 * _mib);
       await tester.pump(const Duration(seconds: 30));
       await tester.pump();
-      expect(_tile(tester).decodeBudget.maximumPixels * 4, 256 * _mib);
+      expect(_tile(tester).decodeBudget.maximumPixels, isNull);
+      expect(_tile(tester).decodeBudget.maximumImagePixels, isNull);
       expect(platform.calls, 2);
       await tester.pumpWidget(const SizedBox.shrink());
     },
@@ -143,11 +170,11 @@ void main() {
       for (var frame = 0; frame < 10; frame++) {
         await tester.pump(const Duration(milliseconds: 16));
       }
-      expect(_tile(tester).decodeBudget.maximumPixels * 4, 128 * _mib);
+      expect(_tile(tester).decodeBudget.maximumPixels! * 4, 200 * _mib);
       tester.binding.handleMemoryPressure();
       pending.complete(_memory(16));
       await tester.pump();
-      expect(_tile(tester).decodeBudget.maximumPixels * 4, 32 * _mib);
+      expect(_tile(tester).decodeBudget.maximumPixels! * 4, 32 * _mib);
       await tester.pumpWidget(const SizedBox.shrink());
       expect(tester.takeException(), isNull);
     },
@@ -164,13 +191,13 @@ void main() {
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       await tester.pump(const Duration(seconds: 60));
       expect(platform.calls, 1);
-      platform.memory = _memory(16, available: 512 * _mib);
+      platform.memory = _memory(16, available: 128 * _mib);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pump();
       expect(platform.calls, 2);
-      expect(_tile(tester).decodeBudget.maximumPixels * 4, 64 * _mib);
+      expect(_tile(tester).decodeBudget.maximumPixels! * 4, 32 * _mib);
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
