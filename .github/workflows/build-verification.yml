@@ -35,18 +35,14 @@ jobs:
 
   android:
     name: Android release APK
-    needs: [debounce, windows]
+    needs: debounce
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      ANDROID_NDK_VERSION: "28.2.13676358"
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Download Android native runtime
-        uses: actions/download-artifact@v8
-        with:
-          name: mgread-android-native-${{ github.sha }}
-          path: packages/mgread_plugin_runtime/android/src/native/jniLibs
 
       - name: Set up Java 17
         uses: actions/setup-java@v6
@@ -57,6 +53,20 @@ jobs:
           cache-dependency-path: |
             android/**/*.gradle*
             android/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Install Android NDK
+        run: sdkmanager --sdk_root="$ANDROID_HOME" --install "ndk;$ANDROID_NDK_VERSION"
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+        with:
+          toolchain: 1.97.1
+          target: x86_64-linux-android,aarch64-linux-android
+          rustflags: ""
+
+      - name: Build Android native Runtime
+        shell: pwsh
+        run: ./tools/build_native_runtime.ps1 -Platform android -NdkRoot "$env:ANDROID_HOME/ndk/$env:ANDROID_NDK_VERSION"
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -118,21 +128,12 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           toolchain: 1.97.1
-          target: x86_64-pc-windows-msvc,x86_64-linux-android,aarch64-linux-android
+          target: x86_64-pc-windows-msvc
           rustflags: ""
 
       - name: Build native Runtime hosts
         shell: pwsh
-        run: ./tools/build_native_runtime.ps1 -Platform all -NdkRoot "$env:ANDROID_SDK_ROOT/ndk/28.2.13676358"
-
-      - name: Upload Android native Runtime
-        uses: actions/upload-artifact@v7
-        with:
-          name: mgread-android-native-${{ github.sha }}
-          path: packages/mgread_plugin_runtime/android/src/native/jniLibs/**
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 1
+        run: ./tools/build_native_runtime.ps1 -Platform windows
 
       - name: Fetch Windows Node Runtime from Git LFS
         shell: pwsh
