@@ -47,11 +47,13 @@ jobs:
             echo "No eligible Node source packages found" >&2
             exit 1
           fi
-          for package in "${packages[@]}"; do
-            echo "Packing ${package}"
-            npm ci --prefer-offline --no-audit --no-fund --prefix "${package}"
-            npm run pack:plugin --prefix "${package}"
-          done
+          printf '%s\0' "${packages[@]}" |
+            xargs -0 -n 1 -P 3 bash -euo pipefail -c '
+              package="$1"
+              echo "Packing ${package}"
+              npm ci --prefer-offline --no-audit --no-fund --prefix "${package}"
+              npm run pack:plugin --prefix "${package}"
+            ' _
 
       - name: Create source collection
         run: python tools/package_source_collection.py --sources plugins/sources --output dist/mgread-sources.mgplugins
