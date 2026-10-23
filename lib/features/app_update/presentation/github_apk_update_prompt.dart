@@ -1,7 +1,7 @@
 /// User confirmation surface for a newer Android APK.
 ///
 /// The app shell owns when this prompt is shown; this file owns only the
-/// version summary and the user's install-or-later choice.
+/// structured release log and the user's install-or-later choice.
 library;
 
 import 'package:flutter/material.dart';
