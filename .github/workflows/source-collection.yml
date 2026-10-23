@@ -116,19 +116,12 @@ jobs:
           set -euo pipefail
 
           release_file="release/mgread-sources.mgplugins"
-          online_archive="release/mgread-online-catalog.zip"
           if [[ ! -s "$release_file" ]]; then
             echo "Source collection is missing or empty: $release_file" >&2
             exit 1
           fi
-          if [[ ! -s "$online_archive" ]]; then
-            echo "Online catalog package is missing or empty: $online_archive" >&2
-            exit 1
-          fi
-          mkdir -p release/online
-          unzip -q "$online_archive" -d release/online
-          test -s release/online/catalog.json
-          compgen -G 'release/online/plugins/*.mgplugin.js' >/dev/null
+          test -s release/catalog.json
+          compgen -G 'release/plugins/*.mgplugin.js' >/dev/null
 
           (
             cd release
@@ -154,7 +147,7 @@ jobs:
           catalog_tag="source-catalog"
           catalog_title="MgRead online plugin catalog"
           catalog_notes="Static Node plugin repository. The app downloads catalog.json and standalone verified .mgplugin.js assets directly from this GitHub Release; no application server is required."
-          catalog_assets=(release/online/catalog.json release/online/plugins/*.mgplugin.js)
+          catalog_assets=(release/catalog.json release/plugins/*.mgplugin.js)
           if gh release view "$catalog_tag" --repo "$REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$catalog_tag" "${catalog_assets[@]}" \
               --repo "$REPOSITORY" --clobber
