@@ -32,6 +32,8 @@
 - 区分宿主打包与来源装载：正常 App 预置两套宿主，来源 artifact 可在安装后导入，由归属引擎按需装载；
   不为 Node 和原生来源分别发布正常 App 版本。Node 单文件和原生 DLL/SO 的 artifact、加载与更新规则分别由
   `../mg_read_node_runtime/AGENTS.md` 和 `../mg_read_native_runtime/AGENTS.md` 拥有。
+- Android 两种 Node 后端的插件导入由 Dart 写入原生层提供的私有 `.part` 路径；Kotlin 只拥有路径、校验、原子发布和
+  Core/Service 刷新生命周期。不得再通过 MethodChannel 逐块发送导入文件字节。
 
 ## 验证
 

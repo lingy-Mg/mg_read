@@ -169,9 +169,9 @@ class JavetRuntimeBackendPlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                     result.error("invalid_request", "The plugin transfer metadata is invalid.", null)
                     return
                 }
-                host.beginPluginTransfer(pluginId, version, bytes, checksum, format) { error, id ->
+                host.beginPluginTransfer(pluginId, version, bytes, checksum, format) { error, transfer ->
                     mainHandler.post {
-                        if (error == null) result.success(id) else result.error(error.code, error.message, null)
+                        if (error == null) result.success(transfer) else result.error(error.code, error.message, null)
                     }
                 }
             }
@@ -209,19 +209,6 @@ class JavetRuntimeBackendPlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                 }
                 host.cancelPluginTransferExport(id)
                 result.success(null)
-            }
-            "writePluginTransferChunk" -> {
-                val id = call.argument<String>("id")
-                val chunk = call.argument<ByteArray>("chunk")
-                if (id.isNullOrBlank() || chunk == null) {
-                    result.error("invalid_request", "The plugin transfer chunk is invalid.", null)
-                    return
-                }
-                host.writePluginTransferChunk(id, chunk) { error ->
-                    mainHandler.post {
-                        if (error == null) result.success(null) else result.error(error.code, error.message, null)
-                    }
-                }
             }
             "finishPluginTransferBatch" -> {
                 val ids = call.argument<List<String>>("ids")

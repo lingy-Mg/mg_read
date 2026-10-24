@@ -2,6 +2,7 @@
 package com.mgread.mgread_plugin_runtime
 
 import java.nio.file.Files
+import java.io.File
 import java.util.zip.CRC32
 import org.junit.Assert.*
 import org.junit.Test
@@ -12,8 +13,9 @@ class AndroidPluginArtifactTransferTest {
         withTransfer { root, transfer ->
             val bytes = "single-js-fixture".toByteArray()
             val ids = (0 until 65).map { index ->
-                transfer.beginImport("org.test.$index", "1.0.0", bytes.size.toLong(), checksum(bytes), "singleFile")
-                    .also { transfer.writeImportChunk(it, bytes) }
+                val session = transfer.beginImport("org.test.$index", "1.0.0", bytes.size.toLong(), checksum(bytes), "singleFile")
+                File(session.getValue("temporaryPath")).writeBytes(bytes)
+                session.getValue("id")
             }
             assertEquals(65, root.listFiles()!!.count { it.name.endsWith(".part") })
             transfer.finishImportBatch(ids)
@@ -26,10 +28,12 @@ class AndroidPluginArtifactTransferTest {
     fun corruptLastFileDoesNotPublishEarlierFiles() {
         withTransfer { root, transfer ->
             val bytes = "fixture".toByteArray()
-            val first = transfer.beginImport("org.test.a", "1.0.0", bytes.size.toLong(), checksum(bytes), "singleFile")
-            val last = transfer.beginImport("org.test.b", "1.0.0", bytes.size.toLong(), "00000000", "singleFile")
-            transfer.writeImportChunk(first, bytes)
-            transfer.writeImportChunk(last, bytes)
+            val firstSession = transfer.beginImport("org.test.a", "1.0.0", bytes.size.toLong(), checksum(bytes), "singleFile")
+            val lastSession = transfer.beginImport("org.test.b", "1.0.0", bytes.size.toLong(), "00000000", "singleFile")
+            File(firstSession.getValue("temporaryPath")).writeBytes(bytes)
+            File(lastSession.getValue("temporaryPath")).writeBytes(bytes)
+            val first = firstSession.getValue("id")
+            val last = lastSession.getValue("id")
             assertEquals("plugin_transfer_checksum_mismatch", runCatching {
                 transfer.finishImportBatch(listOf(first, last))
             }.exceptionOrNull()?.message)
@@ -43,13 +47,13 @@ class AndroidPluginArtifactTransferTest {
     fun enforcesAggregateBytesAndReleasesCanceledBudget() {
         withTransfer { _, transfer ->
             val ids = (0 until 16).map {
-                transfer.beginImport("org.test.$it", "1.0.0", 32L * 1024 * 1024, "00000000", "singleFile")
+                transfer.beginImport("org.test.$it", "1.0.0", 32L * 1024 * 1024, "00000000", "singleFile").getValue("id")
             }
             assertEquals("transfer_batch_too_large", runCatching {
                 transfer.beginImport("org.test.excess", "1.0.0", 1, "00000000", "singleFile")
             }.exceptionOrNull()?.message)
             transfer.cancelImports(ids)
-            val next = transfer.beginImport("org.test.next", "1.0.0", 1, "00000000", "singleFile")
+            val next = transfer.beginImport("org.test.next", "1.0.0", 1, "00000000", "singleFile").getValue("id")
             transfer.cancelImports(listOf(next))
         }
     }

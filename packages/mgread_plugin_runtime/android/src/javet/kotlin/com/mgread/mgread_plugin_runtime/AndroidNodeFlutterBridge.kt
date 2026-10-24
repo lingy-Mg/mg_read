@@ -3,7 +3,8 @@
  *
  * Binder carries lifecycle records only. Plugin capabilities and resource
  * streams use Core's authenticated loopback protocol from Dart. This class
- * owns the main-process WebView, picker and bounded artifact inbox IO.
+ * owns the main-process WebView, picker and artifact inbox lifecycle. Dart
+ * writes files using the private staging paths returned by this bridge.
  */
 package com.mgread.mgread_plugin_runtime
 
@@ -118,13 +119,6 @@ internal class AndroidNodeFlutterBridge(
                     call.argument<Number>("bytes")?.toLong() ?: error("invalid_request"),
                     required(call, "checksum"), required(call, "format"),
                 )
-            }
-            "writePluginTransferChunk" -> fileOperation(result) {
-                transfer.writeImportChunk(
-                    required(call, "id"),
-                    call.argument<ByteArray>("chunk") ?: error("invalid_request"),
-                )
-                null
             }
             "finishPluginTransferBatch" -> fileOperation(result) {
                 val ids = call.argument<List<String>>("ids") ?: error("invalid_request")

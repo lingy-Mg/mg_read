@@ -7,19 +7,50 @@ const EventChannel _androidRuntimeProgressChannel = EventChannel(
   'mgread_plugin_runtime/android/progress',
 );
 const Duration _androidStartupTimeout = Duration(seconds: 30);
-const int _androidPluginTransferChunkBytes = 64 * 1024;
-
-Iterable<Uint8List> _splitAndroidPluginTransferChunk(List<int> bytes) sync* {
-  final buffer = bytes is Uint8List ? bytes : Uint8List.fromList(bytes);
-  for (
-    var offset = 0;
-    offset < buffer.length;
-    offset += _androidPluginTransferChunkBytes
-  ) {
-    final end = offset + _androidPluginTransferChunkBytes < buffer.length
-        ? offset + _androidPluginTransferChunkBytes
-        : buffer.length;
-    yield Uint8List.sublistView(buffer, offset, end);
+Future<void> _writeAndroidPluginTransferFile({
+  required Stream<List<int>> bytes,
+  required int expectedBytes,
+  required String temporaryPath,
+}) async {
+  final sink = File(temporaryPath).openWrite();
+  var copied = 0;
+  try {
+    await for (final chunk in bytes) {
+      copied += chunk.length;
+      if (copied > expectedBytes) {
+        throw const PluginRuntimeException(
+          'plugin_transfer_size_mismatch',
+          'The plugin transfer artifact exceeded its declared size.',
+        );
+      }
+      sink.add(chunk);
+    }
+    await sink.close();
+  } on FileSystemException catch (error, stackTrace) {
+    try {
+      await sink.close();
+    } on Object {}
+    final code = error.osError?.errorCode == 28
+        ? 'disk_full'
+        : 'plugin_transfer_failed';
+    Error.throwWithStackTrace(
+      PluginRuntimeException(
+        code,
+        'Android could not write the plugin artifact.',
+      ),
+      stackTrace,
+    );
+  } catch (error, stackTrace) {
+    try {
+      await sink.close();
+    } on Object {}
+    Error.throwWithStackTrace(error, stackTrace);
+  }
+  if (copied != expectedBytes) {
+    throw const PluginRuntimeException(
+      'plugin_transfer_size_mismatch',
+      'The plugin transfer artifact was truncated.',
+    );
   }
 }
 
@@ -502,8 +533,8 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
         }
       }
 
-      // Native IO closes completed files as they arrive. Activate once after
-      // the entire byte-bounded selection has been verified.
+      // Dart streams every artifact into the native-owned staging path.
+      // Activate once after the complete byte-bounded batch is verified.
       await _importPluginArtifactBatch(artifacts);
       _started = false;
       return _pluginImportResults(
@@ -525,43 +556,34 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
     final ids = <String>[];
     try {
       for (final item in artifacts) {
-        final id = await _androidRuntimeChannel
-            .invokeMethod<String>('beginPluginTransfer', <String, Object?>{
-              'bytes': item.artifact.bytes,
-              'format': item.artifact.format.name,
-              'pluginId': item.artifact.pluginId,
-              'checksum': item.artifact.checksum,
-              'version': item.artifact.version,
-            });
-        if (id == null || id.isEmpty) {
+        final transfer = await _androidRuntimeChannel
+            .invokeMapMethod<String, Object?>(
+              'beginPluginTransfer',
+              <String, Object?>{
+                'bytes': item.artifact.bytes,
+                'format': item.artifact.format.name,
+                'pluginId': item.artifact.pluginId,
+                'checksum': item.artifact.checksum,
+                'version': item.artifact.version,
+              },
+            );
+        final id = transfer?['id'];
+        final temporaryPath = transfer?['temporaryPath'];
+        if (id is! String ||
+            id.isEmpty ||
+            temporaryPath is! String ||
+            temporaryPath.isEmpty) {
           throw const PluginRuntimeException(
             'runtime_no_response',
-            'Android Runtime returned no transfer session.',
+            'Android Runtime returned no transfer staging file.',
           );
         }
         ids.add(id);
-        var copied = 0;
-        await for (final chunk in item.bytes) {
-          copied += chunk.length;
-          if (copied > item.artifact.bytes) {
-            throw const PluginRuntimeException(
-              'plugin_transfer_size_mismatch',
-              'The plugin transfer artifact exceeded its declared size.',
-            );
-          }
-          for (final transferChunk in _splitAndroidPluginTransferChunk(chunk)) {
-            await _androidRuntimeChannel.invokeMethod<void>(
-              'writePluginTransferChunk',
-              <String, Object?>{'chunk': transferChunk, 'id': id},
-            );
-          }
-        }
-        if (copied != item.artifact.bytes) {
-          throw const PluginRuntimeException(
-            'plugin_transfer_size_mismatch',
-            'The plugin transfer artifact was truncated.',
-          );
-        }
+        await _writeAndroidPluginTransferFile(
+          bytes: item.bytes,
+          expectedBytes: item.artifact.bytes,
+          temporaryPath: temporaryPath,
+        );
       }
       await _androidRuntimeChannel.invokeMethod<void>(
         'finishPluginTransferBatch',

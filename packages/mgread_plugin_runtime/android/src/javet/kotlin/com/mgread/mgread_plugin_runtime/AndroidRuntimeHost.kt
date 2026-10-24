@@ -303,7 +303,7 @@ internal class AndroidRuntimeHost(
         expectedBytes: Long,
         expectedChecksum: String,
         format: String,
-        callback: (AndroidRuntimeError?, String?) -> Unit,
+        callback: (AndroidRuntimeError?, Map<String, String>?) -> Unit,
     ) {
         if (disposed.get()) {
             callback(AndroidRuntimeError("runtime_unavailable", "Android Runtime is closed."), null)
@@ -312,14 +312,14 @@ internal class AndroidRuntimeHost(
         handler.post {
             try {
                 Log.i(TAG, "android_plugin_transfer_receive_started bytes=$expectedBytes")
-                val id = artifactTransfer.beginImport(
+                val transfer = artifactTransfer.beginImport(
                     pluginId = pluginId,
                     version = version,
                     expectedBytes = expectedBytes,
                     expectedChecksum = expectedChecksum,
                     format = format,
                 )
-                callback(null, id)
+                callback(null, transfer)
             } catch (error: Throwable) {
                 callback(AndroidRuntimeError(
                     if (error.message == "file_too_large") "plugin_transfer_artifact_too_large" else "invalid_request",
@@ -369,24 +369,6 @@ internal class AndroidRuntimeHost(
 
     fun cancelPluginTransferExport(id: String) {
         handler.post { artifactTransfer.cancelExport(id) }
-    }
-
-    fun writePluginTransferChunk(
-        id: String,
-        chunk: ByteArray,
-        callback: (AndroidRuntimeError?) -> Unit,
-    ) {
-        handler.post {
-            try {
-                artifactTransfer.writeImportChunk(id, chunk)
-                callback(null)
-            } catch (error: Throwable) {
-                callback(AndroidRuntimeError(
-                    if (error.message == "plugin_transfer_size_mismatch") "plugin_transfer_size_mismatch" else "disk_full",
-                    "Android Runtime could not accept the plugin transfer chunk.",
-                ))
-            }
-        }
     }
 
     fun finishPluginTransferBatch(

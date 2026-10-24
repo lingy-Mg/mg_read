@@ -467,42 +467,32 @@ final class _AndroidNodeProcessSupervisor implements _RuntimeSupervisor {
     try {
       for (final item in artifacts) {
         final artifact = item.artifact;
-        final id = await _channel
-            .invokeMethod<String>('beginPluginTransfer', <String, Object?>{
-              'pluginId': artifact.pluginId,
-              'version': artifact.version,
-              'bytes': artifact.bytes,
-              'checksum': artifact.checksum,
-              'format': artifact.format.name,
-            });
-        if (id == null)
+        final transfer = await _channel.invokeMapMethod<String, Object?>(
+          'beginPluginTransfer',
+          <String, Object?>{
+            'pluginId': artifact.pluginId,
+            'version': artifact.version,
+            'bytes': artifact.bytes,
+            'checksum': artifact.checksum,
+            'format': artifact.format.name,
+          },
+        );
+        final id = transfer?['id'];
+        final temporaryPath = transfer?['temporaryPath'];
+        if (id is! String ||
+            id.isEmpty ||
+            temporaryPath is! String ||
+            temporaryPath.isEmpty)
           throw const PluginRuntimeException(
             'runtime_no_response',
-            'No Android transfer ID.',
+            'Android Runtime returned no transfer staging file.',
           );
         ids.add(id);
-        var copied = 0;
-        await for (final chunk in item.bytes) {
-          copied += chunk.length;
-          if (copied > artifact.bytes) {
-            throw const PluginRuntimeException(
-              'plugin_transfer_size_mismatch',
-              'The artifact exceeded its size.',
-            );
-          }
-          for (final transferChunk in _splitAndroidPluginTransferChunk(chunk)) {
-            await _channel.invokeMethod<void>(
-              'writePluginTransferChunk',
-              <String, Object?>{'id': id, 'chunk': transferChunk},
-            );
-          }
-        }
-        if (copied != artifact.bytes) {
-          throw const PluginRuntimeException(
-            'plugin_transfer_size_mismatch',
-            'The artifact was truncated.',
-          );
-        }
+        await _writeAndroidPluginTransferFile(
+          bytes: item.bytes,
+          expectedBytes: artifact.bytes,
+          temporaryPath: temporaryPath,
+        );
       }
       _restarting = true;
       await _channel.invokeMethod<void>(

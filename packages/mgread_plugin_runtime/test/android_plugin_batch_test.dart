@@ -2,6 +2,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -13,8 +14,11 @@ void main() {
     const progress = MethodChannel('mgread_plugin_runtime/android/progress');
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    final stagingDirectory = await Directory.systemTemp.createTemp(
+      'mgread-android-plugin-staging-',
+    );
+    final stagedFiles = <File>[];
     var began = 0;
-    var written = 0;
     var finalized = 0;
     messenger.setMockMethodCallHandler(progress, (_) async => null);
     messenger.setMockMethodCallHandler(channel, (call) async {
@@ -59,13 +63,17 @@ void main() {
             ],
           });
         case 'beginPluginTransfer':
-          return 'transfer-${began++}';
-        case 'writePluginTransferChunk':
-          written++;
-          return null;
+          final id = 'transfer-${began++}';
+          final file = File('${stagingDirectory.path}/$id.part')..createSync();
+          stagedFiles.add(file);
+          return <String, Object?>{'id': id, 'temporaryPath': file.path};
         case 'finishPluginTransferBatch':
           expect(began, 65);
-          expect(written, 65);
+          expect(stagedFiles, hasLength(65));
+          expect(
+            await Future.wait(stagedFiles.map((file) => file.length())),
+            everyElement(1),
+          );
           expect(args!['ids'], hasLength(65));
           finalized++;
           return null;
@@ -80,6 +88,7 @@ void main() {
       await runtime.debugDispose();
       messenger.setMockMethodCallHandler(channel, null);
       messenger.setMockMethodCallHandler(progress, null);
+      await stagingDirectory.delete(recursive: true);
     });
     final result = await runtime.importPluginArtifacts([
       for (var index = 0; index < 65; index++)
@@ -108,13 +117,17 @@ void main() {
   });
 
   test(
-    'splits one large artifact stream chunk to Android 64 KiB writes',
+    'Dart writes a large artifact to the Android staging path before finalize',
     () async {
       const channel = MethodChannel('mgread_plugin_runtime/android');
       const progress = MethodChannel('mgread_plugin_runtime/android/progress');
       final messenger =
           TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-      final writtenChunks = <int>[];
+      final stagingDirectory = await Directory.systemTemp.createTemp(
+        'mgread-android-plugin-large-staging-',
+      );
+      const artifactBytes = 488865;
+      File? stagedFile;
       messenger.setMockMethodCallHandler(progress, (_) async => null);
       messenger.setMockMethodCallHandler(channel, (call) async {
         final args = call.arguments as Map<Object?, Object?>?;
@@ -156,14 +169,15 @@ void main() {
               ],
             });
           case 'beginPluginTransfer':
-            return 'large-transfer';
-          case 'writePluginTransferChunk':
-            final chunk = args!['chunk'] as Uint8List;
-            writtenChunks.add(chunk.length);
-            expect(chunk.length, lessThanOrEqualTo(64 * 1024));
-            return null;
+            stagedFile = File('${stagingDirectory.path}/large-transfer.part')
+              ..createSync();
+            return <String, Object?>{
+              'id': 'large-transfer',
+              'temporaryPath': stagedFile!.path,
+            };
           case 'finishPluginTransferBatch':
             expect(args!['ids'], <String>['large-transfer']);
+            expect(await stagedFile!.length(), artifactBytes);
             return null;
           case 'dispose':
             return null;
@@ -176,9 +190,9 @@ void main() {
         await runtime.debugDispose();
         messenger.setMockMethodCallHandler(channel, null);
         messenger.setMockMethodCallHandler(progress, null);
+        await stagingDirectory.delete(recursive: true);
       });
 
-      const artifactBytes = 488865;
       final result = await runtime.importPluginArtifacts([
         (
           artifact: PluginTransferArtifact(
@@ -195,11 +209,8 @@ void main() {
         ),
       ]);
 
-      expect(writtenChunks.length, greaterThan(1));
-      expect(
-        writtenChunks.fold<int>(0, (sum, length) => sum + length),
-        artifactBytes,
-      );
+      expect((await stagedFile!.readAsBytes()).length, artifactBytes);
+      expect((await stagedFile!.readAsBytes()).first, 7);
       expect(result.single.status, PluginTransferImportStatus.installed);
     },
   );
