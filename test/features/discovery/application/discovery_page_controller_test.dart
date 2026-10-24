@@ -61,7 +61,6 @@ void main() {
     await container.read(discoveryPageControllerProvider.notifier).selectSource(_TreeGateway.alternatePluginId);
 
     expect(sourceSelection.selectedSourceId, _TreeGateway.alternatePluginId);
-    expect(sourceSelection.recentSourceIds, <String>[_TreeGateway.alternatePluginId]);
   });
 
   test('retains the first loaded document after discovery stops listening', () async {
@@ -506,7 +505,6 @@ final class _MemoryDiscoverySourceSelectionStore implements DiscoverySourceSelec
 
   String? selectedSourceId;
   final List<String> pinnedSourceIds = <String>[];
-  final List<String> recentSourceIds = <String>[];
 
   @override
   Future<String?> load() async => selectedSourceId;
@@ -523,15 +521,6 @@ final class _MemoryDiscoverySourceSelectionStore implements DiscoverySourceSelec
   Future<void> setPinned(String sourceId, {required bool pinned}) async {
     pinnedSourceIds.remove(sourceId);
     if (pinned) pinnedSourceIds.insert(0, sourceId);
-  }
-
-  @override
-  Future<List<String>> loadRecent() async => List<String>.of(recentSourceIds);
-
-  @override
-  Future<void> recordUse(String sourceId) async {
-    recentSourceIds.remove(sourceId);
-    recentSourceIds.insert(0, sourceId);
   }
 }
 

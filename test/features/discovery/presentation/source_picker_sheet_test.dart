@@ -46,25 +46,29 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('选择数据源'), findsOneWidget);
-    expect(find.text('可用'), findsOneWidget);
+    expect(find.text('可用'), findsNothing);
+    expect(find.text('最近使用'), findsNothing);
     expect(find.text('全部'), findsNothing);
     expect(find.text('已启用'), findsNothing);
     expect(find.text('成人向原创网络小说数据源。'), findsOneWidget);
-    expect(find.text('2 个可用 · 当前：爱丽丝书屋'), findsOneWidget);
+    expect(find.text('2 个数据源 · 当前：爱丽丝书屋'), findsOneWidget);
     expect(find.byIcon(Icons.check_rounded), findsOneWidget);
-    expect(tester.getSize(find.byKey(const Key('discovery-source-picker-search'))).height, 46);
-    expect(tester.getSize(find.byKey(const Key('discovery-source-picker-filters'))).height, 44);
-    expect(find.byKey(const ValueKey<String>('discovery-source-picker-filter-count-可用')), findsOneWidget);
-    expect(find.byKey(const ValueKey<String>('discovery-source-picker-actions-org.mgread.aisishuwu')), findsOneWidget);
+    expect(find.byKey(const Key('discovery-source-picker-search')), findsNothing);
+    expect(find.byKey(const Key('discovery-source-picker-filters')), findsNothing);
+    expect(find.byKey(const Key('discovery-source-picker-filter-count-可用')), findsNothing);
     expect(
-      tester.getTopLeft(find.byKey(const Key('discovery-source-picker-filters'))).dy,
-      lessThan(tester.getTopLeft(find.byKey(const Key('discovery-source-picker-search'))).dy),
+      tester.getTopLeft(find.byKey(const Key('discovery-source-picker-search-toggle'))).dx,
+      lessThan(tester.getTopLeft(find.byKey(const Key('discovery-source-picker-close'))).dx),
     );
+    expect(find.byKey(const ValueKey<String>('discovery-source-picker-actions-org.mgread.aisishuwu')), findsOneWidget);
     final Image image = tester.widget<Image>(find.byKey(const Key('source-icon-network-org.example.manga')));
     expect(
       image.image,
       isA<NetworkImage>().having((NetworkImage provider) => provider.url, 'url', 'http://127.0.0.1:1/v1/plugin-icon/picker-test-token'),
     );
+    await tester.tap(find.byKey(const Key('discovery-source-picker-search-toggle')));
+    await tester.pumpAndSettle();
+    expect(tester.getSize(find.byKey(const Key('discovery-source-picker-search'))).height, 46);
     await tester.enterText(find.byKey(const Key('discovery-source-picker-search')), '漫画');
     await tester.pump();
 
@@ -74,6 +78,14 @@ void main() {
     await tester.pump();
     expect(find.text('爱丽丝书屋'), findsOneWidget);
     expect(find.byKey(const Key('discovery-source-picker-search-clear')), findsNothing);
+    await tester.enterText(find.byKey(const Key('discovery-source-picker-search')), '漫画');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('discovery-source-picker-search-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('discovery-source-picker-search')), findsNothing);
+    expect(find.text('爱丽丝书屋'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('discovery-source-picker-search-toggle')));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('discovery-source-picker-search')), '漫画');
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey<String>('discovery-source-picker-org.example.manga')));
@@ -213,37 +225,6 @@ void main() {
     expect(result, isA<DiscoverySourceWebViewActionRequested>());
     expect((result! as DiscoverySourceWebViewActionRequested).sourceId, 'org.mgread.aisishuwu');
     expect((result! as DiscoverySourceWebViewActionRequested).action, DiscoverySourceWebViewAction.enterDebug);
-  });
-
-  testWidgets('picker keeps the selected source in the recent-use filter', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light(),
-        home: Builder(
-          builder: (context) => TextButton(
-            onPressed: () => showDiscoverySourcePicker(
-              context,
-              sources: sources,
-              selectedSourceId: 'org.mgread.aisishuwu',
-              recentSourceIds: const <String>['org.example.manga', 'org.mgread.aisishuwu'],
-            ),
-            child: const Text('打开'),
-          ),
-        ),
-      ),
-    );
-
-    await tester.tap(find.text('打开'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('最近使用'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('爱丽丝书屋'), findsOneWidget);
-    expect(find.text('示例漫画源'), findsOneWidget);
-    expect(
-      tester.getTopLeft(find.byKey(const ValueKey<String>('discovery-source-picker-org.example.manga'))).dy,
-      lessThan(tester.getTopLeft(find.byKey(const ValueKey<String>('discovery-source-picker-org.mgread.aisishuwu'))).dy),
-    );
   });
 
   testWidgets('picker orders available sources by display name after pinned sources', (tester) async {

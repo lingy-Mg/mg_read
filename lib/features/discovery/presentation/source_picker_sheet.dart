@@ -1,6 +1,6 @@
 /// Discovery source selection sheet.
 ///
-/// Owns source filtering, search, pinning, selection, and the management
+/// Owns source search, pinning, selection, and the management
 /// hand-off. Runtime installation details remain outside this presentation
 /// boundary; visual controls and list rows live in focused part files.
 library;
@@ -54,7 +54,6 @@ Future<DiscoverySourcePickerResult?> showDiscoverySourcePicker(
   required String? selectedSourceId,
   bool allowAllSources = false,
   Iterable<String> pinnedSourceIds = const <String>[],
-  Iterable<String> recentSourceIds = const <String>[],
   Future<void> Function(String sourceId, bool pinned)? onPinChanged,
 }) {
   return showModalBottomSheet<DiscoverySourcePickerResult>(
@@ -70,13 +69,10 @@ Future<DiscoverySourcePickerResult?> showDiscoverySourcePicker(
       selectedSourceId: selectedSourceId,
       allowAllSources: allowAllSources,
       pinnedSourceIds: pinnedSourceIds,
-      recentSourceIds: recentSourceIds,
       onPinChanged: onPinChanged,
     ),
   );
 }
-
-enum _SourceFilter { available, recent }
 
 class _DiscoverySourcePickerSheet extends StatefulWidget {
   _DiscoverySourcePickerSheet({
@@ -84,16 +80,13 @@ class _DiscoverySourcePickerSheet extends StatefulWidget {
     required this.selectedSourceId,
     required this.allowAllSources,
     required Iterable<String> pinnedSourceIds,
-    required Iterable<String> recentSourceIds,
     this.onPinChanged,
-  }) : pinnedSourceIds = List<String>.unmodifiable(pinnedSourceIds),
-       recentSourceIds = List<String>.unmodifiable(recentSourceIds);
+  }) : pinnedSourceIds = List<String>.unmodifiable(pinnedSourceIds);
 
   final List<PluginSourceDescriptor> sources;
   final String? selectedSourceId;
   final bool allowAllSources;
   final List<String> pinnedSourceIds;
-  final List<String> recentSourceIds;
   final Future<void> Function(String sourceId, bool pinned)? onPinChanged;
 
   @override
@@ -101,18 +94,16 @@ class _DiscoverySourcePickerSheet extends StatefulWidget {
 }
 
 class _DiscoverySourcePickerSheetState extends State<_DiscoverySourcePickerSheet> {
-  _SourceFilter _filter = _SourceFilter.available;
+  bool _searchExpanded = false;
   String _query = '';
   late final TextEditingController _searchController;
   late List<String> _pinnedSourceIds;
-  late List<String> _recentSourceIds;
 
   @override
   void initState() {
     super.initState();
     _searchController = TextEditingController();
     _pinnedSourceIds = List<String>.of(widget.pinnedSourceIds);
-    _recentSourceIds = List<String>.of(widget.recentSourceIds);
   }
 
   @override
@@ -124,27 +115,18 @@ class _DiscoverySourcePickerSheetState extends State<_DiscoverySourcePickerSheet
   List<PluginSourceDescriptor> get _visibleSources {
     final query = _query.trim().toLowerCase();
     final visible = widget.sources.where((source) {
-      if (_filter == _SourceFilter.recent && !_recentSourceIds.contains(source.id)) return false;
       if (query.isEmpty) return true;
       final description = SourceBranding.description(sourceId: source.id, displayName: source.displayName, value: source.description);
       return source.displayName.toLowerCase().contains(query) || description.toLowerCase().contains(query);
     }).toList();
     final pinOrder = <String, int>{for (var index = 0; index < _pinnedSourceIds.length; index++) _pinnedSourceIds[index]: index};
-    final recentOrder = <String, int>{for (var index = 0; index < _recentSourceIds.length; index++) _recentSourceIds[index]: index};
     return visible..sort((left, right) {
       final leftOrder = pinOrder[left.id];
       final rightOrder = pinOrder[right.id];
       if (leftOrder == null && rightOrder == null) {
-        if (_filter == _SourceFilter.available) {
-          final leftSelected = left.id == widget.selectedSourceId;
-          final rightSelected = right.id == widget.selectedSourceId;
-          if (leftSelected != rightSelected) return leftSelected ? -1 : 1;
-        }
-        if (_filter == _SourceFilter.recent) {
-          final leftRecentOrder = recentOrder[left.id] ?? _recentSourceIds.length;
-          final rightRecentOrder = recentOrder[right.id] ?? _recentSourceIds.length;
-          if (leftRecentOrder != rightRecentOrder) return leftRecentOrder.compareTo(rightRecentOrder);
-        }
+        final leftSelected = left.id == widget.selectedSourceId;
+        final rightSelected = right.id == widget.selectedSourceId;
+        if (leftSelected != rightSelected) return leftSelected ? -1 : 1;
         final nameOrder = left.displayName.toLowerCase().compareTo(right.displayName.toLowerCase());
         return nameOrder == 0 ? left.id.compareTo(right.id) : nameOrder;
       }
@@ -155,8 +137,6 @@ class _DiscoverySourcePickerSheetState extends State<_DiscoverySourcePickerSheet
   }
 
   bool _isPinned(String sourceId) => _pinnedSourceIds.contains(sourceId);
-
-  int get _recentSourceCount => widget.sources.where((source) => _recentSourceIds.contains(source.id)).length;
 
   String get _selectedSourceLabel {
     if (widget.allowAllSources && widget.selectedSourceId == null) return '全部数据源';
@@ -169,6 +149,13 @@ class _DiscoverySourcePickerSheetState extends State<_DiscoverySourcePickerSheet
   void _clearQuery() {
     _searchController.clear();
     setState(() => _query = '');
+  }
+
+  void _toggleSearch() {
+    if (_searchExpanded) {
+      _clearQuery();
+    }
+    setState(() => _searchExpanded = !_searchExpanded);
   }
 
   Future<void> _togglePinned(String sourceId) async {
@@ -215,13 +202,12 @@ class _DiscoverySourcePickerSheetState extends State<_DiscoverySourcePickerSheet
                   child: Column(
                     children: <Widget>[
                       _SourcePickerHeader(
-                        availableCount: widget.sources.length,
-                        recentCount: _recentSourceCount,
+                        sourceCount: widget.sources.length,
                         selectedSourceLabel: _selectedSourceLabel,
-                        selectedFilter: _filter,
+                        searchExpanded: _searchExpanded,
                         query: _query,
                         searchController: _searchController,
-                        onFilterChanged: (filter) => setState(() => _filter = filter),
+                        onToggleSearch: _toggleSearch,
                         onQueryChanged: (value) => setState(() => _query = value),
                         onClearQuery: _clearQuery,
                         onClose: () => Navigator.of(context).pop(),
@@ -239,7 +225,6 @@ class _DiscoverySourcePickerSheetState extends State<_DiscoverySourcePickerSheet
                                 sources: visibleSources,
                                 selectedSourceId: widget.selectedSourceId,
                                 pinnedSourceIds: _pinnedSourceIds,
-                                filter: _filter,
                                 query: _query,
                                 hasAnySources: widget.sources.isNotEmpty,
                                 onClearQuery: _clearQuery,

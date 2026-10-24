@@ -90,14 +90,6 @@ final class AppSettingKeys {
     validator: _validateDiscoveryPinnedSourceIds,
   );
 
-  static const discoveryRecentSourceIds = SettingKey<List<String>>(
-    id: 'discovery.recentSourceIds',
-    documentKind: 'settings.discovery',
-    defaultValue: <String>[],
-    codec: SettingCodec<List<String>>(_discoveryRecentSourceIdsEncode, _discoveryRecentSourceIdsDecode, freeze: freezeSettingList<String>),
-    validator: _validateDiscoveryRecentSourceIds,
-  );
-
   static const libraryDocument = SettingsDocumentDefinition(id: 'app-settings:settings.library', kind: 'settings.library');
 
   /// How often opening a bookshelf may check source catalogs for new chapters.
@@ -276,7 +268,6 @@ final class AppSettingKeys {
     searchHistory,
     discoverySourceId,
     discoveryPinnedSourceIds,
-    discoveryRecentSourceIds,
     bookshelfCatalogRefreshIntervalHours,
     bookshelfCatalogAutoRefreshEnabled,
     bookshelfUnreadBadgeEnabled,
@@ -403,21 +394,6 @@ List<String> _discoveryPinnedSourceIdsDecode(Object? value) {
 
 void _validateDiscoveryPinnedSourceIds(List<String> value) {
   if (value.length > 100 || value.toSet().length != value.length || value.any((item) => item.trim().isEmpty || item.length > 512)) {
-    throw ArgumentError.value(value);
-  }
-}
-
-Object? _discoveryRecentSourceIdsEncode(List<String> value) => List<String>.of(value);
-
-List<String> _discoveryRecentSourceIdsDecode(Object? value) {
-  if (value is! List || value.any((item) => item is! String)) {
-    throw const FormatException('Expected a string list setting.');
-  }
-  return <String>[for (final item in value) item as String];
-}
-
-void _validateDiscoveryRecentSourceIds(List<String> value) {
-  if (value.length > 20 || value.toSet().length != value.length || value.any((item) => item.trim().isEmpty || item.length > 512)) {
     throw ArgumentError.value(value);
   }
 }

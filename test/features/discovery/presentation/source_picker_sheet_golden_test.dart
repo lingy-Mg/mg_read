@@ -63,7 +63,6 @@ class _SourcePickerGoldenHost extends StatelessWidget {
             sources: _sources,
             selectedSourceId: _sources.first.id,
             pinnedSourceIds: <String>[_sources.first.id],
-            recentSourceIds: _sources.take(4).map((source) => source.id),
           ),
         ),
       ),

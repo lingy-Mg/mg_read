@@ -6,25 +6,23 @@ part of 'source_picker_sheet.dart';
 
 class _SourcePickerHeader extends StatelessWidget {
   const _SourcePickerHeader({
-    required this.availableCount,
-    required this.recentCount,
+    required this.sourceCount,
     required this.selectedSourceLabel,
-    required this.selectedFilter,
+    required this.searchExpanded,
     required this.query,
     required this.searchController,
-    required this.onFilterChanged,
+    required this.onToggleSearch,
     required this.onQueryChanged,
     required this.onClearQuery,
     required this.onClose,
   });
 
-  final int availableCount;
-  final int recentCount;
+  final int sourceCount;
   final String selectedSourceLabel;
-  final _SourceFilter selectedFilter;
+  final bool searchExpanded;
   final String query;
   final TextEditingController searchController;
-  final ValueChanged<_SourceFilter> onFilterChanged;
+  final VoidCallback onToggleSearch;
   final ValueChanged<String> onQueryChanged;
   final VoidCallback onClearQuery;
   final VoidCallback onClose;
@@ -65,7 +63,7 @@ class _SourcePickerHeader extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '$availableCount 个可用 · 当前：$selectedSourceLabel',
+                        '$sourceCount 个数据源 · 当前：$selectedSourceLabel',
                         key: const Key('discovery-source-picker-summary'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -75,6 +73,12 @@ class _SourcePickerHeader extends StatelessWidget {
                   ),
                 ),
                 IconButton(
+                  key: const Key('discovery-source-picker-search-toggle'),
+                  tooltip: searchExpanded ? '收起搜索' : '搜索数据源',
+                  onPressed: onToggleSearch,
+                  icon: Icon(searchExpanded ? Icons.search_off_rounded : Icons.search_rounded, size: 22),
+                ),
+                IconButton(
                   key: const Key('discovery-source-picker-close'),
                   tooltip: '关闭',
                   onPressed: onClose,
@@ -82,147 +86,50 @@ class _SourcePickerHeader extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: AppSpacing.regular),
-            Container(
-              key: const Key('discovery-source-picker-filters'),
-              height: 44,
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(color: controlSurface, borderRadius: AppRadii.control),
-              child: Row(
-                children: <Widget>[
-                  Expanded(
-                    child: _SourceFilterButton(
-                      label: '可用',
-                      count: availableCount,
-                      selected: selectedFilter == _SourceFilter.available,
-                      onPressed: () => onFilterChanged(_SourceFilter.available),
+            if (searchExpanded) ...<Widget>[
+              const SizedBox(height: AppSpacing.regular),
+              SizedBox(
+                height: 46,
+                child: TextField(
+                  key: const Key('discovery-source-picker-search'),
+                  controller: searchController,
+                  onChanged: onQueryChanged,
+                  textInputAction: TextInputAction.search,
+                  style: theme.textTheme.bodyMedium,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: AppSpacing.regular),
+                    hintText: '搜索数据源名称或功能',
+                    hintStyle: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
+                    prefixIcon: Icon(Icons.search_rounded, color: tokens.mutedText, size: 20),
+                    prefixIconConstraints: const BoxConstraints(minWidth: 44),
+                    suffixIcon: query.isEmpty
+                        ? null
+                        : IconButton(
+                            key: const Key('discovery-source-picker-search-clear'),
+                            tooltip: '清除搜索',
+                            onPressed: onClearQuery,
+                            icon: Icon(Icons.cancel_rounded, size: 18, color: tokens.mutedText),
+                          ),
+                    filled: true,
+                    fillColor: controlSurface,
+                    border: OutlineInputBorder(
+                      borderRadius: AppRadii.control,
+                      borderSide: BorderSide(color: tokens.divider),
                     ),
-                  ),
-                  Expanded(
-                    child: _SourceFilterButton(
-                      label: '最近使用',
-                      count: recentCount,
-                      selected: selectedFilter == _SourceFilter.recent,
-                      onPressed: () => onFilterChanged(_SourceFilter.recent),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: AppRadii.control,
+                      borderSide: BorderSide(color: tokens.divider),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppSpacing.compact),
-            SizedBox(
-              height: 46,
-              child: TextField(
-                key: const Key('discovery-source-picker-search'),
-                controller: searchController,
-                onChanged: onQueryChanged,
-                textInputAction: TextInputAction.search,
-                style: theme.textTheme.bodyMedium,
-                decoration: InputDecoration(
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(vertical: AppSpacing.regular),
-                  hintText: selectedFilter == _SourceFilter.recent ? '搜索最近使用的数据源' : '搜索数据源名称或功能',
-                  hintStyle: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
-                  prefixIcon: Icon(Icons.search_rounded, color: tokens.mutedText, size: 20),
-                  prefixIconConstraints: const BoxConstraints(minWidth: 44),
-                  suffixIcon: query.isEmpty
-                      ? null
-                      : IconButton(
-                          key: const Key('discovery-source-picker-search-clear'),
-                          tooltip: '清除搜索',
-                          onPressed: onClearQuery,
-                          icon: Icon(Icons.cancel_rounded, size: 18, color: tokens.mutedText),
-                        ),
-                  filled: true,
-                  fillColor: controlSurface,
-                  border: OutlineInputBorder(
-                    borderRadius: AppRadii.control,
-                    borderSide: BorderSide(color: tokens.divider),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: AppRadii.control,
-                    borderSide: BorderSide(color: tokens.divider),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: AppRadii.control,
-                    borderSide: BorderSide(color: tokens.focusRing, width: 1.5),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: AppRadii.control,
+                      borderSide: BorderSide(color: tokens.focusRing, width: 1.5),
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SourceFilterButton extends StatelessWidget {
-  const _SourceFilterButton({required this.label, required this.count, required this.selected, required this.onPressed});
-
-  final String label;
-  final int count;
-  final bool selected;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final tokens = AppThemeTokens.of(context);
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: '筛选数据源：$label，$count 个',
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: AppRadii.discoveryButton,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: AppRadii.discoveryButton,
-          child: AnimatedContainer(
-            duration: AppMotion.navigationSelection,
-            decoration: BoxDecoration(
-              color: selected ? theme.colorScheme.surface : Colors.transparent,
-              borderRadius: AppRadii.discoveryButton,
-              border: Border.all(color: selected ? tokens.divider : Colors.transparent),
-              boxShadow: selected
-                  ? <BoxShadow>[BoxShadow(color: tokens.shadow.withValues(alpha: 0.10), blurRadius: 8, offset: const Offset(0, 2))]
-                  : null,
-            ),
-            child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text(
-                    label,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: selected ? theme.colorScheme.onSurface : tokens.mutedText,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: selected ? tokens.accentSoft : tokens.divider.withValues(alpha: 0.58),
-                      borderRadius: AppRadii.pill,
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                      child: Text(
-                        '$count',
-                        key: ValueKey<String>('discovery-source-picker-filter-count-$label'),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: selected ? tokens.accent : tokens.mutedText,
-                          height: 1.1,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
         ),
       ),
     );

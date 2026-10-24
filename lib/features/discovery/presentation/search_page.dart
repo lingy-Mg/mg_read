@@ -475,7 +475,6 @@ class _SearchPageHeader extends ConsumerWidget {
   Future<void> _showPicker(BuildContext context, WidgetRef ref, SearchPageState state, SearchPageController controller) async {
     final pinStore = ref.read(discoverySourceSelectionStoreProvider);
     final pinnedSourceIds = await pinStore.loadPinned();
-    final recentSourceIds = await pinStore.loadRecent();
     if (!context.mounted) return;
     final selected = await showDiscoverySourcePicker(
       context,
@@ -483,7 +482,6 @@ class _SearchPageHeader extends ConsumerWidget {
       selectedSourceId: state.selectedSourceId,
       allowAllSources: true,
       pinnedSourceIds: pinnedSourceIds,
-      recentSourceIds: recentSourceIds,
       onPinChanged: (sourceId, pinned) => pinStore.setPinned(sourceId, pinned: pinned),
     );
     switch (selected) {

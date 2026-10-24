@@ -105,7 +105,7 @@ class SourcePreviewScope extends InheritedWidget {
   bool updateShouldNotify(SourcePreviewScope oldWidget) => false;
 }
 
-/// A session-local selection store: no persistent selection, pins or recency writes.
+/// A session-local selection store: no persistent selection or pin writes.
 class PreviewSourceSelectionStore implements DiscoverySourceSelectionStore {
   PreviewSourceSelectionStore(this.sourceId);
 
@@ -120,9 +120,5 @@ class PreviewSourceSelectionStore implements DiscoverySourceSelectionStore {
   @override
   Future<List<String>> loadPinned() async => [];
   @override
-  Future<List<String>> loadRecent() async => [];
-  @override
   Future<void> setPinned(String sourceId, {required bool pinned}) async {}
-  @override
-  Future<void> recordUse(String sourceId) async {}
 }

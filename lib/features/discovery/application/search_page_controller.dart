@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/batch_search.dart';
-import 'package:mg_read/features/discovery/application/discovery_source_selection_store.dart';
 import 'package:mg_read/features/discovery/application/search_page_state.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
@@ -94,13 +93,6 @@ class SearchPageController extends Notifier<SearchPageState> {
       sortOrder: SearchResultSortOrder.defaultForSourceScope(pluginId),
     );
     state = state.withHotSearches(const <PluginSearchSuggestion>[]);
-    if (pluginId != null) {
-      try {
-        await ref.read(discoverySourceSelectionStoreProvider).recordUse(pluginId);
-      } on Object {
-        // Keep the in-session selection usable if recency persistence is unavailable.
-      }
-    }
     unawaited(_loadSuggestions(pluginId, ++_latestSuggestionGeneration));
     if (query.isNotEmpty) await search(query);
   }

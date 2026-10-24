@@ -9,7 +9,6 @@ class _SourcePickerList extends StatelessWidget {
     required this.sources,
     required this.selectedSourceId,
     required this.pinnedSourceIds,
-    required this.filter,
     required this.query,
     required this.hasAnySources,
     required this.onClearQuery,
@@ -21,7 +20,6 @@ class _SourcePickerList extends StatelessWidget {
   final List<PluginSourceDescriptor> sources;
   final String? selectedSourceId;
   final List<String> pinnedSourceIds;
-  final _SourceFilter filter;
   final String query;
   final bool hasAnySources;
   final VoidCallback onClearQuery;
@@ -32,7 +30,7 @@ class _SourcePickerList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (sources.isEmpty) {
-      return _SourcePickerEmptyState(filter: filter, query: query, hasAnySources: hasAnySources, onClearQuery: onClearQuery);
+      return _SourcePickerEmptyState(query: query, hasAnySources: hasAnySources, onClearQuery: onClearQuery);
     }
     final pinned = sources.where((source) => pinnedSourceIds.contains(source.id)).toList(growable: false);
     final others = sources.where((source) => !pinnedSourceIds.contains(source.id)).toList(growable: false);
@@ -113,9 +111,8 @@ class _SourcePickerSectionLabel extends StatelessWidget {
 }
 
 class _SourcePickerEmptyState extends StatelessWidget {
-  const _SourcePickerEmptyState({required this.filter, required this.query, required this.hasAnySources, required this.onClearQuery});
+  const _SourcePickerEmptyState({required this.query, required this.hasAnySources, required this.onClearQuery});
 
-  final _SourceFilter filter;
   final String query;
   final bool hasAnySources;
   final VoidCallback onClearQuery;
@@ -125,22 +122,12 @@ class _SourcePickerEmptyState extends StatelessWidget {
     final theme = Theme.of(context);
     final tokens = AppThemeTokens.of(context);
     final hasQuery = query.trim().isNotEmpty;
-    final icon = hasQuery
-        ? Icons.search_off_rounded
-        : filter == _SourceFilter.recent
-        ? Icons.history_rounded
-        : Icons.extension_off_outlined;
-    final title = hasQuery
-        ? '没有找到“${query.trim()}”'
-        : filter == _SourceFilter.recent
-        ? '还没有最近使用的数据源'
-        : '还没有可用的数据源';
+    final icon = hasQuery ? Icons.search_off_rounded : Icons.extension_off_outlined;
+    final title = hasQuery ? '没有找到“${query.trim()}”' : '还没有数据源';
     final description = hasQuery
         ? '可以尝试名称、类型或数据源功能关键词'
-        : filter == _SourceFilter.recent
-        ? '使用过的数据源会按最近顺序显示在这里'
         : hasAnySources
-        ? '当前筛选条件下没有可显示的数据源'
+        ? '当前没有可显示的数据源'
         : '添加并启用数据源后即可开始浏览内容';
     return Center(
       key: const Key('discovery-source-picker-empty'),
