@@ -249,37 +249,29 @@ class _GroupedDetailCatalogState extends State<_GroupedDetailCatalog> {
             ),
           )
         else
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final columns = switch (constraints.maxWidth) {
-                < 360 => 2,
-                < 680 => 3,
-                < 980 => 4,
-                _ => 6,
-              };
-              return GridView.builder(
-                key: ValueKey<String>('source-detail-episode-grid-${group.id}'),
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: visibleEpisodes.length,
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: columns,
-                  mainAxisSpacing: AppSpacing.compact,
-                  crossAxisSpacing: AppSpacing.compact,
-                  childAspectRatio: 2.45,
+          ListView.separated(
+            key: ValueKey<String>('source-detail-episode-list-${group.id}'),
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: visibleEpisodes.length,
+            separatorBuilder: (context, index) => Divider(height: 1, color: AppThemeTokens.of(context).divider),
+            itemBuilder: (context, index) {
+              final episode = visibleEpisodes[index];
+              final tokens = AppThemeTokens.of(context);
+              final theme = Theme.of(context);
+              return ListTile(
+                key: ValueKey<String>('source-detail-episode-${group.id}-${episode.id}'),
+                contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.unit),
+                minLeadingWidth: 34,
+                minVerticalPadding: AppSpacing.unit,
+                leading: Text(
+                  '${index + 1}'.padLeft(2, '0'),
+                  style: theme.textTheme.labelMedium?.copyWith(color: tokens.mutedText, fontWeight: FontWeight.w600),
                 ),
-                itemBuilder: (context, index) {
-                  final episode = visibleEpisodes[index];
-                  return OutlinedButton(
-                    key: ValueKey<String>('source-detail-episode-${group.id}-${episode.id}'),
-                    onPressed: () => widget.onEpisodeSelected(episode, _catalog),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.compact),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: Text(episode.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  );
-                },
+                title: Text(episode.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                titleTextStyle: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                trailing: Icon(Icons.play_circle_outline_rounded, color: tokens.accent),
+                onTap: () => widget.onEpisodeSelected(episode, _catalog),
               );
             },
           ),
