@@ -101,11 +101,8 @@ void main() {
 
     expect(find.byType(LibraryHomeShell), findsOneWidget);
     expect(find.byKey(const Key('continue-reading-surface')), findsOneWidget);
-    expect(
-      find.byType(DecoratedBox).evaluate().where((Element element) => element.widget.key == const Key('library-home-top-bottom-fade')),
-      hasLength(1),
-    );
-    expect(find.descendant(of: find.byKey(const Key('library-home-top-backdrop')), matching: find.byType(ShaderMask)), findsNothing);
+    expect(find.byKey(const Key('library-home-top-bottom-fade')), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const Key('library-home-top-backdrop')), matching: find.byType(ShaderMask)), findsOneWidget);
     expect(image.width, 390);
     expect(image.height, 844);
     expect(coverPixel, isNot(pageBackground), reason: 'The actual last-read image should be present in the reading card.');
