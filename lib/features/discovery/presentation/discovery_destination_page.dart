@@ -503,12 +503,14 @@ String _sourceErrorReason(AppError error) => switch (error.code) {
   AppErrorCode.interactionRequired => '当前请求需要在数据源的内置 WebView 中完成交互。',
   AppErrorCode.timeout => '数据源请求在限时内未完成。',
   AppErrorCode.cancelled => '请求在获得内容前被新的页面操作中止。',
-  AppErrorCode.runtimeUnavailable || AppErrorCode.runtimeStartFailed || AppErrorCode.runtimeNotReady => 'Runtime 尚未就绪或已中断。',
+  AppErrorCode.runtimeStartFailed when error.detail?.contains('启动参数') == true => 'Runtime 启动参数与当前应用版本不兼容。',
+  AppErrorCode.runtimeUnavailable || AppErrorCode.runtimeStartFailed || AppErrorCode.runtimeNotReady => 'Runtime 启动失败，暂时无法读取数据源。',
   AppErrorCode.pluginNotFound || AppErrorCode.pluginDisabled || AppErrorCode.pluginDamaged => '当前数据源不可用。',
   _ => '请求未能安全完成。',
 };
 
 String _sourceErrorNextStep(AppError error) => switch (error.code) {
+  AppErrorCode.runtimeStartFailed when error.detail?.contains('启动参数') == true => '更新或重新安装应用后重试；若仍失败，请复制错误码反馈。',
   AppErrorCode.sourceAccessBlocked || AppErrorCode.interactionRequired => '如已打开内置 WebView，请完成网站要求的验证或交互，返回此页后点“刷新”。',
   AppErrorCode.cancelled => '若刚切换了分类、数据源或返回页面，此中止是预期行为；停留在当前页后点“刷新”。',
   AppErrorCode.timeout || AppErrorCode.rateLimited || AppErrorCode.overloaded => '稍等片刻后点“刷新”；若持续出现，请查看下方诊断位置并更新数据源。',

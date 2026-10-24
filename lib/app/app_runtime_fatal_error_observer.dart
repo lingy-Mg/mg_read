@@ -101,6 +101,7 @@ _RuntimeFatalProjection? _fatalProjectionFor(String code) => switch (code) {
   'runtime_data_root_unavailable' ||
   'runtime_bundled_plugin_assets_missing' ||
   'runtime_entrypoint_missing' ||
+  'runtime_invalid_launch_options' ||
   'runtime_exited_before_ready' ||
   'runtime_node_executable_missing' ||
   'runtime_process_launch_failed' ||

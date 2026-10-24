@@ -178,6 +178,7 @@ jobs:
         run: |
           npm ci
           npm run stage:flutter-windows
+          npm run verify:staged-windows
 
       - name: Ensure declared Runtime asset directories exist
         shell: bash

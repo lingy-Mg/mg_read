@@ -16,6 +16,7 @@ export type RuntimeDiagnosticLevel = "error" | "info" | "warning";
 export type RuntimeLifecycleDiagnosticCode =
   | "runtime_loopback_bind_failed"
   | "runtime_node_version_incompatible"
+  | "runtime_invalid_launch_options"
   | "runtime_shutdown_failed"
   | "runtime_debug_http_port_unavailable"
   | "runtime_start_failed"

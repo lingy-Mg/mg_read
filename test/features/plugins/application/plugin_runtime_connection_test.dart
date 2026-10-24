@@ -78,6 +78,19 @@ void main() {
     expect(error.detail, detail);
   });
 
+  test('invalid Runtime launch options map to a safe actionable startup detail', () {
+    final error = normalizePluginRuntimeError(
+      const PluginRuntimeException(
+        'runtime_invalid_launch_options',
+        'Runtime 启动参数无效或与当前应用版本不兼容。',
+      ),
+    );
+
+    expect(error.code, AppErrorCode.runtimeStartFailed);
+    expect(error.detail, 'Runtime 启动参数无效或与当前应用版本不兼容。');
+    expect(error.toString(), isNot(contains('RUNTIME-SECRET')));
+  });
+
   test('plugin response failures retain reviewed validation detail and location', () {
     const detail = 'The plugin returned an invalid response. Response validation failed at the inline payload budget.';
     final error = normalizePluginRuntimeError(

@@ -32,6 +32,16 @@ let stopping = false;
 let fatalReported = false;
 let parentWatchdog: NodeJS.Timeout | undefined;
 
+class InvalidRuntimeLaunchOptionsError extends Error {
+  readonly code = "runtime_invalid_launch_options" as const;
+}
+
+function invalidLaunchOptions(): InvalidRuntimeLaunchOptionsError {
+  return new InvalidRuntimeLaunchOptionsError(
+    "The desktop Runtime received invalid or incompatible launch options.",
+  );
+}
+
 /**
  * Emits structured diagnostic text for the Flutter-facing stream.
  */
@@ -57,12 +67,12 @@ function parseLaunchOptions(arguments_: readonly string[]): DesktopRuntimeOption
   for (const argument of arguments_) {
     const separator = argument.indexOf("=");
     if (separator <= 2) {
-      throw new Error("The desktop Runtime received invalid launch options.");
+      throw invalidLaunchOptions();
     }
     const name = argument.slice(0, separator);
     const value = argument.slice(separator + 1);
     if (values.has(name) || value.length === 0 || value.includes("\0")) {
-      throw new Error("The desktop Runtime received invalid launch options.");
+      throw invalidLaunchOptions();
     }
     values.set(name, value);
   }
@@ -82,7 +92,7 @@ function parseLaunchOptions(arguments_: readonly string[]): DesktopRuntimeOption
     (debugHttpEnabled !== undefined && debugHttpEnabled !== "1") ||
     values.size !== expectedValueCount
   ) {
-    throw new Error("The desktop Runtime requires its platform-owned data root.");
+    throw invalidLaunchOptions();
   }
   return {
     dataRoot,
@@ -206,6 +216,9 @@ async function failRuntime(
 
 /** Maps known startup failures to diagnostics consumed by Flutter. */
 function startupFailureCode(error: unknown): RuntimeFatalDiagnosticCode {
+  if (error instanceof InvalidRuntimeLaunchOptionsError) {
+    return error.code;
+  }
   if (error instanceof Error && error.message.startsWith("Runtime requires Node")) {
     return "runtime_node_version_incompatible";
   }
@@ -262,8 +275,11 @@ process.on("unhandledRejection", (_reason: unknown) => {
 });
 
 void main().catch((error: unknown) => {
+  const code = startupFailureCode(error);
   void failRuntime(
-    startupFailureCode(error),
-    "The desktop Runtime failed before it became ready.",
+    code,
+    code === "runtime_invalid_launch_options"
+      ? "Runtime 启动参数无效或与当前应用版本不兼容。"
+      : "The desktop Runtime failed before it became ready.",
   );
 });

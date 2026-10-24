@@ -346,7 +346,8 @@ AppError normalizePluginRuntimeError(PluginRuntimeException error, {String? loca
     'runtime_node_executable_missing' ||
     'runtime_process_exited' ||
     'runtime_process_launch_failed' ||
-    'runtime_startup_channel_failed' => AppErrorCode.runtimeStartFailed,
+    'runtime_startup_channel_failed' ||
+    'runtime_invalid_launch_options' => AppErrorCode.runtimeStartFailed,
     'runtime_http_readiness_failed' || 'runtime_invalid_ready_signal' || 'runtime_ready_timeout' => AppErrorCode.runtimeNotReady,
     'invalid_response' || 'plugin_invalid_response' => AppErrorCode.invalidFormat,
     'file_name_invalid' => AppErrorCode.fileNameInvalid,
@@ -362,7 +363,10 @@ AppError normalizePluginRuntimeError(PluginRuntimeException error, {String? loca
     final value when value.startsWith('windows_job_object_') => AppErrorCode.runtimeStartFailed,
     _ => AppErrorCode.fromWireValue(error.code),
   };
-  return AppError.fromCode(code, detail: _boundedRuntimeValidationDetail(error.message), location: location);
+  final detail = error.code == 'runtime_invalid_launch_options'
+      ? 'Runtime 启动参数无效或与当前应用版本不兼容。'
+      : _boundedRuntimeValidationDetail(error.message);
+  return AppError.fromCode(code, detail: detail, location: location);
 }
 
 String? _boundedRuntimeValidationDetail(String value) {

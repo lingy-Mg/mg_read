@@ -8,6 +8,39 @@ import 'package:mg_read/app/app_runtime_fatal_error_observer.dart';
 import '../core/diagnostics/diagnostics_testkit.dart';
 
 void main() {
+  test('maps invalid Runtime launch options to a startup fatal report', () async {
+    final kit = DiagnosticsTestkit();
+    final reporter = AppFatalErrorReporter(kit.manager);
+    final source = _FakeRuntimeFatalDiagnosticSource(
+      latest: const <RuntimeDiagnostic>[
+        RuntimeDiagnostic(
+          code: 'runtime_invalid_launch_options',
+          level: RuntimeDiagnosticLevel.error,
+          message: 'Runtime 启动参数无效或与当前应用版本不兼容。',
+        ),
+      ],
+    );
+    final observer = RuntimeFatalErrorObserver(source, reporter);
+    final reports = <AppFatalDiagnosticReport>[];
+    final subscription = reporter.reports.listen(reports.add);
+    addTearDown(() async {
+      observer.dispose();
+      await subscription.cancel();
+      await source.dispose();
+      reporter.dispose();
+      await kit.dispose();
+    });
+
+    observer.start();
+
+    expect(observer.hasObservedFatal, isTrue);
+    expect(reports, hasLength(1));
+    expect(reports.single.errorCode, 'runtime_start_failed');
+    expect(reports.single.phase, 'runtime_startup');
+    expect(reports.single.runtimeState, 'startup_failed');
+    expect(reports.single.errorText, 'Runtime 启动参数无效或与当前应用版本不兼容。');
+  });
+
   test('observes a pre-subscription startup failure from the typed snapshot', () async {
     final kit = DiagnosticsTestkit();
     final reporter = AppFatalErrorReporter(kit.manager);

@@ -14,6 +14,27 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/discovery/presentation/discovery_destination_page.dart';
 
 void main() {
+  testWidgets('shows a safe Runtime startup cause, next step, and stable code', (tester) async {
+    _RuntimeStartupFailureDiscoveryPageController.retryCount = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [discoveryPageControllerProvider.overrideWith(_RuntimeStartupFailureDiscoveryPageController.new)],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: DiscoveryDestinationPage(onDestinationRequested: (_) {}),
+        ),
+      ),
+    );
+
+    expect(find.textContaining('Runtime 启动参数无效或与当前应用版本不兼容。'), findsOneWidget);
+    final message = tester.widget<Text>(find.textContaining('Runtime 启动参数无效或与当前应用版本不兼容。'));
+    expect(find.byKey(const Key('discovery-failure')), findsOneWidget);
+    expect(message.data, contains('稳定错误码：runtime_start_failed'));
+    expect(find.textContaining('更新或重新安装应用后重试'), findsOneWidget);
+    await tester.tap(find.text('重试'));
+    expect(_RuntimeStartupFailureDiscoveryPageController.retryCount, 1);
+  });
+
   testWidgets('explains a cancelled discovery request and gives a safe next step', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -52,6 +73,30 @@ final class _CancelledDiscoveryPageController extends DiscoveryPageController {
       AppErrorCode.cancelled,
       detail: 'The plugin request was cancelled.',
       location: 'pluginId=org.mgread.jinpai-video / capability=source.discover.v1 / runtime.invocation',
+    ),
+    canNavigateBack: false,
+    navigationDepth: 0,
+    target: null,
+    previousResult: null,
+  );
+}
+
+final class _RuntimeStartupFailureDiscoveryPageController extends DiscoveryPageController {
+  static int retryCount = 0;
+
+  @override
+  Future<void> retry() async {
+    retryCount += 1;
+  }
+
+  @override
+  DiscoveryPageState build() => DiscoveryPageState.failure(
+    sources: const <PluginSourceDescriptor>[],
+    selectedSourceId: null,
+    error: AppError.fromCode(
+      AppErrorCode.runtimeStartFailed,
+      detail: 'Runtime 启动参数无效或与当前应用版本不兼容。',
+      location: 'capability=plugins.list.v1 / runtime.startup',
     ),
     canNavigateBack: false,
     navigationDepth: 0,

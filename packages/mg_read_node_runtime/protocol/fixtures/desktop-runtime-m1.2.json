@@ -18,6 +18,7 @@
     "runtimeMethods": [
       "runtime.hello",
       "runtime.ping",
+      "runtime.sourceResource.resolve.v1",
       "runtime.shutdown"
     ]
   }

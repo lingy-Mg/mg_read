@@ -17,6 +17,7 @@
     "typecheck": "npm run check:toolchain && tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
     "test:flutter-desktop": "npm run build && cd ../mgread_plugin_runtime && flutter pub get && flutter test",
+    "verify:staged-windows": "node --test tools/verify-staged-windows-runtime.mjs",
     "check:no-native-addons": "npm run check:toolchain && node probes/check-no-native-addons.mjs",
     "verify": "npm run typecheck && npm test && npm run check:no-native-addons",
     "verify:desktop": "npm run verify && npm run test:flutter-desktop"

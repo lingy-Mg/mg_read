@@ -45,6 +45,7 @@
       "source.getChapters.v1",
       "source.getContent.v1",
       "runtime.sourceResource.decode.v1",
+      "runtime.sourceResource.resolve.v1",
       "runtime.shutdown"
     ]
   },
