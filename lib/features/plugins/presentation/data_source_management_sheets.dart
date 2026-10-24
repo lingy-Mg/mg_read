@@ -10,7 +10,7 @@ import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 
-enum DataSourceManagementAction { verify, diagnostics, help, uninstall }
+enum DataSourceManagementAction { checkUpdates, verify, diagnostics, help, uninstall }
 
 enum DataSourceImportChoice { node, native, collection, onlineRepository }
 
@@ -68,6 +68,7 @@ class DataSourceManagementSheet extends StatelessWidget {
   const DataSourceManagementSheet({
     required this.canVerify,
     required this.canDiagnose,
+    this.canCheckUpdates = false,
     required this.canUninstall,
     required this.busy,
     super.key,
@@ -75,14 +76,23 @@ class DataSourceManagementSheet extends StatelessWidget {
 
   final bool canVerify;
   final bool canDiagnose;
+  final bool canCheckUpdates;
   final bool canUninstall;
   final bool busy;
 
   @override
   Widget build(BuildContext context) => _ActionSheet(
     title: '数据源工具',
-    description: busy ? '正在处理数据源，完成后可检测或卸载。' : '检查可用性、排查问题或查看使用帮助。',
+    description: busy ? '正在处理数据源，完成后可检测、更新或卸载。' : '检查可用性、排查问题或查看使用帮助。',
     children: [
+      if (canCheckUpdates)
+        _ActionTile(
+          actionKey: const Key('data-source-check-updates'),
+          icon: Icons.system_update_alt_rounded,
+          title: '检查数据源更新',
+          subtitle: '从 GitHub 检查已安装数据源的新版本',
+          onTap: busy ? null : () => Navigator.pop(context, DataSourceManagementAction.checkUpdates),
+        ),
       if (canVerify)
         _ActionTile(
           actionKey: const Key('data-source-verify-all'),

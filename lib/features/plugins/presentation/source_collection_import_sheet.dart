@@ -18,18 +18,67 @@ Future<SourceCollectionSelection?> showSourceCollectionImportSheet(
   builder: (_) => _SourceCollectionSelector(candidates: candidates, onlineRepository: onlineRepository),
 );
 
+Future<bool> showSourceUpdatesConfirmationDialog(BuildContext context, List<SourceCollectionCandidate> updates) async {
+  if (updates.isEmpty) return false;
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text('发现 ${updates.length} 个数据源更新'),
+      content: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.55),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const Text('确认后将覆盖已安装版本并更新数据源。'),
+              const SizedBox(height: AppSpacing.compact),
+              for (final update in updates)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.unit),
+                  child: Text(
+                    '${update.plugin.name}  v${update.plan.receiverVersion ?? '--'} → v${update.plugin.version}',
+                    style: Theme.of(dialogContext).textTheme.bodyMedium,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('暂不更新')),
+        FilledButton(
+          key: const Key('source-updates-confirm-overwrite'),
+          onPressed: () => Navigator.of(dialogContext).pop(true),
+          child: const Text('确认覆盖更新'),
+        ),
+      ],
+    ),
+  );
+  return confirmed == true;
+}
+
 Future<void> showSourceCollectionImportResults(
   BuildContext context,
   List<PluginTransferImportResult> results,
   List<SourceCollectionCandidate> candidates, {
   bool onlineRepository = false,
+  bool updating = false,
 }) => showDialog<void>(
   context: context,
   builder: (dialogContext) {
     final failed = results.where((item) => item.status == PluginTransferImportStatus.failed).length;
     final names = <String, String>{for (final item in candidates) item.plugin.id: item.plugin.name};
+    final title = switch ((onlineRepository, updating, failed == 0)) {
+      (true, true, true) => '数据源更新完成',
+      (true, true, false) => '数据源更新部分失败',
+      (true, false, true) => '在线数据源安装完成',
+      (true, false, false) => '在线数据源安装部分失败',
+      (false, _, true) => '合集导入完成',
+      (false, _, false) => '合集导入部分失败',
+    };
     return AlertDialog(
-      title: Text(onlineRepository ? (failed == 0 ? '在线数据源安装完成' : '在线数据源安装部分失败') : (failed == 0 ? '合集导入完成' : '合集导入部分失败')),
+      title: Text(title),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxHeight: 360),
         child: SingleChildScrollView(
@@ -43,7 +92,7 @@ Future<void> showSourceCollectionImportResults(
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: AppSpacing.unit),
                   child: Text(
-                    '${result.status == PluginTransferImportStatus.installed ? '✓' : '×'}  ${names[result.pluginId] ?? result.pluginId}  v${result.version}  ${result.status == PluginTransferImportStatus.installed ? '已安装' : '安装失败或已隔离'}',
+                    '${result.status == PluginTransferImportStatus.installed ? '✓' : '×'}  ${names[result.pluginId] ?? result.pluginId}  v${result.version}  ${result.status == PluginTransferImportStatus.installed ? (updating ? '已更新' : '已安装') : (updating ? '更新失败或已隔离' : '安装失败或已隔离')}',
                   ),
                 ),
             ],

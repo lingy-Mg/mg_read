@@ -67,6 +67,34 @@ void main() {
     expect((installedSource.subtitle! as Text).data, contains('当前 v1.0.0 → 可用 v1.0.0'));
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('update confirmation lists old and new versions and waits for acceptance', (tester) async {
+    var confirmed = false;
+    final updates = sourceCollectionAvailableUpdates(_candidates());
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () async => confirmed = await showSourceUpdatesConfirmationDialog(context, updates),
+              child: const Text('check'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('check'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('发现 1 个数据源更新'), findsOneWidget);
+    expect(find.text('org.example.upgrade  v1.0.0 → v2.0.0'), findsOneWidget);
+    expect(confirmed, isFalse);
+    await tester.tap(find.byKey(const Key('source-updates-confirm-overwrite')));
+    await tester.pumpAndSettle();
+    expect(confirmed, isTrue);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 List<SourceCollectionCandidate> _candidates() {
@@ -99,6 +127,16 @@ List<SourceCollectionCandidate> _candidates() {
         version: '1.0.0',
       ),
       installedName: 'same',
+    ),
+    SourceCollectionCandidate(
+      plugin: plugin('org.example.upgrade', '2.0.0'),
+      plan: const PluginTransferPlanItem(
+        action: PluginTransferPlanAction.upgrade,
+        pluginId: 'org.example.upgrade',
+        receiverVersion: '1.0.0',
+        version: '2.0.0',
+      ),
+      installedName: 'upgrade',
     ),
     SourceCollectionCandidate(
       plugin: plugin('org.example.old', '1.0.0'),

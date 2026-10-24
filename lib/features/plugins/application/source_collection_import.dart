@@ -30,7 +30,7 @@ final sourceCollectionImportServiceProvider = Provider<SourceCollectionImportSer
 
 final Uri defaultOnlinePluginCatalogUri = Uri.https('github.com', '/lingy-Mg/mg_read/releases/download/source-catalog/catalog.json');
 
-final onlineSourceCatalogServiceProvider = Provider<OnlineSourceCatalogService>(
+final onlineSourceCatalogServiceProvider = Provider<OnlineSourceCatalogReader>(
   (Ref ref) => OnlineSourceCatalogService(
     httpClientFactory: () => ref.read(configuredFlutterNetworkProxyManagerProvider).createHttpClient(NetworkProxyTraffic.sourceHttp),
   ),
@@ -79,12 +79,17 @@ final class SourceCollectionImportService {
 }
 
 /// Reads the static GitHub plugin repository and verifies each selected asset.
-final class OnlineSourceCatalogService {
+abstract interface class OnlineSourceCatalogReader {
+  Future<SourceCollection> loadCatalog();
+}
+
+final class OnlineSourceCatalogService implements OnlineSourceCatalogReader {
   OnlineSourceCatalogService({required this.httpClientFactory, Uri? catalogUri}) : catalogUri = catalogUri ?? defaultOnlinePluginCatalogUri;
 
   final Future<HttpClient> Function() httpClientFactory;
   final Uri catalogUri;
 
+  @override
   Future<SourceCollection> loadCatalog() async {
     final client = await httpClientFactory();
     try {
@@ -512,6 +517,11 @@ List<SourceCollectionCandidate> planSourceCollection({
   }
   return List<SourceCollectionCandidate>.unmodifiable(candidates);
 }
+
+List<SourceCollectionCandidate> sourceCollectionAvailableUpdates(Iterable<SourceCollectionCandidate> candidates) =>
+    List<SourceCollectionCandidate>.unmodifiable(
+      candidates.where((candidate) => candidate.plan.action == PluginTransferPlanAction.upgrade),
+    );
 
 @immutable
 final class SourceCollectionSelection {

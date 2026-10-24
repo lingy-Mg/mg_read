@@ -84,6 +84,7 @@ void main() {
     );
 
     expect(candidates.map((item) => item.canImport), <bool>[true, true, true, false]);
+    expect(sourceCollectionAvailableUpdates(candidates).map((item) => item.plugin.id), <String>['org.example.upgrade']);
     expect(sourceCollectionSelection(candidates, <String>{'org.example.new'}), isNotNull);
     expect(sourceCollectionSelection(candidates, <String>{'org.example.same'})!.forceUpgradePluginIds, <String>{'org.example.same'});
     expect(() => sourceCollectionSelection(candidates, <String>{'org.example.downgrade'}), throwsA(isA<SourceCollectionImportException>()));

@@ -11,6 +11,8 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
+import 'package:mg_read/features/plugins/application/source_collection_import.dart';
+import 'package:mg_read/features/plugins/application/source_plugin_transfer_gateway.dart';
 import 'package:mg_read/features/plugins/presentation/data_source_management_sheets.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_help_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page.dart';
@@ -18,6 +20,56 @@ import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page
 import 'plugin_runtime_status_page_fixture.dart';
 
 void main() {
+  testWidgets('checks online source versions and waits for confirmation before replacing plugins', (tester) async {
+    final gateway = _SourceTransferGateway(action: PluginTransferPlanAction.upgrade, receiverVersion: '1.0.0');
+    final catalog = _CatalogReader(_catalog('1.1.0'));
+    await tester.pumpWidget(_host(_Gateway(), catalog: catalog, sourceTransfers: gateway));
+    await tester.pumpAndSettle();
+
+    await _openTools(tester);
+    expect(find.byKey(const Key('data-source-check-updates')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('data-source-check-updates')));
+    await _pumpUntilVisible(tester, find.byKey(const Key('source-updates-confirm-overwrite')));
+
+    expect(catalog.readCount, 1);
+    expect(find.text('发现 1 个数据源更新'), findsOneWidget);
+    expect(find.text('起点中文网  v1.0.0 → v1.1.0'), findsOneWidget);
+    expect(gateway.importCalls, 0);
+    await tester.tap(find.text('暂不更新'));
+    await tester.pumpAndSettle();
+    expect(gateway.importCalls, 0);
+
+    await _openTools(tester);
+    await tester.tap(find.byKey(const Key('data-source-check-updates')));
+    await _pumpUntilVisible(tester, find.byKey(const Key('source-updates-confirm-overwrite')));
+    await tester.tap(find.byKey(const Key('source-updates-confirm-overwrite')));
+    await _pumpUntilVisible(tester, find.text('数据源更新完成'));
+
+    expect(catalog.readCount, 2);
+    expect(gateway.importCalls, 1);
+    expect(gateway.forceUpgradePluginIds, <String>{'org.mgread.qidian'});
+    expect(find.text('数据源更新完成'), findsOneWidget);
+    expect(find.textContaining('已更新'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('reports when all installed sources are current', (tester) async {
+    final gateway = _SourceTransferGateway(action: PluginTransferPlanAction.same, receiverVersion: '1.0.0');
+    final catalog = _CatalogReader(_catalog('1.0.0'));
+    await tester.pumpWidget(_host(_Gateway(), catalog: catalog, sourceTransfers: gateway));
+    await tester.pumpAndSettle();
+
+    await _openTools(tester);
+    await tester.tap(find.byKey(const Key('data-source-check-updates')));
+    await tester.pumpAndSettle();
+
+    expect(catalog.readCount, 1);
+    expect(find.text('已检查，当前已安装的数据源均为最新版本。'), findsOneWidget);
+    expect(find.byKey(const Key('source-updates-confirm-overwrite')), findsNothing);
+    expect(gateway.importCalls, 0);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('tools route to diagnostics and help after closing the sheet', (tester) async {
     var diagnostics = 0;
     await tester.pumpWidget(_host(_Gateway(), onDiagnostics: () => diagnostics++));
@@ -185,10 +237,26 @@ Future<void> _openTools(WidgetTester tester, {bool settling = true}) async {
   }
 }
 
-Widget _host(_Gateway gateway, {VoidCallback? onDiagnostics, double textScale = 1}) => ProviderScope(
+Future<void> _pumpUntilVisible(WidgetTester tester, Finder finder) async {
+  for (var attempt = 0; attempt < 40; attempt++) {
+    await tester.pump(const Duration(milliseconds: 100));
+    if (finder.evaluate().isNotEmpty) return;
+  }
+  fail('Timed out waiting for ${finder.toString()}.');
+}
+
+Widget _host(
+  _Gateway gateway, {
+  VoidCallback? onDiagnostics,
+  double textScale = 1,
+  OnlineSourceCatalogReader? catalog,
+  SourcePluginTransferGateway? sourceTransfers,
+}) => ProviderScope(
   overrides: [
     pluginRuntimeGatewayProvider.overrideWithValue(gateway),
     pluginRuntimeConnectionProvider.overrideWith((ref) async => dataSourceManagementFixture),
+    if (catalog != null) onlineSourceCatalogServiceProvider.overrideWithValue(catalog),
+    if (sourceTransfers != null) sourcePluginTransferGatewayProvider.overrideWithValue(sourceTransfers),
   ],
   child: MaterialApp(
     theme: AppTheme.light(),
@@ -228,4 +296,61 @@ class _Gateway implements PluginRuntimeGateway {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _CatalogReader implements OnlineSourceCatalogReader {
+  _CatalogReader(this.collection);
+
+  final SourceCollection collection;
+  int readCount = 0;
+
+  @override
+  Future<SourceCollection> loadCatalog() async {
+    readCount++;
+    return collection;
+  }
+}
+
+SourceCollection _catalog(String version) => SourceCollection(<SourceCollectionPlugin>[
+  SourceCollectionPlugin(
+    id: 'org.mgread.qidian',
+    name: '起点中文网',
+    version: version,
+    format: 'singleFile',
+    byteLength: 3,
+    checksum: '00000000',
+    openBytes: () => Stream<List<int>>.value(<int>[1, 2, 3]),
+  ),
+]);
+
+class _SourceTransferGateway implements SourcePluginTransferGateway {
+  _SourceTransferGateway({required this.action, required this.receiverVersion});
+
+  final PluginTransferPlanAction action;
+  final String receiverVersion;
+  int importCalls = 0;
+  Set<String> forceUpgradePluginIds = const <String>{};
+
+  @override
+  Future<List<PluginTransferPlanItem>> plan(List<PluginTransferArtifact> artifacts) async => <PluginTransferPlanItem>[
+    for (final artifact in artifacts)
+      PluginTransferPlanItem(action: action, pluginId: artifact.pluginId, receiverVersion: receiverVersion, version: artifact.version),
+  ];
+
+  @override
+  Future<List<PluginTransferImportResult>> importArtifacts(
+    List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})> artifacts, {
+    Set<String> forceUpgradePluginIds = const <String>{},
+  }) async {
+    importCalls++;
+    this.forceUpgradePluginIds = forceUpgradePluginIds;
+    return <PluginTransferImportResult>[
+      for (final item in artifacts)
+        PluginTransferImportResult(
+          pluginId: item.artifact.pluginId,
+          status: PluginTransferImportStatus.installed,
+          version: item.artifact.version,
+        ),
+    ];
+  }
 }
