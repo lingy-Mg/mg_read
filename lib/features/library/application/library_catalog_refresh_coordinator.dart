@@ -100,7 +100,7 @@ final class LibraryCatalogRefreshCoordinator {
   }
 
   Future<void> _run(List<String> bookIds, Future<void> Function(Set<String> bookIds) onChanged) async {
-    final changedBookIds = await operation.refreshAll(bookIds);
+    final changedBookIds = await operation.refreshAllCatalogsOnly(bookIds);
     if (changedBookIds.isNotEmpty) await onChanged(changedBookIds);
   }
 

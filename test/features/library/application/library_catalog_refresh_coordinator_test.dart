@@ -41,10 +41,7 @@ void main() {
     expect(settings.get(AppSettingKeys.bookshelfCatalogLastCheckedAtMs), now.millisecondsSinceEpoch);
 
     now = now.add(const Duration(hours: 24, minutes: 1));
-    await coordinator.maybeRefresh(
-      bookIds: const <String>['novel-book'],
-      onChanged: (_) async => reloadCount++,
-    );
+    await coordinator.maybeRefresh(bookIds: const <String>['novel-book'], onChanged: (_) async => reloadCount++);
 
     expect(refresher.bookIds, <String>['novel-book', 'manga-book', 'audio-book', 'video-book', 'novel-book']);
     expect(reloadCount, 2);
@@ -67,7 +64,7 @@ void main() {
 
     await coordinator.maybeRefresh(bookIds: const <String>['novel-book'], onChanged: (_) async => reloadCount++);
 
-    expect(refresher.bookIds, <String>['novel-book']);
+    expect(refresher.catalogOnlyBookIds, <String>['novel-book']);
     expect(reloadCount, 0);
     expect(settings.get(AppSettingKeys.bookshelfCatalogLastCheckedAtMs), now.millisecondsSinceEpoch);
   });
@@ -92,6 +89,19 @@ void main() {
     expect(refresher.bookIds, isEmpty);
     expect(settings.get(AppSettingKeys.bookshelfCatalogLastCheckedAtMs), now.millisecondsSinceEpoch);
   });
+
+  test('manual batch refresh uses full refresh while automatic batch is catalog-only', () async {
+    final diagnostics = DiagnosticsTestkit();
+    addTearDown(diagnostics.dispose);
+    final refresher = _NoChangeRefresher();
+    final operation = LibraryBookRefreshOperation(refresher: refresher, diagnostics: diagnostics.manager);
+
+    await operation.refreshAll(const <String>['book']);
+    await operation.refreshAllCatalogsOnly(const <String>['book']);
+
+    expect(refresher.bookIds, <String>['book']);
+    expect(refresher.catalogOnlyBookIds, <String>['book']);
+  });
 }
 
 final class _RecordingRefresher implements LibraryBookRefresher {
@@ -107,8 +117,9 @@ final class _RecordingRefresher implements LibraryBookRefresher {
   }
 }
 
-final class _NoChangeRefresher implements LibraryBookRefresher, LibraryBookRefreshReporter {
+final class _NoChangeRefresher implements LibraryBookRefresher, LibraryBookRefreshReporter, LibraryCatalogOnlyRefresher {
   final List<String> bookIds = <String>[];
+  final List<String> catalogOnlyBookIds = <String>[];
 
   @override
   Future<void> refresh(String bookId) async {
@@ -118,6 +129,12 @@ final class _NoChangeRefresher implements LibraryBookRefresher, LibraryBookRefre
   @override
   Future<bool> refreshAndReport(String bookId) async {
     bookIds.add(bookId);
+    return false;
+  }
+
+  @override
+  Future<bool> refreshCatalogOnly(String bookId) async {
+    catalogOnlyBookIds.add(bookId);
     return false;
   }
 }
