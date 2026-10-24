@@ -70,6 +70,25 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('shows Android Runtime failure code and stage when update planning fails', (tester) async {
+    final gateway = _SourceTransferGateway(
+      action: PluginTransferPlanAction.upgrade,
+      receiverVersion: '1.0.0',
+      planFailure: const PluginRuntimeException('runtime_unavailable', 'The Android Runtime is not attached.'),
+    );
+    await tester.pumpWidget(_host(_Gateway(), catalog: _CatalogReader(_catalog('1.1.0')), sourceTransfers: gateway));
+    await tester.pumpAndSettle();
+
+    await _openTools(tester);
+    await tester.tap(find.byKey(const Key('data-source-check-updates')));
+    await _pumpUntilVisible(tester, find.textContaining('错误代码：runtime_unavailable'));
+
+    expect(find.textContaining('检查本机已安装版本'), findsOneWidget);
+    expect(find.textContaining('The Android Runtime is not attached.'), findsOneWidget);
+    expect(gateway.importCalls, 0);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('tools route to diagnostics and help after closing the sheet', (tester) async {
     var diagnostics = 0;
     await tester.pumpWidget(_host(_Gateway(), onDiagnostics: () => diagnostics++));
@@ -324,18 +343,22 @@ SourceCollection _catalog(String version) => SourceCollection(<SourceCollectionP
 ]);
 
 class _SourceTransferGateway implements SourcePluginTransferGateway {
-  _SourceTransferGateway({required this.action, required this.receiverVersion});
+  _SourceTransferGateway({required this.action, required this.receiverVersion, this.planFailure});
 
   final PluginTransferPlanAction action;
   final String receiverVersion;
+  final Object? planFailure;
   int importCalls = 0;
   Set<String> forceUpgradePluginIds = const <String>{};
 
   @override
-  Future<List<PluginTransferPlanItem>> plan(List<PluginTransferArtifact> artifacts) async => <PluginTransferPlanItem>[
-    for (final artifact in artifacts)
-      PluginTransferPlanItem(action: action, pluginId: artifact.pluginId, receiverVersion: receiverVersion, version: artifact.version),
-  ];
+  Future<List<PluginTransferPlanItem>> plan(List<PluginTransferArtifact> artifacts) async {
+    if (planFailure != null) throw planFailure!;
+    return <PluginTransferPlanItem>[
+      for (final artifact in artifacts)
+        PluginTransferPlanItem(action: action, pluginId: artifact.pluginId, receiverVersion: receiverVersion, version: artifact.version),
+    ];
+  }
 
   @override
   Future<List<PluginTransferImportResult>> importArtifacts(

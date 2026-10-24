@@ -98,9 +98,11 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
   Future<void> _checkSourceUpdates(BuildContext context, WidgetRef ref) async {
     if (!supportsSourceCollectionImport || _managementBusy(ref)) return;
     List<SourceCollectionCandidate>? updates;
+    var failureStage = '读取在线数据源仓库';
     try {
       final results = await ref.read(pluginRuntimeSourceImportProvider.notifier).importSourceCollection(() async {
         final collection = await ref.read(onlineSourceCatalogServiceProvider).loadCatalog();
+        failureStage = '检查本机已安装版本';
         final transferGateway = ref.read(sourcePluginTransferGatewayProvider);
         final plan = await transferGateway.plan(<PluginTransferArtifact>[for (final item in collection.plugins) item.artifact]);
         final connection = await ref.read(pluginRuntimeConnectionProvider.future);
@@ -111,6 +113,7 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
         if (availableUpdates.isEmpty) return const <PluginTransferImportResult>[];
         final confirmed = await showSourceUpdatesConfirmationDialog(context, availableUpdates);
         if (!confirmed || !context.mounted) return null;
+        failureStage = '下载并覆盖更新';
         final selection = sourceCollectionSelection(availableUpdates, <String>{
           for (final candidate in availableUpdates) candidate.plugin.id,
         });
@@ -125,7 +128,11 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
       await showSourceCollectionImportResults(context, results, updates!, onlineRepository: true, updating: true);
     } on Object catch (error) {
       if (!context.mounted) return;
-      final message = error is SourceCollectionImportException ? error.message : '无法完成数据源更新，请稍后重试。';
+      final message = switch (error) {
+        SourceCollectionImportException() => error.message,
+        PluginRuntimeException() => '失败阶段：$failureStage\n错误代码：${error.code}\n${error.message}',
+        _ => '失败阶段：$failureStage\n${error.runtimeType}: $error',
+      };
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
