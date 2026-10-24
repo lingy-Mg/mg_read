@@ -51,6 +51,28 @@ void main() {
     expect(find.byWidgetPredicate((Widget widget) => widget is Semantics && widget.properties.label == '有更新'), findsOneWidget);
   });
 
+  testWidgets('renders unread counts in a fixed circular badge with a fine outline', (WidgetTester tester) async {
+    await _setViewport(tester, const Size(390, 300));
+    final book = LibraryBookListItemViewData(
+      id: 'unread-badge-book',
+      title: '未读测试书',
+      coverVariant: LibraryCoverVariant.dusk,
+      status: LibraryBookStatus.local,
+      unreadChapterCount: 12,
+    );
+    await tester.pumpWidget(_host(presentation: LibraryBookListPresentation.shelf, book: book));
+    await tester.pumpAndSettle();
+
+    final Finder badgeSemantics = find.byWidgetPredicate((Widget widget) => widget is Semantics && widget.properties.label == '未读12章');
+    final Finder badge = find.descendant(of: badgeSemantics, matching: find.byType(DecoratedBox));
+    final BoxDecoration decoration = tester.widget<DecoratedBox>(badge).decoration as BoxDecoration;
+
+    expect(tester.getSize(badge), const Size(AppSpacing.unreadDotSize + 14, AppSpacing.unreadDotSize + 14));
+    expect(decoration.shape, BoxShape.circle);
+    expect(decoration.border!.top.width, 0.5);
+    expect(tester.widget<Text>(find.text('12')).style!.fontSize, 9);
+  });
+
   testWidgets('forwards book and overflow intents with the original item', (WidgetTester tester) async {
     LibraryBookListItemViewData? opened;
     LibraryBookListItemViewData? openedMore;
@@ -91,6 +113,7 @@ final LibraryBookListItemViewData _book = LibraryBookListItemViewData(
 
 Widget _host({
   required LibraryBookListPresentation presentation,
+  LibraryBookListItemViewData? book,
   ValueChanged<LibraryBookListItemViewData>? onOpenBook,
   ValueChanged<LibraryBookListItemViewData>? onBookMore,
 }) {
@@ -101,7 +124,7 @@ Widget _host({
         body: Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.compactPagePadding),
           child: LibraryBookList(
-            books: <LibraryBookListItemViewData>[_book],
+            books: <LibraryBookListItemViewData>[book ?? _book],
             presentation: presentation,
             onOpenBook: onOpenBook ?? (_) {},
             onBookMore: onBookMore ?? (_) {},
