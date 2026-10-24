@@ -339,6 +339,60 @@ jobs:
             sha256sum MgRead-* > SHA256SUMS.txt
           )
 
+      - name: Prepare Android update manifest
+        if: steps.existing.outputs.exists != 'true' && steps.version.outputs.prerelease != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+)$ ]]; then
+            echo "Stable Android update requires a version with a build number: $VERSION" >&2
+            exit 1
+          fi
+          VERSION_NUMBER="${BASH_REMATCH[1]}"
+          BUILD_NUMBER="${BASH_REMATCH[2]}"
+
+          APK_NAME="MgRead-${VERSION}-android-arm64.apk"
+          APK_PATH="release/final/$APK_NAME"
+          APK_SHA256="$(sha256sum "$APK_PATH" | cut -d ' ' -f 1)"
+          APK_SIZE="$(stat -c '%s' "$APK_PATH")"
+          PUBLISHED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+          jq -n \
+            --arg schema 'mgread.android-update.v1' \
+            --arg repository "$REPOSITORY" \
+            --arg version "$VERSION_NUMBER" \
+            --argjson buildNumber "$BUILD_NUMBER" \
+            --arg tag "$TAG" \
+            --arg title "MgRead $TAG" \
+            --arg publishedAt "$PUBLISHED_AT" \
+            --arg targetCommitish "$COMMIT_SHA" \
+            --arg commitSha "$COMMIT_SHA" \
+            --arg apkName "$APK_NAME" \
+            --arg apkSha256 "$APK_SHA256" \
+            --argjson apkSize "$APK_SIZE" \
+            '{
+              schema: $schema,
+              repository: $repository,
+              version: $version,
+              buildNumber: $buildNumber,
+              tag: $tag,
+              title: $title,
+              publishedAt: $publishedAt,
+              targetCommitish: $targetCommitish,
+              commitSha: $commitSha,
+              apk: {name: $apkName, sha256: $apkSha256, size: $apkSize}
+            }' > release/final/update.json
+
+          (
+            cd release/final
+            sha256sum MgRead-* update.json > SHA256SUMS.txt
+          )
+
       - name: Publish stable release
         if: steps.existing.outputs.exists != 'true' && steps.version.outputs.prerelease != 'true'
         env:
