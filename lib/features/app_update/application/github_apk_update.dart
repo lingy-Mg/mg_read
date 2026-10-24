@@ -276,9 +276,9 @@ final class GitHubApkUpdateCoordinator {
   Future<GitHubApkRelease?>? _checkInFlight;
   Future<void>? _installInFlight;
 
-  Future<GitHubApkRelease?> checkForUpdate() {
+  Future<GitHubApkRelease?> checkForUpdate({bool force = false}) {
     if (!_isAndroid) return Future<GitHubApkRelease?>.value();
-    return _checkInFlight ??= _check().whenComplete(() => _checkInFlight = null);
+    return _checkInFlight ??= _check(force: force).whenComplete(() => _checkInFlight = null);
   }
 
   Future<void> install(GitHubApkRelease release) {
@@ -286,10 +286,10 @@ final class GitHubApkUpdateCoordinator {
     return _installInFlight ??= _downloadAndInstall(release).whenComplete(() => _installInFlight = null);
   }
 
-  Future<GitHubApkRelease?> _check() async {
+  Future<GitHubApkRelease?> _check({required bool force}) async {
     final marker = await _checkMarker();
     final now = _clock();
-    if (!isGitHubApkUpdateCheckDue(marker, now)) return null;
+    if (!force && !isGitHubApkUpdateCheckDue(marker, now)) return null;
     await _writeMarker(now);
 
     final client = _httpClientFactory();

@@ -1,7 +1,7 @@
 /// “关于我们”页面族的独立组件测试。
 ///
 /// 职责：
-/// - 验证关于页排除更新入口并只显示四个可用条目。
+/// - 验证关于页包含手动更新入口和四个已接入条目。
 /// - 验证协议、隐私、开源许可与联系页面具备真实内容和交互。
 ///
 /// 注意：
@@ -20,22 +20,34 @@ import 'package:mg_read/features/profile/presentation/contact_page.dart';
 import 'package:mg_read/features/profile/presentation/open_source_licenses_page.dart';
 
 void main() {
-  testWidgets('about page shows four completed items without update', (WidgetTester tester) async {
+  testWidgets('about page shows manual update and four completed items', (WidgetTester tester) async {
     await _setViewport(tester);
     final requestedItems = <String>[];
     await tester.pumpWidget(
-      _host(AboutPage(appVersion: '9.8.7', onBackRequested: () {}, onDestinationRequested: (_) {}, onItemRequested: requestedItems.add)),
+      _host(
+        AboutPage(
+          appVersion: '9.8.7',
+          onBackRequested: () {},
+          onDestinationRequested: (_) {},
+          onItemRequested: requestedItems.add,
+          onCheckForUpdate: () async => null,
+        ),
+      ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('检查更新'), findsNothing);
-    expect(find.byKey(const Key('about-action-update')), findsNothing);
+    expect(find.text('检查更新'), findsOneWidget);
+    expect(find.byKey(const Key('about-action-update')), findsOneWidget);
     expect(find.byKey(const Key('about-action-agreement')), findsOneWidget);
     expect(find.byKey(const Key('about-action-privacy')), findsOneWidget);
     expect(find.byKey(const Key('about-action-licenses')), findsOneWidget);
     expect(find.byKey(const Key('about-action-contact')), findsOneWidget);
     expect(find.text('版本 9.8.7'), findsOneWidget);
-    expect(tester.getSize(find.byKey(const Key('about-settings-card'))).height, 256);
+    expect(tester.getSize(find.byKey(const Key('about-settings-card'))).height, 320);
+
+    await tester.tap(find.byKey(const Key('about-action-update')));
+    await tester.pumpAndSettle();
+    expect(find.text('当前已是最新版本。'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('about-action-agreement')));
     expect(requestedItems, <String>['agreement']);

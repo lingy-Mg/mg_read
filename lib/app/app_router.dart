@@ -28,6 +28,7 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/discovery/presentation/source_preview_page.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_destination_page.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
+import 'package:mg_read/features/app_update/application/github_apk_update.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
 import 'package:mg_read/features/library/presentation/private_library_page.dart';
 import 'package:mg_read/features/library/presentation/reading_history_page.dart';
@@ -601,6 +602,8 @@ class AboutRoute extends GoRouteData with $AboutRoute {
         onItemRequested: (String itemId) {
           AboutItemRoute(itemId: itemId).push(context);
         },
+        onCheckForUpdate: () => ref.read(githubApkUpdateCoordinatorProvider).checkForUpdate(force: true),
+        onInstallUpdate: (GitHubApkRelease release) => ref.read(githubApkUpdateCoordinatorProvider).install(release),
       ),
     );
   }

@@ -16,6 +16,8 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 import 'package:mg_read/features/profile/presentation/widgets/profile_detail_chrome.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
+import 'package:mg_read/features/app_update/application/github_apk_update.dart';
+import 'package:mg_read/features/app_update/presentation/github_apk_update_prompt.dart';
 
 class AboutPage extends StatelessWidget {
   const AboutPage({
@@ -23,6 +25,8 @@ class AboutPage extends StatelessWidget {
     required this.onDestinationRequested,
     required this.appVersion,
     this.onItemRequested,
+    this.onCheckForUpdate,
+    this.onInstallUpdate,
     super.key,
   });
 
@@ -30,6 +34,8 @@ class AboutPage extends StatelessWidget {
   final ValueChanged<AppNavigationDestination> onDestinationRequested;
   final String appVersion;
   final ValueChanged<String>? onItemRequested;
+  final Future<GitHubApkRelease?> Function()? onCheckForUpdate;
+  final Future<void> Function(GitHubApkRelease release)? onInstallUpdate;
 
   @override
   Widget build(BuildContext context) {
@@ -86,6 +92,8 @@ class AboutPage extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: AppDetailMetrics.horizontalPadding),
                       child: _AboutSettingsCard(
+                        onCheckForUpdate: onCheckForUpdate,
+                        onInstallUpdate: onInstallUpdate,
                         onItemPressed: (String itemId) {
                           final callback = onItemRequested;
                           if (callback != null) {
@@ -172,15 +180,63 @@ class _AboutAppIcon extends StatelessWidget {
   }
 }
 
-class _AboutSettingsCard extends StatelessWidget {
-  const _AboutSettingsCard({required this.onItemPressed});
+class _AboutSettingsCard extends StatefulWidget {
+  const _AboutSettingsCard({required this.onItemPressed, this.onCheckForUpdate, this.onInstallUpdate});
 
   final ValueChanged<String> onItemPressed;
+  final Future<GitHubApkRelease?> Function()? onCheckForUpdate;
+  final Future<void> Function(GitHubApkRelease release)? onInstallUpdate;
+
+  @override
+  State<_AboutSettingsCard> createState() => _AboutSettingsCardState();
+}
+
+class _AboutSettingsCardState extends State<_AboutSettingsCard> {
+  bool _checkingForUpdate = false;
+
+  Future<void> _checkForUpdate() async {
+    final check = widget.onCheckForUpdate;
+    if (_checkingForUpdate) return;
+    if (check == null) {
+      _showMessage('检查更新功能暂不可用。');
+      return;
+    }
+    setState(() => _checkingForUpdate = true);
+    try {
+      final release = await check();
+      if (!mounted) return;
+      if (release == null) {
+        _showMessage('当前已是最新版本。');
+        return;
+      }
+      final accepted = await showGitHubApkUpdatePrompt(context, release);
+      if (accepted == true && mounted) {
+        final install = widget.onInstallUpdate;
+        if (install == null) {
+          _showMessage('安装更新功能暂不可用。');
+        } else {
+          await install(release);
+        }
+      }
+    } on Object {
+      if (mounted) _showMessage('检查更新失败，请稍后重试。');
+    } finally {
+      if (mounted) setState(() => _checkingForUpdate = false);
+    }
+  }
+
+  void _showMessage(String message) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
 
   @override
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     final List<_AboutItem> items = <_AboutItem>[
+      const _AboutItem(id: 'update', title: '检查更新', icon: Icons.system_update_alt_rounded),
       const _AboutItem(id: 'agreement', title: '用户协议', icon: Icons.description_outlined),
       const _AboutItem(id: 'privacy', title: '隐私政策', icon: Icons.shield_outlined),
       const _AboutItem(id: 'licenses', title: '开源许可', icon: Icons.code_rounded),
@@ -203,7 +259,12 @@ class _AboutSettingsCard extends StatelessWidget {
               return _AboutSettingsRow(
                 item: items[index],
                 showDivider: index < items.length - 1,
-                onPressed: () => onItemPressed(items[index].id),
+                onPressed: items[index].id == 'update'
+                    ? (_checkingForUpdate ? null : _checkForUpdate)
+                    : () => widget.onItemPressed(items[index].id),
+                trailing: items[index].id == 'update' && _checkingForUpdate
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : null,
               );
             }),
           ),
@@ -214,11 +275,12 @@ class _AboutSettingsCard extends StatelessWidget {
 }
 
 class _AboutSettingsRow extends StatelessWidget {
-  const _AboutSettingsRow({required this.item, required this.showDivider, required this.onPressed});
+  const _AboutSettingsRow({required this.item, required this.showDivider, required this.onPressed, this.trailing});
 
   final _AboutItem item;
   final bool showDivider;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -254,7 +316,7 @@ class _AboutSettingsRow extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 11),
-                      Icon(Icons.arrow_forward_ios_rounded, color: tokens.mutedText, size: 15),
+                      trailing ?? Icon(Icons.arrow_forward_ios_rounded, color: tokens.mutedText, size: 15),
                     ],
                   ),
                 ),

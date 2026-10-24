@@ -56,6 +56,39 @@ void main() {
     expect(currentVersionRead, isFalse);
   });
 
+  test('manual check bypasses the startup interval and refreshes its marker', () async {
+    final support = await Directory.systemTemp.createTemp('mgread-update-marker-test-');
+    final marker = File('${support.path}${Platform.pathSeparator}github-apk-update-check.txt');
+    final now = DateTime.utc(2026, 10, 23, 10, 15);
+    await marker.writeAsString(now.toIso8601String());
+    var requests = 0;
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final served = server.listen((request) async {
+      requests++;
+      request.response.statusCode = HttpStatus.serviceUnavailable;
+      await request.response.close();
+    });
+    addTearDown(() async {
+      await server.close(force: true);
+      await served.cancel();
+      if (await support.exists()) await support.delete(recursive: true);
+    });
+    final coordinator = GitHubApkUpdateCoordinator(
+      currentVersion: () async => const AppVersionInfo(platform: AppUpdatePlatform.android, version: '1.0.0', buildNumber: 1),
+      downloadAndInstall: (_) async {},
+      supportDirectory: () async => support,
+      clock: () => now.add(const Duration(minutes: 5)),
+      manifestUri: Uri.parse('http://${server.address.address}:${server.port}/manifest'),
+      isAndroid: true,
+    );
+
+    expect(await coordinator.checkForUpdate(), isNull);
+    expect(requests, 0);
+    expect(await coordinator.checkForUpdate(force: true), isNull);
+    expect(requests, 1);
+    expect(await marker.readAsString(), now.add(const Duration(minutes: 5)).toIso8601String());
+  });
+
   test('APK download verifies release SHA-256 and exposes a bounded installer package', () async {
     final bytes = <int>[1, 2, 3, 4, 5];
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
