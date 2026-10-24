@@ -23,28 +23,37 @@ class ProfileSettingsList extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: AppRadii.profileList,
-        child: Column(
-          key: const Key('profile-settings-list'),
-          children: List<Widget>.generate(items.length, (int index) {
-            final ProfileSettingsItemViewData item = items[index];
-            return Column(
-              children: <Widget>[
-                ProfileSettingsRow(item: item, onPressed: () => onItemPressed(item)),
-                if (index < items.length - 1)
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      left: AppSpacing.profileSettingsDividerStart,
-                      right: AppSpacing.profileSettingsTrailingRight,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.profileSettingsListGap),
+          child: Column(
+            key: const Key('profile-settings-list'),
+            children: List<Widget>.generate(items.length, (int index) {
+              final ProfileSettingsItemViewData item = items[index];
+              return Column(
+                children: <Widget>[
+                  ProfileSettingsRow(item: item, onPressed: () => onItemPressed(item)),
+                  if (index < items.length - 1)
+                    Padding(
+                      padding: const EdgeInsets.only(
+                        left: AppSpacing.profileSettingsDividerStart,
+                        right: AppSpacing.profileSettingsTrailingRight,
+                      ),
+                      child: Column(
+                        children: <Widget>[
+                          SizedBox(height: AppSpacing.profileSettingsListGap / 2 - 0.5),
+                          Divider(
+                            height: 1,
+                            thickness: AppSpacing.profileStatsDividerThickness,
+                            color: tokens.divider.withValues(alpha: 0.72),
+                          ),
+                          SizedBox(height: AppSpacing.profileSettingsListGap / 2 - 0.5),
+                        ],
+                      ),
                     ),
-                    child: Divider(
-                      height: 1,
-                      thickness: AppSpacing.profileStatsDividerThickness,
-                      color: tokens.divider.withValues(alpha: 0.72),
-                    ),
-                  ),
-              ],
-            );
-          }),
+                ],
+              );
+            }),
+          ),
         ),
       ),
     );

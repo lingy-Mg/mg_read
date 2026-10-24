@@ -141,7 +141,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           ],
                           const SizedBox(height: AppSpacing.section - 2),
                           _ProfileSectionTitle(title: '设置与管理'),
-                          const SizedBox(height: AppSpacing.compact / 2),
+                          const SizedBox(height: AppSpacing.comfortable / 2),
                           ProfileSettingsList(
                             items: [
                               ...data.settings,

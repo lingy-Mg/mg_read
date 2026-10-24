@@ -571,7 +571,8 @@ abstract final class AppSpacing {
   static const double profileStatsTop = unit * 22;
   static const double profileEditHeight = unit * 8;
   static const double profileEditReservedWidth = unit * 20;
-  static const double profileSettingsRowHeight = unit * 14;
+  static const double profileSettingsRowHeight = unit * 12;
+  static const double profileSettingsListGap = unit * 2;
   static const double profileSettingsIconSlot = unit * 6;
   static const double profileSettingsIconSize = unit * 5;
   static const double profileSettingsIconTextGap = compact;
