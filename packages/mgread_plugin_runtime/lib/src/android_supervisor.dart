@@ -7,6 +7,21 @@ const EventChannel _androidRuntimeProgressChannel = EventChannel(
   'mgread_plugin_runtime/android/progress',
 );
 const Duration _androidStartupTimeout = Duration(seconds: 30);
+const int _androidPluginTransferChunkBytes = 64 * 1024;
+
+Iterable<Uint8List> _splitAndroidPluginTransferChunk(List<int> bytes) sync* {
+  final buffer = bytes is Uint8List ? bytes : Uint8List.fromList(bytes);
+  for (
+    var offset = 0;
+    offset < buffer.length;
+    offset += _androidPluginTransferChunkBytes
+  ) {
+    final end = offset + _androidPluginTransferChunkBytes < buffer.length
+        ? offset + _androidPluginTransferChunkBytes
+        : buffer.length;
+    yield Uint8List.sublistView(buffer, offset, end);
+  }
+}
 
 /// Flutter-facing Android supervisor backed by the Runtime-owned Javet host.
 final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
@@ -534,10 +549,12 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
               'The plugin transfer artifact exceeded its declared size.',
             );
           }
-          await _androidRuntimeChannel.invokeMethod<void>(
-            'writePluginTransferChunk',
-            <String, Object?>{'chunk': Uint8List.fromList(chunk), 'id': id},
-          );
+          for (final transferChunk in _splitAndroidPluginTransferChunk(chunk)) {
+            await _androidRuntimeChannel.invokeMethod<void>(
+              'writePluginTransferChunk',
+              <String, Object?>{'chunk': transferChunk, 'id': id},
+            );
+          }
         }
         if (copied != item.artifact.bytes) {
           throw const PluginRuntimeException(

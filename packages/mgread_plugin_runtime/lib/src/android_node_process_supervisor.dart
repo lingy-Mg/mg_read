@@ -490,10 +490,12 @@ final class _AndroidNodeProcessSupervisor implements _RuntimeSupervisor {
               'The artifact exceeded its size.',
             );
           }
-          await _channel.invokeMethod<void>(
-            'writePluginTransferChunk',
-            <String, Object?>{'id': id, 'chunk': Uint8List.fromList(chunk)},
-          );
+          for (final transferChunk in _splitAndroidPluginTransferChunk(chunk)) {
+            await _channel.invokeMethod<void>(
+              'writePluginTransferChunk',
+              <String, Object?>{'id': id, 'chunk': transferChunk},
+            );
+          }
         }
         if (copied != artifact.bytes) {
           throw const PluginRuntimeException(
