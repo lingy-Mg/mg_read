@@ -61,6 +61,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
     this.contentFailureDetail,
     this.contentFailureCode,
     this.contentFailureCopyPayload,
+    this.onBilibiliUrlRequested,
     this.onCopyFailure = _copyDiscoveryFailure,
     super.key,
   });
@@ -87,6 +88,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
   final String? contentFailureDetail;
   final String? contentFailureCode;
   final String? contentFailureCopyPayload;
+  final VoidCallback? onBilibiliUrlRequested;
   final DiscoveryFailureCopy onCopyFailure;
 
   @override
@@ -153,6 +155,17 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                                   barKey: isNestedPage ? const Key('runtime-discovery-nested-header') : null,
                                   backButtonKey: isNestedPage ? const Key('runtime-discovery-back') : null,
                                   showSourceSelector: !isNestedPage,
+                                  trailingActions: onBilibiliUrlRequested == null
+                                      ? const <Widget>[]
+                                      : <Widget>[
+                                          DiscoveryTopAction(
+                                            key: const Key('bilibili-url-play-action'),
+                                            tooltip: 'B站链接播放',
+                                            icon: Icons.link_rounded,
+                                            onPressed: onBilibiliUrlRequested!,
+                                          ),
+                                          const SizedBox(width: AppSpacing.unit),
+                                        ],
                                 ),
                                 if (result == null)
                                   Padding(

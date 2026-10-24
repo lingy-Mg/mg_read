@@ -27,6 +27,7 @@ import 'package:mg_read/features/diagnostics/presentation/diagnostics_viewer_pag
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/source_preview_page.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_destination_page.dart';
+import 'package:mg_read/features/discovery/presentation/bilibili_url_playback_page.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/features/app_update/application/github_apk_update.dart';
 import 'package:mg_read/features/app_update/presentation/github_apk_update_prompt.dart';
@@ -391,6 +392,27 @@ class DiscoveryRoute extends GoRouteData with $DiscoveryRoute {
         detail: detail,
         firstCatalogPage: firstCatalogPage,
         chapter: chapter,
+      );
+    },
+    onBilibiliUrlRequested: () {
+      final navigator = appRootNavigatorKey.currentState;
+      if (navigator == null) return;
+      unawaited(
+        navigator.push<void>(
+          MaterialPageRoute<void>(
+            builder: (routeContext) => BilibiliUrlPlaybackPage(
+              onAudioChapterRequested: ({required detail, required firstCatalogPage, required chapter, required pluginVersion}) =>
+                  openTransientSourceAudioPlayer(
+                    routeContext,
+                    navigator: navigator,
+                    detail: detail,
+                    firstCatalogPage: firstCatalogPage,
+                    chapter: chapter,
+                    pluginVersion: pluginVersion,
+                  ),
+            ),
+          ),
+        ),
       );
     },
   );
