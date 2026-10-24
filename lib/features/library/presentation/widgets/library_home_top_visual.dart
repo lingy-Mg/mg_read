@@ -37,68 +37,75 @@ class LibraryHomeTopVisual extends StatelessWidget {
             Positioned.fill(child: ColoredBox(color: tokens.featureSurface))
           else
             Positioned.fill(
-              child: ShaderMask(
-                key: const Key('library-home-top-bottom-fade'),
-                blendMode: BlendMode.dstIn,
-                shaderCallback: (Rect bounds) => const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: <Color>[Colors.white, Colors.white, Color(0xD9FFFFFF), Color(0x66FFFFFF), Colors.transparent, Colors.transparent],
-                  // Reach full transparency before the Sliver/clip boundary so
-                  // the last sampled row cannot leave a tinted hairline.
-                  stops: <double>[0, 0.68, 0.78, 0.9, 0.97, 1],
-                ).createShader(bounds),
-                child: ExcludeSemantics(
-                  child: IgnorePointer(
-                    child: LayoutBuilder(
-                      builder: (BuildContext context, BoxConstraints constraints) {
-                        return Stack(
-                          fit: StackFit.expand,
-                          children: <Widget>[
-                            Opacity(
-                              opacity: 0.84,
-                              child: ImageFiltered(
-                                imageFilter: ImageFilter.blur(sigmaX: 2.4, sigmaY: 2.4),
-                                child: Transform.scale(
-                                  scale: 1.08,
-                                  child: LibraryBookCover(
-                                    key: const Key('library-home-top-backdrop-cover'),
-                                    title: data.title,
-                                    contentKind: data.contentKind,
-                                    variant: data.coverVariant,
-                                    coverBytes: data.coverBytes,
-                                    coverRequest: data.coverRequest,
-                                    assetPath: data.coverAssetPath,
-                                    isBlurred: data.isCoverBlurred,
-                                    alignment: Alignment.topCenter,
-                                    width: constraints.maxWidth,
-                                    height: constraints.maxHeight,
-                                    fit: BoxFit.cover,
-                                    showLetterboxBackground: false,
-                                  ),
+              child: ExcludeSemantics(
+                child: IgnorePointer(
+                  child: LayoutBuilder(
+                    builder: (BuildContext context, BoxConstraints constraints) {
+                      return Stack(
+                        fit: StackFit.expand,
+                        children: <Widget>[
+                          Opacity(
+                            opacity: 0.84,
+                            child: ImageFiltered(
+                              imageFilter: ImageFilter.blur(sigmaX: 2.4, sigmaY: 2.4),
+                              child: Transform.scale(
+                                scale: 1.08,
+                                child: LibraryBookCover(
+                                  key: const Key('library-home-top-backdrop-cover'),
+                                  title: data.title,
+                                  contentKind: data.contentKind,
+                                  variant: data.coverVariant,
+                                  coverBytes: data.coverBytes,
+                                  coverRequest: data.coverRequest,
+                                  assetPath: data.coverAssetPath,
+                                  isBlurred: data.isCoverBlurred,
+                                  alignment: Alignment.topCenter,
+                                  width: constraints.maxWidth,
+                                  height: constraints.maxHeight,
+                                  fit: BoxFit.cover,
+                                  showLetterboxBackground: false,
                                 ),
                               ),
                             ),
-                            DecoratedBox(
-                              key: const Key('library-home-reading-readability-scrim'),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.centerLeft,
-                                  end: Alignment.centerRight,
-                                  colors: <Color>[
-                                    tokens.surface.withValues(alpha: 0.08),
-                                    tokens.surface.withValues(alpha: 0.16),
-                                    tokens.surface.withValues(alpha: 0.6),
-                                    tokens.surface.withValues(alpha: 0.72),
-                                  ],
-                                  stops: const <double>[0, 0.34, 0.52, 1],
-                                ),
+                          ),
+                          DecoratedBox(
+                            key: const Key('library-home-reading-readability-scrim'),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
+                                colors: <Color>[
+                                  tokens.surface.withValues(alpha: 0.08),
+                                  tokens.surface.withValues(alpha: 0.16),
+                                  tokens.surface.withValues(alpha: 0.6),
+                                  tokens.surface.withValues(alpha: 0.72),
+                                ],
+                                stops: const <double>[0, 0.34, 0.52, 1],
                               ),
                             ),
-                          ],
-                        );
-                      },
-                    ),
+                          ),
+                          DecoratedBox(
+                            key: const Key('library-home-top-bottom-fade'),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: <Color>[
+                                  Colors.transparent,
+                                  Colors.transparent,
+                                  tokens.pageBackground.withValues(alpha: 0.15),
+                                  tokens.pageBackground.withValues(alpha: 0.6),
+                                  tokens.pageBackground,
+                                  tokens.pageBackground,
+                                ],
+                                // Finish on the actual page surface before the Sliver/clip edge.
+                                stops: const <double>[0, 0.68, 0.78, 0.9, 0.97, 1],
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ),
               ),

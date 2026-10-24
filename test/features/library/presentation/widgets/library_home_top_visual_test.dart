@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -91,21 +90,22 @@ void main() {
     for (int y = fadeOutStart; y < sampleEnd; y++) {
       for (int x = 0; x < image.width; x++) {
         final Color pixel = _pixelColor(pixels, image.width, x, y);
-        maximumSeamColorDelta = <int>[
-          maximumSeamColorDelta,
-          (pixel.red - pageBackground.red).abs(),
-          (pixel.green - pageBackground.green).abs(),
-          (pixel.blue - pageBackground.blue).abs(),
-          (pixel.alpha - pageBackground.alpha).abs(),
-        ].reduce((int left, int right) => left > right ? left : right);
+        final int pixelArgb = pixel.toARGB32();
+        final int backgroundArgb = pageBackground.toARGB32();
+        for (final int shift in <int>[24, 16, 8, 0]) {
+          final int channelDelta = (((pixelArgb >> shift) & 0xff) - ((backgroundArgb >> shift) & 0xff)).abs();
+          if (channelDelta > maximumSeamColorDelta) maximumSeamColorDelta = channelDelta;
+        }
       }
-    }
-    if (_exportPreview) {
-      print('HOME_SEAM_SCAN backdropBottom=$backdropBottom scannedRows=$fadeOutStart-${sampleEnd - 1} maxRGBDelta=$maximumSeamColorDelta');
     }
 
     expect(find.byType(LibraryHomeShell), findsOneWidget);
     expect(find.byKey(const Key('continue-reading-surface')), findsOneWidget);
+    expect(
+      find.byType(DecoratedBox).evaluate().where((Element element) => element.widget.key == const Key('library-home-top-bottom-fade')),
+      hasLength(1),
+    );
+    expect(find.descendant(of: find.byKey(const Key('library-home-top-backdrop')), matching: find.byType(ShaderMask)), findsNothing);
     expect(image.width, 390);
     expect(image.height, 844);
     expect(coverPixel, isNot(pageBackground), reason: 'The actual last-read image should be present in the reading card.');

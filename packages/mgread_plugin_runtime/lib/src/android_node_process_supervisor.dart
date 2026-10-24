@@ -513,6 +513,35 @@ final class _AndroidNodeProcessSupervisor implements _RuntimeSupervisor {
     }
   }
 
+  Future<void> _writeAndroidPluginTransferFile({
+    required Stream<List<int>> bytes,
+    required int expectedBytes,
+    required String temporaryPath,
+  }) async {
+    var copied = 0;
+    final IOSink sink = File(temporaryPath).openWrite();
+    try {
+      await for (final List<int> chunk in bytes) {
+        copied += chunk.length;
+        if (copied > expectedBytes || copied > maxPluginTransferBytes) {
+          throw const PluginRuntimeException(
+            'plugin_transfer_size_mismatch',
+            'The Android Node transfer artifact exceeded its declared size.',
+          );
+        }
+        sink.add(chunk);
+      }
+    } finally {
+      await sink.close();
+    }
+    if (copied != expectedBytes) {
+      throw const PluginRuntimeException(
+        'plugin_transfer_size_mismatch',
+        'The Android Node transfer artifact was truncated.',
+      );
+    }
+  }
+
   @override
   Future<PluginDevelopmentPackage> packageDevelopmentPlugin(
     String pluginId,
