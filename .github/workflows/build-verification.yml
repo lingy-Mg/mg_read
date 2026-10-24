@@ -118,9 +118,10 @@ jobs:
             echo "Missing repository secret MGREAD_ANDROID_DEBUG_KEYSTORE_BASE64." >&2
             exit 1
           fi
-          mkdir -p "$HOME/.android"
-          printf '%s' "$ANDROID_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
-          actual_sha256="$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | awk '/SHA256:/{gsub(/:/, "", $2); print tolower($2); exit}')"
+          keystore_path="$RUNNER_TEMP/mgread-debug.keystore"
+          printf '%s' "$ANDROID_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
+          echo "MGREAD_ANDROID_DEBUG_KEYSTORE_PATH=$keystore_path" >> "$GITHUB_ENV"
+          actual_sha256="$(keytool -list -v -keystore "$keystore_path" -storepass android -alias androiddebugkey | awk '/SHA256:/{gsub(/:/, "", $2); print tolower($2); exit}')"
           if [[ "$actual_sha256" != "498e9562618685462c6e9247018765a9d4220d21b4c402a209ba43dff3c752c9" ]]; then
             echo "Android signing certificate does not match the local release key." >&2
             exit 1

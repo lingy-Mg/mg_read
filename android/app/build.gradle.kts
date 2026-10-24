@@ -105,6 +105,19 @@ android {
         }
     }
 
+    // CI places the repository's local debug keystore at an explicit path so
+    // release APKs retain the same signing identity as locally installed builds.
+    System.getenv("MGREAD_ANDROID_DEBUG_KEYSTORE_PATH")
+        ?.takeIf(String::isNotBlank)
+        ?.let { keystorePath ->
+            signingConfigs.getByName("debug").apply {
+                storeFile = file(keystorePath)
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+
     buildTypes {
         debug {
             // Keep the x86_64 emulator available to exercise both source engines.
