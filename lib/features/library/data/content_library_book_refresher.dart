@@ -17,7 +17,7 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/library/application/library_book_refresher.dart';
 
 /// Refreshes one source-backed shelf item through typed source and library APIs.
-final class ContentLibraryBookRefresher implements LibraryBookRefresher, LibraryBookRefreshReporter {
+final class ContentLibraryBookRefresher implements LibraryBookRefresher, LibraryBookRefreshReporter, LibraryCatalogOnlyRefresher {
   ContentLibraryBookRefresher(this._library, this._gateway);
 
   final ContentLibrary _library;
@@ -38,6 +38,19 @@ final class ContentLibraryBookRefresher implements LibraryBookRefresher, Library
     return task.whenComplete(() {
       if (identical(_active[bookId], task)) _active.remove(bookId);
     });
+  }
+
+  @override
+  Future<bool> refreshCatalogOnly(String bookId) async {
+    final item = await _library.getLibraryItem(LibraryItemId(bookId));
+    if (item == null) throw StateError('The bookshelf item no longer exists.');
+    final source = item.source;
+    final gateway = _gateway;
+    if (gateway is SourceChapterGroupGateway) {
+      (gateway as SourceChapterGroupGateway).invalidateChapterGroups(source.pluginId, source.remoteContentId);
+    }
+    final chapters = await _gateway.getChapters(pluginId: source.pluginId, id: source.remoteContentId);
+    return await _syncCatalog(item, chapters) > 0;
   }
 
   Future<bool> _refresh(String bookId) async {

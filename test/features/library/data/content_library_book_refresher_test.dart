@@ -57,6 +57,40 @@ void main() {
     expect(await library.readCover(oldCoverKey), isNull);
   });
 
+  test('catalog-only refresh preserves cover and all saved book metadata', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-book-refresh-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    addTearDown(() async {
+      await library.close();
+      await root.delete(recursive: true);
+    });
+    final oldCover = Uri.parse('https://source.example/cover.png');
+    final item = await library.addLibraryItem(
+      BookshelfAddRequest(
+        title: '保留书名',
+        author: '保留作者',
+        kind: ContentKind.novel,
+        pluginId: 'org.example.source',
+        pluginVersion: '1.0.0',
+        remoteContentId: 'book-catalog-only',
+        coverUrl: oldCover,
+        description: '保留简介',
+      ),
+    );
+    final gateway = _RefreshGateway();
+
+    await ContentLibraryBookRefresher(library, gateway).refreshCatalogOnly(item.id.value);
+
+    final retained = await library.getLibraryItem(item.id);
+    expect(gateway.detailIds, isEmpty);
+    expect(gateway.chapterIds, <String>['book-catalog-only']);
+    expect(retained?.title, '保留书名');
+    expect(retained?.author, '保留作者');
+    expect(retained?.description, '保留简介');
+    expect(retained?.coverUrl, oldCover);
+    expect((await library.listAllCatalog(item.id)).map((entry) => entry.remoteIdentity), <String>['chapter-1', 'chapter-2']);
+  });
+
   test('retains the existing shelf item when a source refresh fails', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-book-refresh-');
     final library = await ContentLibrary.open(dataRoot: root);

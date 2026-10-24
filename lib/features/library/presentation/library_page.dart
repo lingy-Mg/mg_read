@@ -141,7 +141,11 @@ class LibraryPage extends ConsumerWidget {
 
     final LibraryHomeViewData data = state.overview!.isEmpty
         ? previewData ?? LibraryHomeViewData.empty()
-        : LibraryHomeViewData.fromLocalOverview(state.overview!, blurredBookIds: blurredCoverBookIds);
+        : LibraryHomeViewData.fromLocalOverview(
+            state.overview!,
+            blurredBookIds: blurredCoverBookIds,
+            showUnreadBadges: settings.get(AppSettingKeys.bookshelfUnreadBadgeEnabled),
+          );
     final ValueChanged<AppNavigationDestination>? destinationRequested = onDestinationRequested;
     final ValueChanged<String>? readerRequested = onReaderRequested;
     final ValueChanged<String>? bookDetailRequested = onBookDetailRequested;

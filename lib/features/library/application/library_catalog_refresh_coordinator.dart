@@ -18,6 +18,10 @@ import 'package:mg_read/features/library/application/library_book_refresher.dart
 
 final libraryCatalogRefreshCoordinatorProvider = Provider<LibraryCatalogRefreshCoordinator?>((ref) {
   final refresher = ref.read(libraryBookRefresherProvider);
+  if (ref.read(appSettingsProvider).supports(AppSettingKeys.bookshelfCatalogAutoRefreshEnabled) &&
+      !ref.read(appSettingsProvider).get(AppSettingKeys.bookshelfCatalogAutoRefreshEnabled)) {
+    return null;
+  }
   if (ref.read(appSettingsProvider).supports(AppSettingKeys.bookshelfCatalogRefreshIntervalHours) == false) {
     return null;
   }

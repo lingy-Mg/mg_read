@@ -167,17 +167,27 @@ class LibraryBookGridItem extends StatelessWidget {
                       ),
                     ),
                     if (metadataMode == LibraryHomeCoverMetadataMode.insideCover) Positioned.fill(child: _CoverMetadataOverlay(data: data)),
-                    if (data.hasAttentionIndicator)
+                    if (data.unreadChapterCount > 0 || data.hasAttentionIndicator)
                       Positioned(
                         left: AppSpacing.compact,
                         top: AppSpacing.compact,
                         child: DecoratedBox(
                           decoration: BoxDecoration(
                             color: tokens.notification,
-                            shape: BoxShape.circle,
+                            borderRadius: AppRadii.pill,
                             border: Border.all(color: tokens.surface, width: 1.5),
                           ),
-                          child: const SizedBox.square(dimension: AppSpacing.unreadDotSize + 2),
+                          child: data.unreadChapterCount > 0
+                              ? Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                  child: Text(
+                                    data.unreadChapterCount > 99 ? '99+' : '${data.unreadChapterCount}',
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.labelSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
+                                  ),
+                                )
+                              : const SizedBox.square(dimension: AppSpacing.unreadDotSize + 2),
                         ),
                       ),
                     if (!isPreparing && showMenu)

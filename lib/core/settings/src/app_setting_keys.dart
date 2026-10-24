@@ -109,6 +109,23 @@ final class AppSettingKeys {
     validator: _validateBookshelfCatalogRefreshIntervalHours,
   );
 
+  /// Whether opening the bookshelf automatically checks for new chapters.
+  static const bookshelfCatalogAutoRefreshEnabled = SettingKey<bool>(
+    id: 'library.bookshelfCatalogAutoRefreshEnabled',
+    documentKind: 'settings.library',
+    defaultValue: true,
+    codec: SettingCodec<bool>(_boolEncode, _boolDecode),
+    validator: _validateBool,
+  );
+
+  static const bookshelfUnreadBadgeEnabled = SettingKey<bool>(
+    id: 'library.bookshelfUnreadBadgeEnabled',
+    documentKind: 'settings.library',
+    defaultValue: true,
+    codec: SettingCodec<bool>(_boolEncode, _boolDecode),
+    validator: _validateBool,
+  );
+
   /// UTC epoch milliseconds of the most recent automatic bookshelf check.
   static const bookshelfCatalogLastCheckedAtMs = SettingKey<int>(
     id: 'library.bookshelfCatalogLastCheckedAtMs',
@@ -261,6 +278,8 @@ final class AppSettingKeys {
     discoveryPinnedSourceIds,
     discoveryRecentSourceIds,
     bookshelfCatalogRefreshIntervalHours,
+    bookshelfCatalogAutoRefreshEnabled,
+    bookshelfUnreadBadgeEnabled,
     bookshelfCatalogLastCheckedAtMs,
     profileIdentity,
     diagnosticsEnabled,

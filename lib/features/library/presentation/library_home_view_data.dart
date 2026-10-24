@@ -32,7 +32,11 @@ final class LibraryHomeViewData {
 
   /// Maps the currently narrow local overview contract without inventing
   /// reading progress, chapter metadata, source availability, or timestamps.
-  factory LibraryHomeViewData.fromLocalOverview(LibraryOverview overview, {Iterable<String> blurredBookIds = const <String>[]}) {
+  factory LibraryHomeViewData.fromLocalOverview(
+    LibraryOverview overview, {
+    Iterable<String> blurredBookIds = const <String>[],
+    bool showUnreadBadges = true,
+  }) {
     final blurredIds = blurredBookIds.toSet();
     final current = overview.continueReading;
     final currentIndex = current == null ? -1 : overview.items.indexOf(current);
@@ -78,6 +82,7 @@ final class LibraryHomeViewData {
           coverVariant: LibraryCoverVariant.values[entry.key % LibraryCoverVariant.values.length],
           coverOrientation: entry.value.coverOrientation,
           status: LibraryBookStatus.local,
+          unreadChapterCount: showUnreadBadges ? _unreadChapterCount(entry.value) : 0,
           isCoverBlurred: blurredIds.contains(entry.value.id),
         ),
       ),
@@ -126,6 +131,13 @@ final class LibraryHomeViewData {
   /// Optional source count; a fixture may provide it, a local projection may
   /// leave it unknown until the source-management feature exists.
   final int? availableSourceCount;
+}
+
+int _unreadChapterCount(LibraryItemSummary item) {
+  if (item.contentKind != ContentKind.novel && item.contentKind != ContentKind.manga) return 0;
+  final count = item.chapterCount;
+  if (count == null || count <= 0) return 0;
+  return (count - ((item.readingChapterIndex ?? -1) + 1)).clamp(0, count);
 }
 
 BookCoverRequest? _coverRequest(LibraryItemSummary item) {

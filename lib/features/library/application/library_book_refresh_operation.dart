@@ -58,7 +58,9 @@ final class LibraryBookRefreshOperation {
     await Future.wait<void>(
       bookIds.map((bookId) async {
         try {
-          final bool changed = refresher is LibraryBookRefreshReporter
+          final bool changed = refresher is LibraryCatalogOnlyRefresher
+              ? await (refresher as LibraryCatalogOnlyRefresher).refreshCatalogOnly(bookId)
+              : refresher is LibraryBookRefreshReporter
               ? await (refresher as LibraryBookRefreshReporter).refreshAndReport(bookId)
               : await _refreshConservatively(bookId);
           if (changed) changedBookIds.add(bookId);

@@ -22,5 +22,10 @@ abstract interface class LibraryBookRefreshReporter {
   Future<bool> refreshAndReport(String bookId);
 }
 
+/// Refreshes only the chapter catalog, preserving the saved book metadata.
+abstract interface class LibraryCatalogOnlyRefresher {
+  Future<bool> refreshCatalogOnly(String bookId);
+}
+
 /// Provides the refresh capability only in an app composition with persistence.
 final libraryBookRefresherProvider = Provider<LibraryBookRefresher?>((Ref ref) => null);

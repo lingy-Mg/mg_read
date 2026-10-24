@@ -33,6 +33,7 @@ final class LibraryBookListItemViewData {
     this.subtitle,
     this.activityLabel,
     this.hasAttentionIndicator = false,
+    this.unreadChapterCount = 0,
     this.isCoverBlurred = false,
     Iterable<LibraryMetadataTagViewData> tags = const <LibraryMetadataTagViewData>[],
   }) : assert(id != ''),
@@ -75,6 +76,9 @@ final class LibraryBookListItemViewData {
 
   /// Whether an enabled presentation should render the small attention dot.
   final bool hasAttentionIndicator;
+
+  /// Number of catalog chapters after the saved reading position.
+  final int unreadChapterCount;
 
   /// Whether the source cover should be visually hidden for local privacy.
   final bool isCoverBlurred;

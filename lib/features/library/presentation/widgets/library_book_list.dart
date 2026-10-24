@@ -531,16 +531,24 @@ class _BookListTrailing extends StatelessWidget {
                       ),
               ),
             ),
-          if (!isPreparing && showAttentionIndicator)
+          if (!isPreparing && (showAttentionIndicator || data.unreadChapterCount > 0))
             Positioned(
               top: AppSpacing.section + AppSpacing.unit,
               right: AppSpacing.compact,
               child: Semantics(
-                label: '有更新',
+                label: data.unreadChapterCount > 0 ? '未读${data.unreadChapterCount}章' : '有更新',
                 child: ExcludeSemantics(
                   child: DecoratedBox(
-                    decoration: BoxDecoration(color: tokens.notification, shape: BoxShape.circle),
-                    child: const SizedBox(width: AppSpacing.unreadDotSize, height: AppSpacing.unreadDotSize),
+                    decoration: BoxDecoration(color: tokens.notification, borderRadius: AppRadii.pill),
+                    child: data.unreadChapterCount > 0
+                        ? Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                            child: Text(
+                              data.unreadChapterCount > 99 ? '99+' : '${data.unreadChapterCount}',
+                              style: theme.textTheme.labelSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
+                            ),
+                          )
+                        : const SizedBox.square(dimension: AppSpacing.unreadDotSize),
                   ),
                 ),
               ),

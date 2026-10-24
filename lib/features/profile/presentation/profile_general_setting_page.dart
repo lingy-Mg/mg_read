@@ -69,6 +69,14 @@ class ProfileGeneralSettingPage extends ConsumerWidget {
   List<Widget> _readingSections(BuildContext context, AppSettingsManager settings) => <Widget>[
     const _SectionHeading(title: '小说阅读', description: '只保留影响章节加载的设置'),
     const SizedBox(height: AppSpacing.regular),
+    SwitchListTile.adaptive(
+      key: const Key('bookshelf-auto-catalog-refresh'),
+      contentPadding: EdgeInsets.zero,
+      title: const Text('自动检查新章节'),
+      subtitle: const Text('打开书架时只检查章节目录，不更新封面和书籍信息'),
+      value: settings.get(AppSettingKeys.bookshelfCatalogAutoRefreshEnabled),
+      onChanged: (bool value) => settings.set(AppSettingKeys.bookshelfCatalogAutoRefreshEnabled, value),
+    ),
     _NovelPreloadChapterCountCard(
       value: settings.get(AppSettingKeys.novelPreloadChapterCount),
       onChanged: (int value) async {
@@ -143,6 +151,14 @@ class ProfileGeneralSettingPage extends ConsumerWidget {
         onChanged: (String value) async {
           await settings.set(AppSettingKeys.homeLayoutMode, value);
         },
+      ),
+      SwitchListTile.adaptive(
+        key: const Key('bookshelf-unread-badge'),
+        contentPadding: EdgeInsets.zero,
+        title: const Text('显示未读章节数'),
+        subtitle: const Text('在书架封面上显示尚未阅读的章节数量'),
+        value: settings.get(AppSettingKeys.bookshelfUnreadBadgeEnabled),
+        onChanged: (bool value) => settings.set(AppSettingKeys.bookshelfUnreadBadgeEnabled, value),
       ),
       const SizedBox(height: AppSpacing.regular),
       _CoverMetadataModeCard(
