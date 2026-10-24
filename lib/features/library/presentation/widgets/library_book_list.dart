@@ -549,10 +549,10 @@ class _BookListTrailing extends StatelessWidget {
                             dimension: AppSpacing.unreadDotSize + 14,
                             child: Center(
                               child: Text(
-                                data.unreadChapterCount > 99 ? '99+' : '${data.unreadChapterCount}',
+                                data.unreadChapterCount > 99 ? '99' : '${data.unreadChapterCount}',
                                 style: theme.textTheme.labelSmall?.copyWith(
                                   color: Colors.white,
-                                  fontSize: data.unreadChapterCount > 99 ? 6.5 : 9,
+                                  fontSize: 9,
                                   height: 1,
                                   fontWeight: FontWeight.w700,
                                 ),
