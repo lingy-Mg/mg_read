@@ -78,7 +78,7 @@ function parseLaunchOptions(arguments_: readonly string[]): DesktopRuntimeOption
     (debugHttpEnabled === undefined ? 0 : 1);
   if (
     dataRoot === undefined ||
-    ((developmentPluginRoot === undefined) !== (developmentNpmCli === undefined)) ||
+    (developmentNpmCli !== undefined && developmentPluginRoot === undefined) ||
     (debugHttpEnabled !== undefined && debugHttpEnabled !== "1") ||
     values.size !== expectedValueCount
   ) {

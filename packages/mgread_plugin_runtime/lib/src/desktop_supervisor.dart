@@ -523,7 +523,8 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
             '--bundled-plugin-root=${_bundle.bundledPluginDirectory!.path}',
           if (_developmentPluginDirectory != null)
             '--development-plugin-root=${_developmentPluginDirectory!.path}',
-          if (_developmentPluginDirectory != null)
+          if (_developmentPluginDirectory != null &&
+              _bundle.developmentNpmCli != null)
             '--development-npm-cli=${_bundle.developmentNpmCli!.path}',
           if (_bundle.testExitAfterReady != null)
             '--test-exit-after-ready-millis='
@@ -674,7 +675,8 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
     }
     final developmentNpmCli = _bundle.developmentNpmCli;
     if (developmentPluginDirectory != null &&
-        (developmentNpmCli == null || !await developmentNpmCli.exists())) {
+        developmentNpmCli != null &&
+        !await developmentNpmCli.exists()) {
       throw _failure(
         'runtime_development_build_tool_missing',
         'The pinned desktop development build tool is unavailable.',

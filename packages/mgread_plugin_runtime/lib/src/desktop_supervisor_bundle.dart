@@ -103,10 +103,13 @@ final class _DesktopRuntimeBundle {
     final developmentRuntimeRoot = kDebugMode
         ? _findDevelopmentRuntimeRepository(developmentStarts)
         : null;
-    final developmentPluginDirectory = kDebugMode
-        ? (_readConfiguredDevelopmentPluginDirectory(dataRoot) ??
-              _findDevelopmentPluginDirectory(developmentStarts))
-        : null;
+    // Keep workspace source discovery available in packaged desktop builds:
+    // running a release build from the repository's build/ folder should still
+    // load plugins/sources for local acceptance. npm-based rebuild/watch stays
+    // limited to Debug because only Debug resolves the repository runtime.
+    final developmentPluginDirectory =
+        _readConfiguredDevelopmentPluginDirectory(dataRoot) ??
+        _findDevelopmentPluginDirectory(developmentStarts);
     final runtimeRoot = developmentRuntimeRoot ?? bundleRoot;
     final platformToolchain = Platform.isWindows
         ? 'node-v26.10.0-win-x64'
