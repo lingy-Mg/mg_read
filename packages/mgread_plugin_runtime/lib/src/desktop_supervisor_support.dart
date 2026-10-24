@@ -411,18 +411,30 @@ Directory? _findDevelopmentPluginDirectory(List<Directory> starts) {
   for (final start in starts) {
     var current = start.absolute;
     for (var depth = 0; depth < 12; depth += 1) {
-      final sources = Directory(
-        _joinPath(<String>[current.path, 'plugins', 'sources']),
-      );
-      final runtimePackage = File(
-        _joinPath(<String>[
-          current.path,
-          'packages',
-          'mg_read_node_runtime',
-          'package.json',
-        ]),
-      );
-      if (sources.existsSync() && runtimePackage.existsSync()) return sources;
+      final pathParts = current.path
+          .split(Platform.pathSeparator)
+          .where((String part) => part.isNotEmpty);
+      final directoryName = pathParts.isEmpty ? '' : pathParts.last;
+      final isMgReadRoot = Platform.isWindows
+          ? directoryName.toLowerCase() == 'mg_read'
+          : directoryName == 'mg_read';
+      if (isMgReadRoot) {
+        final sources = Directory(
+          _joinPath(<String>[current.path, 'plugins', 'sources']),
+        );
+        final runtimePackage = File(
+          _joinPath(<String>[
+            current.path,
+            'packages',
+            'mg_read_node_runtime',
+            'package.json',
+          ]),
+        );
+        if (sources.existsSync() && runtimePackage.existsSync()) return sources;
+        // A matching directory without the repository marker is not a reason
+        // to continue searching unrelated ancestors.
+        break;
+      }
       final parent = current.parent;
       if (parent.path == current.path) break;
       current = parent;
