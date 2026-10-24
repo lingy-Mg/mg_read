@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/ncat-video",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Native MgRead WebView source for Ncat video.",
   "type": "module",
@@ -22,6 +22,7 @@
     "typescript": "5.9.3"
   },
   "mgread": {
+    "sourceUrl": "https://www.ncat21.com/",
     "schemaVersion": 1,
     "id": "org.mgread.ncat-video",
     "displayName": "网飞猫",

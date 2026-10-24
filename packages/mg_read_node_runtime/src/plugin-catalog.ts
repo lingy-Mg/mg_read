@@ -328,12 +328,14 @@ function encodeRecord(record: InstalledPluginCatalogRecord): Readonly<Record<str
       packageMode: descriptor.packageMode,
       pluginApi: descriptor.pluginApi,
       ...(descriptor.r18 === undefined ? {} : { r18: descriptor.r18 }),
+      ...(descriptor.sourceUrl === undefined ? {} : { sourceUrl: descriptor.sourceUrl }),
       version: descriptor.version,
     },
     enabled: record.snapshot.enabled,
     id: record.snapshot.id,
     pendingVersion: record.snapshot.pendingVersion,
     status: record.snapshot.status,
+    sourceUrl: record.snapshot.sourceUrl,
     uninstallPending: record.uninstallPending,
   });
 }
@@ -375,6 +377,7 @@ function decodeDescriptor(value: unknown, pluginId: string, dataRoot: string): P
       !Array.isArray(value.contentKinds) ||
       (value.description !== undefined && typeof value.description !== "string") ||
       (value.r18 !== undefined && typeof value.r18 !== "boolean") ||
+      (value.sourceUrl !== undefined && typeof value.sourceUrl !== "string") ||
       (value.icon !== undefined && typeof value.icon !== "string")) {
     throw new Error("plugin_catalog_invalid");
   }
@@ -391,12 +394,13 @@ function decodeDescriptor(value: unknown, pluginId: string, dataRoot: string): P
       packageMode: value.packageMode,
       pluginApi: value.pluginApi,
       ...(value.r18 === undefined ? {} : { r18: value.r18 }),
+      ...(value.sourceUrl === undefined ? {} : { sourceUrl: value.sourceUrl }),
       schemaVersion: 1,
     },
     name: value.name,
     type: "module",
     version: value.version,
-  }, projectRoot);
+  }, projectRoot, { allowLegacySourceUrl: value.sourceUrl === undefined });
 }
 
 function isVersionOrNull(value: unknown): value is string | null {

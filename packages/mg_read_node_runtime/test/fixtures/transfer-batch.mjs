@@ -22,7 +22,7 @@ export function getContent() { throw new Error("unused"); }
     await writeFile(join(project, "package.json"), JSON.stringify({
       name: `@mgread-plugin/batch-${index}`, version: "1.0.0", type: "module",
       main: "dist/index.mjs", engines: {node: ">=24"},
-      mgread: {schemaVersion: 1, id, displayName: id, packageMode: "single-file",
+      mgread: {schemaVersion: 1, id, displayName: id, sourceUrl: "https://fixture.example/", packageMode: "single-file",
         pluginApi: 1, contentKinds: ["novel"]},
     }));
     const path = join(root, `${id}.mgplugin.js`);

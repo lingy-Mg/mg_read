@@ -858,6 +858,7 @@ InstalledPlugin _decodeInstalledPlugin(Object? value) {
   final name = item['name'];
   final displayName = item['displayName'];
   final description = item['description'];
+  final sourceUrl = item['sourceUrl'];
   final iconUrl = item['iconUrl'];
   final activeVersion = item['activeVersion'];
   final pendingVersion = item['pendingVersion'];
@@ -870,6 +871,9 @@ InstalledPlugin _decodeInstalledPlugin(Object? value) {
       name is! String ||
       displayName is! String ||
       (description != null && description is! String) ||
+      !item.containsKey('sourceUrl') ||
+      (sourceUrl != null &&
+          (sourceUrl is! String || !_isCanonicalSourceUrl(sourceUrl))) ||
       !item.containsKey('iconUrl') ||
       (iconUrl != null && iconUrl is! String) ||
       (activeVersion != null && activeVersion is! String) ||
@@ -889,6 +893,7 @@ InstalledPlugin _decodeInstalledPlugin(Object? value) {
     activeVersion: activeVersion as String?,
     contentKinds: List<String>.unmodifiable(kinds.cast<String>()),
     description: description as String?,
+    sourceUrl: sourceUrl as String?,
     displayName: displayName,
     enabled: enabled,
     iconUrl: iconUrl as String?,
@@ -898,6 +903,23 @@ InstalledPlugin _decodeInstalledPlugin(Object? value) {
     r18: r18 is bool ? r18 : false,
     status: status,
   );
+}
+
+bool _isCanonicalSourceUrl(String value) {
+  final uri = Uri.tryParse(value);
+  if (uri == null ||
+      !uri.isAbsolute ||
+      !const <String>{'http', 'https'}.contains(uri.scheme) ||
+      uri.host.isEmpty ||
+      uri.userInfo.isNotEmpty ||
+      uri.hasQuery ||
+      uri.hasFragment ||
+      uri.toString() != value ||
+      uri.host == 'localhost' ||
+      uri.host.endsWith('.localhost') ||
+      uri.host.endsWith('.local'))
+    return false;
+  return true;
 }
 
 /// Engine that owns an installed source and its private installation state.
@@ -919,6 +941,7 @@ final class InstalledPlugin {
     this.description,
     this.iconUrl,
     this.r18 = false,
+    this.sourceUrl,
   });
 
   final PluginEngine engine;
@@ -928,6 +951,7 @@ final class InstalledPlugin {
   final String? activeVersion;
   final List<String> contentKinds;
   final String? description;
+  final String? sourceUrl;
   final String displayName;
   final bool enabled;
   final String? iconUrl;

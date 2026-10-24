@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/fanshu-anime",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "private": true,
   "description": "Native MgRead source for Fanshu Anime's current Yoapp API.",
   "type": "module",
@@ -25,6 +25,7 @@
     "typescript": "5.9.3"
   },
   "mgread": {
+    "sourceUrl": "https://yoapp.bytegooty.com/",
     "schemaVersion": 1,
     "id": "org.mgread.fanshu-anime",
     "displayName": "番薯动漫",

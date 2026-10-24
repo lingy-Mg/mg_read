@@ -44,6 +44,7 @@ export interface PluginPackageDescriptor {
   readonly packageMode: PluginPackageMode;
   readonly pluginApi: typeof pluginApiVersion;
   readonly projectRoot: string;
+  readonly sourceUrl?: string;
   readonly version: string;
 }
 
@@ -148,6 +149,7 @@ async function readJsonObject(
 export function parsePluginPackageDescriptor(
   packageJson: Record<string, unknown>,
   projectRoot: string,
+  options: { readonly allowLegacySourceUrl?: boolean } = {},
 ): PluginPackageDescriptor {
   const name = packageJson.name;
   const version = packageJson.version;
@@ -167,6 +169,7 @@ export function parsePluginPackageDescriptor(
   const id = mgread.id;
   const displayName = mgread.displayName;
   const description = mgread.description;
+  const sourceUrl = normalizePluginSourceUrl(mgread.sourceUrl);
   const schemaVersion = mgread.schemaVersion;
   const api = mgread.pluginApi;
   const contentKinds = mgread.contentKinds;
@@ -181,6 +184,7 @@ export function parsePluginPackageDescriptor(
     typeof displayName !== "string" ||
     displayName.trim().length === 0 ||
     displayName.length > 128 ||
+    (sourceUrl === undefined && !(options.allowLegacySourceUrl === true && mgread.sourceUrl === undefined)) ||
     (description !== undefined &&
       (typeof description !== "string" ||
         description.trim().length === 0 ||
@@ -214,9 +218,24 @@ export function parsePluginPackageDescriptor(
     packageMode,
     pluginApi: pluginApiVersion,
     projectRoot,
+    ...(sourceUrl === undefined ? {} : { sourceUrl }),
     ...(r18 === undefined ? {} : { r18 }),
     version,
   });
+}
+
+export function normalizePluginSourceUrl(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.trim() === "") return undefined;
+  try {
+    const url = new URL(value.trim());
+    if ((url.protocol !== "http:" && url.protocol !== "https:") || url.hostname === "" ||
+        url.username !== "" || url.password !== "" || url.search !== "" || url.hash !== "" ||
+        url.hostname === "localhost" || url.hostname.endsWith(".localhost") || url.hostname.endsWith(".local")) return undefined;
+    url.pathname = url.pathname === "/" ? "/" : url.pathname.replace(/\/+$/u, "");
+    return url.toString();
+  } catch {
+    return undefined;
+  }
 }
 
 function isSupportedIconPath(value: unknown): value is string {

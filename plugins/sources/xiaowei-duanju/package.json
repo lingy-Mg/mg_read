@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/xiaowei-duanju",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "MgRead native source for the Xiaowei short-drama API.",
   "type": "module",
@@ -28,6 +28,7 @@
     "typescript": "5.9.3"
   },
   "mgread": {
+    "sourceUrl": "https://api.drama.9ddm.com/",
     "schemaVersion": 1,
     "id": "org.mgread.xiaowei-duanju",
     "displayName": "小微短剧",

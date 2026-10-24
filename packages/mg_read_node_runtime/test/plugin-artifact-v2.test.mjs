@@ -44,6 +44,7 @@ async function createSingleFileProject(root) {
       schemaVersion: 1,
       id: "org.mgread.single-file-fixture",
       displayName: "Single file fixture",
+      sourceUrl: "https://fixture.example/",
       pluginApi: 1,
       contentKinds: ["novel"],
       icon: "assets/icon.png",

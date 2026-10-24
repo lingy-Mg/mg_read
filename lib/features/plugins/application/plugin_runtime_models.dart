@@ -95,6 +95,7 @@ final class PluginRuntimePlugin {
     this.iconUrl,
     this.engine = 'node',
     this.r18 = false,
+    this.sourceUrl,
   });
 
   final String? activeVersion;
@@ -110,5 +111,6 @@ final class PluginRuntimePlugin {
 
   /// 来源元数据声明的成人内容标记;旧 Runtime 结果缺省为 false。
   final bool r18;
+  final String? sourceUrl;
   final String status;
 }

@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/tingchina-audio",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "private": true,
   "description": "MgRead audio source for the user-provided Ting China rule.",
   "type": "module",
@@ -31,6 +31,7 @@
     "typescript": "5.9.3"
   },
   "mgread": {
+    "sourceUrl": "https://app.365ting.com/",
     "schemaVersion": 1,
     "id": "org.mgread.tingchina-audio",
     "displayName": "听中国听书",

@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/elkoparts-net",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "MgRead Node 24 source for the public Elkoparts novel site.",
   "type": "module",
@@ -28,6 +28,7 @@
     "typescript": "5.9.3"
   },
   "mgread": {
+    "sourceUrl": "http://www.elkoparts.net/",
     "schemaVersion": 1,
     "id": "org.mgread.elkoparts-net",
     "displayName": "饿狼小说",

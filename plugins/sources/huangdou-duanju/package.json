@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/huangdou-duanju",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "MgRead conversion of the user-provided Huangdou short-drama source.",
   "type": "module",
@@ -23,6 +23,7 @@
     "typescript": "5.9.3"
   },
   "mgread": {
+    "sourceUrl": "https://xqjzvcvt.top/",
     "schemaVersion": 1,
     "id": "org.mgread.huangdou-duanju",
     "displayName": "黄豆短剧",

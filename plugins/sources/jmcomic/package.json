@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/jmcomic",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "MgRead source for JMComic mobile API and decoded manga pages.",
   "type": "module",
@@ -26,6 +26,7 @@
     "typescript": "5.9.3"
   },
   "mgread": {
+    "sourceUrl": "https://18comic.vip/",
     "schemaVersion": 1,
     "id": "org.mgread.jmcomic",
     "displayName": "禁漫天堂",

@@ -66,6 +66,7 @@ async function createProject(projectRoot, pluginId, prefix) {
       schemaVersion: 1,
       id: pluginId,
       displayName: prefix,
+      sourceUrl: "https://fixture.example/",
       pluginApi: 1,
       contentKinds: ["novel"],
     },

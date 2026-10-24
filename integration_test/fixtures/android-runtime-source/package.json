@@ -8,6 +8,7 @@
     "node": "24.16.0 || 24.21.0 || 26.9.0 || 26.10.0"
   },
   "mgread": {
+    "sourceUrl": "https://example.test/",
     "schemaVersion": 1,
     "id": "org.mgread.android-runtime-fixture",
     "displayName": "Android Runtime 测试数据源",

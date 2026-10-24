@@ -3,6 +3,9 @@
 根规则始终适用。本目录只拥有各来源的请求、解析、稳定身份、fixture 和私有缓存；来源名称、版本、能力和
 artifact 模式以 Node 来源 `package.json.mgread` 或原生来源构建生成的 `manifest.json` 为准，文件局部边界写入口源码头。
 
+每个 Node 来源都必须在 `package.json.mgread.sourceUrl` 提供规范来源主页：使用绝对 HTTP(S) URL，不含凭据、
+查询或片段；Runtime 统一规范化主机、默认端口和路径尾斜线。修改来源元数据时同步提升插件 patch 版本和 lock 根版本。
+
 - Node 来源构建必须输出单个 JS 并内联使用的全部第三方 npm 包，仅 Node.js 内置模块可外置。
   来源 `engines.node` 统一声明 `>=24`，不另设版本白名单；构建与验证仍使用仓库固定 Node/npm。
   `.mgplugin.js` 和 `.mgplugin` 压缩包共用此要求；后者只包装单个 JS、元数据与图标，不恢复 npm 依赖。

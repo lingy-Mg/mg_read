@@ -54,6 +54,7 @@ void main() {
                   'enabled': index != 64,
                   'status': index == 64 ? 'quarantined' : 'active',
                   'contentKinds': ['novel'],
+                  'sourceUrl': null,
                 },
             ],
           });

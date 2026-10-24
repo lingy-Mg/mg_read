@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/hsck-video-2",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "MgRead video source for the user-provided HSCK mirror 2.",
   "type": "module",
@@ -18,6 +18,7 @@
   },
   "devDependencies": { "@mgread/source-api": "file:../../../packages/mg_read_source_api", "@types/node": "24.13.3", "esbuild": "0.28.2", "typescript": "5.9.3" },
   "mgread": {
+    "sourceUrl": "https://hsck123.25img.com/",
     "schemaVersion": 1,
     "id": "org.mgread.hsck-video-2",
     "displayName": "黄色仓库 2",

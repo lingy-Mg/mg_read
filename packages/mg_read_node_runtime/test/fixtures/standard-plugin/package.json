@@ -7,6 +7,7 @@
     "node": ">=24"
   },
   "mgread": {
+    "sourceUrl": "https://fixture.example/",
     "schemaVersion": 1,
     "id": "org.mgread.runtime.fixture",
     "displayName": "Runtime 标准测试数据源",

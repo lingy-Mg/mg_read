@@ -426,6 +426,7 @@ const _connected = PluginRuntimeConnection(
       enabled: true,
       id: 'org.example.fixture',
       name: '示例插件',
+      sourceUrl: 'https://example.org/',
       pendingVersion: null,
       status: 'active',
     ),

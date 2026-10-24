@@ -15,3 +15,7 @@ requires NanaZip 7.0 version 2609.2 on PATH and builds one reproducible
 high-compression Deflate ZIP with Windows x64 and Android arm64
 libraries. Both platforms import the same archive; LAN transfer filters it to
 the receiver's platform and recomputes the transfer descriptor.
+
+`tools/package.ps1` owns the canonical `sourceUrl` in `manifest.json`; it must
+be an absolute normalized HTTP(S) source homepage with no credentials, query,
+or fragment. The native Runtime validates the URL before installation.

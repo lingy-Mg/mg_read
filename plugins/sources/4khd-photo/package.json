@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/4khd-photo",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "description": "MgRead native manga source for 4KHD photo albums.",
   "type": "module",
@@ -28,6 +28,7 @@
     "typescript": "5.9.3"
   },
   "mgread": {
+    "sourceUrl": "https://feza.uuss.uk/",
     "schemaVersion": 1,
     "id": "org.mgread.4khd-photo",
     "displayName": "4KHD",

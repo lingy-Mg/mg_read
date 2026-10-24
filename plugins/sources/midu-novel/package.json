@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/midu-novel",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "Native MgRead source for Midu novels.",
   "type": "module",
@@ -25,6 +25,7 @@
     "typescript": "5.9.3"
   },
   "mgread": {
+    "sourceUrl": "https://m.midukanshu.com/",
     "schemaVersion": 1,
     "id": "org.mgread.midu-novel",
     "displayName": "米读小说",

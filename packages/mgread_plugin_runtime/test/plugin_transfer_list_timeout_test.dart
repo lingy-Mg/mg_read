@@ -73,6 +73,7 @@ Future<void> _writeSlowDevelopmentPlugin(Directory developmentRoot) async {
         'schemaVersion': 1,
         'id': 'org.example.slow-export',
         'displayName': 'Slow export fixture',
+        'sourceUrl': 'https://fixture.example/',
         'packageMode': 'single-file',
         'pluginApi': 1,
         'contentKinds': <String>['novel'],

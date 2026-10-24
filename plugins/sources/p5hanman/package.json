@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/p5hanman",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
   "description": "MgRead conversion of the user-provided P5 Hanman source.",
   "type": "module",
@@ -28,6 +28,7 @@
     "typescript": "5.9.3"
   },
   "mgread": {
+    "sourceUrl": "https://www.4p5mha.work/",
     "schemaVersion": 1,
     "id": "org.mgread.p5hanman",
     "displayName": "P5韩漫",

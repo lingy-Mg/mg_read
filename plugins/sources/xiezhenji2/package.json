@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/xiezhenji2",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "private": true,
   "description": "MgRead conversion of the user-provided 写真集2 source.",
   "type": "module",
@@ -29,6 +29,7 @@
     "typescript": "5.9.3"
   },
   "mgread": {
+    "sourceUrl": "https://cosplaytele.com/",
     "schemaVersion": 1,
     "id": "org.mgread.xiezhenji2",
     "displayName": "写真集2",

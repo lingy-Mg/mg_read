@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/yinghuadongman",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "private": true,
   "description": "MgRead video source for Yinghua Dongman.",
   "type": "module",
@@ -28,6 +28,7 @@
     "typescript": "5.9.3"
   },
   "mgread": {
+    "sourceUrl": "https://www.yinhuadm.xyz/",
     "schemaVersion": 1,
     "id": "org.mgread.yinghuadongman",
     "displayName": "樱花动漫",

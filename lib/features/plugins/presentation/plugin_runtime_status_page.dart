@@ -13,6 +13,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
@@ -38,6 +39,7 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
     this.onDiscoverSource,
     this.onSearchSource,
     this.onRuntimeStatusRequested,
+    this.launchSourceUrl,
     this.onVerifyAllRequested,
     super.key,
   });
@@ -48,6 +50,7 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
   final ValueChanged<String>? onDiscoverSource;
   final ValueChanged<String>? onSearchSource;
   final VoidCallback? onRuntimeStatusRequested;
+  final Future<bool> Function(Uri url)? launchSourceUrl;
   final VoidCallback? onVerifyAllRequested;
 
   bool _managementBusy(WidgetRef ref) =>
@@ -176,6 +179,20 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
     }
   }
 
+  Future<void> _openSourceUrl(BuildContext context, DataSourceManagementRowData source) async {
+    final sourceUrl = source.sourceUrl;
+    if (sourceUrl == null) return;
+    try {
+      final uri = Uri.parse(sourceUrl);
+      final opened = launchSourceUrl == null ? await launchUrl(uri, mode: LaunchMode.externalApplication) : await launchSourceUrl!(uri);
+      if (!opened && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无法调用系统浏览器打开来源网址。')));
+      }
+    } on Object {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无法调用系统浏览器打开来源网址。')));
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AsyncValue<PluginRuntimeConnection> connection = ref.watch(pluginRuntimeConnectionProvider);
@@ -206,6 +223,7 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
                   data: (PluginRuntimeConnection value) => _DataSourceContent(
                     sources: pluginManagementSourcesFromConnection(value),
                     onSourcePressed: onSourcePressed,
+                    onOpenSourceUrl: (source) => _openSourceUrl(context, source),
                     onDiscoverSource: onDiscoverSource,
                     onSearchSource: onSearchSource,
                   ),
@@ -244,10 +262,17 @@ class _DataSourceFailure extends StatelessWidget {
 }
 
 class _DataSourceContent extends ConsumerStatefulWidget {
-  const _DataSourceContent({required this.sources, required this.onSourcePressed, this.onDiscoverSource, this.onSearchSource});
+  const _DataSourceContent({
+    required this.sources,
+    required this.onSourcePressed,
+    required this.onOpenSourceUrl,
+    this.onDiscoverSource,
+    this.onSearchSource,
+  });
 
   final List<DataSourceManagementRowData> sources;
   final ValueChanged<String> onSourcePressed;
+  final ValueChanged<DataSourceManagementRowData> onOpenSourceUrl;
   final ValueChanged<String>? onDiscoverSource;
   final ValueChanged<String>? onSearchSource;
 
@@ -442,6 +467,7 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
             onPressed: () => widget.onSourcePressed(source.id),
             onDiscover: widget.onDiscoverSource == null ? null : () => widget.onDiscoverSource!(source.id),
             onSearch: widget.onSearchSource == null ? null : () => widget.onSearchSource!(source.id),
+            onOpenSourceUrl: source.sourceUrl == null ? null : () => widget.onOpenSourceUrl(source),
             onChanged: (enabled) => _setSourceEnabled(source, enabled),
           ),
         );

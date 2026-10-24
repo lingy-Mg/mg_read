@@ -75,6 +75,7 @@ void main() {
             'enabled': true,
             'status': 'active',
             'contentKinds': <String>['novel'],
+            'sourceUrl': null,
             'engine': 'native',
           },
         ],

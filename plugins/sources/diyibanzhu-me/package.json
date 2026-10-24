@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/diyibanzhu-me",
-  "version": "2.0.7",
+  "version": "2.0.8",
   "private": true,
   "description": "MgRead conversion of the user-provided 第一版主 source.",
   "type": "module",
@@ -29,6 +29,7 @@
     "typescript": "5.9.3"
   },
   "mgread": {
+    "sourceUrl": "https://m.diyibanzhu.me/",
     "schemaVersion": 1,
     "id": "org.mgread.diyibanzhu-me",
     "displayName": "第一版主",

@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/wooyun-video",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "MgRead native source for Wooyun video.",
   "type": "module",
@@ -28,6 +28,7 @@
     "typescript": "5.9.3"
   },
   "mgread": {
+    "sourceUrl": "https://wooyun.tv/",
     "schemaVersion": 1,
     "id": "org.mgread.wooyun-video",
     "displayName": "乌云影视",

@@ -32,6 +32,7 @@ List<DataSourceManagementRowData> pluginManagementSourcesFromConnection(PluginRu
           contentKinds: plugin.contentKinds,
           r18: plugin.r18,
           canOpen: plugin.enabled && plugin.activeVersion != null,
+          sourceUrl: plugin.sourceUrl,
         ),
       )
       .toList(growable: false);

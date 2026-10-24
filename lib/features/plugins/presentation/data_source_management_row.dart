@@ -30,6 +30,7 @@ final class DataSourceManagementRowData {
     this.contentKinds = const <String>[],
     this.r18 = false,
     this.canOpen = true,
+    this.sourceUrl,
   });
 
   final String id;
@@ -43,6 +44,7 @@ final class DataSourceManagementRowData {
   final List<String> contentKinds;
   final bool r18;
   final bool canOpen;
+  final String? sourceUrl;
 }
 
 class DataSourceManagementRow extends StatelessWidget {
@@ -53,6 +55,7 @@ class DataSourceManagementRow extends StatelessWidget {
     required this.onChanged,
     this.onDiscover,
     this.onSearch,
+    this.onOpenSourceUrl,
     super.key,
   });
 
@@ -62,6 +65,7 @@ class DataSourceManagementRow extends StatelessWidget {
   final ValueChanged<bool> onChanged;
   final VoidCallback? onDiscover;
   final VoidCallback? onSearch;
+  final VoidCallback? onOpenSourceUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -71,7 +75,7 @@ class DataSourceManagementRow extends StatelessWidget {
     return Semantics(
       key: ValueKey<String>('data-source-${source.id}'),
       container: true,
-      label: '${source.name}，${source.description}，${source.kindLabel}，${source.enabled ? '已启用' : '未启用'}',
+      label: '${source.name}，${source.description}，${source.kindLabel}，来源网址 ${source.sourceUrl ?? '未提供'}，${source.enabled ? '已启用' : '未启用'}',
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -132,6 +136,35 @@ class DataSourceManagementRow extends StatelessWidget {
                 ),
                 const SizedBox(height: AppSpacing.regular),
                 Text(source.description, style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText, height: 1.5)),
+                const SizedBox(height: AppSpacing.compact),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Icon(Icons.public_rounded, size: 18, color: tokens.mutedText),
+                    const SizedBox(width: AppSpacing.compact),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text('来源网址', style: theme.textTheme.labelSmall?.copyWith(color: tokens.mutedText)),
+                          SelectableText(
+                            source.sourceUrl ?? '旧版本未提供来源网址',
+                            key: ValueKey<String>('data-source-url-${source.id}'),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: source.sourceUrl == null ? tokens.mutedText : tokens.dataSourceAccent,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      key: ValueKey<String>('data-source-open-url-${source.id}'),
+                      tooltip: source.sourceUrl == null ? '此数据源未提供来源网址' : '在浏览器打开 ${source.name}',
+                      onPressed: source.sourceUrl == null ? null : onOpenSourceUrl,
+                      icon: const Icon(Icons.open_in_new_rounded, size: 19),
+                    ),
+                  ],
+                ),
                 if (!available) ...<Widget>[
                   const SizedBox(height: AppSpacing.compact),
                   Text(

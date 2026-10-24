@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/manwa-comic",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "description": "MgRead native manga source for Manwa.",
   "type": "module",
@@ -19,6 +19,7 @@
   "dependencies": { "cheerio": "1.1.0" },
   "devDependencies": { "@mgread/source-api": "file:../../../packages/mg_read_source_api", "@types/node": "24.13.3", "esbuild": "0.28.2", "typescript": "5.9.3" },
   "mgread": {
+    "sourceUrl": "https://manwamu.cc/",
     "schemaVersion": 1,
     "id": "org.mgread.manwa-comic",
     "displayName": "漫蛙漫画",

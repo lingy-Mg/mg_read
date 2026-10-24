@@ -56,6 +56,7 @@ export interface SingleFilePluginDescriptor {
     readonly packageMode: "single-file";
     readonly pluginApi: typeof pluginApiVersion;
     readonly schemaVersion: typeof pluginPackageSchemaVersion;
+    readonly sourceUrl: string;
   };
   readonly name: string;
   readonly type: "module";
@@ -204,6 +205,7 @@ function descriptorForEnvelope(
       packageMode: "single-file",
       pluginApi: descriptor.pluginApi,
       schemaVersion: pluginPackageSchemaVersion,
+      sourceUrl: descriptor.sourceUrl!,
     }),
     name: descriptor.name,
     type: "module",
@@ -250,7 +252,7 @@ function parseEnvelopeDescriptor(value: Record<string, unknown>): SingleFilePlug
   }
   const mgreadAllowed = new Set([
     "contentKinds", "description", "displayName", "icon", "id",
-    "packageMode", "pluginApi", "schemaVersion",
+    "packageMode", "pluginApi", "schemaVersion", "sourceUrl",
   ]);
   if (Object.keys(value.mgread).some((key) => !mgreadAllowed.has(key)) ||
       value.mgread.packageMode !== "single-file" ||

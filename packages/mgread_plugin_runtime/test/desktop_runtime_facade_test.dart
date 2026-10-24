@@ -107,6 +107,7 @@ Future<Directory> _stageInstalledStandardPlugin() async {
     "schemaVersion": 1,
     "id": "org.mgread.flutter.fixture",
     "displayName": "Flutter 标准测试数据源",
+    "sourceUrl": "https://fixture.example/",
     "pluginApi": 1,
     "contentKinds": ["novel"],
     "r18": true
@@ -307,6 +308,7 @@ Future<void> _writeDevelopmentPlugin(
         'schemaVersion': 1,
         'id': 'org.example.flutter-live',
         'displayName': 'Flutter Live',
+        'sourceUrl': 'https://fixture.example/',
         'pluginApi': 1,
         'contentKinds': <String>['novel'],
       },

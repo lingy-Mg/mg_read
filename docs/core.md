@@ -122,6 +122,9 @@ plugins/sources/                    真实数据源及其他能力参考实现
 - 数据源只可通过 `ctx.errors.raise` 抛出白名单稳定错误码；Runtime 负责统一处理其他异常。外部媒体解析失败
   使用 `source_media_resolution_failed`；来源明确返回访问异常页时使用 `source_access_blocked`，并可传入有界的
   `message + annotation`，由 Runtime 原样组合为 App 可见的原文和注释。数据源不得通过此错误接口绕过站点限制。
+- 每个 Node 数据源的 `package.json.mgread.sourceUrl` 和每个原生数据源 `manifest.json.sourceUrl` 都必须提供
+  来源主页。Runtime 只接收绝对 HTTP(S) URL，移除非根路径末尾斜线并规范化主机及默认端口；拒绝凭据、查询、
+  片段和本机主机名。Flutter 展示完整 URL 并在用户点击时交给系统浏览器打开；来源不得使用内容 URL 或资源 CDN 冒充主页。
 - 数据源只返回允许的语义组件、布局和图标名。`contentKind` 表达小说、漫画、音频、视频等媒介能力；
   `coverOrientation=portrait|square|landscape` 独立表达真实封面的竖版、方形或横版构图，二者不得互相推断。Flutter 宿主按封面构图
   选择通用组件，并拥有主题、尺寸、断点、可访问性、导航和交互实现；横向组件不等同于视频播放器入口，

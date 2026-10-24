@@ -274,6 +274,7 @@ async function createHttpPlugin(root) {
       schemaVersion: 1,
       id: "org.example.http-proxy",
       displayName: "HTTP proxy fixture",
+      sourceUrl: "https://fixture.example/",
       pluginApi: 1,
       contentKinds: ["novel"],
     },

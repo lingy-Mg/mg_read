@@ -16,15 +16,30 @@ void main() {
     String? discovered;
     String? searched;
     String? detail;
-    await tester.pumpWidget(_host(onDiscover: (id) => discovered = id, onSearch: (id) => searched = id, onDetail: (id) => detail = id));
+    Uri? launched;
+    await tester.pumpWidget(
+      _host(
+        onDiscover: (id) => discovered = id,
+        onSearch: (id) => searched = id,
+        onDetail: (id) => detail = id,
+        launchSourceUrl: (url) async {
+          launched = url;
+          return true;
+        },
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('找到想看的内容'), findsOneWidget);
     expect(find.text('阅文集团旗下原创文学平台'), findsOneWidget);
+    expect(find.text('https://www.qidian.com/'), findsOneWidget);
     expect(find.byType(Switch), findsNothing);
     await tester.tap(find.byKey(const Key('data-source-discover-org.mgread.qidian')));
     expect(discovered, 'org.mgread.qidian');
     await tester.tap(find.byKey(const Key('data-source-search-org.mgread.qidian')));
     expect(searched, 'org.mgread.qidian');
+    await tester.tap(find.byKey(const Key('data-source-open-url-org.mgread.qidian')));
+    await tester.pumpAndSettle();
+    expect(launched, Uri.parse('https://www.qidian.com/'));
     expect(detail, isNull);
     await tester.tap(find.byKey(const Key('data-source-menu-org.mgread.qidian')));
     await tester.pumpAndSettle();
@@ -135,6 +150,7 @@ Widget _host({
   ValueChanged<String>? onDiscover,
   ValueChanged<String>? onSearch,
   ValueChanged<String>? onDetail,
+  Future<bool> Function(Uri)? launchSourceUrl,
   bool dark = false,
   bool large = false,
 }) => ProviderScope(
@@ -151,6 +167,7 @@ Widget _host({
       onSourcePressed: onDetail ?? (_) {},
       onDiscoverSource: onDiscover ?? (_) {},
       onSearchSource: onSearch ?? (_) {},
+      launchSourceUrl: launchSourceUrl,
     ),
   ),
 );

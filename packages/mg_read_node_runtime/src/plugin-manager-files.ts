@@ -75,6 +75,7 @@ export function snapshotFrom(
     name: descriptor?.name ?? pluginId,
     pendingVersion,
     r18: descriptor?.r18 ?? false,
+    sourceUrl: descriptor?.sourceUrl ?? null,
     status,
   });
 }
@@ -98,7 +99,7 @@ export function withEnabledPluginSnapshot(
     activeVersion: current.activeVersion, contentKinds: current.contentKinds,
     description: current.description, displayName: current.displayName, enabled,
     id: current.id, iconUrl: current.iconUrl, name: current.name,
-    pendingVersion: current.pendingVersion, r18: current.r18,
+    pendingVersion: current.pendingVersion, r18: current.r18, sourceUrl: current.sourceUrl,
     status: enabled ? enabledStatus(current) : "disabled",
   } satisfies InstalledPluginSnapshot);
   return Object.freeze({

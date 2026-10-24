@@ -42,6 +42,7 @@ async function createProbeProject(root, pluginId, recorderKey, options = {}) {
       schemaVersion: 1,
       id: pluginId,
       displayName: `Concurrency probe ${pluginId}`,
+      sourceUrl: "https://fixture.example/",
       pluginApi: 1,
       contentKinds: ["novel"],
     },

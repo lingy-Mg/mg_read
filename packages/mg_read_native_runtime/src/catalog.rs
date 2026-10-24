@@ -29,12 +29,29 @@ pub struct Manifest {
     pub name: String,
     pub version: String,
     pub description: String,
+    /// Required for newly imported source archives; absent only in stored legacy installs.
+    #[serde(default)]
+    pub source_url: Option<String>,
     pub content_kinds: Vec<String>,
     pub capabilities: Vec<String>,
     pub targets: BTreeMap<String, Target>,
     /// Source-declared adult-content marker; absent in older manifests.
     #[serde(default)]
     pub r18: bool,
+}
+
+fn normalize_source_url(value: &str) -> Option<String> {
+    let mut url = url::Url::parse(value.trim()).ok()?;
+    if !["http", "https"].contains(&url.scheme())
+        || url.host_str().is_none_or(|host| host.is_empty() || host == "localhost" || host.ends_with(".localhost") || host.ends_with(".local"))
+        || !url.username().is_empty() || url.password().is_some()
+        || url.query().is_some() || url.fragment().is_some()
+    { return None; }
+    if url.path() != "/" {
+        let path = url.path().trim_end_matches('/').to_owned();
+        url.set_path(&path);
+    }
+    Some(url.to_string())
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Entry {
@@ -219,6 +236,7 @@ impl Catalog {
             || m.name.is_empty()
             || m.name.len() > 256
             || m.description.len() > 960
+            || m.source_url.as_deref().is_none_or(|value| normalize_source_url(value).as_deref() != Some(value))
             || m.content_kinds.is_empty()
             || m.content_kinds.len() > 4
             || m.content_kinds
@@ -356,7 +374,7 @@ impl Catalog {
         let m = &e.manifest;
         json!({"id":m.id,"name":m.name,"displayName":m.name,"description":m.description,"iconUrl":null,
                "activeVersion":m.version,"pendingVersion":e.pending.as_ref().map(|p|&p.version),"enabled":e.enabled,
-               "status":if e.enabled {"active"}else{"disabled"},"contentKinds":m.content_kinds,"r18":m.r18,"engine":"native"})
+               "status":if e.enabled {"active"}else{"disabled"},"contentKinds":m.content_kinds,"r18":m.r18,"sourceUrl":m.source_url,"engine":"native"})
     }
     pub fn list(&self) -> Value {
         Value::Array(
@@ -472,6 +490,7 @@ mod tests {
             name: "Alice".into(),
             version: "0.1.0".into(),
             description: String::new(),
+            source_url: Some("https://alice.example/".into()),
             content_kinds: vec!["novel".into()],
             capabilities: vec!["search".into()],
             targets: BTreeMap::from([(target().into(), selected.clone()), ("other".into(), other)]),
