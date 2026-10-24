@@ -296,8 +296,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('数据源'), findsOneWidget);
-    expect(find.text('数据源列表'), findsOneWidget);
-    expect(find.textContaining('1 个已启用'), findsOneWidget);
+    expect(find.text('我的数据源'), findsOneWidget);
+    expect(find.textContaining('1 个数据源 ·'), findsOneWidget);
     expect(find.text('示例插件'), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('data-source-org.example.fixture')), findsOneWidget);
     expect(find.byKey(const Key('data-source-add')), findsOneWidget);

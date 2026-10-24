@@ -15,6 +15,8 @@
 ///
 library;
 
+import 'source_preview_page.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -189,7 +191,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                   },
                 ),
               ),
-              bottomNavigationBar: isNestedPage
+              bottomNavigationBar: isNestedPage || SourcePreviewScope.active(context)
                   ? null
                   : SafeArea(
                       top: false,

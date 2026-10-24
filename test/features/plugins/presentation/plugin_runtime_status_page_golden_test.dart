@@ -50,6 +50,8 @@ Widget _host(bool dark) => ProviderScope(
     home: PluginRuntimeStatusPage(
       onBackRequested: () {},
       onDestinationRequested: (_) {},
+      onDiscoverSource: (_) {},
+      onSearchSource: (_) {},
       onVerifyAllRequested: () {},
       onRuntimeStatusRequested: () {},
     ),

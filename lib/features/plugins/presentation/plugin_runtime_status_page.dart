@@ -2,7 +2,7 @@
 ///
 /// 职责：
 /// - 展示 Runtime 数据源状态及受控管理操作。
-/// - 保持主页只承载数据源添加、查找、筛选、查看与启停。
+/// - 以内容类型、用途说明和临时浏览为主；添加和启停作为次要管理操作。
 ///
 /// 注意：
 /// - 页面只调用应用层窄端口，不接触 Runtime HTTP 或资源 token。
@@ -35,6 +35,8 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
     required this.onBackRequested,
     required this.onDestinationRequested,
     this.onSourcePressed = _ignoreSourcePressed,
+    this.onDiscoverSource,
+    this.onSearchSource,
     this.onRuntimeStatusRequested,
     this.onVerifyAllRequested,
     super.key,
@@ -43,6 +45,8 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
   final VoidCallback onBackRequested;
   final ValueChanged<AppNavigationDestination> onDestinationRequested;
   final ValueChanged<String> onSourcePressed;
+  final ValueChanged<String>? onDiscoverSource;
+  final ValueChanged<String>? onSearchSource;
   final VoidCallback? onRuntimeStatusRequested;
   final VoidCallback? onVerifyAllRequested;
 
@@ -192,8 +196,12 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
                 child: connection.when(
                   loading: () => const _DataSourceLoading(),
                   error: (Object _, StackTrace _) => _DataSourceFailure(onRetry: () => ref.invalidate(pluginRuntimeConnectionProvider)),
-                  data: (PluginRuntimeConnection value) =>
-                      _DataSourceContent(sources: pluginManagementSourcesFromConnection(value), onSourcePressed: onSourcePressed),
+                  data: (PluginRuntimeConnection value) => _DataSourceContent(
+                    sources: pluginManagementSourcesFromConnection(value),
+                    onSourcePressed: onSourcePressed,
+                    onDiscoverSource: onDiscoverSource,
+                    onSearchSource: onSearchSource,
+                  ),
                 ),
               ),
             ],
@@ -229,10 +237,12 @@ class _DataSourceFailure extends StatelessWidget {
 }
 
 class _DataSourceContent extends ConsumerStatefulWidget {
-  const _DataSourceContent({required this.sources, required this.onSourcePressed});
+  const _DataSourceContent({required this.sources, required this.onSourcePressed, this.onDiscoverSource, this.onSearchSource});
 
   final List<DataSourceManagementRowData> sources;
   final ValueChanged<String> onSourcePressed;
+  final ValueChanged<String>? onDiscoverSource;
+  final ValueChanged<String>? onSearchSource;
 
   @override
   ConsumerState<_DataSourceContent> createState() => _DataSourceContentState();
@@ -334,21 +344,22 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
     final bool isClearingAll = pendingSourceIds.contains('__all_installed_sources__');
     final PluginSourceRemovalProgress removalProgress = ref.watch(pluginRuntimeSourceRemovalProgressProvider);
     final PluginSourceImportState importState = ref.watch(pluginRuntimeSourceImportProvider);
-    final int enabledCount = widget.sources.where((DataSourceManagementRowData source) => source.enabled).length;
     final String normalizedQuery = _query.trim().toLowerCase();
     final List<DataSourceManagementRowData> visibleSources = widget.sources
         .where((DataSourceManagementRowData source) {
           final bool matchesFilter = switch (_filter) {
             _DataSourceFilter.all => true,
-            _DataSourceFilter.enabled => source.enabled,
-            _DataSourceFilter.disabled => !source.enabled,
+            _DataSourceFilter.novel => source.contentKinds.contains('novel'),
+            _DataSourceFilter.manga => source.contentKinds.contains('manga'),
+            _DataSourceFilter.audio => source.contentKinds.contains('audio'),
+            _DataSourceFilter.video => source.contentKinds.contains('video'),
           };
           if (!matchesFilter) return false;
           if (normalizedQuery.isEmpty) return true;
           return '${source.name} ${source.description} ${source.kindLabel}'.toLowerCase().contains(normalizedQuery);
         })
         .toList(growable: false);
-    return ListView(
+    return ListView.builder(
       key: const Key('data-source-management-content'),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(
@@ -357,86 +368,82 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
         AppDetailMetrics.horizontalPadding,
         AppSpacing.section,
       ),
-      children: <Widget>[
-        _DataSourceOverviewCard(
-          enabledCount: enabledCount,
-          sourceCount: widget.sources.length,
-          importState: importState,
-          onAddPressed: importState.isImporting || pendingSourceIds.isNotEmpty ? null : _importDataSource,
-          isClearingAll: isClearingAll,
-          removalProgress: removalProgress,
-        ),
-        const SizedBox(height: AppSpacing.comfortable),
-        _DataSourceSearchField(
-          controller: _searchController,
-          query: _query,
-          onChanged: (String value) => setState(() => _query = value),
-          onClear: () {
-            _searchController.clear();
-            setState(() => _query = '');
-          },
-        ),
-        const SizedBox(height: AppSpacing.regular),
-        _DataSourceFilterBar(selected: _filter, onSelected: (_DataSourceFilter value) => setState(() => _filter = value)),
-        const SizedBox(height: AppSpacing.regular),
-        _DataSourceListHeader(visibleCount: visibleSources.length, totalCount: widget.sources.length),
-        const SizedBox(height: AppSpacing.regular),
-        if (widget.sources.isEmpty)
-          const _DataSourceEmptyState(message: '暂无已安装的数据源')
-        else if (visibleSources.isEmpty)
-          _DataSourceEmptyState(
-            message: '没有符合条件的数据源',
-            actionLabel: '清除筛选',
-            onAction: () {
-              _searchController.clear();
-              setState(() {
-                _query = '';
-                _filter = _DataSourceFilter.all;
-              });
-            },
-          )
-        else
-          DecoratedBox(
-            key: const Key('data-source-list-card'),
-            decoration: BoxDecoration(
-              color: tokens.surface,
-              borderRadius: AppRadii.detailCard,
-              border: Border.all(color: tokens.divider),
-              boxShadow: <BoxShadow>[BoxShadow(color: tokens.shadow.withValues(alpha: 0.08), blurRadius: 14, offset: const Offset(0, 4))],
-            ),
-            child: ClipRRect(
-              borderRadius: AppRadii.detailCard,
-              child: Column(
-                children: <Widget>[
-                  for (int index = 0; index < visibleSources.length; index++) ...<Widget>[
-                    DataSourceManagementRow(
-                      source: visibleSources[index],
-                      isPending: importState.isImporting || isClearingAll || pendingSourceIds.contains(visibleSources[index].id),
-                      onPressed: () => widget.onSourcePressed(visibleSources[index].id),
-                      onChanged: (bool enabled) => _setSourceEnabled(visibleSources[index], enabled),
-                    ),
-                    if (index < visibleSources.length - 1)
-                      Padding(
-                        padding: const EdgeInsets.only(left: AppSpacing.dataSourceManagementMarkExtent + AppSpacing.comfortable * 2),
-                        child: Divider(height: 1, color: tokens.divider),
-                      ),
-                  ],
-                ],
+      itemCount: visibleSources.length + 2,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              _DataSourceOverviewCard(
+                sourceCount: widget.sources.length,
+                importState: importState,
+                onAddPressed: importState.isImporting || pendingSourceIds.isNotEmpty ? null : _importDataSource,
+                isClearingAll: isClearingAll,
+                removalProgress: removalProgress,
               ),
-            ),
+              const SizedBox(height: AppSpacing.comfortable),
+              _DataSourceSearchField(
+                controller: _searchController,
+                query: _query,
+                onChanged: (String value) => setState(() => _query = value),
+                onClear: () {
+                  _searchController.clear();
+                  setState(() => _query = '');
+                },
+              ),
+              const SizedBox(height: AppSpacing.regular),
+              _DataSourceFilterBar(selected: _filter, onSelected: (_DataSourceFilter value) => setState(() => _filter = value)),
+              const SizedBox(height: AppSpacing.regular),
+              _DataSourceListHeader(visibleCount: visibleSources.length, totalCount: widget.sources.length),
+              const SizedBox(height: AppSpacing.regular),
+              if (widget.sources.isEmpty)
+                const _DataSourceEmptyState(message: '暂无已安装的数据源')
+              else if (visibleSources.isEmpty)
+                _DataSourceEmptyState(
+                  message: '没有符合条件的数据源',
+                  actionLabel: '清除筛选',
+                  onAction: () {
+                    _searchController.clear();
+                    setState(() {
+                      _query = '';
+                      _filter = _DataSourceFilter.all;
+                    });
+                  },
+                ),
+            ],
+          );
+        }
+        if (index == visibleSources.length + 1) {
+          return Text(
+            '临时浏览后可返回此列表；更多菜单中可查看详情、启用或停用数据源。',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText),
+          );
+        }
+
+        final source = visibleSources[index - 1];
+        return Container(
+          margin: const EdgeInsets.only(bottom: AppSpacing.regular),
+          decoration: BoxDecoration(
+            color: tokens.surface,
+            borderRadius: AppRadii.detailCard,
+            border: Border.all(color: tokens.divider),
           ),
-        const SizedBox(height: AppSpacing.comfortable),
-        Text(
-          '开发数据源会即时生效且不能在这里停用；点击任意数据源可查看详情。',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText),
-        ),
-      ],
+          child: DataSourceManagementRow(
+            source: source,
+            isPending: importState.isImporting || isClearingAll || pendingSourceIds.contains(source.id),
+            onPressed: () => widget.onSourcePressed(source.id),
+            onDiscover: widget.onDiscoverSource == null ? null : () => widget.onDiscoverSource!(source.id),
+            onSearch: widget.onSearchSource == null ? null : () => widget.onSearchSource!(source.id),
+            onChanged: (enabled) => _setSourceEnabled(source, enabled),
+          ),
+        );
+      },
     );
   }
 }
 
-enum _DataSourceFilter { all, enabled, disabled }
+enum _DataSourceFilter { all, novel, manga, audio, video }
 
 class _DataSourceImportProgress extends StatelessWidget {
   const _DataSourceImportProgress({required this.state});
@@ -503,7 +510,6 @@ class _DataSourceImportLog extends StatelessWidget {
 
 class _DataSourceOverviewCard extends StatelessWidget {
   const _DataSourceOverviewCard({
-    required this.enabledCount,
     required this.sourceCount,
     required this.importState,
     required this.onAddPressed,
@@ -511,7 +517,6 @@ class _DataSourceOverviewCard extends StatelessWidget {
     required this.removalProgress,
   });
 
-  final int enabledCount;
   final int sourceCount;
   final PluginSourceImportState importState;
   final VoidCallback? onAddPressed;
@@ -533,17 +538,14 @@ class _DataSourceOverviewCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            sourceCount == 0 ? '添加你的第一个数据源' : '已添加 $sourceCount 个数据源',
-            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-          ),
+          Text(sourceCount == 0 ? '从一个数据源开始' : '找到想看的内容', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: AppSpacing.compact),
           Text(
-            sourceCount == 0 ? '导入数据源后，即可搜索和浏览内容' : '$enabledCount 个已启用 · ${sourceCount - enabledCount} 个已停用',
+            sourceCount == 0 ? '添加数据源，即可浏览发现和搜索内容。' : '$sourceCount 个数据源 · 按类型浏览，选择一个直接试用。',
             key: const Key('data-source-enabled-count'),
             style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
           ),
-          const SizedBox(height: AppSpacing.comfortable),
+          const SizedBox(height: AppSpacing.unit),
           _AddDataSourceButton(isImporting: importState.isImporting, onPressed: onAddPressed),
           if (isClearingAll) ...[const SizedBox(height: AppSpacing.regular), _DataSourceRemovalProgress(progress: removalProgress)],
           if (importState.isImporting) ...[
@@ -606,7 +608,7 @@ class _DataSourceSearchField extends StatelessWidget {
       onChanged: onChanged,
       textInputAction: TextInputAction.search,
       decoration: InputDecoration(
-        hintText: '搜索数据源',
+        hintText: '筛选名称或用途',
         prefixIcon: const Icon(Icons.search_rounded, size: 21),
         suffixIcon: query.isEmpty
             ? null
@@ -677,7 +679,7 @@ class _DataSourceListHeader extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return Row(
       children: <Widget>[
-        Expanded(child: Text('数据源列表', style: theme.textTheme.titleMedium)),
+        Expanded(child: Text('我的数据源', style: theme.textTheme.titleMedium)),
         Text(
           visibleCount == totalCount ? '共 $totalCount 个' : '$visibleCount / $totalCount',
           style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
@@ -733,7 +735,7 @@ class _AddDataSourceButton extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: AppSpacing.minimumTouchTarget),
-      child: FilledButton.icon(
+      child: TextButton.icon(
         key: const Key('data-source-add'),
         onPressed: onPressed,
         icon: isImporting
@@ -743,11 +745,7 @@ class _AddDataSourceButton extends StatelessWidget {
               )
             : const Icon(Icons.add_rounded, size: 21),
         label: Text(isImporting ? '正在导入…' : '添加数据源'),
-        style: FilledButton.styleFrom(
-          backgroundColor: tokens.dataSourceAccent,
-          foregroundColor: Theme.of(context).colorScheme.onPrimary,
-          shape: const RoundedRectangleBorder(borderRadius: AppRadii.detailControl),
-        ),
+        style: TextButton.styleFrom(foregroundColor: tokens.dataSourceAccent, alignment: Alignment.centerLeft),
       ),
     );
   }
@@ -755,6 +753,8 @@ class _AddDataSourceButton extends StatelessWidget {
 
 String _filterLabel(_DataSourceFilter value) => switch (value) {
   _DataSourceFilter.all => '全部',
-  _DataSourceFilter.enabled => '已启用',
-  _DataSourceFilter.disabled => '已停用',
+  _DataSourceFilter.novel => '小说',
+  _DataSourceFilter.manga => '漫画',
+  _DataSourceFilter.audio => '音频',
+  _DataSourceFilter.video => '视频',
 };

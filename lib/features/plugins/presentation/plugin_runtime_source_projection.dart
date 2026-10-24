@@ -29,6 +29,8 @@ List<DataSourceManagementRowData> pluginManagementSourcesFromConnection(PluginRu
           brand: dataSourceBrandFor(plugin.displayName),
           isDevelopment: plugin.status == 'development',
           iconUrl: plugin.iconUrl,
+          contentKinds: plugin.contentKinds,
+          canOpen: plugin.enabled && plugin.activeVersion != null,
         ),
       )
       .toList(growable: false);

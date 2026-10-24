@@ -13,6 +13,8 @@ library;
 
 import 'dart:async';
 
+import 'source_preview_page.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -215,17 +217,19 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           ),
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: AppBottomNavigation(
-          selected: AppNavigationDestination.search,
-          onSelected: (AppNavigationDestination destination) {
-            if (destination != AppNavigationDestination.search) {
-              widget.onDestinationRequested(destination);
-            }
-          },
-        ),
-      ),
+      bottomNavigationBar: SourcePreviewScope.active(context)
+          ? null
+          : SafeArea(
+              top: false,
+              child: AppBottomNavigation(
+                selected: AppNavigationDestination.search,
+                onSelected: (AppNavigationDestination destination) {
+                  if (destination != AppNavigationDestination.search) {
+                    widget.onDestinationRequested(destination);
+                  }
+                },
+              ),
+            ),
     );
   }
 

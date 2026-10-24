@@ -1,356 +1,156 @@
-/// 数据源管理二级页面测试。
-///
-/// 职责：
-/// - 验证数据源设置页的内容、状态和共享顶部栏几何。
-///
-/// 注意：
-/// - 仅覆盖 Widget 层契约，不替代 Runtime 或 Android 验收。
-///
+/// 数据源浏览入口契约：用途、类型筛选、临时跳转和次要管理操作。
+/// 仅验证 Widget，不替代真实 Runtime 和设备验收。
 library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-
 import 'package:mg_read/app/app_theme.dart';
-import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/plugins/presentation/data_source_management_row.dart';
-import 'package:mg_read/features/plugins/presentation/plugin_import_error_dialog.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page.dart';
-
 import 'plugin_runtime_status_page_fixture.dart';
 
 void main() {
-  test('plugin import copy names both supported artifact formats', () {
-    final message = pluginImportErrorMessage(AppErrorCode.fileNameInvalid);
-
-    expect(message, contains('.mgplugin.js'));
-    expect(message, contains('.mgplugin'));
-  });
-
-  testWidgets('matches the compact six-source management reference layout', (WidgetTester tester) async {
-    await _setViewport(tester, const Size(390, 690));
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [pluginRuntimeConnectionProvider.overrideWith((Ref ref) async => dataSourceManagementFixture)],
-        child: MaterialApp(
-          theme: AppTheme.light(),
-          home: PluginRuntimeStatusPage(onBackRequested: () {}, onDestinationRequested: (_) {}),
-        ),
-      ),
-    );
+  testWidgets('shows purpose and direct source actions without switches', (tester) async {
+    String? discovered;
+    String? searched;
+    String? detail;
+    await tester.pumpWidget(_host(onDiscover: (id) => discovered = id, onSearch: (id) => searched = id, onDetail: (id) => detail = id));
     await tester.pumpAndSettle();
-
-    expect(find.text('数据源'), findsOneWidget);
-    expect(find.text('已添加 6 个数据源'), findsOneWidget);
+    expect(find.text('找到想看的内容'), findsOneWidget);
     expect(find.text('阅文集团旗下原创文学平台'), findsOneWidget);
-    expect(find.text('4 个已启用 · 2 个已停用'), findsOneWidget);
-    expect(find.text('数据源分组'), findsNothing);
-    expect(find.byKey(const Key('data-source-management-card')), findsOneWidget);
-    expect(find.byKey(const Key('data-source-add')), findsOneWidget);
-    expect(find.byKey(const Key('data-source-add-native')), findsNothing);
-    expect(find.text('添加数据源'), findsOneWidget);
-    expect(find.byKey(const Key('data-source-clear-all')), findsNothing);
-    expect(find.byKey(const Key('data-source-open-runtime-directory')), findsNothing);
-    expect(find.byKey(const Key('data-source-add-development-directory')), findsNothing);
-    expect(find.byKey(const Key('runtime-debug-http-toggle')), findsNothing);
-    expect(find.byKey(const Key('data-source-toggle-org.mgread.qidian')), findsOneWidget);
-    expect(find.byKey(const Key('data-source-toggle-org.mgread.17k')), findsOneWidget);
-    expect(find.text('首页'), findsNothing);
-    expect(find.text('发现'), findsNothing);
-    expect(find.text('书架'), findsNothing);
-    expect(find.byIcon(Icons.arrow_back_ios_new_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.more_horiz_rounded), findsOneWidget);
-
-    final Rect topBar = tester.getRect(find.byKey(const Key('data-source-top-bar')));
-    final Rect card = tester.getRect(find.byKey(const Key('data-source-management-card')));
-    expect(topBar.top, 0);
-    expect(topBar.height, AppSpacing.minimumTouchTarget);
-    expect(card.top, closeTo(AppSpacing.minimumTouchTarget + AppSpacing.regular, 0.1));
-    expect(card.left, closeTo(AppDetailMetrics.horizontalPadding, 0.1));
-    expect(card.width, closeTo(390 - AppDetailMetrics.horizontalPadding * 2, 0.1));
-
-    final Rect firstSource = tester.getRect(find.byKey(const Key('data-source-org.mgread.qidian')));
-    final Rect lastSource = tester.getRect(find.byKey(const Key('data-source-org.mgread.17k')));
-    final Rect firstIcon = tester.getRect(find.byKey(const Key('data-source-icon-org.mgread.qidian')));
-    final Rect firstName = tester.getRect(find.text('起点中文网'));
-    expect(firstSource.height, AppSpacing.dataSourceRowHeight + AppSpacing.comfortable);
-    expect(firstIcon.size, const Size.square(AppSpacing.dataSourceManagementMarkExtent));
-    expect(firstIcon.center.dy, closeTo(firstSource.center.dy, 0.1));
-    expect(firstName.left - firstIcon.right, closeTo(AppSpacing.regular, 0.1));
-    expect(lastSource.bottom, greaterThan(firstSource.bottom));
+    expect(find.byType(Switch), findsNothing);
+    await tester.tap(find.byKey(const Key('data-source-discover-org.mgread.qidian')));
+    expect(discovered, 'org.mgread.qidian');
+    await tester.tap(find.byKey(const Key('data-source-search-org.mgread.qidian')));
+    expect(searched, 'org.mgread.qidian');
+    expect(detail, isNull);
+    await tester.tap(find.byKey(const Key('data-source-menu-org.mgread.qidian')));
+    await tester.pumpAndSettle();
+    expect(find.text('停用数据源'), findsOneWidget);
+    await tester.tap(find.text('详情与管理'));
+    await tester.pumpAndSettle();
+    expect(detail, 'org.mgread.qidian');
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('exposes the packaged App entry for checking every enabled source', (WidgetTester tester) async {
-    var requested = false;
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [pluginRuntimeConnectionProvider.overrideWith((Ref ref) async => dataSourceManagementFixture)],
-        child: MaterialApp(
-          theme: AppTheme.light(),
-          home: PluginRuntimeStatusPage(
-            onBackRequested: () {},
-            onDestinationRequested: (_) {},
-            onVerifyAllRequested: () => requested = true,
-          ),
-        ),
-      ),
-    );
+  testWidgets('filters by content type and purpose and recovers from no matches', (tester) async {
+    await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('data-source-verify-all')), findsNothing);
-    await tester.tap(find.byKey(const Key('data-source-more')));
+    await tester.tap(find.byKey(const Key('data-source-filter-video')));
     await tester.pumpAndSettle();
-    expect(find.text('检测数据源'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('data-source-verify-all')));
+    expect(find.text('没有符合条件的数据源'), findsOneWidget);
+    await tester.tap(find.text('清除筛选'));
     await tester.pumpAndSettle();
-    expect(requested, isTrue);
-  });
-
-  testWidgets('searches and filters installed data sources locally', (WidgetTester tester) async {
-    await _setViewport(tester, const Size(390, 690));
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [pluginRuntimeConnectionProvider.overrideWith((Ref ref) async => dataSourceManagementFixture)],
-        child: MaterialApp(
-          theme: AppTheme.light(),
-          home: PluginRuntimeStatusPage(onBackRequested: () {}, onDestinationRequested: (_) {}),
-        ),
-      ),
-    );
+    await tester.enterText(find.byKey(const Key('data-source-search')), '阅文');
     await tester.pumpAndSettle();
-
-    await tester.enterText(find.byKey(const Key('data-source-search')), '晋江');
-    await tester.pump();
-    expect(find.text('晋江文学城'), findsOneWidget);
-    expect(find.text('起点中文网'), findsNothing);
+    expect(find.text('起点中文网'), findsOneWidget);
+    expect(find.text('番茄小说'), findsNothing);
     expect(find.text('1 / 6'), findsOneWidget);
-
     await tester.tap(find.byKey(const Key('data-source-search-clear')));
-    await tester.tap(find.byKey(const Key('data-source-filter-disabled')));
-    await tester.pump();
-    expect(find.text('晋江文学城'), findsOneWidget);
-    expect(find.text('17K小说网'), findsOneWidget);
-    expect(find.text('起点中文网'), findsNothing);
-    expect(find.text('2 / 6'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('places the data-source header below the Android top inset', (WidgetTester tester) async {
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [pluginRuntimeConnectionProvider.overrideWith((Ref ref) async => dataSourceManagementFixture)],
-        child: MaterialApp(
-          theme: AppTheme.light(),
-          builder: (BuildContext context, Widget? child) {
-            final MediaQueryData mediaQuery = MediaQuery.of(context);
-            return MediaQuery(
-              data: mediaQuery.copyWith(padding: const EdgeInsets.only(top: 24), viewPadding: const EdgeInsets.only(top: 24)),
-              child: child ?? const SizedBox.shrink(),
-            );
-          },
-          home: PluginRuntimeStatusPage(onBackRequested: () {}, onDestinationRequested: (_) {}),
-        ),
-      ),
-    );
     await tester.pumpAndSettle();
-
-    final Rect topBar = tester.getRect(find.byKey(const Key('data-source-top-bar')));
-    expect(topBar.top, 24);
-    expect(topBar.height, AppSpacing.minimumTouchTarget);
+    expect(find.text('共 6 个'), findsOneWidget);
   });
 
-  testWidgets('marks a development source as live and keeps it immutable', (WidgetTester tester) async {
-    const developmentSource = PluginRuntimeConnection(
-      isHealthy: true,
-      nodeVersion: '26.10.0',
-      runtimeVersion: '0.2.0-standard.2',
-      plugins: <PluginRuntimePlugin>[
-        PluginRuntimePlugin(
-          activeVersion: '0.1.0',
-          contentKinds: <String>['novel'],
-          displayName: '发现组件演示',
-          enabled: true,
-          id: 'org.mgread.discovery-demo',
-          name: '@mgread-plugin/discovery-demo',
-          pendingVersion: null,
-          status: 'development',
-        ),
-      ],
-    );
-    await _setViewport(tester, const Size(390, 690));
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [pluginRuntimeConnectionProvider.overrideWith((Ref ref) async => developmentSource)],
-        child: MaterialApp(
-          theme: AppTheme.light(),
-          home: PluginRuntimeStatusPage(onBackRequested: () {}, onDestinationRequested: (_) {}),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('小说 · 开发数据源插件（即时生效）'), findsOneWidget);
-    expect(find.byKey(const Key('data-source-development-badge-org.mgread.discovery-demo')), findsOneWidget);
-    final toggle = tester.widget<Switch>(find.byKey(const Key('data-source-toggle-org.mgread.discovery-demo')));
-    expect(toggle.value, isTrue);
-    expect(toggle.onChanged, isNull);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('uses Runtime icon URL and keeps the brand fallback on failure', (WidgetTester tester) async {
-    const connection = PluginRuntimeConnection(
-      isHealthy: true,
-      nodeVersion: '26.10.0',
-      runtimeVersion: '0.2.0-standard.2',
-      plugins: <PluginRuntimePlugin>[
-        PluginRuntimePlugin(
-          activeVersion: '1.0.0',
-          contentKinds: <String>['novel'],
-          displayName: '自定义数据源',
-          enabled: true,
-          iconUrl: 'http://127.0.0.1:1/v1/plugin-icon/test-token',
-          id: 'org.example.custom',
-          name: '@mgread-plugin/custom',
-          pendingVersion: null,
-          status: 'active',
-        ),
-      ],
-    );
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [pluginRuntimeConnectionProvider.overrideWith((Ref ref) async => connection)],
-        child: MaterialApp(
-          theme: AppTheme.light(),
-          home: PluginRuntimeStatusPage(onBackRequested: () {}, onDestinationRequested: (_) {}),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.byType(Image), findsOneWidget);
-    expect(find.byIcon(Icons.extension_rounded), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('opens a selected data source detail intent', (WidgetTester tester) async {
-    String? selected;
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [pluginRuntimeConnectionProvider.overrideWith((Ref ref) async => dataSourceManagementFixture)],
-        child: MaterialApp(
-          theme: AppTheme.light(),
-          home: PluginRuntimeStatusPage(
-            onBackRequested: () {},
-            onDestinationRequested: (_) {},
-            onSourcePressed: (String sourceId) => selected = sourceId,
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const Key('data-source-org.mgread.qidian')));
-
-    expect(selected, 'org.mgread.qidian');
-  });
-
-  testWidgets('keeps the switch action separate from the data source detail action', (WidgetTester tester) async {
-    var detailPressed = false;
-    bool? changedValue;
-    const source = DataSourceManagementRowData(
-      id: 'org.example.source',
-      name: '示例数据源',
-      description: '用于验证点击区域',
-      kindLabel: '小说 · 已安装数据源',
-      enabled: true,
-      brand: DataSourceBrand.generic,
-      isDevelopment: false,
-    );
-
+  testWidgets('disabled and inactive sources cannot launch; menu retains enable action', (tester) async {
+    bool? enabled;
+    var launched = false;
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
         home: Scaffold(
           body: DataSourceManagementRow(
-            source: source,
+            source: const DataSourceManagementRowData(
+              id: 'disabled',
+              name: '停用源',
+              description: '完整用途说明',
+              kindLabel: '小说',
+              enabled: false,
+              brand: DataSourceBrand.generic,
+              isDevelopment: false,
+            ),
             isPending: false,
-            onPressed: () => detailPressed = true,
-            onChanged: (bool value) => changedValue = value,
+            onPressed: () {},
+            onChanged: (value) => enabled = value,
+            onDiscover: () => launched = true,
+            onSearch: () => launched = true,
           ),
         ),
       ),
     );
     await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const Key('data-source-toggle-org.example.source')));
-    await tester.pump();
-
-    expect(changedValue, isFalse);
-    expect(detailPressed, isFalse);
-
-    await tester.tap(find.byKey(const Key('data-source-org.example.source')));
-    expect(detailPressed, isTrue);
+    expect(tester.widget<FilledButton>(find.byKey(const Key('data-source-discover-disabled'))).onPressed, isNull);
+    expect(tester.widget<OutlinedButton>(find.byKey(const Key('data-source-search-disabled'))).onPressed, isNull);
+    await tester.tap(find.byKey(const Key('data-source-menu-disabled')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('启用数据源'));
+    await tester.pumpAndSettle();
+    expect(enabled, isTrue);
+    expect(launched, isFalse);
   });
 
-  testWidgets('data source rows grow for large text without losing state semantics', (WidgetTester tester) async {
-    await _setViewport(tester, const Size(320, 640));
-    final SemanticsHandle semantics = tester.ensureSemantics();
-    const source = DataSourceManagementRowData(
-      id: 'org.example.large-text',
-      name: '超长数据源名称示例',
-      description: '用于验证大字体换行',
-      kindLabel: '小说 · 官方源',
-      enabled: false,
-      brand: DataSourceBrand.generic,
-      isDevelopment: false,
-    );
-
-    try {
-      await tester.pumpWidget(_rowHost(source));
+  for (final dark in [false, true]) {
+    testWidgets('narrow large-text cards remain usable in ${dark ? 'dark' : 'light'} theme', (tester) async {
+      tester.view.physicalSize = const Size(320, 760);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      await tester.pumpWidget(_host(dark: dark, large: true));
       await tester.pumpAndSettle();
-      final Finder row = find.byKey(const Key('data-source-org.example.large-text'));
-      expect(tester.getRect(row).height, AppSpacing.dataSourceRowHeight + AppSpacing.comfortable);
-
-      await tester.pumpWidget(_rowHost(source, textScaler: const TextScaler.linear(2)));
+      await tester.ensureVisible(find.byKey(const Key('data-source-search-org.mgread.qidian')));
       await tester.pumpAndSettle();
-
-      expect(tester.getRect(row).height, greaterThan(AppSpacing.dataSourceRowHeight + AppSpacing.comfortable));
-      expect(find.text(source.name), findsOneWidget);
-      expect(find.text(source.description), findsOneWidget);
-      expect(find.text(source.kindLabel), findsOneWidget);
-      expect(tester.widget<Text>(find.text(source.name)).maxLines, 2);
-      expect(tester.widget<Text>(find.text(source.kindLabel)).maxLines, 2);
-      expect(tester.getSemantics(row).label, allOf(contains(source.name), contains(source.description), contains('未启用')));
+      expect(find.byKey(const Key('data-source-search-org.mgread.qidian')).hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
-    } finally {
-      semantics.dispose();
-    }
+    });
+  }
+
+  testWidgets('keeps diagnostics and verification in management tools', (tester) async {
+    var verified = false;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [pluginRuntimeConnectionProvider.overrideWith((ref) async => dataSourceManagementFixture)],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: PluginRuntimeStatusPage(
+            onBackRequested: () {},
+            onDestinationRequested: (_) {},
+            onVerifyAllRequested: () => verified = true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('data-source-more')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('data-source-verify-all')));
+    await tester.pumpAndSettle();
+    expect(verified, isTrue);
   });
 }
 
-Widget _rowHost(DataSourceManagementRowData source, {TextScaler? textScaler}) => MaterialApp(
-  theme: AppTheme.light(),
-  builder: (BuildContext context, Widget? child) => MediaQuery(
-    data: MediaQuery.of(context).copyWith(textScaler: textScaler ?? MediaQuery.textScalerOf(context)),
-    child: child ?? const SizedBox.shrink(),
-  ),
-  home: Scaffold(
-    body: ListView(
-      shrinkWrap: true,
-      children: <Widget>[DataSourceManagementRow(source: source, isPending: false, onPressed: () {}, onChanged: (_) {})],
+Widget _host({
+  ValueChanged<String>? onDiscover,
+  ValueChanged<String>? onSearch,
+  ValueChanged<String>? onDetail,
+  bool dark = false,
+  bool large = false,
+}) => ProviderScope(
+  overrides: [pluginRuntimeConnectionProvider.overrideWith((ref) async => dataSourceManagementFixture)],
+  child: MaterialApp(
+    theme: dark ? AppTheme.dark() : AppTheme.light(),
+    builder: (context, child) => MediaQuery(
+      data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(large ? 2 : 1)),
+      child: child!,
+    ),
+    home: PluginRuntimeStatusPage(
+      onBackRequested: () {},
+      onDestinationRequested: (_) {},
+      onSourcePressed: onDetail ?? (_) {},
+      onDiscoverSource: onDiscover ?? (_) {},
+      onSearchSource: onSearch ?? (_) {},
     ),
   ),
 );
-
-Future<void> _setViewport(WidgetTester tester, Size size) async {
-  tester.view.physicalSize = size;
-  tester.view.devicePixelRatio = 1;
-  addTearDown(() {
-    tester.view.resetPhysicalSize();
-    tester.view.resetDevicePixelRatio();
-  });
-  await tester.pump();
-}

@@ -12,6 +12,8 @@ library;
 
 import 'dart:async';
 
+import 'source_preview_page.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -143,17 +145,19 @@ class DiscoveryDestinationPage extends ConsumerWidget {
           ),
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: AppBottomNavigation(
-          selected: AppNavigationDestination.discover,
-          onSelected: (destination) {
-            if (destination != AppNavigationDestination.discover) {
-              onDestinationRequested(destination);
-            }
-          },
-        ),
-      ),
+      bottomNavigationBar: SourcePreviewScope.active(context)
+          ? null
+          : SafeArea(
+              top: false,
+              child: AppBottomNavigation(
+                selected: AppNavigationDestination.discover,
+                onSelected: (destination) {
+                  if (destination != AppNavigationDestination.discover) {
+                    onDestinationRequested(destination);
+                  }
+                },
+              ),
+            ),
     );
   }
 }
@@ -266,15 +270,18 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
     if (childDepth <= visualDepth) return;
     Navigator.of(context, rootNavigator: true).push<void>(
       MaterialPageRoute<void>(
-        builder: (BuildContext routeContext) => _DiscoveryPredictiveBackChildPage(
-          visualDepth: childDepth,
-          onDestinationRequested: onDestinationRequested,
-          onSearchRequested: onSearchRequested,
-          onSourceManagementRequested: onSourceManagementRequested,
-          onTextChapterRequested: onTextChapterRequested,
-          onComicChapterRequested: onComicChapterRequested,
-          onAudioChapterRequested: onAudioChapterRequested,
-          onVideoEpisodeRequested: onVideoEpisodeRequested,
+        builder: (BuildContext routeContext) => UncontrolledProviderScope(
+          container: ProviderScope.containerOf(context),
+          child: _DiscoveryPredictiveBackChildPage(
+            visualDepth: childDepth,
+            onDestinationRequested: onDestinationRequested,
+            onSearchRequested: onSearchRequested,
+            onSourceManagementRequested: onSourceManagementRequested,
+            onTextChapterRequested: onTextChapterRequested,
+            onComicChapterRequested: onComicChapterRequested,
+            onAudioChapterRequested: onAudioChapterRequested,
+            onVideoEpisodeRequested: onVideoEpisodeRequested,
+          ),
         ),
       ),
     );

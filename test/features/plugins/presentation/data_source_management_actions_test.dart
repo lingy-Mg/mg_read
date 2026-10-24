@@ -104,11 +104,11 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(gateway.removals, 1);
-    expect(tester.widget<FilledButton>(find.byKey(const Key('data-source-add'))).onPressed, isNull);
+    expect(tester.widget<TextButton>(find.byKey(const Key('data-source-add'))).onPressed, isNull);
     gateway.removal.complete();
     await tester.pumpAndSettle();
     expect(find.text('已卸载 6 个本地数据源。'), findsOneWidget);
-    expect(tester.widget<FilledButton>(find.byKey(const Key('data-source-add'))).onPressed, isNotNull);
+    expect(tester.widget<TextButton>(find.byKey(const Key('data-source-add'))).onPressed, isNotNull);
     expect(tester.takeException(), isNull);
   });
 
@@ -128,7 +128,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(gateway.imports, 1);
-    expect(tester.widget<FilledButton>(find.byKey(const Key('data-source-add'))).onPressed, isNull);
+    expect(tester.widget<TextButton>(find.byKey(const Key('data-source-add'))).onPressed, isNull);
     await _openTools(tester, settling: false);
     expect(tester.widget<ListTile>(find.byKey(const Key('data-source-clear-all'))).onTap, isNull);
     expect(tester.widget<ListTile>(find.byKey(const Key('data-source-verify-all'))).onTap, isNull);
@@ -139,7 +139,7 @@ void main() {
     Navigator.of(tester.element(find.text('数据源工具'))).pop();
     await tester.pumpAndSettle();
     expect(find.text('数据源已添加。'), findsNothing);
-    expect(tester.widget<FilledButton>(find.byKey(const Key('data-source-add'))).onPressed, isNotNull);
+    expect(tester.widget<TextButton>(find.byKey(const Key('data-source-add'))).onPressed, isNotNull);
   });
 
   testWidgets('native import choice returns the native intent', (tester) async {

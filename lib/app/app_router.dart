@@ -25,6 +25,7 @@ import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/cache/presentation/cache_management_page.dart';
 import 'package:mg_read/features/diagnostics/presentation/diagnostics_viewer_page.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/discovery/presentation/source_preview_page.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_destination_page.dart';
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/features/library/presentation/library_page.dart';
@@ -267,62 +268,61 @@ class SearchRoute extends GoRouteData with $SearchRoute {
 
   @override
   Page<void> buildPage(BuildContext context, GoRouterState state) {
-    return _topLevelDestinationPage(
-      context: context,
-      state: state,
-      child: SearchPage(
-        initialSourceId: sourceId,
-        onDestinationRequested: (AppNavigationDestination destination) {
-          _goToDestination(context, destination);
-        },
-        onSourceManagementRequested: () {
-          const PluginCenterRoute().push(context);
-        },
-        onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) {
-          return _openTransientSourceTextReader(
-            context,
-            detail: detail,
-            firstCatalogPage: firstCatalogPage,
-            chapter: chapter,
-            entryCoverBytes: entryCoverBytes,
-          );
-        },
-        onComicChapterRequested: ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) {
-          return _openTransientSourceComicReader(
-            context,
-            detail: detail,
-            firstCatalogPage: firstCatalogPage,
-            chapter: chapter,
-            entryCoverBytes: entryCoverBytes,
-          );
-        },
-        onAudioChapterRequested:
-            ({required detail, required firstCatalogPage, required chapter, required pluginVersion, String? libraryItemId}) {
-              final navigator = appRootNavigatorKey.currentState;
-              if (navigator == null) return Future<void>.error(StateError('The application navigator is not ready.'));
-              return openTransientSourceAudioPlayer(
-                context,
-                navigator: navigator,
-                detail: detail,
-                firstCatalogPage: firstCatalogPage,
-                chapter: chapter,
-                pluginVersion: pluginVersion,
-              );
-            },
-        onVideoEpisodeRequested: ({required detail, required firstCatalogPage, required chapter}) {
+    return _topLevelDestinationPage(context: context, state: state, child: buildContent(context));
+  }
+
+  /// Shares reader/player wiring with the route-local source preview.
+  Widget buildContent(BuildContext context) => SearchPage(
+    initialSourceId: sourceId,
+    onDestinationRequested: (AppNavigationDestination destination) {
+      _goToDestination(context, destination);
+    },
+    onSourceManagementRequested: () {
+      const PluginCenterRoute().push(context);
+    },
+    onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) {
+      return _openTransientSourceTextReader(
+        context,
+        detail: detail,
+        firstCatalogPage: firstCatalogPage,
+        chapter: chapter,
+        entryCoverBytes: entryCoverBytes,
+      );
+    },
+    onComicChapterRequested: ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) {
+      return _openTransientSourceComicReader(
+        context,
+        detail: detail,
+        firstCatalogPage: firstCatalogPage,
+        chapter: chapter,
+        entryCoverBytes: entryCoverBytes,
+      );
+    },
+    onAudioChapterRequested:
+        ({required detail, required firstCatalogPage, required chapter, required pluginVersion, String? libraryItemId}) {
           final navigator = appRootNavigatorKey.currentState;
           if (navigator == null) return Future<void>.error(StateError('The application navigator is not ready.'));
-          return openTransientSourceVideoPlayer(
+          return openTransientSourceAudioPlayer(
             context,
             navigator: navigator,
             detail: detail,
             firstCatalogPage: firstCatalogPage,
             chapter: chapter,
+            pluginVersion: pluginVersion,
           );
         },
-      ),
-    );
-  }
+    onVideoEpisodeRequested: ({required detail, required firstCatalogPage, required chapter}) {
+      final navigator = appRootNavigatorKey.currentState;
+      if (navigator == null) return Future<void>.error(StateError('The application navigator is not ready.'));
+      return openTransientSourceVideoPlayer(
+        context,
+        navigator: navigator,
+        detail: detail,
+        firstCatalogPage: firstCatalogPage,
+        chapter: chapter,
+      );
+    },
+  );
 }
 
 /// Runtime-backed discovery route reached from the shared bottom navigation.
@@ -333,64 +333,65 @@ class DiscoveryRoute extends GoRouteData with $DiscoveryRoute {
 
   @override
   Page<void> buildPage(BuildContext context, GoRouterState state) {
-    return _topLevelDestinationPage(
-      context: context,
-      state: state,
-      child: DiscoveryDestinationPage(
-        onDestinationRequested: (AppNavigationDestination destination) {
-          _goToDestination(context, destination);
-        },
-        onSearchRequested: (String? sourceId) {
+    return _topLevelDestinationPage(context: context, state: state, child: buildContent(context));
+  }
+
+  /// Shares reader/player wiring with the route-local source preview.
+  Widget buildContent(BuildContext context, {ValueChanged<String?>? onSearchRequested}) => DiscoveryDestinationPage(
+    onDestinationRequested: (AppNavigationDestination destination) {
+      _goToDestination(context, destination);
+    },
+    onSearchRequested:
+        onSearchRequested ??
+        (String? sourceId) {
           SearchRoute(sourceId: sourceId).go(context);
         },
-        onSourceManagementRequested: () {
-          const PluginCenterRoute().push(context);
-        },
-        onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) {
-          return _openTransientSourceTextReader(
-            context,
-            detail: detail,
-            firstCatalogPage: firstCatalogPage,
-            chapter: chapter,
-            entryCoverBytes: entryCoverBytes,
-          );
-        },
-        onComicChapterRequested: ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) {
-          return _openTransientSourceComicReader(
-            context,
-            detail: detail,
-            firstCatalogPage: firstCatalogPage,
-            chapter: chapter,
-            entryCoverBytes: entryCoverBytes,
-          );
-        },
-        onAudioChapterRequested:
-            ({required detail, required firstCatalogPage, required chapter, required pluginVersion, String? libraryItemId}) {
-              final navigator = appRootNavigatorKey.currentState;
-              if (navigator == null) return Future<void>.error(StateError('The application navigator is not ready.'));
-              return openTransientSourceAudioPlayer(
-                context,
-                navigator: navigator,
-                detail: detail,
-                firstCatalogPage: firstCatalogPage,
-                chapter: chapter,
-                pluginVersion: pluginVersion,
-              );
-            },
-        onVideoEpisodeRequested: ({required detail, required firstCatalogPage, required chapter}) {
+    onSourceManagementRequested: () {
+      const PluginCenterRoute().push(context);
+    },
+    onTextChapterRequested: ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) {
+      return _openTransientSourceTextReader(
+        context,
+        detail: detail,
+        firstCatalogPage: firstCatalogPage,
+        chapter: chapter,
+        entryCoverBytes: entryCoverBytes,
+      );
+    },
+    onComicChapterRequested: ({required detail, required firstCatalogPage, required chapter, required entryCoverBytes}) {
+      return _openTransientSourceComicReader(
+        context,
+        detail: detail,
+        firstCatalogPage: firstCatalogPage,
+        chapter: chapter,
+        entryCoverBytes: entryCoverBytes,
+      );
+    },
+    onAudioChapterRequested:
+        ({required detail, required firstCatalogPage, required chapter, required pluginVersion, String? libraryItemId}) {
           final navigator = appRootNavigatorKey.currentState;
           if (navigator == null) return Future<void>.error(StateError('The application navigator is not ready.'));
-          return openTransientSourceVideoPlayer(
+          return openTransientSourceAudioPlayer(
             context,
             navigator: navigator,
             detail: detail,
             firstCatalogPage: firstCatalogPage,
             chapter: chapter,
+            pluginVersion: pluginVersion,
           );
         },
-      ),
-    );
-  }
+    onVideoEpisodeRequested: ({required detail, required firstCatalogPage, required chapter}) {
+      final navigator = appRootNavigatorKey.currentState;
+      if (navigator == null) return Future<void>.error(StateError('The application navigator is not ready.'));
+      return openTransientSourceVideoPlayer(
+        context,
+        navigator: navigator,
+        detail: detail,
+        firstCatalogPage: firstCatalogPage,
+        chapter: chapter,
+      );
+    },
+  );
 }
 
 /// Opens a route-lifetime reader session without writing source data or state.
@@ -658,6 +659,8 @@ class PluginCenterRoute extends GoRouteData with $PluginCenterRoute {
       onDestinationRequested: (AppNavigationDestination destination) {
         _goToDestination(context, destination);
       },
+      onDiscoverSource: (pluginId) => _openSourcePreview(context, pluginId, search: false),
+      onSearchSource: (pluginId) => _openSourcePreview(context, pluginId, search: true),
       onSourcePressed: (String pluginId) {
         PluginSourceDetailRoute(pluginId: pluginId).push(context);
       },
@@ -851,4 +854,19 @@ class _UnknownRoutePage extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Owns a temporary source session without replacing the user's main destinations.
+Future<void> _openSourcePreview(BuildContext context, String pluginId, {required bool search}) {
+  return Navigator.of(context).push<void>(
+    MaterialPageRoute<void>(
+      builder: (_) => SourcePreviewPage(
+        sourceId: pluginId,
+        initiallySearch: search,
+        discoveryBuilder: (previewContext, openSearch) =>
+            const DiscoveryRoute().buildContent(previewContext, onSearchRequested: (_) => openSearch()),
+        searchBuilder: (previewContext) => SearchRoute(sourceId: pluginId).buildContent(previewContext),
+      ),
+    ),
+  );
 }
