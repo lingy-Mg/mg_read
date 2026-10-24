@@ -41,7 +41,17 @@ final class ContentLibraryBookRefresher implements LibraryBookRefresher, Library
   }
 
   @override
-  Future<bool> refreshCatalogOnly(String bookId) async {
+  Future<bool> refreshCatalogOnly(String bookId) {
+    final current = _active[bookId];
+    if (current != null) return current;
+    final task = _refreshCatalogOnly(bookId);
+    _active[bookId] = task;
+    return task.whenComplete(() {
+      if (identical(_active[bookId], task)) _active.remove(bookId);
+    });
+  }
+
+  Future<bool> _refreshCatalogOnly(String bookId) async {
     final item = await _library.getLibraryItem(LibraryItemId(bookId));
     if (item == null) throw StateError('The bookshelf item no longer exists.');
     final source = item.source;
