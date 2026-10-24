@@ -267,6 +267,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Read app version
         id: version
@@ -304,6 +306,24 @@ jobs:
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Generate release notes
+        id: release_notes
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREVIOUS_TAG="$(git describe --tags --match 'v[0-9]*' --exclude '*-*' --abbrev=0 "$GITHUB_SHA" 2>/dev/null || true)"
+          python3 tools/generate_release_notes.py \
+            --from-tag "$PREVIOUS_TAG" \
+            --to-ref "$GITHUB_SHA" \
+            --release-tag "$TAG" \
+            --repository "$REPOSITORY" \
+            --output release/release-notes.txt
+          echo "previous_tag=$PREVIOUS_TAG" >> "$GITHUB_OUTPUT"
 
       - name: Download Android artifact
         if: steps.existing.outputs.exists != 'true'
@@ -351,6 +371,7 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
           REPOSITORY: ${{ github.repository }}
           COMMIT_SHA: ${{ github.sha }}
+          PREVIOUS_TAG: ${{ steps.release_notes.outputs.previous_tag }}
         shell: bash
         run: |
           set -euo pipefail
@@ -366,6 +387,10 @@ jobs:
           APK_SHA256="$(sha256sum "$APK_PATH" | cut -d ' ' -f 1)"
           APK_SIZE="$(stat -c '%s' "$APK_PATH")"
           PUBLISHED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          COMPARE_URL=""
+          if [[ -n "$PREVIOUS_TAG" ]]; then
+            COMPARE_URL="https://github.com/$REPOSITORY/compare/$PREVIOUS_TAG...$TAG"
+          fi
 
           jq -n \
             --arg schema 'mgread.android-update.v1' \
@@ -377,6 +402,8 @@ jobs:
             --arg publishedAt "$PUBLISHED_AT" \
             --arg targetCommitish "$COMMIT_SHA" \
             --arg commitSha "$COMMIT_SHA" \
+            --arg compareUrl "$COMPARE_URL" \
+            --rawfile releaseNotes release/release-notes.txt \
             --arg apkName "$APK_NAME" \
             --arg apkSha256 "$APK_SHA256" \
             --argjson apkSize "$APK_SIZE" \
@@ -390,6 +417,8 @@ jobs:
               publishedAt: $publishedAt,
               targetCommitish: $targetCommitish,
               commitSha: $commitSha,
+              compareUrl: (if $compareUrl == "" then null else $compareUrl end),
+              releaseNotes: ($releaseNotes | sub("\\n$"; "")),
               apk: {name: $apkName, sha256: $apkSha256, size: $apkSize}
             }' > release/final/update.json
 
@@ -406,7 +435,12 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         shell: bash
         run: |
-          gh release create "$TAG"             release/final/*             --repo "${{ github.repository }}"             --target "${{ github.sha }}"             --title "MgRead v$VERSION"             --generate-notes             --latest
+          gh release create "$TAG" release/final/* \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "MgRead v$VERSION" \
+            --notes-file release/release-notes.txt \
+            --latest
 
       - name: Publish prerelease
         if: steps.existing.outputs.exists != 'true' && steps.version.outputs.prerelease == 'true'
@@ -416,5 +450,11 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         shell: bash
         run: |
-          gh release create "$TAG"             release/final/*             --repo "${{ github.repository }}"             --target "${{ github.sha }}"             --title "MgRead v$VERSION"             --generate-notes             --prerelease             --latest=false
+          gh release create "$TAG" release/final/* \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "MgRead v$VERSION" \
+            --notes-file release/release-notes.txt \
+            --prerelease \
+            --latest=false
 

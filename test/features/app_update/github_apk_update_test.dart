@@ -62,9 +62,11 @@ void main() {
     final now = DateTime.utc(2026, 10, 23, 10, 15);
     await marker.writeAsString(now.toIso8601String());
     var requests = 0;
+    String? cacheBust;
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final served = server.listen((request) async {
       requests++;
+      cacheBust = request.uri.queryParameters['check'];
       request.response.statusCode = HttpStatus.serviceUnavailable;
       await request.response.close();
     });
@@ -86,6 +88,7 @@ void main() {
     expect(requests, 0);
     expect(await coordinator.checkForUpdate(force: true), isNull);
     expect(requests, 1);
+    expect(cacheBust, now.add(const Duration(minutes: 5)).microsecondsSinceEpoch.toString());
     expect(await marker.readAsString(), now.add(const Duration(minutes: 5)).toIso8601String());
   });
 
