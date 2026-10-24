@@ -3,6 +3,7 @@
 /// 职责：
 /// - 验证四种 Runtime 数据源内容类型都进入管理列表。
 /// - 验证管理列表使用统一且完整的内容类型标签。
+/// - 验证 R18 来源标记进入投影标签。
 ///
 /// 注意：
 /// - 仅覆盖不可变投影，不替代管理页 Widget 或 Runtime 契约测试。
@@ -58,5 +59,31 @@ void main() {
 
     expect(sources.map((source) => source.id), <String>['org.example.audio', 'org.example.video', 'org.example.all']);
     expect(sources.map((source) => source.kindLabel), <String>['音频', '视频', '小说 · 漫画 · 音频 · 视频']);
+  });
+
+  test('projects the r18 marker into metadata labels', () {
+    const connection = PluginRuntimeConnection(
+      isHealthy: true,
+      nodeVersion: '26.10.0',
+      runtimeVersion: 'test',
+      plugins: <PluginRuntimePlugin>[
+        PluginRuntimePlugin(
+          activeVersion: '1.0.0',
+          contentKinds: <String>['manga'],
+          displayName: '漫画源',
+          enabled: true,
+          id: 'org.example.r18',
+          name: '@example/r18',
+          pendingVersion: null,
+          status: 'active',
+          r18: true,
+        ),
+      ],
+    );
+
+    final sources = pluginManagementSourcesFromConnection(connection);
+
+    expect(sources.single.r18, isTrue);
+    expect(sources.single.kindLabel, '漫画 · R18');
   });
 }

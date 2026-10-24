@@ -864,6 +864,7 @@ InstalledPlugin _decodeInstalledPlugin(Object? value) {
   final enabled = item['enabled'];
   final status = item['status'];
   final kinds = item['contentKinds'];
+  final r18 = item['r18'];
   if (engine == null ||
       id is! String ||
       name is! String ||
@@ -875,6 +876,7 @@ InstalledPlugin _decodeInstalledPlugin(Object? value) {
       (pendingVersion != null && pendingVersion is! String) ||
       enabled is! bool ||
       status is! String ||
+      (r18 != null && r18 is! bool) ||
       kinds is! List<Object?> ||
       kinds.any((Object? kind) => kind is! String)) {
     throw const PluginRuntimeException(
@@ -893,6 +895,7 @@ InstalledPlugin _decodeInstalledPlugin(Object? value) {
     id: id,
     name: name,
     pendingVersion: pendingVersion as String?,
+    r18: r18 is bool ? r18 : false,
     status: status,
   );
 }
@@ -915,9 +918,13 @@ final class InstalledPlugin {
     required this.status,
     this.description,
     this.iconUrl,
+    this.r18 = false,
   });
 
   final PluginEngine engine;
+
+  /// 来源自带的成人内容标记;旧 Runtime 结果缺省为 false。
+  final bool r18;
   final String? activeVersion;
   final List<String> contentKinds;
   final String? description;

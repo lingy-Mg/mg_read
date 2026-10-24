@@ -28,6 +28,7 @@ final class DataSourceManagementRowData {
     required this.isDevelopment,
     this.iconUrl,
     this.contentKinds = const <String>[],
+    this.r18 = false,
     this.canOpen = true,
   });
 
@@ -40,6 +41,7 @@ final class DataSourceManagementRowData {
   final bool isDevelopment;
   final String? iconUrl;
   final List<String> contentKinds;
+  final bool r18;
   final bool canOpen;
 }
 

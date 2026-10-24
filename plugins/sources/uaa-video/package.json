@@ -30,6 +30,7 @@
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["video"],
+    "r18": true,
     "icon": "assets/icon.png"
   }
 }

@@ -117,6 +117,7 @@ final class MgReadPluginRuntimeGateway implements PluginRuntimeGateway, PluginRu
               id: plugin.id,
               name: plugin.name,
               pendingVersion: plugin.pendingVersion,
+              r18: plugin.r18,
               status: plugin.status,
             ),
           ),
@@ -328,6 +329,7 @@ PluginRuntimePlugin _toPluginRuntimePlugin(InstalledPlugin plugin) {
     id: plugin.id,
     name: plugin.name,
     pendingVersion: plugin.pendingVersion,
+    r18: plugin.r18,
     status: plugin.status,
   );
 }

@@ -108,7 +108,8 @@ Future<Directory> _stageInstalledStandardPlugin() async {
     "id": "org.mgread.flutter.fixture",
     "displayName": "Flutter 标准测试数据源",
     "pluginApi": 1,
-    "contentKinds": ["novel"]
+    "contentKinds": ["novel"],
+    "r18": true
   }
 }
 

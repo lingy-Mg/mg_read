@@ -60,6 +60,7 @@ test("standard project uses package.json metadata", async () => {
   assert.equal(project.descriptor.packageMode, "archive");
   assert.equal(project.descriptor.entry, "dist/index.mjs");
   assert.deepEqual(project.descriptor.contentKinds, ["novel"]);
+  assert.equal(project.descriptor.r18, true);
   assert.deepEqual(Object.keys(project), ["descriptor", "packageJson"]);
 });
 

@@ -141,6 +141,8 @@ export interface InstalledPluginSnapshot extends JsonObject {
   readonly iconUrl: string | null;
   readonly name: string;
   readonly pendingVersion: string | null;
+  /** Source-declared adult-content marker; defaults to false for older installs. */
+  readonly r18: boolean;
   readonly status: "active" | "damaged" | "development" | "disabled" | "pending" | "quarantined";
 }
 

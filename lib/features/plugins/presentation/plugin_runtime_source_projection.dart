@@ -30,6 +30,7 @@ List<DataSourceManagementRowData> pluginManagementSourcesFromConnection(PluginRu
           isDevelopment: plugin.status == 'development',
           iconUrl: plugin.iconUrl,
           contentKinds: plugin.contentKinds,
+          r18: plugin.r18,
           canOpen: plugin.enabled && plugin.activeVersion != null,
         ),
       )
@@ -37,7 +38,8 @@ List<DataSourceManagementRowData> pluginManagementSourcesFromConnection(PluginRu
 }
 
 String _sourceMetadataLabel(PluginRuntimePlugin plugin) {
-  final kindLabel = pluginContentKindsLabel(plugin.contentKinds);
+  String kindLabel = pluginContentKindsLabel(plugin.contentKinds);
+  if (plugin.r18) kindLabel = '$kindLabel · R18';
   if (plugin.engine == 'native') return '$kindLabel · 原生数据源';
   if (plugin.status == 'development') return '$kindLabel · 开发数据源插件（即时生效）';
   final String? origin = switch (plugin.displayName) {

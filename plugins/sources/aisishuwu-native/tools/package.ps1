@@ -41,6 +41,7 @@ function Write-Package([string]$Path, [string[]]$SelectedTargets) {
     version = '0.3.0'
     description = '爱丽丝书屋 Rust 原生小说来源'
     contentKinds = @('novel')
+    r18 = $true
     capabilities = @('discover', 'search', 'searchSuggestions', 'getDetail', 'getChapters', 'getContent')
     targets = $targets
   }

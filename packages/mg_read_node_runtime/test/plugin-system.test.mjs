@@ -458,6 +458,7 @@ test("a legacy default-export pending update fails and keeps current active", as
   assert.equal(plugin.status, "active");
   assert.equal(plugin.activeVersion, "1.0.0");
   assert.equal(plugin.pendingVersion, null);
+  assert.equal(plugin.r18, true);
   const pluginRoot = join(dataRoot, "plugins", "org.mgread.runtime.fixture");
   assert.equal((await readFile(join(pluginRoot, "current"), "utf8")).trim(), "1.0.0");
   assert.equal((await readFile(join(pluginRoot, "failed"), "utf8")).trim(), "2.0.0");

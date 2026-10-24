@@ -34,6 +34,7 @@
     "icon": "assets/icon.png",
     "contentKinds": [
       "novel"
-    ]
+    ],
+    "r18": true
   }
 }

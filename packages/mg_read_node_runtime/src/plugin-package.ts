@@ -34,6 +34,8 @@ export class PluginPackageError extends Error {
 export interface PluginPackageDescriptor {
   readonly contentKinds: readonly PluginContentKind[];
   readonly description?: string;
+  /** Optional source-owned adult-content marker surfaced to the host UI. */
+  readonly r18?: boolean;
   readonly displayName: string;
   readonly entry: string;
   readonly id: string;
@@ -168,6 +170,7 @@ export function parsePluginPackageDescriptor(
   const schemaVersion = mgread.schemaVersion;
   const api = mgread.pluginApi;
   const contentKinds = mgread.contentKinds;
+  const r18 = mgread.r18;
   const packageMode = mgread.packageMode ?? "single-file";
   const icon = mgread.icon;
   if (
@@ -187,6 +190,7 @@ export function parsePluginPackageDescriptor(
     contentKinds.some((kind) => kind !== "novel" && kind !== "manga" && kind !== "audio" && kind !== "video") ||
     new Set(contentKinds).size !== contentKinds.length ||
     (packageMode !== "single-file" && packageMode !== "archive") ||
+    (r18 !== undefined && typeof r18 !== "boolean") ||
     (icon !== undefined && !isSupportedIconPath(icon))
   ) {
     throw new PluginPackageError("plugin_package_invalid");
@@ -210,6 +214,7 @@ export function parsePluginPackageDescriptor(
     packageMode,
     pluginApi: pluginApiVersion,
     projectRoot,
+    ...(r18 === undefined ? {} : { r18 }),
     version,
   });
 }

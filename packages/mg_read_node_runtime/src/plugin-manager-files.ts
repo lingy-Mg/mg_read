@@ -74,6 +74,7 @@ export function snapshotFrom(
     iconUrl: null,
     name: descriptor?.name ?? pluginId,
     pendingVersion,
+    r18: descriptor?.r18 ?? false,
     status,
   });
 }
@@ -97,7 +98,8 @@ export function withEnabledPluginSnapshot(
     activeVersion: current.activeVersion, contentKinds: current.contentKinds,
     description: current.description, displayName: current.displayName, enabled,
     id: current.id, iconUrl: current.iconUrl, name: current.name,
-    pendingVersion: current.pendingVersion, status: enabled ? enabledStatus(current) : "disabled",
+    pendingVersion: current.pendingVersion, r18: current.r18,
+    status: enabled ? enabledStatus(current) : "disabled",
   } satisfies InstalledPluginSnapshot);
   return Object.freeze({
     snapshots: Object.freeze([...snapshots.slice(0, index), updated, ...snapshots.slice(index + 1)]),

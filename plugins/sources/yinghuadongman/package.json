@@ -36,6 +36,7 @@
     "packageMode": "single-file","icon":"assets/icon.png",
     "contentKinds": [
       "video"
-    ]
+    ],
+    "r18": true
   }
 }

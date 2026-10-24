@@ -94,6 +94,7 @@ final class PluginRuntimePlugin {
     this.description,
     this.iconUrl,
     this.engine = 'node',
+    this.r18 = false,
   });
 
   final String? activeVersion;
@@ -106,5 +107,8 @@ final class PluginRuntimePlugin {
   final String id;
   final String name;
   final String? pendingVersion;
+
+  /// 来源元数据声明的成人内容标记;旧 Runtime 结果缺省为 false。
+  final bool r18;
   final String status;
 }

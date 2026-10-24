@@ -157,6 +157,7 @@ class _DetailContent extends ConsumerWidget {
                 _DetailField(label: '名称', value: source.displayName),
                 _DetailField(label: '来源方式', value: isDevelopment ? '工作区开发数据源插件' : 'Runtime 已安装数据源插件'),
                 _DetailField(label: '类型', value: pluginContentKindsLabel(source.contentKinds)),
+                if (source.r18) _DetailField(label: '分级', value: 'R18'),
                 _DetailField(label: '版本', value: source.activeVersion ?? '等待激活'),
                 _DetailField(label: '状态', value: _statusLabel(source)),
                 _DetailField(label: '标识', value: source.id, isLast: true),

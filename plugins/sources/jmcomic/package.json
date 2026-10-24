@@ -33,6 +33,7 @@
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",
-    "contentKinds": ["manga"]
+    "contentKinds": ["manga"],
+    "r18": true
   }
 }

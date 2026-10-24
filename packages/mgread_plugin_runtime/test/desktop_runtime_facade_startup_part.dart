@@ -276,6 +276,7 @@ void _registerDesktopRuntimeStartupTests() {
       });
 
       final plugins = await runtime.invoke(const InstalledPluginsInvocation());
+      expect(plugins.single.r18, isTrue);
       final artifacts = await runtime.invoke(
         const PluginTransferListInvocation(),
       );

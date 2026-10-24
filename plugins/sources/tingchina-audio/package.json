@@ -40,6 +40,7 @@
     "icon": "assets/icon.png",
     "contentKinds": [
       "audio"
-    ]
+    ],
+    "r18": true
   }
 }

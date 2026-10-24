@@ -32,6 +32,9 @@ pub struct Manifest {
     pub content_kinds: Vec<String>,
     pub capabilities: Vec<String>,
     pub targets: BTreeMap<String, Target>,
+    /// Source-declared adult-content marker; absent in older manifests.
+    #[serde(default)]
+    pub r18: bool,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Entry {
@@ -353,7 +356,7 @@ impl Catalog {
         let m = &e.manifest;
         json!({"id":m.id,"name":m.name,"displayName":m.name,"description":m.description,"iconUrl":null,
                "activeVersion":m.version,"pendingVersion":e.pending.as_ref().map(|p|&p.version),"enabled":e.enabled,
-               "status":if e.enabled {"active"}else{"disabled"},"contentKinds":m.content_kinds,"engine":"native"})
+               "status":if e.enabled {"active"}else{"disabled"},"contentKinds":m.content_kinds,"r18":m.r18,"engine":"native"})
     }
     pub fn list(&self) -> Value {
         Value::Array(
@@ -431,6 +434,13 @@ pub fn usage(path: &Path) -> Result<(u64, u64)> {
 mod tests {
     use super::*;
     #[test]
+    fn r18_defaults_false_for_older_manifests() {
+        let without = r#"{"format":"mgread-native","engine":"native","abi":3,"id":"org.mgread.alice","name":"Alice","version":"0.1.0","description":"","contentKinds":["novel"],"capabilities":["search"],"targets":{}}"#;
+        assert!(!serde_json::from_str::<Manifest>(without).unwrap().r18);
+        let with = without.replace("\"targets\":{}", "\"targets\":{},\"r18\":true");
+        assert!(serde_json::from_str::<Manifest>(&with).unwrap().r18);
+    }
+    #[test]
     fn rejects_path_escapes() {
         for p in ["../x", "/x", "C:/x", "x\\y", "."] {
             assert!(!safe_relative(p), "{p}");
@@ -465,6 +475,7 @@ mod tests {
             content_kinds: vec!["novel".into()],
             capabilities: vec!["search".into()],
             targets: BTreeMap::from([(target().into(), selected.clone()), ("other".into(), other)]),
+            r18: false,
         };
         let mut subset = manifest.clone();
         subset.targets.retain(|name, _| name == target());

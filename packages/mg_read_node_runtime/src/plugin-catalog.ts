@@ -327,6 +327,7 @@ function encodeRecord(record: InstalledPluginCatalogRecord): Readonly<Record<str
       name: descriptor.name,
       packageMode: descriptor.packageMode,
       pluginApi: descriptor.pluginApi,
+      ...(descriptor.r18 === undefined ? {} : { r18: descriptor.r18 }),
       version: descriptor.version,
     },
     enabled: record.snapshot.enabled,
@@ -373,6 +374,7 @@ function decodeDescriptor(value: unknown, pluginId: string, dataRoot: string): P
       (value.packageMode !== "archive" && value.packageMode !== "single-file") ||
       !Array.isArray(value.contentKinds) ||
       (value.description !== undefined && typeof value.description !== "string") ||
+      (value.r18 !== undefined && typeof value.r18 !== "boolean") ||
       (value.icon !== undefined && typeof value.icon !== "string")) {
     throw new Error("plugin_catalog_invalid");
   }
@@ -388,6 +390,7 @@ function decodeDescriptor(value: unknown, pluginId: string, dataRoot: string): P
       ...(value.icon === undefined ? {} : { icon: value.icon }),
       packageMode: value.packageMode,
       pluginApi: value.pluginApi,
+      ...(value.r18 === undefined ? {} : { r18: value.r18 }),
       schemaVersion: 1,
     },
     name: value.name,
