@@ -37,7 +37,7 @@ Future<bool> showSourceUpdatesConfirmationDialog(BuildContext context, List<Sour
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: AppSpacing.unit),
                   child: Text(
-                    '${update.plugin.name}  v${update.plan.receiverVersion ?? '--'} → v${update.plugin.version}',
+                    '${update.plugin.name}  v${_displayVersion(update.plan.receiverVersion ?? '--')} → v${_displayVersion(update.plugin.version)}',
                     style: Theme.of(dialogContext).textTheme.bodyMedium,
                   ),
                 ),
@@ -92,7 +92,7 @@ Future<void> showSourceCollectionImportResults(
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: AppSpacing.unit),
                   child: Text(
-                    '${result.status == PluginTransferImportStatus.installed ? '✓' : '×'}  ${names[result.pluginId] ?? result.pluginId}  v${result.version}  ${result.status == PluginTransferImportStatus.installed ? (updating ? '已更新' : '已安装') : (updating ? '更新失败或已隔离' : '安装失败或已隔离')}',
+                    '${result.status == PluginTransferImportStatus.installed ? '✓' : '×'}  ${names[result.pluginId] ?? result.pluginId}  v${_displayVersion(result.version)}  ${result.status == PluginTransferImportStatus.installed ? (updating ? '已更新' : '已安装') : (updating ? '更新失败或已隔离' : '安装失败或已隔离')}',
                   ),
                 ),
             ],
@@ -175,29 +175,65 @@ class _SourceCollectionSelectorState extends State<_SourceCollectionSelector> {
                     final plugin = candidate.plugin;
                     final checked = _selectedIds.contains(plugin.id);
                     final enabled = candidate.canImport;
-                    final titlePrefix = switch (candidate.plan.action) {
-                      PluginTransferPlanAction.missing => '新增',
-                      PluginTransferPlanAction.upgrade => '覆盖更新',
-                      PluginTransferPlanAction.same => '同版覆盖',
-                      PluginTransferPlanAction.receiverNewer => '不可降级',
-                      PluginTransferPlanAction.developmentConflict => '开发目录冲突',
-                      PluginTransferPlanAction.unavailable => '不可用',
+                    final action = candidate.plan.action;
+                    final statusColor = _statusColor(action, Theme.of(context).colorScheme);
+                    final guidance = switch (action) {
+                      PluginTransferPlanAction.upgrade =>
+                        '本地 v${_displayVersion(candidate.plan.receiverVersion ?? '--')} → 最新 v${_displayVersion(plugin.version)}',
+                      PluginTransferPlanAction.same =>
+                        '本地 v${_displayVersion(candidate.plan.receiverVersion ?? '--')} · 已是最新版本\n勾选后重新安装此版本',
+                      PluginTransferPlanAction.receiverNewer =>
+                        '本地 v${_displayVersion(candidate.plan.receiverVersion ?? '--')} → 仓库 v${_displayVersion(plugin.version)}\n合集版本可能造成降级',
+                      PluginTransferPlanAction.missing => '仓库版本 v${_displayVersion(plugin.version)}',
+                      PluginTransferPlanAction.developmentConflict => '由开发目录管理，需先处理来源冲突',
+                      PluginTransferPlanAction.unavailable => _blockedReason(action),
                     };
-                    final detail = candidate.isInstalled
-                        ? '已安装 ${candidate.installedName ?? plugin.id} · 当前 v${candidate.plan.receiverVersion} → 可用 v${plugin.version}${candidate.plan.action == PluginTransferPlanAction.same ? '（相同版本，需明确覆盖）' : ''}'
-                        : '可用版本 v${plugin.version}';
-                    return CheckboxListTile(
-                      key: Key('source-collection-${plugin.id}'),
-                      value: checked,
-                      onChanged: enabled
-                          ? (value) => setState(() => value == true ? _selectedIds.add(plugin.id) : _selectedIds.remove(plugin.id))
-                          : null,
-                      controlAffinity: ListTileControlAffinity.leading,
-                      title: Text('$titlePrefix：${plugin.name}'),
-                      subtitle: Text(
-                        '$detail\n${enabled ? (candidate.requiresOverwriteChoice ? '勾选即明确同意替换已安装版本。' : '可安装') : _blockedReason(candidate.plan.action)}',
+                    return Container(
+                      key: Key('source-collection-card-${plugin.id}'),
+                      margin: const EdgeInsets.only(bottom: AppSpacing.compact),
+                      child: Material(
+                        color: checked
+                            ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.28)
+                            : AppThemeTokens.of(context).mutedSurface.withValues(alpha: 0.55),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: AppRadii.detailCard,
+                          side: BorderSide(
+                            color: checked
+                                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.38)
+                                : Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.45),
+                          ),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: CheckboxListTile(
+                          key: Key('source-collection-${plugin.id}'),
+                          value: checked,
+                          onChanged: enabled
+                              ? (value) => setState(() => value == true ? _selectedIds.add(plugin.id) : _selectedIds.remove(plugin.id))
+                              : null,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.compact, vertical: AppSpacing.unit),
+                          visualDensity: VisualDensity.compact,
+                          title: Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: Text(
+                                  plugin.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                              const SizedBox(width: AppSpacing.compact),
+                              _SourceStatusBadge(label: _statusLabel(action), color: statusColor),
+                            ],
+                          ),
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: AppSpacing.unit),
+                            child: Text(guidance, style: Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.35)),
+                          ),
+                          isThreeLine: action == PluginTransferPlanAction.same || action == PluginTransferPlanAction.receiverNewer,
+                        ),
                       ),
-                      isThreeLine: true,
                     );
                   },
                 ),
@@ -232,6 +268,48 @@ class _SourceCollectionSelectorState extends State<_SourceCollectionSelector> {
       ),
     );
   }
+}
+
+class _SourceStatusBadge extends StatelessWidget {
+  const _SourceStatusBadge({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.compact, vertical: AppSpacing.unit),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color, fontWeight: FontWeight.w700),
+      ),
+    ),
+  );
+}
+
+String _statusLabel(PluginTransferPlanAction action) => switch (action) {
+  PluginTransferPlanAction.missing => '未安装',
+  PluginTransferPlanAction.upgrade => '有更新',
+  PluginTransferPlanAction.same => '已安装',
+  PluginTransferPlanAction.receiverNewer => '不可降级',
+  PluginTransferPlanAction.developmentConflict => '开发冲突',
+  PluginTransferPlanAction.unavailable => '不可用',
+};
+
+Color _statusColor(PluginTransferPlanAction action, ColorScheme colorScheme) => switch (action) {
+  PluginTransferPlanAction.missing => colorScheme.tertiary,
+  PluginTransferPlanAction.upgrade => colorScheme.primary,
+  PluginTransferPlanAction.same => colorScheme.secondary,
+  PluginTransferPlanAction.receiverNewer ||
+  PluginTransferPlanAction.developmentConflict ||
+  PluginTransferPlanAction.unavailable => colorScheme.error,
+};
+
+String _displayVersion(String version) {
+  final buildMarker = version.indexOf('-devsync.');
+  return buildMarker > 0 ? version.substring(0, buildMarker) : version;
 }
 
 String _blockedReason(PluginTransferPlanAction action) => switch (action) {

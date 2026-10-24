@@ -62,9 +62,12 @@ void main() {
 
     expect(find.text('在线插件仓库'), findsOneWidget);
     final newSource = tester.widget<CheckboxListTile>(find.byKey(const Key('source-collection-org.example.new')));
-    expect((newSource.subtitle! as Text).data, contains('可用版本 v1.0.0'));
+    expect(((newSource.subtitle! as Padding).child as Text).data, '仓库版本 v1.0.0');
     final installedSource = tester.widget<CheckboxListTile>(find.byKey(const Key('source-collection-org.example.same')));
-    expect((installedSource.subtitle! as Text).data, contains('当前 v1.0.0 → 可用 v1.0.0'));
+    expect(((installedSource.subtitle! as Padding).child as Text).data, contains('已是最新版本'));
+    expect(find.text('有更新'), findsOneWidget);
+    expect(find.text('未安装'), findsOneWidget);
+    expect(find.textContaining('devsync'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -129,12 +132,12 @@ List<SourceCollectionCandidate> _candidates() {
       installedName: 'same',
     ),
     SourceCollectionCandidate(
-      plugin: plugin('org.example.upgrade', '2.0.0'),
+      plugin: plugin('org.example.upgrade', '2.0.0-devsync.1790432259114.6a91949aea'),
       plan: const PluginTransferPlanItem(
         action: PluginTransferPlanAction.upgrade,
         pluginId: 'org.example.upgrade',
         receiverVersion: '1.0.0',
-        version: '2.0.0',
+        version: '2.0.0-devsync.1790432259114.6a91949aea',
       ),
       installedName: 'upgrade',
     ),
