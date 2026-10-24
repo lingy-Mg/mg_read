@@ -10,8 +10,6 @@
 ///
 library;
 
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -46,25 +44,22 @@ class LibraryHomeTopVisual extends StatelessWidget {
                         children: <Widget>[
                           Opacity(
                             opacity: 0.84,
-                            child: ImageFiltered(
-                              imageFilter: ImageFilter.blur(sigmaX: 2.4, sigmaY: 2.4),
-                              child: Transform.scale(
-                                scale: 1.08,
-                                child: LibraryBookCover(
-                                  key: const Key('library-home-top-backdrop-cover'),
-                                  title: data.title,
-                                  contentKind: data.contentKind,
-                                  variant: data.coverVariant,
-                                  coverBytes: data.coverBytes,
-                                  coverRequest: data.coverRequest,
-                                  assetPath: data.coverAssetPath,
-                                  isBlurred: data.isCoverBlurred,
-                                  alignment: Alignment.topCenter,
-                                  width: constraints.maxWidth,
-                                  height: constraints.maxHeight,
-                                  fit: BoxFit.cover,
-                                  showLetterboxBackground: false,
-                                ),
+                            child: Transform.scale(
+                              scale: 1.08,
+                              child: LibraryBookCover(
+                                key: const Key('library-home-top-backdrop-cover'),
+                                title: data.title,
+                                contentKind: data.contentKind,
+                                variant: data.coverVariant,
+                                coverBytes: data.coverBytes,
+                                coverRequest: data.coverRequest,
+                                assetPath: data.coverAssetPath,
+                                isBlurred: data.isCoverBlurred,
+                                alignment: Alignment.topCenter,
+                                width: constraints.maxWidth,
+                                height: constraints.maxHeight,
+                                fit: BoxFit.cover,
+                                showLetterboxBackground: false,
                               ),
                             ),
                           ),
