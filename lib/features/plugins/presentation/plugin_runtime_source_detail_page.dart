@@ -153,14 +153,20 @@ class _DetailContent extends ConsumerWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: AppSpacing.compact),
-                _DetailField(label: '名称', value: source.displayName),
-                _DetailField(label: '来源方式', value: isDevelopment ? '工作区开发数据源插件' : 'Runtime 已安装数据源插件'),
-                _DetailField(label: '类型', value: pluginContentKindsLabel(source.contentKinds)),
-                if (source.r18) _DetailField(label: '分级', value: 'R18'),
-                _DetailField(label: '版本', value: source.activeVersion ?? '等待激活'),
-                _DetailField(label: '状态', value: _statusLabel(source)),
-                _DetailField(label: '标识', value: source.id, isLast: true),
+                const SizedBox(height: AppSpacing.comfortable),
+                Text('数据源信息', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: AppSpacing.regular),
+                _DetailMetadataGrid(
+                  fields: <_DetailFieldData>[
+                    _DetailFieldData(label: '名称', value: source.displayName),
+                    _DetailFieldData(label: '来源方式', value: isDevelopment ? '工作区开发数据源插件' : 'Runtime 已安装数据源插件'),
+                    _DetailFieldData(label: '类型', value: pluginContentKindsLabel(source.contentKinds)),
+                    if (source.r18) const _DetailFieldData(label: '分级', value: 'R18'),
+                    _DetailFieldData(label: '版本', value: source.activeVersion ?? '等待激活', wide: true),
+                    _DetailFieldData(label: '状态', value: _statusLabel(source)),
+                    _DetailFieldData(label: '标识', value: source.id, wide: true),
+                  ],
+                ),
               ],
             ),
           ),
@@ -168,32 +174,20 @@ class _DetailContent extends ConsumerWidget {
         const SizedBox(height: AppSpacing.comfortable),
         if (!isDevelopment) _InstallationSizeCard(archiveUsage: archiveUsage!, dataUsage: dataUsage!),
         if (!isDevelopment) const SizedBox(height: AppSpacing.comfortable),
-        _VerifySourceButton(
-          onPressed: source.enabled && source.activeVersion != null && onVerificationRequested != null
-              ? () => onVerificationRequested!(source.id)
-              : null,
+        _DetailActions(
+          isDesktop: isDesktop,
+          isDevelopment: isDevelopment,
+          isWindows: isWindows,
+          opensArchive: opensArchive,
+          opening: opening,
+          packaging: packaging,
+          removing: removing,
+          canVerify: source.enabled && source.activeVersion != null && onVerificationRequested != null,
+          onVerify: onVerificationRequested == null ? null : () => onVerificationRequested!(source.id),
+          onOpenDirectory: () => _openDirectory(context, ref, source, isDevelopment),
+          onPackage: () => _packageDevelopmentSource(context, ref, source),
+          onRemove: () => _uninstall(context, ref, source),
         ),
-        const SizedBox(height: AppSpacing.regular),
-        if (isDevelopment && isWindows) ...<Widget>[
-          _PackageDevelopmentButton(
-            isPackaging: packaging,
-            onPressed: packaging ? null : () => _packageDevelopmentSource(context, ref, source),
-          ),
-          const SizedBox(height: AppSpacing.regular),
-        ],
-        if (isDesktop)
-          _OpenDirectoryButton(
-            isDevelopment: isDevelopment,
-            opensArchive: opensArchive,
-            isOpening: opening,
-            onPressed: opening ? null : () => _openDirectory(context, ref, source, isDevelopment),
-          )
-        else
-          Text('仅桌面端可打开数据源插件代码文件夹。', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText)),
-        if (!isDevelopment) ...<Widget>[
-          const SizedBox(height: AppSpacing.comfortable),
-          _RemoveSourceButton(isRemoving: removing, onPressed: removing ? null : () => _uninstall(context, ref, source)),
-        ],
       ],
     );
   }
@@ -267,7 +261,7 @@ class _VerifySourceButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool compact = _useCompactDetailActionLayout(context);
     return SizedBox(
-      width: compact ? double.infinity : null,
+      width: double.infinity,
       child: FilledButton.icon(
         key: const Key('data-source-detail-verify'),
         onPressed: onPressed,
@@ -379,34 +373,148 @@ class _InstallationSizeRow extends StatelessWidget {
 }
 
 class _DetailField extends StatelessWidget {
-  const _DetailField({required this.label, required this.value, this.isLast = false});
+  const _DetailField({required this.field, required this.width});
 
-  final String label;
-  final String value;
-  final bool isLast;
+  final _DetailFieldData field;
+  final double width;
 
   @override
   Widget build(BuildContext context) {
     final tokens = AppThemeTokens.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.regular),
-      decoration: BoxDecoration(
-        border: isLast ? null : Border(bottom: BorderSide(color: tokens.divider)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Expanded(flex: 2, child: Text(label)),
-          const SizedBox(width: AppSpacing.regular),
-          Expanded(
-            flex: 3,
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
-            ),
+    return SizedBox(
+      width: width,
+      child: DecoratedBox(
+        decoration: BoxDecoration(color: tokens.featureSurface, borderRadius: AppRadii.discoveryTile),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.regular),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(field.label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: tokens.mutedText)),
+              const SizedBox(height: AppSpacing.unit),
+              Text(
+                field.value,
+                softWrap: true,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w500),
+              ),
+            ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailFieldData {
+  const _DetailFieldData({required this.label, required this.value, this.wide = false});
+
+  final String label;
+  final String value;
+  final bool wide;
+}
+
+class _DetailMetadataGrid extends StatelessWidget {
+  const _DetailMetadataGrid({required this.fields});
+
+  final List<_DetailFieldData> fields;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (BuildContext context, BoxConstraints constraints) {
+      final double gap = AppSpacing.regular;
+      final double halfWidth = (constraints.maxWidth - gap) / 2;
+      return Wrap(
+        spacing: gap,
+        runSpacing: gap,
+        children: fields.map((_DetailFieldData field) {
+          return _DetailField(field: field, width: field.wide ? constraints.maxWidth : halfWidth);
+        }).toList(),
+      );
+    },
+  );
+}
+
+class _DetailActions extends StatelessWidget {
+  const _DetailActions({
+    required this.isDesktop,
+    required this.isDevelopment,
+    required this.isWindows,
+    required this.opensArchive,
+    required this.opening,
+    required this.packaging,
+    required this.removing,
+    required this.canVerify,
+    required this.onVerify,
+    required this.onOpenDirectory,
+    required this.onPackage,
+    required this.onRemove,
+  });
+
+  final bool isDesktop;
+  final bool isDevelopment;
+  final bool isWindows;
+  final bool opensArchive;
+  final bool opening;
+  final bool packaging;
+  final bool removing;
+  final bool canVerify;
+  final VoidCallback? onVerify;
+  final VoidCallback onOpenDirectory;
+  final VoidCallback onPackage;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AppThemeTokens.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: tokens.surface,
+        borderRadius: AppRadii.profileList,
+        border: Border.all(color: tokens.divider),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.comfortable),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text('数据源操作', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: AppSpacing.regular),
+            _VerifySourceButton(onPressed: canVerify ? onVerify : null),
+            if (isDevelopment && isWindows) ...<Widget>[
+              const SizedBox(height: AppSpacing.regular),
+              _PackageDevelopmentButton(isPackaging: packaging, onPressed: packaging ? null : onPackage),
+            ],
+            if (isDesktop) ...<Widget>[
+              const SizedBox(height: AppSpacing.regular),
+              _OpenDirectoryButton(
+                isDevelopment: isDevelopment,
+                opensArchive: opensArchive,
+                isOpening: opening,
+                onPressed: opening ? null : onOpenDirectory,
+              ),
+            ] else ...<Widget>[
+              const SizedBox(height: AppSpacing.regular),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Icon(Icons.info_outline, size: 18, color: tokens.mutedText),
+                  const SizedBox(width: AppSpacing.unit),
+                  Expanded(
+                    child: Text('代码文件夹可在桌面端打开。', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+                  ),
+                ],
+              ),
+            ],
+            if (!isDevelopment) ...<Widget>[
+              const SizedBox(height: AppSpacing.regular),
+              Divider(height: 1, color: tokens.divider),
+              const SizedBox(height: AppSpacing.regular),
+              _RemoveSourceButton(isRemoving: removing, onPressed: removing ? null : onRemove),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -433,7 +541,7 @@ class _OpenDirectoryButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool compact = _useCompactDetailActionLayout(context);
     return SizedBox(
-      width: compact ? double.infinity : null,
+      width: double.infinity,
       child: FilledButton.icon(
         key: const Key('data-source-detail-open-directory'),
         onPressed: onPressed,
@@ -465,7 +573,7 @@ class _PackageDevelopmentButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool compact = _useCompactDetailActionLayout(context);
     return SizedBox(
-      width: compact ? double.infinity : null,
+      width: double.infinity,
       child: OutlinedButton.icon(
         key: const Key('data-source-detail-package-development'),
         onPressed: onPressed,
