@@ -162,7 +162,7 @@ class _DetailContent extends ConsumerWidget {
                     _DetailFieldData(label: '来源方式', value: isDevelopment ? '工作区开发数据源插件' : 'Runtime 已安装数据源插件'),
                     _DetailFieldData(label: '类型', value: pluginContentKindsLabel(source.contentKinds)),
                     if (source.r18) const _DetailFieldData(label: '分级', value: 'R18'),
-                    _DetailFieldData(label: '版本', value: source.activeVersion ?? '等待激活', wide: true),
+                    _DetailFieldData(label: '版本', value: source.activeVersion ?? '等待激活', wide: true, expandable: true),
                     _DetailFieldData(label: '状态', value: _statusLabel(source)),
                     _DetailFieldData(label: '标识', value: source.id, wide: true),
                   ],
@@ -385,34 +385,79 @@ class _DetailField extends StatelessWidget {
       width: width,
       child: DecoratedBox(
         decoration: BoxDecoration(color: tokens.featureSurface, borderRadius: AppRadii.discoveryTile),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.regular),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(field.label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: tokens.mutedText)),
-              const SizedBox(height: AppSpacing.unit),
-              Text(
-                field.value,
-                softWrap: true,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w500),
+        child: Material(
+          color: Colors.transparent,
+          child: Semantics(
+            button: field.expandable,
+            label: field.expandable ? '${field.label}，点击查看完整内容' : null,
+            child: InkWell(
+              key: field.expandable ? const Key('data-source-detail-version') : null,
+              borderRadius: AppRadii.discoveryTile,
+              onTap: field.expandable ? () => _showFullValue(context) : null,
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.regular),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(field.label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: tokens.mutedText)),
+                        ),
+                        if (field.expandable) Icon(Icons.open_in_full, size: 14, color: tokens.mutedText),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.unit),
+                    Text(
+                      field.value,
+                      maxLines: field.expandable ? 1 : null,
+                      overflow: field.expandable ? TextOverflow.ellipsis : TextOverflow.clip,
+                      softWrap: !field.expandable,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
               ),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
+
+  Future<void> _showFullValue(BuildContext context) => showDialog<void>(
+    context: context,
+    builder: (BuildContext dialogContext) => AlertDialog(
+      title: Text(field.label),
+      content: SizedBox(
+        height: 48,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: SelectableText(
+              field.value,
+              key: const Key('data-source-detail-full-version'),
+              maxLines: 1,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+        ),
+      ),
+      actions: <Widget>[TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('关闭'))],
+    ),
+  );
 }
 
 class _DetailFieldData {
-  const _DetailFieldData({required this.label, required this.value, this.wide = false});
+  const _DetailFieldData({required this.label, required this.value, this.wide = false, this.expandable = false});
 
   final String label;
   final String value;
   final bool wide;
+  final bool expandable;
 }
 
 class _DetailMetadataGrid extends StatelessWidget {

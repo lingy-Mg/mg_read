@@ -142,6 +142,7 @@ void main() {
   });
 
   testWidgets('keeps long metadata values readable on a phone-width viewport', (WidgetTester tester) async {
+    const String longVersion = '3.0.3-devsync.1790432308072.adfb713d31da5bc78d6108eaa514406c343ff5dd4369f2b48d301525bb5a2964';
     final gateway = _DirectoryGateway(_longMetadataConnection);
     tester.view.physicalSize = const Size(390, 900);
     tester.view.devicePixelRatio = 1;
@@ -154,9 +155,18 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.text('0.1.3-devsync.1787755401237'), findsOneWidget);
+    expect(find.text(longVersion), findsOneWidget);
+    final Text version = tester.widget<Text>(find.text(longVersion));
+    expect(version.maxLines, 1);
+    expect(version.softWrap, isFalse);
     expect(find.text('org.mgread.discovery-demo'), findsOneWidget);
-    expect(tester.getSize(find.text('0.1.3-devsync.1787755401237')).height, lessThan(64));
+    expect(tester.getSize(find.text(longVersion)).height, lessThan(64));
+    await tester.tap(find.byKey(const Key('data-source-detail-version')));
+    await tester.pumpAndSettle();
+    final Finder completeVersion = find.byKey(const Key('data-source-detail-full-version'));
+    expect(completeVersion, findsOneWidget);
+    expect(tester.widget<SelectableText>(completeVersion).maxLines, 1);
+    expect(find.text('关闭'), findsOneWidget);
   });
 
   testWidgets('keeps detail actions reachable at narrow large text sizes', (WidgetTester tester) async {
@@ -269,7 +279,7 @@ const _longMetadataConnection = PluginRuntimeConnection(
   runtimeVersion: 'test',
   plugins: <PluginRuntimePlugin>[
     PluginRuntimePlugin(
-      activeVersion: '0.1.3-devsync.1787755401237',
+      activeVersion: '3.0.3-devsync.1790432308072.adfb713d31da5bc78d6108eaa514406c343ff5dd4369f2b48d301525bb5a2964',
       contentKinds: <String>['novel'],
       description: '长文本布局测试。',
       displayName: '发现组件演示',
