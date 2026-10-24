@@ -110,7 +110,10 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
     final release = _pendingApkUpdate;
     if (release == null || !mounted) return;
     try {
-      await ref.read(githubApkUpdateCoordinatorProvider).install(release);
+      await showGitHubApkUpdateInstallProgress(
+        context,
+        (onProgress) => ref.read(githubApkUpdateCoordinatorProvider).install(release, onProgress: onProgress),
+      );
       _pendingApkUpdate = null;
     } on Object catch (error) {
       // Android opens its per-app "install unknown apps" settings page when

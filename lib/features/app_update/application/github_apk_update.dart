@@ -26,6 +26,19 @@ const Duration githubApkUpdateCheckInterval = Duration(minutes: 30);
 const String githubApkUpdateManifestUrl = 'https://github.com/lingy-Mg/mg_read/releases/latest/download/update.json';
 const int _maxReleaseMetadataBytes = 256 * 1024;
 const Duration _requestTimeout = Duration(seconds: 12);
+const int _parallelApkDownloadCount = 4;
+
+@immutable
+final class GitHubApkDownloadProgress {
+  const GitHubApkDownloadProgress({required this.receivedBytes, required this.totalBytes});
+
+  final int receivedBytes;
+  final int totalBytes;
+
+  double? get fraction => totalBytes > 0 ? (receivedBytes / totalBytes).clamp(0, 1).toDouble() : null;
+}
+
+typedef GitHubApkDownloadProgressCallback = void Function(GitHubApkDownloadProgress progress);
 
 bool isGitHubApkUpdateCheckDue(DateTime? lastCheck, DateTime now) =>
     lastCheck == null || now.difference(lastCheck) >= githubApkUpdateCheckInterval;
@@ -37,9 +50,9 @@ final githubApkUpdateCoordinatorProvider = Provider<GitHubApkUpdateCoordinator>(
   final service = ref.watch(appUpdateServiceProvider);
   return GitHubApkUpdateCoordinator(
     currentVersion: service.currentVersion,
-    downloadAndInstall: (release) async {
+    downloadAndInstall: (release, {onProgress}) async {
       await service.ensureInstallPermission();
-      final prepared = await release.download();
+      final prepared = await release.download(onProgress: onProgress);
       try {
         await service.launchInstaller(prepared.file, prepared.descriptor);
       } finally {
@@ -161,42 +174,49 @@ final class GitHubApkRelease {
     return '${fields.join('\n')}\n\n${releaseNotes.trim()}';
   }
 
-  Future<PreparedAppPackage> download({HttpClient? client, Future<Directory> Function()? temporaryDirectory}) async {
+  Future<PreparedAppPackage> download({
+    HttpClient? client,
+    Future<Directory> Function()? temporaryDirectory,
+    GitHubApkDownloadProgressCallback? onProgress,
+  }) async {
     final http = client ?? HttpClient();
     final ownsClient = client == null;
     final temporary = await (temporaryDirectory ?? getTemporaryDirectory)();
     final directory = await temporary.createTemp('mgread-github-update-');
     final file = File('${directory.path}${Platform.pathSeparator}$apkName');
-    try {
-      final request = await http.getUrl(apkUrl).timeout(_requestTimeout);
-      request.headers.set(HttpHeaders.acceptHeader, 'application/octet-stream');
-      request.headers.set(HttpHeaders.userAgentHeader, 'MgRead-Android-Updater');
-      final response = await request.close().timeout(_requestTimeout);
-      if (response.statusCode != HttpStatus.ok) throw const HttpException('github_apk_download_failed');
-      final declaredLength = response.contentLength;
-      if (declaredLength <= 0 || declaredLength > appUpdateMaxPackageBytes) {
-        throw const FormatException('github_apk_size_invalid');
+    final apkAssets = assets.where((asset) => asset.name == apkName);
+    final expectedSize = apkAssets.isEmpty ? 0 : apkAssets.first.size;
+    void reportProgress(int receivedBytes, int totalBytes) {
+      try {
+        onProgress?.call(GitHubApkDownloadProgress(receivedBytes: receivedBytes, totalBytes: totalBytes));
+      } on Object {
+        // A progress surface must never interrupt a verified package download.
       }
-      final sink = file.openWrite();
+    }
+
+    try {
+      if (expectedSize > 0) reportProgress(0, expectedSize);
+      final downloadedBytes = await _downloadApkToFile(http, file, expectedSize, reportProgress);
       final digestSink = _DigestSink();
       final hashSink = crypto.sha256.startChunkedConversion(digestSink);
-      var byteCount = 0;
+      var verifiedBytes = 0;
       final checksum = LanSyncChecksumSink();
       try {
-        await for (final chunk in response.timeout(_requestTimeout)) {
-          byteCount += chunk.length;
-          if (byteCount > appUpdateMaxPackageBytes) throw const FormatException('github_apk_size_invalid');
-          sink.add(chunk);
+        await for (final chunk in file.openRead()) {
+          verifiedBytes += chunk.length;
+          if (verifiedBytes > appUpdateMaxPackageBytes) throw const FormatException('github_apk_size_invalid');
           hashSink.add(chunk);
           checksum.add(chunk);
         }
       } finally {
-        await sink.close();
         hashSink.close();
       }
-      if (byteCount != declaredLength || digestSink.value != sha256) throw const FormatException('github_apk_hash_mismatch');
+      if (verifiedBytes != downloadedBytes || (expectedSize > 0 && verifiedBytes != expectedSize) || digestSink.value != sha256) {
+        throw const FormatException('github_apk_hash_mismatch');
+      }
+      reportProgress(verifiedBytes, verifiedBytes);
       return PreparedAppPackage(
-        descriptor: AppPackageDescriptor(version: version, bytes: byteCount, checksum: checksum.close(), fileName: apkName),
+        descriptor: AppPackageDescriptor(version: version, bytes: verifiedBytes, checksum: checksum.close(), fileName: apkName),
         file: file,
         onClose: () async {
           if (await directory.exists()) await directory.delete(recursive: true);
@@ -208,6 +228,137 @@ final class GitHubApkRelease {
     } finally {
       if (ownsClient) http.close(force: true);
     }
+  }
+
+  Future<int> _downloadApkToFile(
+    HttpClient http,
+    File file,
+    int expectedSize,
+    void Function(int receivedBytes, int totalBytes) reportProgress,
+  ) async {
+    final probe = await _openApkResponse(http, apkUrl, range: 'bytes=0-0');
+    if (probe.statusCode == HttpStatus.ok) {
+      return _downloadSequentialResponse(probe, file, expectedSize, reportProgress);
+    }
+    if (probe.statusCode != HttpStatus.partialContent) throw const HttpException('github_apk_download_failed');
+
+    final totalBytes = _parseContentRange(probe, expectedStart: 0, expectedEnd: 0);
+    _validateApkSize(totalBytes, expectedSize);
+    final firstByte = await _readBounded(probe, 1);
+    if (firstByte.length != 1) throw const FormatException('github_apk_range_invalid');
+
+    final output = await file.open(mode: FileMode.write);
+    try {
+      await output.writeFrom(firstByte);
+      var receivedBytes = 1;
+      reportProgress(receivedBytes, totalBytes);
+      if (totalBytes == 1) {
+        await output.flush();
+        return receivedBytes;
+      }
+
+      var pendingWrites = Future<void>.value();
+      Future<void> writeAt(int offset, List<int> bytes) {
+        final nextWrite = pendingWrites.then((_) async {
+          await output.setPosition(offset);
+          await output.writeFrom(bytes);
+        });
+        pendingWrites = nextWrite;
+        return nextWrite;
+      }
+
+      final remainingBytes = totalBytes - 1;
+      final segmentCount = remainingBytes < _parallelApkDownloadCount ? remainingBytes : _parallelApkDownloadCount;
+      final ranges = <({int start, int end})>[];
+      for (var index = 0; index < segmentCount; index++) {
+        final start = 1 + (remainingBytes * index ~/ segmentCount);
+        final endExclusive = 1 + (remainingBytes * (index + 1) ~/ segmentCount);
+        ranges.add((start: start, end: endExclusive - 1));
+      }
+
+      await Future.wait<void>(
+        ranges.map((range) async {
+          final response = await _openApkResponse(http, apkUrl, range: 'bytes=${range.start}-${range.end}');
+          if (response.statusCode != HttpStatus.partialContent) throw const HttpException('github_apk_range_unsupported');
+          final rangeTotal = _parseContentRange(response, expectedStart: range.start, expectedEnd: range.end);
+          if (rangeTotal != totalBytes) throw const FormatException('github_apk_size_invalid');
+          final expectedRangeBytes = range.end - range.start + 1;
+          if (response.contentLength >= 0 && response.contentLength != expectedRangeBytes) {
+            throw const FormatException('github_apk_range_invalid');
+          }
+
+          var rangeBytes = 0;
+          var position = range.start;
+          await for (final chunk in response.timeout(_requestTimeout)) {
+            rangeBytes += chunk.length;
+            if (rangeBytes > expectedRangeBytes) throw const FormatException('github_apk_range_invalid');
+            await writeAt(position, chunk);
+            position += chunk.length;
+            receivedBytes += chunk.length;
+            reportProgress(receivedBytes, totalBytes);
+          }
+          if (rangeBytes != expectedRangeBytes) throw const FormatException('github_apk_range_invalid');
+        }),
+      );
+      await pendingWrites;
+      if (receivedBytes != totalBytes) throw const FormatException('github_apk_size_invalid');
+      await output.flush();
+      return receivedBytes;
+    } finally {
+      await output.close();
+    }
+  }
+
+  Future<int> _downloadSequentialResponse(
+    HttpClientResponse response,
+    File file,
+    int expectedSize,
+    void Function(int receivedBytes, int totalBytes) reportProgress,
+  ) async {
+    if (response.statusCode != HttpStatus.ok) throw const HttpException('github_apk_download_failed');
+    final totalBytes = response.contentLength > 0 ? response.contentLength : expectedSize;
+    _validateApkSize(totalBytes, expectedSize);
+
+    final output = await file.open(mode: FileMode.write);
+    try {
+      var receivedBytes = 0;
+      await for (final chunk in response.timeout(_requestTimeout)) {
+        receivedBytes += chunk.length;
+        if (receivedBytes > totalBytes || receivedBytes > appUpdateMaxPackageBytes) {
+          throw const FormatException('github_apk_size_invalid');
+        }
+        await output.writeFrom(chunk);
+        reportProgress(receivedBytes, totalBytes);
+      }
+      if (receivedBytes != totalBytes) throw const FormatException('github_apk_size_invalid');
+      await output.flush();
+      return receivedBytes;
+    } finally {
+      await output.close();
+    }
+  }
+}
+
+Future<HttpClientResponse> _openApkResponse(HttpClient http, Uri url, {String? range}) async {
+  final request = await http.getUrl(url).timeout(_requestTimeout);
+  request.headers.set(HttpHeaders.acceptHeader, 'application/octet-stream');
+  request.headers.set(HttpHeaders.userAgentHeader, 'MgRead-Android-Updater');
+  if (range != null) request.headers.set('range', range);
+  return request.close().timeout(_requestTimeout);
+}
+
+int _parseContentRange(HttpClientResponse response, {required int expectedStart, required int expectedEnd}) {
+  final value = response.headers.value('content-range');
+  final match = value == null ? null : RegExp(r'^bytes (\d+)-(\d+)/(\d+)$', caseSensitive: false).firstMatch(value.trim());
+  if (match == null || int.parse(match.group(1)!) != expectedStart || int.parse(match.group(2)!) != expectedEnd) {
+    throw const FormatException('github_apk_range_invalid');
+  }
+  return int.parse(match.group(3)!);
+}
+
+void _validateApkSize(int totalBytes, int expectedSize) {
+  if (totalBytes <= 0 || totalBytes > appUpdateMaxPackageBytes || (expectedSize > 0 && expectedSize != totalBytes)) {
+    throw const FormatException('github_apk_size_invalid');
   }
 }
 
@@ -269,7 +420,7 @@ final class GitHubApkUpdateCoordinator {
        _isAndroid = isAndroid ?? Platform.isAndroid;
 
   final Future<AppVersionInfo> Function() _currentVersion;
-  final Future<void> Function(GitHubApkRelease release) _downloadAndInstall;
+  final Future<void> Function(GitHubApkRelease release, {GitHubApkDownloadProgressCallback? onProgress}) _downloadAndInstall;
   final Future<Directory> Function() _supportDirectory;
   final DateTime Function() _clock;
   final HttpClient Function() _httpClientFactory;
@@ -283,9 +434,9 @@ final class GitHubApkUpdateCoordinator {
     return _checkInFlight ??= _check(force: force).whenComplete(() => _checkInFlight = null);
   }
 
-  Future<void> install(GitHubApkRelease release) {
+  Future<void> install(GitHubApkRelease release, {GitHubApkDownloadProgressCallback? onProgress}) {
     if (!_isAndroid) return Future<void>.value();
-    return _installInFlight ??= _downloadAndInstall(release).whenComplete(() => _installInFlight = null);
+    return _installInFlight ??= _downloadAndInstall(release, onProgress: onProgress).whenComplete(() => _installInFlight = null);
   }
 
   Future<GitHubApkRelease?> _check({required bool force}) async {
