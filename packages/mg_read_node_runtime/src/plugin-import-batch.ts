@@ -11,7 +11,7 @@ import { extractPluginArchive } from "./plugin-archive.js";
 import { parsePluginSingleFile } from "./plugin-single-file.js";
 import { readPluginProject } from "./plugin-package.js";
 import { crc32Update } from "./lan-sync-checksum.js";
-import { PluginArtifactTransferError, validateArtifactBatch, type PluginTransferArtifact } from "./plugin-artifact-transfer.js";
+import { PluginArtifactTransferError, validateArtifactBatch, type PluginTransferArtifact } from "./plugin-transfer-contract.js";
 
 export interface PluginImportBatchEntry {
   readonly artifact: PluginTransferArtifact;

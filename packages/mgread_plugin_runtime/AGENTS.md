@@ -49,6 +49,8 @@
   分批重启。Javet 重建 Core 并清理来源模块，进程后端重启私有 Service。返回结果须核对重启后的实际目录状态，
   不能把隔离或回滚报为安装成功。回归入口为 `plugin_batch_import_test.dart`、`android_plugin_batch_test.dart`
   与 Kotlin `AndroidPluginArtifactTransferTest`。
+- Javet 模块解析在 JNI 编译前记录模块名和引用者；异常只记录 Java 类型，禁止读取或格式化原始
+  Javet Throwable 的 message/toString/stackTrace，也不得作为 cause 继续跨 JNI 传播。
 - Android：执行目标 Gradle 编译；原生 Service 的启动、退出与重启需 Integration Test 验证真实进程生命周期，
   不能只用 Kotlin mock 代替。真实流程仍需用户明确授权。
 - Windows：增加 reverse-broker、Dart fake-platform/HTTP 和 Facade reverse-wire fixture；原生修改再构建

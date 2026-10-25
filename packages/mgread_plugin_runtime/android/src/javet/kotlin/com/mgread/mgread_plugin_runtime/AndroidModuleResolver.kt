@@ -4,6 +4,7 @@
  * 职责：
  * - 在提取后的 Runtime 根目录中解析 Runtime 与已安装插件的 ESM 文件。
  * - 通过共享源适配器为 Javet 模块提供标准 `import.meta.url` 语义。
+ * - 在进入 JNI 前记录模块与引用者；失败只记录 Java 类型，禁止格式化 Javet 异常。
  *
  * 注意：
  * - 解析范围限制在 Runtime 自有根目录，绝不向 Flutter 暴露路径。
@@ -29,9 +30,9 @@ internal class AndroidModuleResolver(
         runtime: V8Runtime,
         moduleName: String,
         referrer: IV8Module?,
-    ): IV8Module? {
+    ): IV8Module? = withAndroidModuleDiagnostics(moduleName, referrer?.resourceName, { Log.i(TAG, it) }) {
         if (moduleName.startsWith("node:")) {
-            return builtIn.resolve(runtime, moduleName, referrer)
+            return@withAndroidModuleDiagnostics builtIn.resolve(runtime, moduleName, referrer)
         }
         val referrerFile = referrer?.resourceName?.let(::File)
         val requestedPath = when {
@@ -42,8 +43,9 @@ internal class AndroidModuleResolver(
         }.canonicalFile
         val candidate = resolveFile(requestedPath)
             ?: resolvePackage(moduleName, referrerFile)
-            ?: return null
-        return runtime.getExecutor(androidModuleSource(candidate))
+            ?: return@withAndroidModuleDiagnostics null
+        Log.i(TAG, "android_runtime_module_compile_started module=${androidModuleLogLabel(candidate.path)}")
+        runtime.getExecutor(androidModuleSource(candidate))
             .setResourceName(candidate.path)
             .setModule(true)
             .compileV8Module()
@@ -122,3 +124,28 @@ internal class AndroidModuleResolver(
         const val TAG = "MgReadAndroidRuntime"
     }
 }
+
+/** Never read Throwable.message/toString/stackTrace: Javet may convert V8 error objects there. */
+internal fun <T> withAndroidModuleDiagnostics(
+    module: String,
+    referrer: String?,
+    report: (String) -> Unit,
+    compile: () -> T,
+): T {
+    val context = "module=${androidModuleLogLabel(module)} referrer=${androidModuleLogLabel(referrer ?: "<entry>")}"
+    report("android_runtime_module_resolve_started $context")
+    try {
+        val result = compile()
+        report("android_runtime_module_resolve_${if (result == null) "missing" else "complete"} $context")
+        return result
+    } catch (error: Throwable) {
+        report("android_runtime_module_resolve_failed $context type=${error.javaClass.simpleName}")
+        // Do not carry the V8 exception as a cause into another JNI callback or
+        // Android's exception formatter. Native failures still retain the last
+        // compile_started marker even if JNI aborts before this catch runs.
+        throw AndroidRuntimeError("runtime_module_compile_failed", "Android could not compile a Runtime module.")
+    }
+}
+
+internal fun androidModuleLogLabel(value: String): String =
+    value.take(512).map { if (it < ' ' || it == '\u007f') '?' else it }.joinToString("")

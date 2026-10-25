@@ -18,64 +18,19 @@ import {
 } from "./plugin-single-file.js";
 import { developmentProjectFingerprint } from "./plugin-manager-files.js";
 import { crc32, crc32Update } from "./lan-sync-checksum.js";
-import type { JsonObject } from "./protocol.js";
-
-export const MAX_PLUGIN_ARTIFACT_TRANSFER_BATCH_BYTES = 512 * 1024 * 1024;
-
-export interface PluginTransferArtifact extends JsonObject {
-  readonly bytes: number;
-  readonly developmentFingerprint: string | null;
-  readonly developmentRevision: number | null;
-  readonly format: PluginArtifactFormat;
-  readonly id: string;
-  readonly provenance: "development" | "developmentReplica" | "installed";
-  readonly checksum: string;
-  readonly version: string;
-}
-
-/** Path-free version metadata. Development projects are not packaged here. */
-export interface PluginTransferOffer extends JsonObject {
-  readonly developmentFingerprint: string | null;
-  readonly developmentRevision: number | null;
-  readonly format: PluginArtifactFormat;
-  readonly id: string;
-  readonly provenance: "development" | "developmentReplica" | "installed";
-  readonly version: string;
-}
-
-export interface PluginTransferPlanItem extends JsonObject {
-  readonly action: "developmentConflict" | "missing" | "upgrade" | "same" | "receiverNewer" | "unavailable";
-  readonly id: string;
-  readonly receiverVersion: string | null;
-  readonly version: string;
-}
-
-export interface PluginTransferResource {
-  readonly bytes: number;
-  readonly format: PluginArtifactFormat;
-  readonly path: string;
-  readonly checksum: string;
-  readonly stream: ReturnType<typeof createReadStream>;
-}
-
-export class PluginArtifactTransferError extends Error {
-  constructor(readonly code:
-    | "invalid_request"
-    | "plugin_not_found"
-    | "plugin_transfer_artifact_missing"
-    | "plugin_transfer_artifact_too_large"
-    | "plugin_transfer_batch_too_large"
-    | "plugin_transfer_build_failed"
-    | "plugin_transfer_checksum_mismatch"
-    | "plugin_transfer_size_mismatch",
-    readonly detail?: string,
-  ) {
-    super(detail === undefined
-      ? "The Runtime plugin artifact transfer could not be completed."
-      : `The Runtime plugin artifact transfer could not be completed. ${detail}`);
-    this.name = "PluginArtifactTransferError";
-  }
-}
+import {
+  MAX_PLUGIN_ARTIFACT_TRANSFER_BATCH_BYTES,
+  PluginArtifactTransferError, validateArtifactBatch, validateOfferBatch,
+  isPluginId, parseSemver, isPluginTransferArtifact,
+  type PluginTransferArtifact, type PluginTransferOffer, type PluginTransferPlanItem, type PluginTransferResource,
+} from "./plugin-transfer-contract.js";
+// Preserve the existing import surface while the implementation depends only
+// on the leaf contract. Batch verification must import that leaf directly.
+export {
+  MAX_PLUGIN_ARTIFACT_TRANSFER_BATCH_BYTES, PluginArtifactTransferError,
+  validateArtifactBatch, validateOfferBatch, isPluginTransferArtifact, isPluginTransferOffer,
+  type PluginTransferArtifact, type PluginTransferOffer, type PluginTransferPlanItem, type PluginTransferResource,
+} from "./plugin-transfer-contract.js";
 
 interface TransferEntry {
   readonly artifact: PluginTransferArtifact;
@@ -522,42 +477,6 @@ function developmentCacheRoot(
   );
 }
 
-export function validateArtifactBatch(artifacts: readonly PluginTransferArtifact[]): void {
-  let bytes = 0;
-  for (const artifact of artifacts) {
-    if (!isPluginTransferArtifact(artifact)) throw new PluginArtifactTransferError("invalid_request");
-    bytes += artifact.bytes;
-    if (bytes > MAX_PLUGIN_ARTIFACT_TRANSFER_BATCH_BYTES) throw new PluginArtifactTransferError("plugin_transfer_batch_too_large");
-  }
-}
-
-export function validateOfferBatch(offers: readonly PluginTransferOffer[]): void {
-  for (const offer of offers) {
-    if (!isPluginTransferOffer(offer)) throw new PluginArtifactTransferError("invalid_request");
-  }
-}
-
-export function isPluginTransferArtifact(value: unknown): value is PluginTransferArtifact {
-  if (!isRecord(value) || Object.keys(value).length !== 8) return false;
-  return isPluginId(value.id) && typeof value.version === "string" && parseSemver(value.version) !== null &&
-    typeof value.bytes === "number" && Number.isSafeInteger(value.bytes) && value.bytes > 0 && value.bytes <= MAX_PLUGIN_ARTIFACT_BYTES &&
-    typeof value.checksum === "string" && /^[a-f0-9]{8}$/.test(value.checksum) && (value.format === "archive" || value.format === "singleFile") &&
-    (value.provenance === "installed" || value.provenance === "development" || value.provenance === "developmentReplica") &&
-    ((value.provenance === "installed" && value.developmentFingerprint === null && value.developmentRevision === null) ||
-      (value.provenance !== "installed" && typeof value.developmentFingerprint === "string" && /^[a-f0-9]{64}$/.test(value.developmentFingerprint) &&
-        typeof value.developmentRevision === "number" && Number.isSafeInteger(value.developmentRevision) && value.developmentRevision > 0));
-}
-
-export function isPluginTransferOffer(value: unknown): value is PluginTransferOffer {
-  if (!isRecord(value) || Object.keys(value).length !== 6) return false;
-  return isPluginId(value.id) && typeof value.version === "string" && parseSemver(value.version) !== null &&
-    (value.format === "archive" || value.format === "singleFile") &&
-    (value.provenance === "installed" || value.provenance === "development" || value.provenance === "developmentReplica") &&
-    ((value.provenance === "installed" && value.developmentFingerprint === null && value.developmentRevision === null) ||
-      (value.provenance !== "installed" && typeof value.developmentFingerprint === "string" && /^[a-f0-9]{64}$/.test(value.developmentFingerprint) &&
-        typeof value.developmentRevision === "number" && Number.isSafeInteger(value.developmentRevision) && value.developmentRevision > 0));
-}
-
 async function findRetainedArtifact(dataRoot: string, id: string, version: string) {
   for (const format of ["singleFile", "archive"] as const) {
     const path = resolve(dataRoot, "plugin-archives", id, `${version}${format === "singleFile" ? ".mgplugin.js" : ".mgplugin"}`);
@@ -579,14 +498,11 @@ async function hashFile(path: string): Promise<string> {
   }
   return ((checksum ^ 0xffffffff) >>> 0).toString(16).padStart(8, "0");
 }
-interface Semver { major: number; minor: number; patch: number; prerelease: string[] }
-function parseSemver(value: string): Semver | null { const m = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/.exec(value); return m === null ? null : { major: Number(m[1]), minor: Number(m[2]), patch: Number(m[3]), prerelease: m[4]?.split(".") ?? [] }; }
 function compareSemver(left: string, right: string): number { const a = parseSemver(left)!; const b = parseSemver(right)!; for (const k of ["major", "minor", "patch"] as const) if (a[k] !== b[k]) return a[k] > b[k] ? 1 : -1; if (!a.prerelease.length && b.prerelease.length) return 1; if (a.prerelease.length && !b.prerelease.length) return -1; return a.prerelease.join(".").localeCompare(b.prerelease.join(".")); }
 function developmentVersion(version: string, revision: number, fingerprint: string): string { const v = parseSemver(version); if (v === null || v.patch >= Number.MAX_SAFE_INTEGER || !Number.isSafeInteger(revision) || revision <= 0 || !/^[a-f0-9]{64}$/.test(fingerprint)) throw new PluginArtifactTransferError("invalid_request"); return `${v.major}.${v.minor}.${v.patch + 1}-devsync.${revision}.${fingerprint}`; }
 function parseDevelopmentVersion(version: string): { readonly fingerprint: string; readonly revision: number } | undefined { const match = /^\d+\.\d+\.\d+-devsync\.(\d+)\.([a-f0-9]{64})$/.exec(version); const revision = match === null ? undefined : Number(match[1]); return match === null || !Number.isSafeInteger(revision) || revision! <= 0 ? undefined : { fingerprint: match[2]!, revision: revision! }; }
 function developmentMetadataForVersion(version: string): Pick<PluginTransferArtifact, "developmentFingerprint" | "developmentRevision" | "provenance"> { const development = parseDevelopmentVersion(version); return development === undefined ? { developmentFingerprint: null, developmentRevision: null, provenance: "installed" } : { developmentFingerprint: development.fingerprint, developmentRevision: development.revision, provenance: "developmentReplica" }; }
 function key(id: string, version: string): string { return `${id}\u001f${version}`; }
-function isPluginId(value: unknown): value is string { return typeof value === "string" && /^[a-z0-9][a-z0-9.-]{0,127}$/.test(value); }
 function isArtifactName(value: string): boolean { return value.endsWith(".mgplugin") || value.endsWith(".mgplugin.js"); }
 function formatForPath(path: string): PluginArtifactFormat { return path.endsWith(".mgplugin.js") ? "singleFile" : "archive"; }
 function isMissing(error: unknown): boolean { return isRecord(error) && error.code === "ENOENT"; }
