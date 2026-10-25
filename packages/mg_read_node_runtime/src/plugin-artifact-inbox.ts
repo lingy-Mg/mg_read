@@ -10,6 +10,7 @@
  * - 处理结果由 Runtime 统一返回。
  *
  */
+import { importBatchDirectory, verifyPluginImportBatch } from "./plugin-import-batch.js";
 import { mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -101,7 +102,27 @@ export async function installPluginArtifactInbox(
       throw error;
     }
   }
-  return Object.freeze({ discoveredCount: artifacts.length, installedCount });
+  let discoveredCount = artifacts.length;
+  const batches = (await readdir(inboxRoot, {withFileTypes: true}))
+    .filter((entry) => entry.isDirectory() && /^batch-[a-f0-9]{32}$/.test(entry.name))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  for (const batch of batches) {
+    const id = batch.name.slice("batch-".length);
+    const root = importBatchDirectory(inboxRoot, id, false);
+    try {
+      const entries = await verifyPluginImportBatch(inboxRoot, id, false);
+      discoveredCount += entries.length;
+      for (const entry of entries) {
+        await installer.installArtifact(entry.path, {replaceExistingVersion: true});
+        installedCount++;
+      }
+    } finally {
+      // Malformed batches cannot poison every future cold start. A killed
+      // process leaves the complete directory for idempotent recovery.
+      await rm(root, {force: true, recursive: true});
+    }
+  }
+  return Object.freeze({discoveredCount, installedCount});
 }
 
 function parseBundledPluginArtifact(name: string, root: string): BundledPluginArtifact {

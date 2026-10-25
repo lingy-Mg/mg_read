@@ -4,7 +4,8 @@
  * Owns Android-private staging paths, artifact metadata and import/export
  * sessions. Dart writes imports to the returned .part paths; this class checks
  * the completed files and publishes the full batch before one Core restart.
- * Each host calls this from its serial IO thread.
+ * Whole batches publish with one directory rename; host construction cleans
+ * abandoned staging. Each host calls this from its serial IO thread.
  */
 package com.mgread.mgread_plugin_runtime
 
@@ -16,45 +17,56 @@ import java.util.zip.CRC32
 
 internal class AndroidPluginArtifactTransfer(
     private val inboxDirectory: File,
+    private val availableBytes: () -> Long = { inboxDirectory.usableSpace },
 ) {
-    constructor(context: Context) : this(File(context.filesDir, "mgread-runtime/import-inbox"))
+    constructor(context: Context) : this(sharedPluginImportInbox(context))
 
-    private data class ImportSession(
-        val target: File,
-        val temporary: File,
-        val expectedBytes: Long,
-        val expectedChecksum: String,
-    )
-
+    private data class ImportFile(val temporary: File, val target: File, val bytes: Long, val checksum: String)
+    private data class ImportBatch(val id: String, val directory: File, val files: List<ImportFile>)
     private data class ExportSession(val input: FileInputStream)
-
-    private val importSessions = mutableMapOf<String, ImportSession>()
+    private var activeBatch: ImportBatch? = null
     private val exportSessions = mutableMapOf<String, ExportSession>()
 
-    fun beginImport(
-        pluginId: String,
-        version: String,
-        expectedBytes: Long,
-        expectedChecksum: String,
-        format: String,
-    ): Map<String, String> {
-        validateIdentity(pluginId, version, format)
-        check(expectedBytes in 1..MAX_ARTIFACT_BYTES) { "file_too_large" }
-        check(expectedChecksum.matches(Regex("[a-f0-9]{8}"))) { "invalid_request" }
-        check(importSessions.values.sumOf { it.expectedBytes } + expectedBytes <= MAX_TRANSFER_BATCH_BYTES) {
-            "transfer_batch_too_large"
+    init {
+        // Host construction is the only orphan cleanup point. Core restarts
+        // must never remove a batch that Dart is still writing.
+        inboxDirectory.mkdirs()
+        inboxDirectory.canonicalFile.listFiles()?.filter {
+            it.name.matches(Regex("\\.batch-[a-f0-9]{32}\\.part")) ||
+                it.name.matches(Regex("(?:transfer-|import-).+\\.mgplugin(?:\\.js)?\\.part"))
+        }?.forEach(::deletePrivate)
+    }
+
+    fun beginImportBatch(artifacts: List<Map<String, Any?>>): Map<String, Any?> {
+        check(activeBatch == null && artifacts.isNotEmpty()) { "invalid_request" }
+        val ids = mutableSetOf<String>()
+        var total = 0L
+        val metadata = artifacts.map { artifact ->
+            val pluginId = artifact["id"] as? String ?: error("invalid_request")
+            val version = artifact["version"] as? String ?: error("invalid_request")
+            val format = artifact["format"] as? String ?: error("invalid_request")
+            validateIdentity(pluginId, version, format)
+            check(ids.add(pluginId)) { "invalid_request" }
+            val bytes = (artifact["bytes"] as? Number)?.toLong() ?: error("invalid_request")
+            val checksum = artifact["checksum"] as? String ?: error("invalid_request")
+            check(bytes in 1..MAX_ARTIFACT_BYTES) { "file_too_large" }
+            check(checksum.matches(Regex("[a-f0-9]{8}"))) { "invalid_request" }
+            total += bytes
+            check(total <= MAX_TRANSFER_BATCH_BYTES) { "transfer_batch_too_large" }
+            Triple(bytes, checksum, format)
         }
-        val inbox = inboxDirectory.apply { mkdirs() }
+        val reserve = if (metadata.any { it.third == "archive" }) 256L * 1024 * 1024 else 4L * 1024 * 1024
+        check(availableBytes() >= total * 3 + reserve) { "disk_full" }
         val id = UUID.randomUUID().toString().replace("-", "")
-        val target = File(inbox, "transfer-$pluginId-$version-$id${artifactSuffix(format)}")
-        val temporary = File(target.path + ".part")
-        importSessions[id] = ImportSession(
-            target = target,
-            temporary = temporary,
-            expectedBytes = expectedBytes,
-            expectedChecksum = expectedChecksum,
-        )
-        return mapOf("id" to id, "temporaryPath" to temporary.absolutePath)
+        val directory = File(inboxDirectory, ".batch-$id.part")
+        check(directory.mkdir()) { "disk_full" }
+        val files = metadata.mapIndexed { index, (bytes, checksum, format) ->
+            val target = File(directory, "$index${artifactSuffix(format)}")
+            ImportFile(File(target.path + ".part"), target, bytes, checksum)
+        }
+        activeBatch = ImportBatch(id, directory, files)
+        return mapOf("id" to id, "directory" to directory.absolutePath,
+            "temporaryPaths" to files.map { it.temporary.absolutePath })
     }
 
     fun beginExport(
@@ -105,37 +117,49 @@ internal class AndroidPluginArtifactTransfer(
         exportSessions.remove(id)?.input?.close()
     }
 
-    fun finishImportBatch(ids: List<String>) {
-        check(ids.isNotEmpty() && ids.size == ids.toSet().size) { "invalid_request" }
-        // Check every file before renaming any: a corrupt last file must not
-        // leave earlier files available to a later unrelated Runtime restart.
-        ids.forEach { id ->
-            val session = importSessions[id] ?: error("invalid_request")
-            check(session.temporary.isFile && session.temporary.length() == session.expectedBytes) {
-                "plugin_transfer_size_mismatch"
-            }
-            val actual = checksum(session.temporary).toString(16).padStart(8, '0')
-            check(actual == session.expectedChecksum) { "plugin_transfer_checksum_mismatch" }
+    fun finishImportBatch(id: String) {
+        val batch = activeBatch?.takeIf { it.id == id } ?: error("invalid_request")
+        check(File(batch.directory, "manifest.json").isFile) { "invalid_request" }
+        batch.files.forEach { file ->
+            check(file.temporary.isFile && file.temporary.length() == file.bytes) { "plugin_transfer_size_mismatch" }
+            check(checksum(file.temporary).toString(16).padStart(8, '0') == file.checksum) { "plugin_transfer_checksum_mismatch" }
         }
         try {
-            ids.forEach { id ->
-                val session = importSessions.getValue(id)
-                check(session.temporary.renameTo(session.target)) { "disk_full" }
-            }
+            batch.files.forEach { check(it.temporary.renameTo(it.target)) { "disk_full" } }
+            // Only this one directory rename exposes the complete batch to Core.
+            check(batch.directory.renameTo(File(inboxDirectory, "batch-$id"))) { "disk_full" }
+            activeBatch = null
         } catch (error: Throwable) {
-            cancelImports(ids)
+            runCatching { cancelImportBatch(id) }
             throw error
         }
-        ids.forEach { importSessions.remove(it) }
     }
 
-    fun cancelImports(ids: List<String>) {
-        ids.forEach { id ->
-            importSessions.remove(id)?.let { session ->
-                session.temporary.delete()
-                session.target.delete()
-            }
+    fun cancelImportBatch(id: String) {
+        check(id.matches(Regex("[a-f0-9]{32}"))) { "invalid_request" }
+        if (activeBatch?.id == id) activeBatch = null
+        deletePrivate(File(inboxDirectory, ".batch-$id.part"))
+        deletePrivate(File(inboxDirectory, "batch-$id"))
+    }
+
+    fun dispose() {
+        activeBatch?.let { runCatching { cancelImportBatch(it.id) } }
+        exportSessions.values.forEach { runCatching { it.input.close() } }
+        exportSessions.clear()
+    }
+
+    private fun deletePrivate(file: File) {
+        if (!file.exists()) return
+        // Do not follow a plugin-created symlink, including one inside a batch.
+        val owner = inboxDirectory.canonicalFile
+        val absolute = File(requireNotNull(file.parentFile).canonicalFile, file.name).normalize()
+        if (file.canonicalFile != absolute) {
+            check(file.delete()) { "file_write_failed" }
+            return
         }
+        check(absolute.path.startsWith(owner.path + File.separator)) { "invalid_request" }
+        if (file.isDirectory) file.listFiles()?.forEach(::deletePrivate)
+        check(file.delete()) { "file_write_failed" }
     }
 
     private fun checksum(file: File): Long {
@@ -169,4 +193,22 @@ private fun artifactSuffix(format: String): String = when (format) {
     "singleFile" -> ".mgplugin.js"
     "archive" -> ".mgplugin"
     else -> error("invalid_request")
+}
+
+/** Migrates Javet's former inbox before either backend opens its shared data root. */
+private fun sharedPluginImportInbox(context: Context): File {
+    val root = File(context.filesDir, "mgread-runtime").canonicalFile
+    val inbox = File(root, "data/import-inbox").apply { mkdirs() }
+    val legacy = File(root, "import-inbox")
+    if (legacy.isDirectory && legacy.canonicalFile == legacy) {
+        AndroidPluginArtifactTransfer(legacy) // Reclaim only abandoned .part entries.
+        legacy.listFiles()?.filter {
+            it.isFile && it.canonicalFile == it &&
+                it.name.matches(Regex("[a-zA-Z0-9._-]+\\.mgplugin(?:\\.js)?"))
+        }?.forEach { file ->
+            val suffix = if (file.name.endsWith(".js")) ".mgplugin.js" else ".mgplugin"
+            check(file.renameTo(File(inbox, "import-${UUID.randomUUID()}$suffix"))) { "file_write_failed" }
+        }
+    }
+    return inbox.canonicalFile
 }

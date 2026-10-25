@@ -94,10 +94,11 @@ final class _AndroidNodeProcessSupervisor implements _RuntimeSupervisor {
           _progressController.add(progress);
         }
       }
-    } else if (type == 'node_exit' && !_disposed && !_restarting) {
+    } else if (type == 'node_exit' && !_disposed) {
       _restartAfterExit = true;
       _connection = null;
       _startup = null;
+      if (_restarting) return;
       final code = raw['code'];
       _record(
         RuntimeDiagnostic(
@@ -276,7 +277,10 @@ final class _AndroidNodeProcessSupervisor implements _RuntimeSupervisor {
   }
 
   @override
-  Future<bool> pickAndImportLocalPlugin() async {
+  Future<bool> pickAndImportLocalPlugin() =>
+      _artifactImporter.exclusive(_pickAndImportLocalPlugin);
+
+  Future<bool> _pickAndImportLocalPlugin() async {
     _assertOpen();
     _restarting = true;
     try {
@@ -289,7 +293,10 @@ final class _AndroidNodeProcessSupervisor implements _RuntimeSupervisor {
   }
 
   @override
-  Future<void> importLocalPlugin(String sourcePath) async {
+  Future<void> importLocalPlugin(String sourcePath) =>
+      _artifactImporter.exclusive(() => _importLocalPlugin(sourcePath));
+
+  Future<void> _importLocalPlugin(String sourcePath) async {
     _assertOpen();
     _restarting = true;
     try {
@@ -411,136 +418,60 @@ final class _AndroidNodeProcessSupervisor implements _RuntimeSupervisor {
     }
   }
 
+  late final _artifactImporter = _PluginArtifactImporter(
+    assertOpen: _assertOpen,
+    plan: (artifacts, force) => invoke(
+      PluginTransferPlanInvocation(
+        artifacts: artifacts,
+        forceUpgradePluginIds: force,
+      ),
+    ),
+    begin: (artifacts) => _beginAndroidPluginImport(_channel, artifacts),
+    verify: (batch, artifacts) =>
+        invoke(_VerifyPluginImportInvocation(batch.id, artifacts)),
+    publishAndRestart: (batch) async {
+      _restarting = true;
+      try {
+        await _channel.invokeMethod<void>('finishPluginTransferBatch', {
+          'id': batch.id,
+        });
+        await _reconnectAfterNativeRestart();
+      } catch (error, stack) {
+        // Discard this inbox before a bounded restart of the previous usable Core.
+        try {
+          await _channel.invokeMethod<void>('cancelPluginTransferBatch', {
+            'id': batch.id,
+          });
+        } on Object {}
+        try {
+          await _connection?.close();
+        } on Object {}
+        _connection = null;
+        _startup = null;
+        _restartAfterExit = true;
+        try {
+          await _ensureStarted();
+        } on Object {}
+        Error.throwWithStackTrace(error, stack);
+      } finally {
+        _restarting = false;
+      }
+    },
+    cancel: (batch) => _channel.invokeMethod<void>(
+      'cancelPluginTransferBatch',
+      {'id': batch.id},
+    ),
+    installed: () => invoke(const InstalledPluginsInvocation()),
+  );
+
   @override
   Future<List<PluginTransferImportResult>> importPluginArtifacts(
-    List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>
-    artifacts, {
-    Set<String> forceUpgradePluginIds = const <String>{},
-  }) async {
-    _assertOpen();
-    if (artifacts.isEmpty) {
-      throw const PluginRuntimeException(
-        'plugin_transfer_batch_too_large',
-        'The Android Node transfer batch is empty.',
-      );
-    }
-    final plan = await invoke(
-      PluginTransferPlanInvocation(
-        artifacts: [for (final item in artifacts) item.artifact],
-        forceUpgradePluginIds: forceUpgradePluginIds,
-      ),
-    );
-    if (plan.any(
-      (item) =>
-          item.action != PluginTransferPlanAction.missing &&
-          item.action != PluginTransferPlanAction.upgrade,
-    )) {
-      throw const PluginRuntimeException(
-        'invalid_request',
-        'The Android Node transfer plan rejected an artifact.',
-      );
-    }
-    var total = 0;
-    for (final item in artifacts) {
-      total += item.artifact.bytes;
-      if (item.artifact.bytes <= 0 ||
-          item.artifact.bytes > maxPluginTransferBytes ||
-          total > maxPluginTransferBatchBytes) {
-        throw const PluginRuntimeException(
-          'plugin_transfer_batch_too_large',
-          'The Android Node transfer batch is too large.',
-        );
-      }
-    }
-    await _importBatch(artifacts);
-    return _pluginImportResults(
-      artifacts.map((item) => item.artifact),
-      await invoke(const InstalledPluginsInvocation()),
-    );
-  }
-
-  Future<void> _importBatch(
-    List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>
+    List<_PluginArtifactInput> artifacts, {
+    Set<String> forceUpgradePluginIds = const {},
+  }) => _artifactImporter.importArtifacts(
     artifacts,
-  ) async {
-    final ids = <String>[];
-    try {
-      for (final item in artifacts) {
-        final artifact = item.artifact;
-        final transfer = await _channel.invokeMapMethod<String, Object?>(
-          'beginPluginTransfer',
-          <String, Object?>{
-            'pluginId': artifact.pluginId,
-            'version': artifact.version,
-            'bytes': artifact.bytes,
-            'checksum': artifact.checksum,
-            'format': artifact.format.name,
-          },
-        );
-        final id = transfer?['id'];
-        final temporaryPath = transfer?['temporaryPath'];
-        if (id is! String ||
-            id.isEmpty ||
-            temporaryPath is! String ||
-            temporaryPath.isEmpty)
-          throw const PluginRuntimeException(
-            'runtime_no_response',
-            'Android Runtime returned no transfer staging file.',
-          );
-        ids.add(id);
-        await _writeAndroidPluginTransferFile(
-          bytes: item.bytes,
-          expectedBytes: artifact.bytes,
-          temporaryPath: temporaryPath,
-        );
-      }
-      _restarting = true;
-      await _channel.invokeMethod<void>(
-        'finishPluginTransferBatch',
-        <String, Object?>{'ids': ids},
-      );
-      await _reconnectAfterNativeRestart();
-    } on Object {
-      if (ids.isNotEmpty) {
-        await _channel.invokeMethod<void>(
-          'cancelPluginTransferBatch',
-          <String, Object?>{'ids': ids},
-        );
-      }
-      rethrow;
-    } finally {
-      _restarting = false;
-    }
-  }
-
-  Future<void> _writeAndroidPluginTransferFile({
-    required Stream<List<int>> bytes,
-    required int expectedBytes,
-    required String temporaryPath,
-  }) async {
-    var copied = 0;
-    final IOSink sink = File(temporaryPath).openWrite();
-    try {
-      await for (final List<int> chunk in bytes) {
-        copied += chunk.length;
-        if (copied > expectedBytes || copied > maxPluginTransferBytes) {
-          throw const PluginRuntimeException(
-            'plugin_transfer_size_mismatch',
-            'The Android Node transfer artifact exceeded its declared size.',
-          );
-        }
-        sink.add(chunk);
-      }
-    } finally {
-      await sink.close();
-    }
-    if (copied != expectedBytes) {
-      throw const PluginRuntimeException(
-        'plugin_transfer_size_mismatch',
-        'The Android Node transfer artifact was truncated.',
-      );
-    }
-  }
+    forceUpgradePluginIds: forceUpgradePluginIds,
+  );
 
   @override
   Future<PluginDevelopmentPackage> packageDevelopmentPlugin(

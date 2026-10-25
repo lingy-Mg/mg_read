@@ -133,77 +133,38 @@ final class _DesktopPluginArtifactIo {
     }
   }
 
-  Future<List<PluginTransferImportResult>> importArtifacts(
-    List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>
-    artifacts, {
-    Set<String> forceUpgradePluginIds = const <String>{},
-  }) async {
-    _assertOpen();
-    _validateBatch(artifacts);
-    final inbox = _inbox();
-    final connection = await _supervisor._ensureStarted();
-    final planRaw = await connection.request(
-      method: 'plugins.transfer.plan.v2',
-      params: <String, Object?>{
-        'artifacts': artifacts.map((item) => item.artifact.toJson()).toList(),
-        if (forceUpgradePluginIds.isNotEmpty)
-          'forceUpgradeIds': forceUpgradePluginIds.toList(growable: false),
-      },
-      timeout: const Duration(minutes: 2),
-    );
-    final plan = PluginTransferPlanInvocation(
-      artifacts: [for (final item in artifacts) item.artifact],
-    )._decodeResult(planRaw);
-    if (plan.any(
-      (item) =>
-          item.action == PluginTransferPlanAction.developmentConflict ||
-          item.action == PluginTransferPlanAction.receiverNewer ||
-          item.action == PluginTransferPlanAction.same ||
-          item.action == PluginTransferPlanAction.unavailable,
-    )) {
-      throw const PluginRuntimeException(
-        'invalid_request',
-        'The plugin transfer would downgrade or replace an equal Runtime version.',
-      );
-    }
-    await inbox.create(recursive: true);
-    final temporaryFiles = <File>[];
-    try {
-      for (final item in artifacts) {
-        final artifact = item.artifact;
-        final stem =
-            'transfer-${artifact.pluginId}-${artifact.version}-${DateTime.now().microsecondsSinceEpoch}';
-        final target = File(
-          _joinPath(<String>[inbox.path, '$stem${_suffix(artifact.format)}']),
-        );
-        final temporary = File('${target.path}.part');
-        temporaryFiles.add(temporary);
-        await _copyStream(item.bytes, temporary, artifact.bytes);
-        await temporary.rename(target.path);
-        temporaryFiles.add(target);
-      }
-      await connection.request(
-        method: 'plugins.transfer.verify.v2',
-        params: <String, Object?>{
-          'artifacts': artifacts.map((item) => item.artifact.toJson()).toList(),
-        },
-        timeout: const Duration(minutes: 2),
-      );
+  late final _store = _PluginImportDirectoryStore(_inbox());
+  late final _artifactImporter = _PluginArtifactImporter(
+    assertOpen: _assertOpen,
+    plan: (artifacts, force) => _supervisor.invoke(
+      PluginTransferPlanInvocation(
+        artifacts: artifacts,
+        forceUpgradePluginIds: force,
+      ),
+    ),
+    begin: _store.begin,
+    verify: (batch, artifacts) =>
+        _supervisor.invoke(_VerifyPluginImportInvocation(batch.id, artifacts)),
+    publishAndRestart: (batch) async {
+      await _store.publish(batch);
       await _supervisor._restartForPluginImport();
-      return _pluginImportResults(
-        artifacts.map((item) => item.artifact),
-        await _supervisor.invoke(const InstalledPluginsInvocation()),
-      );
-    } finally {
-      for (final file in temporaryFiles) {
-        try {
-          if (await file.exists()) await file.delete();
-        } on Object {}
-      }
-    }
-  }
+    },
+    cancel: _store.cancel,
+    installed: () => _supervisor.invoke(const InstalledPluginsInvocation()),
+  );
 
-  Future<void> importLocalArtifact(String sourcePath) async {
+  Future<List<PluginTransferImportResult>> importArtifacts(
+    List<_PluginArtifactInput> artifacts, {
+    Set<String> forceUpgradePluginIds = const {},
+  }) => _artifactImporter.importArtifacts(
+    artifacts,
+    forceUpgradePluginIds: forceUpgradePluginIds,
+  );
+
+  Future<void> importLocalArtifact(String sourcePath) =>
+      _artifactImporter.exclusive(() => _importLocalArtifact(sourcePath));
+
+  Future<void> _importLocalArtifact(String sourcePath) async {
     _assertOpen();
     final source = File(sourcePath);
     final format = _formatForPath(sourcePath);
@@ -277,63 +238,11 @@ final class _DesktopPluginArtifactIo {
     _joinPath(<String>[_supervisor._bundle.dataRoot.path, 'import-inbox']),
   );
 
-  void _validateBatch(
-    List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>
-    artifacts,
-  ) {
-    if (artifacts.isEmpty) {
-      throw const PluginRuntimeException(
-        'plugin_transfer_batch_too_large',
-        'The plugin transfer batch is invalid.',
-      );
-    }
-    var total = 0;
-    for (final item in artifacts) {
-      if (item.artifact.bytes <= 0 ||
-          item.artifact.bytes > maxPluginTransferBytes) {
-        throw const PluginRuntimeException(
-          'plugin_transfer_artifact_too_large',
-          'The plugin transfer artifact is too large.',
-        );
-      }
-      total += item.artifact.bytes;
-      if (total > maxPluginTransferBatchBytes) {
-        throw const PluginRuntimeException(
-          'plugin_transfer_batch_too_large',
-          'The plugin transfer batch is too large.',
-        );
-      }
-    }
-  }
-
   Future<void> _copyStream(
     Stream<List<int>> source,
     File temporary,
     int expectedBytes,
-  ) async {
-    var copied = 0;
-    final sink = temporary.openWrite();
-    try {
-      await for (final chunk in source) {
-        copied += chunk.length;
-        if (copied > expectedBytes || copied > maxPluginTransferBytes) {
-          throw const PluginRuntimeException(
-            'plugin_transfer_size_mismatch',
-            'The plugin transfer artifact exceeded its declared size.',
-          );
-        }
-        sink.add(chunk);
-      }
-    } finally {
-      await sink.close();
-    }
-    if (copied != expectedBytes) {
-      throw const PluginRuntimeException(
-        'plugin_transfer_size_mismatch',
-        'The plugin transfer artifact was truncated.',
-      );
-    }
-  }
+  ) => _writePluginArtifactFile(source, temporary, expectedBytes);
 }
 
 PluginArtifactFormat? _formatForPath(String path) {

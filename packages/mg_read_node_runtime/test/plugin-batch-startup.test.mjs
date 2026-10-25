@@ -7,7 +7,6 @@ import test from "node:test";
 import { PluginManager } from "../dist/plugin-manager.js";
 import { installPluginArtifactInbox } from "../dist/plugin-artifact-inbox.js";
 import { PluginArtifactTransferManager } from "../dist/plugin-artifact-transfer.js";
-import { crc32 } from "../dist/lan-sync-checksum.js";
 import { createTransferBatch } from "./fixtures/transfer-batch.mjs";
 
 test("40 sources install in one inbox pass and cold activation is bounded and concurrent", async (t) => {
@@ -62,22 +61,22 @@ test("inbox enforces 512 MiB before installing any file", async (t) => {
   assert.equal((await readdir(inbox)).length, 17);
 });
 
-test("equal-size inbox verification handles reordered files and duplicate checksums", async (t) => {
+test("equal-size inbox verification authenticates identities in reordered batches", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "mgread-inbox-hashes-"));
   t.after(() => rm(root, {recursive: true, force: true}));
   const inbox = join(root, "import-inbox");
   await mkdir(inbox);
+  const fixtures = await createTransferBatch(root, 40);
   const incoming = [];
-  for (let index = 0; index < 40; index++) {
-    const bytes = Buffer.from(String(index % 20).padStart(8, "0"));
-    await writeFile(join(inbox, `${String(index).padStart(3, "0")}.mgplugin.js`), bytes);
-    incoming.unshift({id: `org.test.${index}`, bytes: bytes.length, checksum: crc32(bytes),
-      format: "singleFile", version: "1.0.0", provenance: "installed",
-      developmentFingerprint: null, developmentRevision: null});
+  for (let index = 0; index < fixtures.length; index++) {
+    await copyFile(fixtures[index].path, join(inbox, `${String(index).padStart(3, "0")}.mgplugin.js`));
+    incoming.unshift(fixtures[index].artifact);
   }
   const transfer = new PluginArtifactTransferManager(root);
   t.after(() => transfer.dispose());
   await transfer.verifyInbox(incoming);
+  const wrongIdentity = incoming.map((artifact, index) => index === 0 ? {...artifact, id: "org.test.wrong"} : artifact);
+  await assert.rejects(transfer.verifyInbox(wrongIdentity), error => error.code === "plugin_transfer_checksum_mismatch");
   await rm(join(inbox, "000.mgplugin.js"));
   await assert.rejects(transfer.verifyInbox(incoming), error => error.code === "plugin_transfer_checksum_mismatch");
 });

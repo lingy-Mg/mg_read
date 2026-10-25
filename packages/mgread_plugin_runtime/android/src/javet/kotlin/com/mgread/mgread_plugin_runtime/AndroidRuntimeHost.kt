@@ -171,7 +171,7 @@ internal class AndroidRuntimeHost(
                 val sourceName = selectedFileName(sourcePath)
                 val artifactFormat = artifactFormatForName(sourceName)
                     ?: error("file_name_invalid")
-                val inbox = File(context.filesDir, "mgread-runtime/import-inbox").apply {
+                val inbox = File(context.filesDir, "mgread-runtime/data/import-inbox").apply {
                     mkdirs()
                 }
                 val target = File(
@@ -297,34 +297,17 @@ internal class AndroidRuntimeHost(
         return File(sourcePath)
     }
 
-    fun beginPluginTransfer(
-        pluginId: String,
-        version: String,
-        expectedBytes: Long,
-        expectedChecksum: String,
-        format: String,
-        callback: (AndroidRuntimeError?, Map<String, String>?) -> Unit,
+    fun beginPluginTransferBatch(
+        artifacts: List<Map<String, Any?>>, callback: (AndroidRuntimeError?, Map<String, Any?>?) -> Unit,
     ) {
         if (disposed.get()) {
             callback(AndroidRuntimeError("runtime_unavailable", "Android Runtime is closed."), null)
             return
         }
         handler.post {
-            try {
-                Log.i(TAG, "android_plugin_transfer_receive_started bytes=$expectedBytes")
-                val transfer = artifactTransfer.beginImport(
-                    pluginId = pluginId,
-                    version = version,
-                    expectedBytes = expectedBytes,
-                    expectedChecksum = expectedChecksum,
-                    format = format,
-                )
-                callback(null, transfer)
-            } catch (error: Throwable) {
-                callback(AndroidRuntimeError(
-                    if (error.message == "file_too_large") "plugin_transfer_artifact_too_large" else "invalid_request",
-                    "Android Runtime could not begin plugin transfer.",
-                ), null)
+            try { callback(null, artifactTransfer.beginImportBatch(artifacts)) }
+            catch (error: Throwable) {
+                callback(AndroidRuntimeError(error.message ?: "invalid_request", "Android could not begin plugin import."), null)
             }
         }
     }
@@ -372,19 +355,19 @@ internal class AndroidRuntimeHost(
     }
 
     fun finishPluginTransferBatch(
-        ids: List<String>,
+        id: String,
         callback: (AndroidRuntimeError?) -> Unit,
     ) {
         handler.post {
             try {
                 Log.i(TAG, "android_plugin_transfer_finalize_started")
-                artifactTransfer.finishImportBatch(ids)
+                artifactTransfer.finishImportBatch(id)
                 Log.i(TAG, "android_plugin_transfer_artifacts_verified")
                 restartCore()
                 Log.i(TAG, "android_plugin_transfer_finalize_complete")
                 callback(null)
             } catch (error: Throwable) {
-                artifactTransfer.cancelImports(ids)
+                runCatching { artifactTransfer.cancelImportBatch(id) }
                 recoverCoreAfterFailedActivation()
                 val code = when (error.message) {
                     "plugin_transfer_size_mismatch" -> "plugin_transfer_size_mismatch"
@@ -400,12 +383,12 @@ internal class AndroidRuntimeHost(
     }
 
     fun cancelPluginTransferBatch(
-        ids: List<String>,
+        id: String,
         callback: (AndroidRuntimeError?) -> Unit,
     ) {
         handler.post {
             try {
-                artifactTransfer.cancelImports(ids)
+                artifactTransfer.cancelImportBatch(id)
                 callback(null)
             } catch (_: Throwable) {
                 callback(
@@ -425,6 +408,7 @@ internal class AndroidRuntimeHost(
         val latch = CountDownLatch(1)
         handler.post {
             try {
+                runCatching { artifactTransfer.dispose() }
                 stopRuntime()
                 Log.i(TAG, "android_runtime_dispose_complete")
             } finally {
@@ -526,7 +510,7 @@ internal class AndroidRuntimeHost(
         this.dataRoot = dataRoot
         val pluginImportInbox = File(
             context.filesDir,
-            "mgread-runtime/import-inbox",
+            "mgread-runtime/data/import-inbox",
         ).apply { mkdirs() }
         installPluginModuleLoader(runtime, dataRoot)
         check(awaitString("Promise.resolve('android-runtime-probe')") == "android-runtime-probe")

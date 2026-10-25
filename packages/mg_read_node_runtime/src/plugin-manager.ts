@@ -366,8 +366,8 @@ export class PluginManager {
     return createDevelopmentPackageArtifactResource(this.#pluginTransfer, development);
   }
 
-  async verifyPluginTransferInbox(incoming: readonly PluginTransferArtifact[]): Promise<void> {
-    return this.#pluginTransfer.verifyInbox(incoming);
+  async verifyPluginTransferInbox(incoming: readonly PluginTransferArtifact[], batchId?: string): Promise<void> {
+    return this.#pluginTransfer.verifyInbox(incoming, batchId);
   }
 
   consumePluginTransferResource(token: string): PluginTransferResource | undefined {

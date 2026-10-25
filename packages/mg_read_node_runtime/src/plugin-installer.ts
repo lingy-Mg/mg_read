@@ -86,6 +86,7 @@ export class PluginInstaller {
     artifactFile: string,
     descriptor: PluginPackageDescriptor,
     format: PluginArtifactFormat,
+    replaceExistingVersion: boolean,
   ): Promise<void> {
     const archiveRoot = resolve(
       this.#dataRoot,
@@ -96,7 +97,9 @@ export class PluginInstaller {
     const target = resolve(archiveRoot, `${descriptor.version}${extension}`);
     try {
       await access(target);
-      return;
+      if (!replaceExistingVersion) return;
+      // Windows cannot replace a read-only destination through rename.
+      await chmod(target, 0o644);
     } catch (error) {
       if (!isNodeError(error, "ENOENT")) throw error;
     }
@@ -111,7 +114,7 @@ export class PluginInstaller {
       try {
         await rename(temporary, target);
       } catch (error) {
-        if (!isNodeError(error, "EEXIST")) throw error;
+        if (replaceExistingVersion || !isNodeError(error, "EEXIST")) throw error;
         // Another serialized install already preserved this immutable version.
       }
     } finally {
@@ -164,11 +167,11 @@ export class PluginInstaller {
       // The platform inbox is only a hand-off queue and is deleted after the
       // install completes. Keep the validated input archive in Runtime-owned
       // storage for later recovery/export without crossing the Facade.
-      await this.#preserveOriginalArtifact(artifactFile, descriptor, format);
       const result = await this.#commitProject(
         stagingRoot,
         descriptor,
         replaceExistingVersion,
+        () => this.#preserveOriginalArtifact(artifactFile, descriptor, format, replaceExistingVersion),
       );
       this.#events({
         code: "plugin_install_completed",
@@ -237,6 +240,7 @@ export class PluginInstaller {
     stagingRoot: string,
     descriptor: PluginPackageDescriptor,
     replaceExistingVersion: boolean,
+    preserveArtifact: () => Promise<void>,
   ): Promise<PluginInstallResult> {
     const pluginRoot = resolve(this.#dataRoot, "plugins", descriptor.id);
     const versionsRoot = resolve(pluginRoot, "versions");
@@ -255,6 +259,7 @@ export class PluginInstaller {
         stage: "plugin_installing",
         totalBytes: 1,
       });
+      await preserveArtifact();
       await this.#catalog.load();
       await this.#catalog.installPending(descriptor, async () => {});
       return Object.freeze({
@@ -278,8 +283,13 @@ export class PluginInstaller {
         }
         await rename(stagingRoot, finalVersionRoot);
         newVersionMoved = true;
+        // Android requires the directory move before enforcing immutability.
+        // Keep the previous tree until both the code and export artifact commit.
+        await makeVersionTreeReadOnly(finalVersionRoot);
+        await preserveArtifact();
       } catch (error) {
-        if (previousVersionMoved && !newVersionMoved && previousVersionRoot !== undefined) {
+        if (newVersionMoved) await rm(finalVersionRoot, {force: true, recursive: true}).catch(() => {});
+        if (previousVersionMoved && previousVersionRoot !== undefined) {
           await rename(previousVersionRoot, finalVersionRoot).catch(() => {});
         }
         throw error;
@@ -287,11 +297,6 @@ export class PluginInstaller {
       if (previousVersionRoot !== undefined) {
         await rm(previousVersionRoot, { force: true, recursive: true }).catch(() => {});
       }
-      // Android's app sandbox can reject renaming a directory whose root was
-      // chmod-ed read-only while it still lives under the staging tree. Commit
-      // the atomic directory move first, then enforce immutability at its final
-      // location before publishing the pending pointer.
-      await makeVersionTreeReadOnly(finalVersionRoot);
     });
     this.#reportProgress({
       completedBytes: 1,

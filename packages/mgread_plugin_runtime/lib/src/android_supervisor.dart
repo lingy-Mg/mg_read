@@ -7,52 +7,6 @@ const EventChannel _androidRuntimeProgressChannel = EventChannel(
   'mgread_plugin_runtime/android/progress',
 );
 const Duration _androidStartupTimeout = Duration(seconds: 30);
-Future<void> _writeAndroidPluginTransferFile({
-  required Stream<List<int>> bytes,
-  required int expectedBytes,
-  required String temporaryPath,
-}) async {
-  final sink = File(temporaryPath).openWrite();
-  var copied = 0;
-  try {
-    await for (final chunk in bytes) {
-      copied += chunk.length;
-      if (copied > expectedBytes) {
-        throw const PluginRuntimeException(
-          'plugin_transfer_size_mismatch',
-          'The plugin transfer artifact exceeded its declared size.',
-        );
-      }
-      sink.add(chunk);
-    }
-    await sink.close();
-  } on FileSystemException catch (error, stackTrace) {
-    try {
-      await sink.close();
-    } on Object {}
-    final code = error.osError?.errorCode == 28
-        ? 'disk_full'
-        : 'plugin_transfer_failed';
-    Error.throwWithStackTrace(
-      PluginRuntimeException(
-        code,
-        'Android could not write the plugin artifact.',
-      ),
-      stackTrace,
-    );
-  } catch (error, stackTrace) {
-    try {
-      await sink.close();
-    } on Object {}
-    Error.throwWithStackTrace(error, stackTrace);
-  }
-  if (copied != expectedBytes) {
-    throw const PluginRuntimeException(
-      'plugin_transfer_size_mismatch',
-      'The plugin transfer artifact was truncated.',
-    );
-  }
-}
 
 /// Flutter-facing Android supervisor backed by the Runtime-owned Javet host.
 final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
@@ -328,7 +282,10 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
   }
 
   @override
-  Future<bool> pickAndImportLocalPlugin() async {
+  Future<bool> pickAndImportLocalPlugin() =>
+      _artifactImporter.exclusive(_pickAndImportLocalPlugin);
+
+  Future<bool> _pickAndImportLocalPlugin() async {
     if (_disposed) {
       throw const PluginRuntimeException(
         'runtime_unavailable',
@@ -484,128 +441,52 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
     }
   }
 
-  @override
-  Future<List<PluginTransferImportResult>> importPluginArtifacts(
-    List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>
-    artifacts, {
-    Set<String> forceUpgradePluginIds = const <String>{},
-  }) async {
-    if (artifacts.isEmpty) {
-      throw const PluginRuntimeException(
-        'plugin_transfer_batch_too_large',
-        'The plugin transfer batch is invalid.',
-      );
-    }
-    try {
-      final plan = await invoke(
-        PluginTransferPlanInvocation(
-          artifacts: [for (final item in artifacts) item.artifact],
-          forceUpgradePluginIds: forceUpgradePluginIds,
-        ),
-      );
-      if (plan.any(
-        (item) =>
-            item.action == PluginTransferPlanAction.developmentConflict ||
-            item.action == PluginTransferPlanAction.receiverNewer ||
-            item.action == PluginTransferPlanAction.same ||
-            item.action == PluginTransferPlanAction.unavailable,
-      )) {
+  late final _artifactImporter = _PluginArtifactImporter(
+    assertOpen: () {
+      if (_disposed)
         throw const PluginRuntimeException(
-          'invalid_request',
-          'The plugin transfer would downgrade or replace an equal Runtime version.',
+          'runtime_unavailable',
+          'Android Runtime is closed.',
         );
-      }
-      var total = 0;
-      for (final item in artifacts) {
-        if (item.artifact.bytes <= 0 ||
-            item.artifact.bytes > maxPluginTransferBytes) {
-          throw const PluginRuntimeException(
-            'plugin_transfer_artifact_too_large',
-            'The plugin transfer artifact is too large.',
-          );
-        }
-        total += item.artifact.bytes;
-        if (total > maxPluginTransferBatchBytes) {
-          throw const PluginRuntimeException(
-            'plugin_transfer_batch_too_large',
-            'The plugin transfer batch is too large.',
-          );
-        }
-      }
-
-      // Dart streams every artifact into the native-owned staging path.
-      // Activate once after the complete byte-bounded batch is verified.
-      await _importPluginArtifactBatch(artifacts);
-      _started = false;
-      return _pluginImportResults(
-        artifacts.map((item) => item.artifact),
-        await invoke(const InstalledPluginsInvocation()),
-      );
-    } on PlatformException catch (error) {
-      throw PluginRuntimeException(
-        error.code,
-        'The Android Runtime could not import the plugin transfer.',
-      );
-    }
-  }
-
-  Future<void> _importPluginArtifactBatch(
-    List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>
-    artifacts,
-  ) async {
-    final ids = <String>[];
-    try {
-      for (final item in artifacts) {
-        final transfer = await _androidRuntimeChannel
-            .invokeMapMethod<String, Object?>(
-              'beginPluginTransfer',
-              <String, Object?>{
-                'bytes': item.artifact.bytes,
-                'format': item.artifact.format.name,
-                'pluginId': item.artifact.pluginId,
-                'checksum': item.artifact.checksum,
-                'version': item.artifact.version,
-              },
-            );
-        final id = transfer?['id'];
-        final temporaryPath = transfer?['temporaryPath'];
-        if (id is! String ||
-            id.isEmpty ||
-            temporaryPath is! String ||
-            temporaryPath.isEmpty) {
-          throw const PluginRuntimeException(
-            'runtime_no_response',
-            'Android Runtime returned no transfer staging file.',
-          );
-        }
-        ids.add(id);
-        await _writeAndroidPluginTransferFile(
-          bytes: item.bytes,
-          expectedBytes: item.artifact.bytes,
-          temporaryPath: temporaryPath,
-        );
-      }
+    },
+    plan: (artifacts, force) => invoke(
+      PluginTransferPlanInvocation(
+        artifacts: artifacts,
+        forceUpgradePluginIds: force,
+      ),
+    ),
+    begin: (artifacts) =>
+        _beginAndroidPluginImport(_androidRuntimeChannel, artifacts),
+    verify: (batch, artifacts) =>
+        invoke(_VerifyPluginImportInvocation(batch.id, artifacts)),
+    publishAndRestart: (batch) async {
       await _androidRuntimeChannel.invokeMethod<void>(
         'finishPluginTransferBatch',
-        <String, Object?>{'ids': ids},
+        {'id': batch.id},
       );
-    } on Object catch (error, stackTrace) {
-      if (ids.isNotEmpty) {
-        try {
-          await _androidRuntimeChannel.invokeMethod<void>(
-            'cancelPluginTransferBatch',
-            <String, Object?>{'ids': ids},
-          );
-        } on Object {
-          // Preserve the transfer failure if native cleanup also fails.
-        }
-      }
-      Error.throwWithStackTrace(error, stackTrace);
-    }
-  }
+      _started = false;
+    },
+    cancel: (batch) => _androidRuntimeChannel.invokeMethod<void>(
+      'cancelPluginTransferBatch',
+      {'id': batch.id},
+    ),
+    installed: () => invoke(const InstalledPluginsInvocation()),
+  );
 
   @override
-  Future<void> importLocalPlugin(String sourcePath) async {
+  Future<List<PluginTransferImportResult>> importPluginArtifacts(
+    List<_PluginArtifactInput> artifacts, {
+    Set<String> forceUpgradePluginIds = const {},
+  }) => _artifactImporter.importArtifacts(
+    artifacts,
+    forceUpgradePluginIds: forceUpgradePluginIds,
+  );
+
+  @override
+  Future<void> importLocalPlugin(String sourcePath) =>
+      _artifactImporter.exclusive(() => _importLocalPlugin(sourcePath));
+
+  Future<void> _importLocalPlugin(String sourcePath) async {
     if (_disposed) {
       throw const PluginRuntimeException(
         'runtime_unavailable',

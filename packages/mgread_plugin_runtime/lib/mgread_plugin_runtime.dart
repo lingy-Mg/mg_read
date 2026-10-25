@@ -44,6 +44,7 @@ part 'src/runtime_initialization.dart';
 part 'src/plugin_invocation.dart';
 part 'src/plugin_invocation_cancellation.dart';
 part 'src/plugin_transfer_invocation.dart';
+part 'src/plugin_artifact_importer.dart';
 part 'src/plugin_runtime.dart';
 part 'src/source_resource_url.dart';
 part 'src/native_supervisor.dart';

@@ -32,8 +32,12 @@
 - 区分宿主打包与来源装载：正常 App 预置两套宿主，来源 artifact 可在安装后导入，由归属引擎按需装载；
   不为 Node 和原生来源分别发布正常 App 版本。Node 单文件和原生 DLL/SO 的 artifact、加载与更新规则分别由
   `../mg_read_node_runtime/AGENTS.md` 和 `../mg_read_native_runtime/AGENTS.md` 拥有。
-- Android 两种 Node 后端的插件导入由 Dart 写入原生层提供的私有 `.part` 路径；Kotlin 只拥有路径、校验、原子发布和
-  Core/Service 刷新生命周期。不得再通过 MethodChannel 逐块发送导入文件字节。
+- Windows/macOS、Android Javet 与 Node 进程后端共用 `plugin_artifact_importer.dart` 的整次导入排队、
+  大小限制、分块文件写入、manifest、失败清理及目录结果确认；本地选择导入也必须进入同一队列。
+- Android 通过 `beginPluginTransferBatch` 一次分配整批私有 `.part` 路径。Dart 直接写文件，Core 统一校验
+  manifest 与包内 ID/版本，Kotlin 复核长度/CRC 并一次 rename 批次目录，再刷新 Core/Service。禁止逐块传字节。
+  两个 Android 后端共享 `data/import-inbox`；旧 Javet inbox 在宿主创建时迁移。宿主只在创建时回收未发布暂存，
+  不得在 Core 重启时删除正在写入的批次。
 
 ## 验证
 

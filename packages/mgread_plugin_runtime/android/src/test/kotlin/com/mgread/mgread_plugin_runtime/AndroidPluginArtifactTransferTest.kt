@@ -1,4 +1,4 @@
-/** Byte-bounded staging and whole-batch validation without a device or VM. */
+/** Byte-bounded whole-directory publication, corruption and interrupted-host recovery. */
 package com.mgread.mgread_plugin_runtime
 
 import java.nio.file.Files
@@ -8,59 +8,83 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AndroidPluginArtifactTransferTest {
-    @Test
-    fun stages65SourcesBeforePublishingOneBatch() {
-        withTransfer { root, transfer ->
-            val bytes = "single-js-fixture".toByteArray()
-            val ids = (0 until 65).map { index ->
-                val session = transfer.beginImport("org.test.$index", "1.0.0", bytes.size.toLong(), checksum(bytes), "singleFile")
-                File(session.getValue("temporaryPath")).writeBytes(bytes)
-                session.getValue("id")
-            }
-            assertEquals(65, root.listFiles()!!.count { it.name.endsWith(".part") })
-            transfer.finishImportBatch(ids)
-            assertEquals(65, root.listFiles()!!.count { it.name.endsWith(".mgplugin.js") })
-            assertTrue(root.listFiles()!!.all { it.readBytes().contentEquals(bytes) })
-        }
+    @Test fun stages65SourcesBeforeOneDirectoryPublication() = withTransfer { root, transfer ->
+        val bytes = "fixture".toByteArray()
+        val batch = transfer.beginImportBatch((0 until 65).map { metadata(it, bytes) })
+        writeBatch(batch, List(65) { bytes })
+        assertEquals(1, root.listFiles()!!.size)
+        assertTrue(root.listFiles()!!.single().name.endsWith(".part"))
+        transfer.finishImportBatch(batch["id"] as String)
+        val published = root.listFiles()!!.single()
+        assertTrue(published.name.startsWith("batch-"))
+        assertEquals(65, published.listFiles()!!.count { it.name.endsWith(".mgplugin.js") })
+        AndroidPluginArtifactTransfer(root)
+        assertTrue(published.exists())
     }
 
-    @Test
-    fun corruptLastFileDoesNotPublishEarlierFiles() {
-        withTransfer { root, transfer ->
-            val bytes = "fixture".toByteArray()
-            val firstSession = transfer.beginImport("org.test.a", "1.0.0", bytes.size.toLong(), checksum(bytes), "singleFile")
-            val lastSession = transfer.beginImport("org.test.b", "1.0.0", bytes.size.toLong(), "00000000", "singleFile")
-            File(firstSession.getValue("temporaryPath")).writeBytes(bytes)
-            File(lastSession.getValue("temporaryPath")).writeBytes(bytes)
-            val first = firstSession.getValue("id")
-            val last = lastSession.getValue("id")
-            assertEquals("plugin_transfer_checksum_mismatch", runCatching {
-                transfer.finishImportBatch(listOf(first, last))
-            }.exceptionOrNull()?.message)
-            assertTrue(root.listFiles()!!.all { it.name.endsWith(".part") })
-            transfer.cancelImports(listOf(first, last))
-            assertEquals(0, root.listFiles()!!.size)
-        }
+    @Test fun corruptLastFilePublishesNothing() = withTransfer { root, transfer ->
+        val bytes = "fixture".toByteArray()
+        val batch = transfer.beginImportBatch(listOf(metadata(0, bytes), metadata(1, bytes) + ("checksum" to "00000000")))
+        writeBatch(batch, listOf(bytes, bytes))
+        assertEquals("plugin_transfer_checksum_mismatch", runCatching {
+            transfer.finishImportBatch(batch["id"] as String)
+        }.exceptionOrNull()?.message)
+        assertTrue(root.listFiles()!!.all { it.name.endsWith(".part") })
+        transfer.cancelImportBatch(batch["id"] as String)
+        assertEquals(0, root.listFiles()!!.size)
     }
 
-    @Test
-    fun enforcesAggregateBytesAndReleasesCanceledBudget() {
-        withTransfer { _, transfer ->
-            val ids = (0 until 16).map {
-                transfer.beginImport("org.test.$it", "1.0.0", 32L * 1024 * 1024, "00000000", "singleFile").getValue("id")
-            }
-            assertEquals("transfer_batch_too_large", runCatching {
-                transfer.beginImport("org.test.excess", "1.0.0", 1, "00000000", "singleFile")
-            }.exceptionOrNull()?.message)
-            transfer.cancelImports(ids)
-            val next = transfer.beginImport("org.test.next", "1.0.0", 1, "00000000", "singleFile").getValue("id")
-            transfer.cancelImports(listOf(next))
-        }
+    @Test fun truncatedFilePublishesNothing() = withTransfer { _, transfer ->
+        val bytes = "fixture".toByteArray()
+        val batch = transfer.beginImportBatch(listOf(metadata(0, bytes)))
+        writeBatch(batch, listOf(byteArrayOf(1)))
+        assertEquals("plugin_transfer_size_mismatch", runCatching {
+            transfer.finishImportBatch(batch["id"] as String)
+        }.exceptionOrNull()?.message)
     }
 
-    private fun checksum(bytes: ByteArray) = CRC32().apply { update(bytes) }.value.toString(16).padStart(8, '0')
+    @Test fun rejectsOversizedBatchBeforeAllocatingAndReleasesCanceledBatch() = withTransfer { root, transfer ->
+        val large = (0 until 17).map { metadata(it, byteArrayOf(1)) + ("bytes" to 32L * 1024 * 1024) }
+        assertEquals("transfer_batch_too_large", runCatching { transfer.beginImportBatch(large) }.exceptionOrNull()?.message)
+        assertEquals(0, root.listFiles()!!.size)
+        val next = transfer.beginImportBatch(listOf(metadata(0, byteArrayOf(1))))
+        assertEquals("invalid_request", runCatching { transfer.beginImportBatch(listOf(metadata(1, byteArrayOf(1)))) }.exceptionOrNull()?.message)
+        transfer.cancelImportBatch(next["id"] as String)
+        transfer.beginImportBatch(listOf(metadata(1, byteArrayOf(1))))
+    }
 
-    private fun withTransfer(test: (java.io.File, AndroidPluginArtifactTransfer) -> Unit) {
+    @Test fun hostRecreationCleansOnlyUnpublishedStaging() = withTransfer { root, transfer ->
+        val bytes = "fixture".toByteArray()
+        val batch = transfer.beginImportBatch(listOf(metadata(0, bytes)))
+        writeBatch(batch, listOf(bytes))
+        val unrelated = File(root, "keep.txt").apply { writeText("keep") }
+        AndroidPluginArtifactTransfer(root)
+        assertEquals(listOf(unrelated.name), root.listFiles()!!.map { it.name })
+    }
+
+    @Test fun rejectsPathIdentityAndInvalidCancelId() = withTransfer { _, transfer ->
+        assertEquals("invalid_request", runCatching {
+            transfer.beginImportBatch(listOf(metadata(0, byteArrayOf(1)) + ("id" to "../escape")))
+        }.exceptionOrNull()?.message)
+        assertEquals("invalid_request", runCatching { transfer.cancelImportBatch("../escape") }.exceptionOrNull()?.message)
+    }
+
+    @Test fun rejectsLowDiskBeforeCreatingStaging() = withTransfer { root, _ ->
+        val transfer = AndroidPluginArtifactTransfer(root) { 0L }
+        assertEquals("disk_full", runCatching { transfer.beginImportBatch(listOf(metadata(0, byteArrayOf(1)))) }.exceptionOrNull()?.message)
+        assertEquals(0, root.listFiles()!!.size)
+    }
+
+    private fun metadata(index: Int, bytes: ByteArray): Map<String, Any?> = mapOf(
+        "id" to "org.test.$index", "version" to "1.0.0", "format" to "singleFile",
+        "bytes" to bytes.size.toLong(), "checksum" to CRC32().apply { update(bytes) }.value.toString(16).padStart(8, '0'),
+    )
+    private fun writeBatch(batch: Map<String, Any?>, files: List<ByteArray>) {
+        @Suppress("UNCHECKED_CAST") val paths = batch["temporaryPaths"] as List<String>
+        paths.forEachIndexed { index, path -> File(path).writeBytes(files[index]) }
+        File(batch["directory"] as String, "manifest.json").writeText("{}")
+    }
+    private fun withTransfer(test: (File, AndroidPluginArtifactTransfer) -> Unit) {
         val root = Files.createTempDirectory("mgread-transfer").toFile()
         try { test(root, AndroidPluginArtifactTransfer(root)) }
         finally { root.deleteRecursively() }

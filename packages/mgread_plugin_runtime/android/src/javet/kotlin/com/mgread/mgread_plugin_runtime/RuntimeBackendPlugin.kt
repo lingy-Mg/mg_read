@@ -159,20 +159,14 @@ class JavetRuntimeBackendPlugin : FlutterPlugin, MethodChannel.MethodCallHandler
             "pickAndImportLocalPlugin" -> {
                 openPluginPicker(result)
             }
-            "beginPluginTransfer" -> {
-                val pluginId = call.argument<String>("pluginId")
-                val version = call.argument<String>("version")
-                val bytes = call.argument<Number>("bytes")?.toLong()
-                val checksum = call.argument<String>("checksum")
-                val format = call.argument<String>("format")
-                if (pluginId.isNullOrBlank() || version.isNullOrBlank() || bytes == null || checksum.isNullOrBlank() || format.isNullOrBlank()) {
-                    result.error("invalid_request", "The plugin transfer metadata is invalid.", null)
+            "beginPluginTransferBatch" -> {
+                val artifacts = call.argument<List<Map<String, Any?>>>("artifacts")
+                if (artifacts.isNullOrEmpty()) {
+                    result.error("invalid_request", "The plugin transfer batch is invalid.", null)
                     return
                 }
-                host.beginPluginTransfer(pluginId, version, bytes, checksum, format) { error, transfer ->
-                    mainHandler.post {
-                        if (error == null) result.success(transfer) else result.error(error.code, error.message, null)
-                    }
+                host.beginPluginTransferBatch(artifacts) { error, batch ->
+                    mainHandler.post { if (error == null) result.success(batch) else result.error(error.code, error.message, null) }
                 }
             }
             "beginPluginTransferExport" -> {
@@ -211,24 +205,24 @@ class JavetRuntimeBackendPlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                 result.success(null)
             }
             "finishPluginTransferBatch" -> {
-                val ids = call.argument<List<String>>("ids")
-                if (ids.isNullOrEmpty()) {
+                val id = call.argument<String>("id")
+                if (id.isNullOrEmpty()) {
                     result.error("invalid_request", "The plugin transfer batch is invalid.", null)
                     return
                 }
-                host.finishPluginTransferBatch(ids) { error ->
+                host.finishPluginTransferBatch(id) { error ->
                     mainHandler.post {
                         if (error == null) result.success(null) else result.error(error.code, error.message, null)
                     }
                 }
             }
             "cancelPluginTransferBatch" -> {
-                val ids = call.argument<List<String>>("ids")
-                if (ids.isNullOrEmpty()) {
+                val id = call.argument<String>("id")
+                if (id.isNullOrEmpty()) {
                     result.error("invalid_request", "The plugin transfer batch is invalid.", null)
                     return
                 }
-                host.cancelPluginTransferBatch(ids) { error ->
+                host.cancelPluginTransferBatch(id) { error ->
                     mainHandler.post {
                         if (error == null) result.success(null) else result.error(error.code, error.message, null)
                     }

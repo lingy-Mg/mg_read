@@ -29,6 +29,9 @@
 - 批量收件箱共用 32 MiB/文件、512 MiB/批限制，不按 32 个文件截断；pending 冷激活并发上限为桌面 8、
   embedded 4，各插件独立提交或回滚。HTTP 关闭先取消所有在途响应（包含换代理前的旧响应），避免重启等待响应体。
   `plugin-batch-startup.test.mjs` 与 `plugin-http-shutdown.test.mjs` 覆盖这些边界；稳定目录命中仍不执行插件代码。
+- `plugin-import-batch.ts` 统一 Windows/Android 批次 manifest、CRC、包内 ID/版本预检，校验整批后才能开始安装。
+  `.batch-<id>.part` 由平台宿主拥有，Core 只消费一次目录 rename 发布的 `batch-<id>`；完整批次保留至安装结束，
+  中断后幂等重放，坏批次消费后报错。覆盖同版本时，保留 artifact 必须与最终版本树同步替换。
 - Runtime-only 任务不修改主应用 UI、Reader、模板或真实数据源，除非用户把对应公开边界纳入同一任务。
 
 ## 固定工具链与验证

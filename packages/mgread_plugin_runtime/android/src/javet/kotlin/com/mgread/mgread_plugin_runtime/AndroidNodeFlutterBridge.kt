@@ -113,23 +113,16 @@ internal class AndroidNodeFlutterBridge(
                 else importSelected(path, result, asPicker = false)
             }
             "pickAndImportLocal" -> pick(result)
-            "beginPluginTransfer" -> fileOperation(result) {
-                transfer.beginImport(
-                    required(call, "pluginId"), required(call, "version"),
-                    call.argument<Number>("bytes")?.toLong() ?: error("invalid_request"),
-                    required(call, "checksum"), required(call, "format"),
-                )
+            "beginPluginTransferBatch" -> fileOperation(result) {
+                transfer.beginImportBatch(call.argument<List<Map<String, Any?>>>("artifacts") ?: error("invalid_request"))
             }
             "finishPluginTransferBatch" -> fileOperation(result) {
-                val ids = call.argument<List<String>>("ids") ?: error("invalid_request")
-                transfer.finishImportBatch(ids)
-                main.post {
-                    process.restart { error, _ -> finish(result, error, null) }
-                }
+                transfer.finishImportBatch(required(call, "id"))
+                main.post { process.restart { error, _ -> finish(result, error, null) } }
                 PENDING
             }
             "cancelPluginTransferBatch" -> fileOperation(result) {
-                transfer.cancelImports(call.argument<List<String>>("ids") ?: error("invalid_request"))
+                transfer.cancelImportBatch(required(call, "id"))
                 null
             }
             "beginPluginTransferExport" -> fileOperation(result) {
@@ -146,6 +139,7 @@ internal class AndroidNodeFlutterBridge(
                 null
             }
             "dispose" -> {
+                io.execute { transfer.dispose() }
                 process.dispose()
                 browser.dispose()
                 result.success(null)

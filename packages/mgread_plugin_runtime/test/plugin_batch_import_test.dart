@@ -1,6 +1,7 @@
 /// Real desktop Node imports verify one restart, >32 sources and activation failures.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -41,6 +42,79 @@ void main() {
       '40-source desktop Facade transfer + restart: ${started.elapsedMilliseconds} ms',
     );
   }, timeout: const Timeout(Duration(minutes: 2)));
+
+  test(
+    'desktop imports serialize planning and reject a stale equal version',
+    () async {
+      final first = await _batch(1);
+      final second = await _batch(1);
+      final copying = Completer<void>();
+      final release = Completer<void>();
+      Stream<List<int>> delayed() async* {
+        copying.complete();
+        await release.future;
+        yield* first.artifacts.single.bytes;
+      }
+
+      final one = first.runtime.importPluginArtifacts([
+        (artifact: first.artifacts.single.artifact, bytes: delayed()),
+      ]);
+      await copying.future;
+      final two = first.runtime.importPluginArtifacts(second.artifacts);
+      final rejected = expectLater(
+        two,
+        throwsA(
+          isA<PluginRuntimeException>().having(
+            (e) => e.code,
+            'code',
+            'invalid_request',
+          ),
+        ),
+      );
+      release.complete();
+      expect((await one).single.status, PluginTransferImportStatus.installed);
+      await rejected;
+      expect(first.runtime.debugDesktopProcessStartCount, 2);
+    },
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
+
+  test(
+    'identity mismatch cannot install another plugin or restart desktop',
+    () async {
+      final fixture = await _batch(1);
+      final actual = fixture.artifacts.single.artifact;
+      await expectLater(
+        fixture.runtime.importPluginArtifacts([
+          (
+            artifact: PluginTransferArtifact(
+              bytes: actual.bytes,
+              checksum: actual.checksum,
+              pluginId: 'org.test.advertised',
+              version: '9.0.0',
+              format: actual.format,
+              provenance: actual.provenance,
+              developmentFingerprint: null,
+              developmentRevision: null,
+            ),
+            bytes: fixture.artifacts.single.bytes,
+          ),
+        ]),
+        throwsA(
+          isA<PluginRuntimeException>().having(
+            (e) => e.code,
+            'code',
+            'plugin_transfer_checksum_mismatch',
+          ),
+        ),
+      );
+      expect(
+        await fixture.runtime.invoke(const InstalledPluginsInvocation()),
+        isEmpty,
+      );
+      expect(fixture.runtime.debugDesktopProcessStartCount, 1);
+    },
+  );
 
   test(
     'a quarantined candidate is returned as failed after the restart',

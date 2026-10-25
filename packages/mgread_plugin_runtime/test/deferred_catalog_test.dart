@@ -33,6 +33,7 @@ void main() {
             'schemaVersion': 1,
             'id': 'org.test.deferred',
             'displayName': 'Deferred fixture',
+            'sourceUrl': 'https://fixture.example/',
             'pluginApi': 1,
             'contentKinds': ['video'],
           },

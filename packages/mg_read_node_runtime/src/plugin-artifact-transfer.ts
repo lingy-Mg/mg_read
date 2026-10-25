@@ -5,6 +5,7 @@
  * - 局域网同步只流式读取已发布的 devsync 制品；用户主动打包仍保留项目声明版本。
  * 注意：开发构建工具在唯一 Runtime VM 内动态导入；Runtime 信任其 artifact 结果，不重复解析；wire 不暴露路径、代码或图标字节。
  */
+import { verifyPluginImportBatch, verifyPluginArtifactIdentity } from "./plugin-import-batch.js";
 import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
@@ -300,7 +301,11 @@ export class PluginArtifactTransferManager {
     return Object.freeze({ artifact: entry.artifact, token });
   }
 
-  async verifyInbox(incoming: readonly PluginTransferArtifact[]): Promise<void> {
+  async verifyInbox(incoming: readonly PluginTransferArtifact[], batchId?: string): Promise<void> {
+    if (batchId !== undefined) {
+      await verifyPluginImportBatch(resolve(this.#dataRoot, "import-inbox"), batchId, true, incoming);
+      return;
+    }
     validateArtifactBatch(incoming);
     const inbox = resolve(this.#dataRoot, "import-inbox");
     let names: string[];
@@ -322,6 +327,10 @@ export class PluginArtifactTransferManager {
       if (!sizes.has(prefix)) continue;
       const key = `${prefix}:${await hashFile(path)}`;
       const count = wanted.get(key);
+      if (count !== undefined) {
+        const expected = incoming.find((artifact) => `${artifact.format}:${artifact.bytes}:${artifact.checksum}` === key)!;
+        await verifyPluginArtifactIdentity(path, expected);
+      }
       if (count === 1) wanted.delete(key);
       else if (count !== undefined) wanted.set(key, count - 1);
       if (wanted.size === 0) return;

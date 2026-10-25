@@ -148,12 +148,14 @@ export async function dispatchPluginTransferVerify(
   requestError: RequestError,
 ): Promise<PluginTransferDispatchResult> {
   const raw = request.params.artifacts;
-  if (!Array.isArray(raw) || Object.keys(request.params).length !== 1) {
+  const batchId = request.params.batchId;
+  if (!Array.isArray(raw) || Object.keys(request.params).some((key) => key !== "artifacts" && key !== "batchId") ||
+      (batchId !== undefined && (typeof batchId !== "string" || !/^[a-f0-9]{32}$/.test(batchId)))) {
     return { error: requestError(request, "invalid_request", "The plugin transfer verification request is invalid.") };
   }
   try {
     if (manager === undefined) throw new PluginTransferError("plugin_not_found");
-    await manager.verifyPluginTransferInbox(raw as PluginTransferArtifact[]);
+    await manager.verifyPluginTransferInbox(raw as PluginTransferArtifact[], batchId as string | undefined);
     return { result: { verified: true } };
   } catch (error) { return failure(request, error, requestError); }
 }

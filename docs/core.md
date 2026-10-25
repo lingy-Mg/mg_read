@@ -103,6 +103,8 @@ plugins/sources/                    真实数据源及其他能力参考实现
 - artifact 必须确定性、有界，并携带可复核的 descriptor、大小和 SHA-256；传输和安装两端都复核。
 - 导入、安装、导出和局域网同步共用自包含 artifact 契约；安装写入不可变版本并原子切换，失败保留当前版本。
   安装不执行构建或任意脚本；删除和占用统计不再维护 npm 缓存、依赖图或共享依赖对象。
+- Node 批量导入在各平台共用同一协调器并串行执行完整事务；Core 在修改安装状态前复核整批 artifact 的
+  声明、大小、CRC 和包内身份。宿主一次发布完整批次目录，冷启动只消费已发布目录，不消费未完成的暂存。
 - 自动发布的 Node 数据源合集使用独立的 `.mgplugins` ZIP 容器，不占用单来源 `.mgplugin` 格式。根目录
   `manifest.json` 的 `format=mgread-source-collection`、`schemaVersion=1`，`plugins` 数组逐项声明
   `id/name/version/format/path/bytes/sha256`；每项仍是原始自包含的单来源 artifact。App 在安装前校验清单、
