@@ -29,7 +29,7 @@ pub struct Manifest {
     pub name: String,
     pub version: String,
     pub description: String,
-    /// Required for newly imported source archives; absent only in stored legacy installs.
+    /// Optional display metadata; older archives and stored installs may omit it.
     #[serde(default)]
     pub source_url: Option<String>,
     pub content_kinds: Vec<String>,
@@ -236,7 +236,7 @@ impl Catalog {
             || m.name.is_empty()
             || m.name.len() > 256
             || m.description.len() > 960
-            || m.source_url.as_deref().is_none_or(|value| normalize_source_url(value).as_deref() != Some(value))
+            || m.source_url.as_deref().is_some_and(|value| normalize_source_url(value).as_deref() != Some(value))
             || m.content_kinds.is_empty()
             || m.content_kinds.len() > 4
             || m.content_kinds
@@ -464,6 +464,22 @@ mod tests {
             assert!(!safe_relative(p), "{p}");
         }
         assert!(safe_relative("android-x86_64/libsource.so"));
+    }
+    #[test]
+    fn source_homepage_is_optional_but_supplied_urls_are_validated() {
+        let mut manifest: Manifest = serde_json::from_value(json!({
+            "format":"mgread-native", "engine":"native", "abi":mgread_native_abi::ABI_VERSION,
+            "id":"org.mgread.legacy", "name":"Legacy", "version":"1.0.0", "description":"",
+            "contentKinds":["novel"], "capabilities":["search"],
+            "targets":{target():{"path":"native/source.dll", "sha256":"a".repeat(64)}}
+        })).unwrap();
+        assert!(Catalog::validate_manifest(&manifest).is_ok());
+        manifest.source_url = Some("https://source.example/".into());
+        assert!(Catalog::validate_manifest(&manifest).is_ok());
+        for invalid_url in ["", "javascript:alert(1)", "http://localhost/", "https://source.example/?q=x"] {
+            manifest.source_url = Some(invalid_url.into());
+            assert!(Catalog::validate_manifest(&manifest).is_err());
+        }
     }
     #[test]
     fn identifiers_are_components() {

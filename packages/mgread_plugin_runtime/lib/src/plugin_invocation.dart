@@ -871,7 +871,6 @@ InstalledPlugin _decodeInstalledPlugin(Object? value) {
       name is! String ||
       displayName is! String ||
       (description != null && description is! String) ||
-      !item.containsKey('sourceUrl') ||
       (sourceUrl != null &&
           (sourceUrl is! String || !_isCanonicalSourceUrl(sourceUrl))) ||
       !item.containsKey('iconUrl') ||

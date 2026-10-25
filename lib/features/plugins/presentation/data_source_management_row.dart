@@ -75,7 +75,7 @@ class DataSourceManagementRow extends StatelessWidget {
     return Semantics(
       key: ValueKey<String>('data-source-${source.id}'),
       container: true,
-      label: '${source.name}，${source.description}，${source.kindLabel}，来源网址 ${source.sourceUrl ?? '未提供'}，${source.enabled ? '已启用' : '未启用'}',
+      label: '${source.name}，${source.description}，${source.kindLabel}，来源网址 ${source.sourceUrl ?? '缺少'}，${source.enabled ? '已启用' : '未启用'}',
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -148,7 +148,7 @@ class DataSourceManagementRow extends StatelessWidget {
                         children: <Widget>[
                           Text('来源网址', style: theme.textTheme.labelSmall?.copyWith(color: tokens.mutedText)),
                           SelectableText(
-                            source.sourceUrl ?? '旧版本未提供来源网址',
+                            source.sourceUrl ?? '缺少',
                             key: ValueKey<String>('data-source-url-${source.id}'),
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: source.sourceUrl == null ? tokens.mutedText : tokens.dataSourceAccent,

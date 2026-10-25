@@ -3,6 +3,10 @@ import test from "node:test";
 
 import { pluginManagerErrorMessage } from "../dist/plugin-manager-error-message.js";
 
+test("load failures describe module loading rather than an absent capability", () => {
+  assert.equal(pluginManagerErrorMessage("plugin_load_failed"), "The plugin could not be loaded.");
+});
+
 test("plugin error messages append available detail", () => {
   const detail = "Response validation failed at the inline payload budget: 64000 bytes exceeds the 57344-byte limit.";
   assert.equal(

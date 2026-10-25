@@ -18,6 +18,8 @@
   安装、导入、导出、同步和删除共用此约束，不新增依赖引用扫描或模块加载拦截。
 - 本 package 独立拥有 Node.js Runtime Core、desktop launcher、内部控制/数据面、Plugin API、安装、
   schema/fixture 和瞬时诊断；同级 `mgread_plugin_runtime` 拥有 Flutter Facade、Supervisor 与平台宿主。
+- `sourceUrl` 是可缺省的展示元数据，局域网传输、导入、索引修复与执行统一兼容缺省值，不补造网址、
+  不改写不可变版本；显式提供的无效 URL 仍失败。隔离或损坏来源调用返回加载失败，不报未安装。
 - 主应用只调用版本化 `PluginRuntime.invoke`；不得获得 executable、PID、端口、ready、bootId、内部 URL、
   wire envelope、Runtime 数据根或平台对象。
 - 每个应用进程只有一个 Node Runtime/VM。installed pending 只在冷启动激活并提交或回滚；已确认的 current

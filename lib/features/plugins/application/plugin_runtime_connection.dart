@@ -104,24 +104,7 @@ final class MgReadPluginRuntimeGateway implements PluginRuntimeGateway, PluginRu
         nodeVersion: ping.nodeVersion,
         runtimeVersion: ping.runtimeVersion,
         startupRecovery: PluginRuntimeStartupRecovery(quarantinedCount: recovery.quarantinedCount),
-        plugins: List<PluginRuntimePlugin>.unmodifiable(
-          plugins.map(
-            (plugin) => PluginRuntimePlugin(
-              activeVersion: plugin.activeVersion,
-              contentKinds: plugin.contentKinds,
-              description: plugin.description,
-              displayName: plugin.displayName,
-              enabled: plugin.enabled,
-              iconUrl: plugin.iconUrl,
-              engine: plugin.engine.name,
-              id: plugin.id,
-              name: plugin.name,
-              pendingVersion: plugin.pendingVersion,
-              r18: plugin.r18,
-              status: plugin.status,
-            ),
-          ),
-        ),
+        plugins: List<PluginRuntimePlugin>.unmodifiable(plugins.map(_toPluginRuntimePlugin)),
       );
     } on PluginRuntimeException catch (error) {
       throw normalizePluginRuntimeError(error);

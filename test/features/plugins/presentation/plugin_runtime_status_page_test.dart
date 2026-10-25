@@ -12,6 +12,42 @@ import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page
 import 'plugin_runtime_status_page_fixture.dart';
 
 void main() {
+  testWidgets('missing source homepage leaves discovery and search available', (tester) async {
+    var discovered = false;
+    var searched = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: DataSourceManagementRow(
+            source: const DataSourceManagementRowData(
+              id: 'legacy',
+              name: '旧数据源',
+              description: '局域网传输的旧插件',
+              kindLabel: '小说',
+              enabled: true,
+              brand: DataSourceBrand.generic,
+              isDevelopment: false,
+            ),
+            isPending: false,
+            onPressed: () {},
+            onChanged: (_) {},
+            onDiscover: () => discovered = true,
+            onSearch: () => searched = true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('缺少'), findsOneWidget);
+    expect(tester.widget<IconButton>(find.byKey(const Key('data-source-open-url-legacy'))).onPressed, isNull);
+    await tester.tap(find.byKey(const Key('data-source-discover-legacy')));
+    await tester.tap(find.byKey(const Key('data-source-search-legacy')));
+    expect(discovered, isTrue);
+    expect(searched, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('shows purpose and direct source actions without switches', (tester) async {
     String? discovered;
     String? searched;

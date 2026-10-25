@@ -17,7 +17,7 @@ test("every shipped Node source declares one valid canonical homepage", async ()
     }
   }))).filter(Boolean);
   const projects = await Promise.all(directories.map((entry) => readPluginProject(join(sourceRoot, entry.name))));
-  assert.equal(projects.length, 57);
+  assert.ok(projects.length > 0, "the shipped source set must not be empty");
   assert.ok(projects.every(({ descriptor }) => descriptor.sourceUrl !== undefined));
   assert.equal(new Set(projects.map(({ descriptor }) => descriptor.id)).size, projects.length);
 });

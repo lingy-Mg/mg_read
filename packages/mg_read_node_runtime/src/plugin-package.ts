@@ -3,6 +3,7 @@
  *
  * 职责：解析 package.json.mgread v1。发布 artifact 已在构建期内联外部依赖，
  * Runtime 安装契约只包含自包含的插件文件与 descriptor。
+ * sourceUrl 是可缺省的展示元数据；缺省不影响安装或执行，显式提供时仍校验 URL。
  */
 import { access, lstat, readFile } from "node:fs/promises";
 import { isAbsolute, resolve, sep } from "node:path";
@@ -149,7 +150,6 @@ async function readJsonObject(
 export function parsePluginPackageDescriptor(
   packageJson: Record<string, unknown>,
   projectRoot: string,
-  options: { readonly allowLegacySourceUrl?: boolean } = {},
 ): PluginPackageDescriptor {
   const name = packageJson.name;
   const version = packageJson.version;
@@ -184,7 +184,7 @@ export function parsePluginPackageDescriptor(
     typeof displayName !== "string" ||
     displayName.trim().length === 0 ||
     displayName.length > 128 ||
-    (sourceUrl === undefined && !(options.allowLegacySourceUrl === true && mgread.sourceUrl === undefined)) ||
+    (sourceUrl === undefined && mgread.sourceUrl !== undefined) ||
     (description !== undefined &&
       (typeof description !== "string" ||
         description.trim().length === 0 ||

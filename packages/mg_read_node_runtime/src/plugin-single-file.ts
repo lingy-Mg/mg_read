@@ -56,7 +56,7 @@ export interface SingleFilePluginDescriptor {
     readonly packageMode: "single-file";
     readonly pluginApi: typeof pluginApiVersion;
     readonly schemaVersion: typeof pluginPackageSchemaVersion;
-    readonly sourceUrl: string;
+    readonly sourceUrl?: string;
   };
   readonly name: string;
   readonly type: "module";
@@ -205,7 +205,7 @@ function descriptorForEnvelope(
       packageMode: "single-file",
       pluginApi: descriptor.pluginApi,
       schemaVersion: pluginPackageSchemaVersion,
-      sourceUrl: descriptor.sourceUrl!,
+      ...(descriptor.sourceUrl === undefined ? {} : { sourceUrl: descriptor.sourceUrl }),
     }),
     name: descriptor.name,
     type: "module",

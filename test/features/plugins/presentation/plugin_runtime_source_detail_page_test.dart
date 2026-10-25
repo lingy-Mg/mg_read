@@ -71,6 +71,8 @@ void main() {
     expect(find.text('已安装数据源插件'), findsOneWidget);
     expect(find.text('数据源简介'), findsOneWidget);
     expect(find.text('已安装数据源简介。'), findsOneWidget);
+    expect(find.text('来源网址'), findsOneWidget);
+    expect(find.text('缺少'), findsOneWidget);
     expect(find.text('Runtime 已安装数据源插件'), findsOneWidget);
     expect(find.text('已启用'), findsOneWidget);
     await tester.scrollUntilVisible(find.byKey(const Key('data-source-installation-size-card')), 200, scrollable: find.byType(Scrollable));

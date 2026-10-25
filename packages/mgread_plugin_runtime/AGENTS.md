@@ -32,6 +32,7 @@
 - 区分宿主打包与来源装载：正常 App 预置两套宿主，来源 artifact 可在安装后导入，由归属引擎按需装载；
   不为 Node 和原生来源分别发布正常 App 版本。Node 单文件和原生 DLL/SO 的 artifact、加载与更新规则分别由
   `../mg_read_node_runtime/AGENTS.md` 和 `../mg_read_native_runtime/AGENTS.md` 拥有。
+- 来源主页 `sourceUrl` 缺省或为 null 时解码为 null，只影响网址展示，不影响来源安装、启用或内容调用。
 - Windows/macOS、Android Javet 与 Node 进程后端共用 `plugin_artifact_importer.dart` 的整次导入排队、
   大小限制、分块文件写入、manifest、失败清理及目录结果确认；本地选择导入也必须进入同一队列。
 - Android 通过 `beginPluginTransferBatch` 一次分配整批私有 `.part` 路径。Dart 直接写文件，Core 统一校验

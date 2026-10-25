@@ -400,7 +400,7 @@ function decodeDescriptor(value: unknown, pluginId: string, dataRoot: string): P
     name: value.name,
     type: "module",
     version: value.version,
-  }, projectRoot, { allowLegacySourceUrl: value.sourceUrl === undefined });
+  }, projectRoot);
 }
 
 function isVersionOrNull(value: unknown): value is string | null {

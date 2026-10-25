@@ -159,6 +159,7 @@ class _DetailContent extends ConsumerWidget {
                 _DetailMetadataGrid(
                   fields: <_DetailFieldData>[
                     _DetailFieldData(label: '名称', value: source.displayName),
+                    _DetailFieldData(label: '来源网址', value: source.sourceUrl ?? '缺少', wide: true),
                     _DetailFieldData(label: '来源方式', value: isDevelopment ? '工作区开发数据源插件' : 'Runtime 已安装数据源插件'),
                     _DetailFieldData(label: '类型', value: pluginContentKindsLabel(source.contentKinds)),
                     if (source.r18) const _DetailFieldData(label: '分级', value: 'R18'),

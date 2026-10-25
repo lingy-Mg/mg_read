@@ -57,6 +57,9 @@ export async function invokeLoadedPluginContent<TResult extends JsonObject>(opti
     validateCorrelation,
   } = options;
   if (plugin === undefined) {
+    if (snapshot?.status === "quarantined" || snapshot?.status === "damaged") {
+      throw new PluginManagerError("plugin_load_failed", `Source ${pluginId} is ${snapshot.status}; re-enable or reinstall it in source management.`);
+    }
     throw new PluginManagerError(snapshot?.status === "disabled" ? "plugin_disabled" : "plugin_not_found");
   }
   if (developmentIsCurrent === undefined && snapshot?.enabled !== true) {

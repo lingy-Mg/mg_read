@@ -8,5 +8,6 @@ ABI 仅 mg_source_init_v3；成功后内容、资源与关闭均走插件 HTTP�
 资源沿用 Node 自包含 payload；统一 Facade 在下载前按引擎/来源解析当前端口，不设置内存令牌表或闲置 TTL。
 启停、更新、卸载、缓存清理及代理变更由 Facade 关闭准入、确认旧进程退出后冷重启；动态库始终固定在旧 worker 中。
 旧 ABI 不兼容，重新导入 abi:3 归档。初始化失败禁用来源；初始化期间崩溃由持久化 loading 标记隔离。
+来源主页 `sourceUrl` 是可缺省的展示元数据；旧归档与已有安装缺省时不阻断导入或执行，显式提供的 URL 仍验证。
 直接验证：宿主、sdk、参考来源分别 `cargo test --locked`；再执行真实 DLL worker 与 Dart Facade 测试。
 协议测试不能替代 Windows/Android App、图片和播放器验收，Android 仍需真实私有 Service 退出证据。
