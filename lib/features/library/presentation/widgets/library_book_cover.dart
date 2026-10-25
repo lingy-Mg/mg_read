@@ -38,6 +38,7 @@ class LibraryBookCover extends ConsumerWidget {
     this.showLetterboxBackground = true,
     this.isRefreshing = false,
     this.isBlurred = false,
+    this.clipToBounds = true,
     this.alignment = Alignment.center,
     super.key,
   });
@@ -57,6 +58,12 @@ class LibraryBookCover extends ConsumerWidget {
   /// Shows a transient overlay while the source refreshes this cover.
   final bool isRefreshing;
   final bool isBlurred;
+
+  /// Clips the cover to its standard rounded rectangle and bounds.
+  ///
+  /// Disable only when a parent paints the cover as a full-bleed background
+  /// and owns the visible fade at its edge.
+  final bool clipToBounds;
   final AlignmentGeometry alignment;
 
   @override
@@ -140,19 +147,17 @@ class LibraryBookCover extends ConsumerWidget {
   Widget _imageFrame(Widget image, {Color? backgroundColor}) {
     final content = backgroundColor == null ? image : ColoredBox(color: backgroundColor, child: image);
     if (!isBlurred) {
-      return ClipRRect(borderRadius: AppRadii.bookCover, child: content);
+      return clipToBounds ? ClipRRect(borderRadius: AppRadii.bookCover, child: content) : content;
     }
 
-    // Let the filtered pixels bleed past the final clip. Without this small
-    // overscan, the blur samples the transparent area outside the image and
-    // leaves a hard rectangular edge around the privacy cover.
-    return ClipRRect(
-      borderRadius: AppRadii.bookCover,
-      child: ImageFiltered(
-        imageFilter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Transform.scale(scale: 1.18, child: content),
-      ),
+    // Standard book cards overscan before clipping to keep privacy-blur edges
+    // filled. Full-bleed backgrounds can disable that card treatment and own
+    // their bounds and fade at the call site.
+    final Widget filtered = ImageFiltered(
+      imageFilter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+      child: clipToBounds ? Transform.scale(scale: 1.18, child: content) : content,
     );
+    return clipToBounds ? ClipRRect(borderRadius: AppRadii.bookCover, child: filtered) : filtered;
   }
 
   Widget _buildTransparentContainedFrame(BuildContext context, Widget child, int? frame, bool wasSynchronouslyLoaded) {

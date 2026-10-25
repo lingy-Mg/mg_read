@@ -104,7 +104,7 @@ class LibraryContinueReadingCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     borderRadius: AppRadii.bookCover,
                     boxShadow: <BoxShadow>[
-                      BoxShadow(color: tokens.shadow.withValues(alpha: 0.18), blurRadius: 12, offset: const Offset(0, 5)),
+                      BoxShadow(color: tokens.shadow.withValues(alpha: 0.22), blurRadius: 14, offset: const Offset(0, 4)),
                     ],
                   ),
                   child: LibraryBookCover(
@@ -127,9 +127,9 @@ class LibraryContinueReadingCard extends StatelessWidget {
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(
                     showBackdrop ? AppSpacing.comfortable : coverWidth + AppSpacing.comfortable,
-                    showBackdrop ? AppSpacing.comfortable : AppSpacing.minimumTouchTarget + AppSpacing.regular,
+                    showBackdrop ? AppSpacing.comfortable : AppSpacing.minimumTouchTarget - AppSpacing.regular,
                     showBackdrop ? coverWidth + AppSpacing.page : 0,
-                    showBackdrop ? AppSpacing.comfortable : externalBottomInset,
+                    showBackdrop ? AppSpacing.comfortable : cardHeight - coverHeight + AppSpacing.compact / 2,
                   ),
                   child: _ContinueReadingDetails(
                     data: data,
@@ -191,7 +191,7 @@ class _ContinueReadingDetails extends StatelessWidget {
           Text(
             key: const Key('continue-reading-title'),
             data.title,
-            maxLines: 1,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600, height: 1.18, letterSpacing: -0.2),
           ),

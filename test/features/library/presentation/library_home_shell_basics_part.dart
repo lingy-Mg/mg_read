@@ -44,11 +44,13 @@ void _registerLibraryHomeShellBasics() {
     expect(find.byKey(const Key('library-home-top-backdrop-cover')), findsOneWidget);
     expect(find.byKey(const Key('library-home-top-bottom-fade')), findsOneWidget);
     expect(find.byKey(const Key('library-home-reading-readability-scrim')), findsOneWidget);
-    expect(tester.widget<ClipRect>(find.byKey(const Key('library-home-top-backdrop'))), isA<ClipRect>());
+    expect(tester.widget<ColoredBox>(find.byKey(const Key('library-home-top-backdrop'))), isA<ColoredBox>());
     final LibraryBookCover backdropCover = tester.widget<LibraryBookCover>(find.byKey(const Key('library-home-top-backdrop-cover')));
-    expect(backdropCover.alignment, Alignment.topCenter);
+    expect(backdropCover.alignment, Alignment.center);
     expect(backdropCover.fit, BoxFit.cover);
     expect(backdropCover.showLetterboxBackground, isFalse);
+    expect(backdropCover.isBlurred, isFalse);
+    expect(backdropCover.clipToBounds, isFalse);
     expect(backdrop.left, 0);
     expect(backdrop.right, 390);
     expect(backdrop.contains(topBar.topLeft), isTrue);
