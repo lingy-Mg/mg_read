@@ -195,7 +195,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
             pagePadding,
             MediaQuery.paddingOf(context).top + AppSpacing.pageHeaderTopPaddingFor(context),
             pagePadding,
-            _isFirstRunEmpty ? 0 : AppSpacing.comfortable,
+            _isFirstRunEmpty ? 0 : AppSpacing.compact,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

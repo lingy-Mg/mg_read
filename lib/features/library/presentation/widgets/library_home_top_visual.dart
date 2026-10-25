@@ -120,11 +120,12 @@ class _LibraryHomeTopVisualState extends State<LibraryHomeTopVisual> {
               ),
             ),
           ),
+          // 渐变在顶部 Sliver 内结束，避免溢出后覆盖下方“最近阅读”标题。
           Positioned(
             left: 0,
             top: 0,
             right: 0,
-            bottom: -2,
+            bottom: 0,
             child: IgnorePointer(
               child: DecoratedBox(
                 key: const Key('library-home-top-bottom-fade'),
@@ -142,7 +143,7 @@ class _LibraryHomeTopVisualState extends State<LibraryHomeTopVisual> {
                       tokens.pageBackground,
                       tokens.pageBackground,
                     ],
-                    stops: const <double>[0, 0.64, 0.68, 0.73, 0.78, 0.84, 0.9, 1],
+                    stops: const <double>[0, 0.72, 0.76, 0.8, 0.84, 0.88, 0.9, 1],
                   ),
                 ),
               ),
