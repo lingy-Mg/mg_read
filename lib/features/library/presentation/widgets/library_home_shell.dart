@@ -220,17 +220,20 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                               ),
                             ),
                           ),
-                        LibraryHomeTopBar(
-                          onSearch: _handleSearch,
-                          onRefresh: () {
-                            unawaited(_handleRefresh());
-                          },
-                          onToggleTheme: widget.onToggleTheme,
-                          onReadingHistory: _handleReadingHistory,
-                          onManageSources: _handleManageSources,
-                          onPrivacyLibrary: _handlePrivacyLibrary,
-                          layoutMode: _layoutMode,
-                          onLayoutModeToggle: _handleLayoutModeToggle,
+                        Transform.translate(
+                          offset: const Offset(0, -8),
+                          child: LibraryHomeTopBar(
+                            onSearch: _handleSearch,
+                            onRefresh: () {
+                              unawaited(_handleRefresh());
+                            },
+                            onToggleTheme: widget.onToggleTheme,
+                            onReadingHistory: _handleReadingHistory,
+                            onManageSources: _handleManageSources,
+                            onPrivacyLibrary: _handlePrivacyLibrary,
+                            layoutMode: _layoutMode,
+                            onLayoutModeToggle: _handleLayoutModeToggle,
+                          ),
                         ),
                       ],
                     ),

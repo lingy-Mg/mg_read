@@ -2,7 +2,7 @@
 ///
 /// 职责：
 /// - 在顶部内容自身的布局范围内绘制继续阅读封面背景。
-/// - 提供首页背景图与四种实时模糊效果预览切换。
+/// - 提供首页背景图与七种实时模糊效果预览切换。
 ///
 /// 注意：
 /// - 背景与平面封面复用同一封面请求，不引入第二套缓存。
@@ -13,6 +13,7 @@ library;
 
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -30,10 +31,12 @@ class LibraryHomeTopVisual extends StatefulWidget {
   State<LibraryHomeTopVisual> createState() => _LibraryHomeTopVisualState();
 }
 
+// 保留七档效果，方便调试期间比较，后续需要时可继续启用。
 enum _BackdropStyle { gentle, strong, frosted, softFocus, subtle, verySubtle, clear }
 
 class _LibraryHomeTopVisualState extends State<LibraryHomeTopVisual> {
-  _BackdropStyle _style = _BackdropStyle.gentle;
+  // 正式版本默认使用微模糊；其他效果只用于调试预览。
+  _BackdropStyle _style = _BackdropStyle.subtle;
 
   @override
   Widget build(BuildContext context) {
@@ -71,11 +74,7 @@ class _LibraryHomeTopVisualState extends State<LibraryHomeTopVisual> {
                     children: <Widget>[
                       ClipRect(
                         child: ImageFiltered(
-                          imageFilter: ImageFilter.blur(
-                            sigmaX: sigma,
-                            sigmaY: sigma,
-                            tileMode: TileMode.clamp,
-                          ),
+                          imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma, tileMode: TileMode.clamp),
                           child: LibraryBookCover(
                             key: const Key('library-home-top-backdrop-cover'),
                             title: data.title,
@@ -94,8 +93,7 @@ class _LibraryHomeTopVisualState extends State<LibraryHomeTopVisual> {
                           ),
                         ),
                       ),
-                      if (tintAlpha != null)
-                        ColoredBox(color: tokens.surface.withValues(alpha: tintAlpha)),
+                      if (tintAlpha != null) ColoredBox(color: tokens.surface.withValues(alpha: tintAlpha)),
                     ],
                   ),
                 ),
@@ -111,11 +109,7 @@ class _LibraryHomeTopVisualState extends State<LibraryHomeTopVisual> {
                   shaderCallback: (Rect bounds) => const RadialGradient(
                     center: Alignment(0.52, 0.16),
                     radius: 0.82,
-                    colors: <Color>[
-                      Color(0xF2FFFFFF),
-                      Color(0xCCFFFFFF),
-                      Color(0x00FFFFFF),
-                    ],
+                    colors: <Color>[Color(0xF2FFFFFF), Color(0xCCFFFFFF), Color(0x00FFFFFF)],
                     stops: <double>[0, 0.7, 1],
                   ).createShader(bounds),
                   child: BackdropFilter(
@@ -155,41 +149,42 @@ class _LibraryHomeTopVisualState extends State<LibraryHomeTopVisual> {
             ),
           ),
           widget.child,
-          Positioned(
-            left: 12,
-            right: 12,
-            bottom: 2,
-            child: Center(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: tokens.surface.withValues(alpha: 0.9),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: tokens.divider.withValues(alpha: 0.55)),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(3),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width - 24),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          _buildStyleButton(context, _BackdropStyle.gentle, '1 轻柔'),
-                          _buildStyleButton(context, _BackdropStyle.strong, '2 重度'),
-                          _buildStyleButton(context, _BackdropStyle.frosted, '3 毛玻璃'),
-                          _buildStyleButton(context, _BackdropStyle.softFocus, '4 柔焦'),
-                          _buildStyleButton(context, _BackdropStyle.subtle, '5 微模糊'),
-                          _buildStyleButton(context, _BackdropStyle.verySubtle, '6 极轻'),
-                          _buildStyleButton(context, _BackdropStyle.clear, '7 清晰'),
-                        ],
+          if (kDebugMode)
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 2,
+              child: Center(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: tokens.surface.withValues(alpha: 0.9),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: tokens.divider.withValues(alpha: 0.55)),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(3),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width - 24),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            _buildStyleButton(context, _BackdropStyle.gentle, '1 轻柔'),
+                            _buildStyleButton(context, _BackdropStyle.strong, '2 重度'),
+                            _buildStyleButton(context, _BackdropStyle.frosted, '3 毛玻璃'),
+                            _buildStyleButton(context, _BackdropStyle.softFocus, '4 柔焦'),
+                            _buildStyleButton(context, _BackdropStyle.subtle, '5 微模糊'),
+                            _buildStyleButton(context, _BackdropStyle.verySubtle, '6 极轻'),
+                            _buildStyleButton(context, _BackdropStyle.clear, '7 清晰'),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
         ],
       ),
     );
