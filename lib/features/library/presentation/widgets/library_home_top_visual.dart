@@ -136,21 +136,21 @@ class _LibraryHomeTopVisualState extends State<LibraryHomeTopVisual> {
                     colors: <Color>[
                       Colors.transparent,
                       Colors.transparent,
-                      tokens.pageBackground.withValues(alpha: 0.06),
-                      tokens.pageBackground.withValues(alpha: 0.18),
-                      tokens.pageBackground.withValues(alpha: 0.38),
-                      tokens.pageBackground.withValues(alpha: 0.66),
-                      tokens.pageBackground,
+                      tokens.pageBackground.withValues(alpha: 0.02),
+                      tokens.pageBackground.withValues(alpha: 0.08),
+                      tokens.pageBackground.withValues(alpha: 0.2),
+                      tokens.pageBackground.withValues(alpha: 0.42),
+                      tokens.pageBackground.withValues(alpha: 0.7),
                       tokens.pageBackground,
                     ],
-                    stops: const <double>[0, 0.72, 0.76, 0.8, 0.84, 0.88, 0.9, 1],
+                    stops: const <double>[0, 0.58, 0.62, 0.68, 0.74, 0.8, 0.85, 1],
                   ),
                 ),
               ),
             ),
           ),
           widget.child,
-          if (kDebugMode)
+          if (kDebugMode && false)
             Positioned(
               left: 12,
               right: 12,
