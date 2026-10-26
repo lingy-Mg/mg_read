@@ -185,7 +185,7 @@ function summary(value: { bvid: string; title: string; author: string | null; co
     author: value.author, url: `${site}/video/${value.bvid}/`, coverUrl: proxyImage(value.cover),
     description: value.description, language: 'zh-CN', status: 'unknown', access: 'unknown',
     wordCount: null, chapterCount: null, publishedAt: null, updatedAt: null, latestChapter: null,
-    categories: [], tags: [], attributes: value.duration === null ? [] : [{ key: 'durationSeconds', value: value.duration }],
+    categories: [], tags: [], attributes: durationAttribute(value.duration),
   });
 }
 
@@ -220,7 +220,7 @@ function cursorPage(cursor: string | null): number {
 function clamp(value: number): number { return Math.max(1, Math.min(50, Math.floor(value))); }
 function durationAttribute(value: unknown) {
   const duration = numberOrNull(value);
-  return duration === null ? [] : [{ key: 'durationSeconds', value: duration }];
+  return duration === null ? [] : [{ key: 'durationSeconds', label: '时长（秒）', value: String(duration) }];
 }
 function parseDuration(value: string): number | null {
   const parts = value.split(':').map(Number);

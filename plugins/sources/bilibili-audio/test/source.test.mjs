@@ -58,6 +58,7 @@ test('Bilibili source declares inline discovery input, searches and resolves all
   assert.equal(result.items[0].title, '超爽逃荒路上带飞全家');
   assert.equal(result.items[0].coverOrientation, 'landscape');
   assert.equal(result.items[0].contentKind, 'audio');
+  assert.deepEqual(result.items[0].attributes, [{ key: 'durationSeconds', label: '时长（秒）', value: '262333' }]);
   assert.match(requests.find((entry) => entry.url.includes('/search/type?')).url, /keyword=%E9%80%83%E8%8D%92%E8%B7%AF%E4%B8%8A%E5%B8%A6%E9%A3%9E%E5%85%A8%E5%AE%B6/u);
 
   const discovery = await plugin.discover({ target: null, cursor: null, collectionId: null });
@@ -74,6 +75,7 @@ test('Bilibili source declares inline discovery input, searches and resolves all
   const catalog = await plugin.getChapters({ id: `bvid:${bvid}` });
   assert.equal(requests.filter((entry) => entry.url.includes('/web-interface/view?')).length, 1, 'resolution, details and catalog share one request');
   assert.equal(catalog.items.length, 34);
+  assert.deepEqual(catalog.items[0].attributes, [{ key: 'durationSeconds', label: '时长（秒）', value: '6840' }]);
   assert.equal(catalog.groups.length, 1);
   assert.equal(catalog.items[27].title, '541-560');
   assert.equal(catalog.items[33].title, '711-760完结');

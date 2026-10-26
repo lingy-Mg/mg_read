@@ -196,7 +196,7 @@ function summary(value) {
     latestChapter: null,
     categories: [],
     tags: [],
-    attributes: value.duration === null ? [] : [{ key: "durationSeconds", value: value.duration }]
+    attributes: durationAttribute(value.duration)
   });
 }
 function proxyImage(value) {
@@ -231,7 +231,7 @@ function clamp(value) {
 }
 function durationAttribute(value) {
   const duration = numberOrNull(value);
-  return duration === null ? [] : [{ key: "durationSeconds", value: duration }];
+  return duration === null ? [] : [{ key: "durationSeconds", label: "时长（秒）", value: String(duration) }];
 }
 function parseDuration(value) {
   const parts = value.split(":").map(Number);
