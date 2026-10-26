@@ -160,7 +160,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                       SliverPadding(
                         padding: EdgeInsets.fromLTRB(
                           pagePadding,
-                          0,
+                          AppSpacing.compact,
                           pagePadding,
                           AppSpacing.bottomNavigationContentBottomPadding + MediaQuery.viewPaddingOf(context).bottom,
                         ),
