@@ -40,6 +40,7 @@ part 'src/android_node_process_supervisor.dart';
 part 'src/plugin_content_summary.dart';
 part 'src/plugin_content_invocation.dart';
 part 'src/plugin_content_decoder.dart';
+part 'src/plugin_discovery_input.dart';
 part 'src/runtime_initialization.dart';
 part 'src/plugin_invocation.dart';
 part 'src/plugin_invocation_cancellation.dart';

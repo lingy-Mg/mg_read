@@ -32,6 +32,7 @@ import 'package:mg_read/features/discovery/presentation/widgets/discovery_conten
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_drag_scroll_behavior.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_landscape_cover_collection.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_profile_card.dart';
+import 'package:mg_read/features/discovery/presentation/widgets/discovery_search_input.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
@@ -61,7 +62,6 @@ class RuntimeDiscoveryPage extends StatelessWidget {
     this.contentFailureDetail,
     this.contentFailureCode,
     this.contentFailureCopyPayload,
-    this.onBilibiliUrlRequested,
     this.onCopyFailure = _copyDiscoveryFailure,
     super.key,
   });
@@ -88,7 +88,6 @@ class RuntimeDiscoveryPage extends StatelessWidget {
   final String? contentFailureDetail;
   final String? contentFailureCode;
   final String? contentFailureCopyPayload;
-  final VoidCallback? onBilibiliUrlRequested;
   final DiscoveryFailureCopy onCopyFailure;
 
   @override
@@ -155,17 +154,6 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                                   barKey: isNestedPage ? const Key('runtime-discovery-nested-header') : null,
                                   backButtonKey: isNestedPage ? const Key('runtime-discovery-back') : null,
                                   showSourceSelector: !isNestedPage,
-                                  trailingActions: onBilibiliUrlRequested == null
-                                      ? const <Widget>[]
-                                      : <Widget>[
-                                          DiscoveryTopAction(
-                                            key: const Key('bilibili-url-play-action'),
-                                            tooltip: 'B站链接播放',
-                                            icon: Icons.link_rounded,
-                                            onPressed: onBilibiliUrlRequested!,
-                                          ),
-                                          const SizedBox(width: AppSpacing.unit),
-                                        ],
                                 ),
                                 if (result == null)
                                   Padding(
@@ -184,6 +172,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                                 else
                                   for (var index = 0; index < components.length; index++) ...<Widget>[
                                     _DiscoveryComponentRenderer(
+                                      pluginId: result.pluginId,
                                       component: components[index],
                                       hideSectionTitle: canNavigateBack && index == 0,
                                       onTabSelected: onTabSelected,
@@ -231,6 +220,7 @@ bool _neverInBookshelf(PluginContentSummary _) => false;
 
 class _DiscoveryComponentRenderer extends StatelessWidget {
   const _DiscoveryComponentRenderer({
+    required this.pluginId,
     required this.component,
     required this.onTabSelected,
     required this.onCategorySelected,
@@ -241,6 +231,7 @@ class _DiscoveryComponentRenderer extends StatelessWidget {
     this.hideSectionTitle = false,
   });
 
+  final String pluginId;
   final PluginDiscoveryComponent component;
   final ValueChanged<String> onTabSelected;
   final ValueChanged<String> onCategorySelected;
@@ -278,6 +269,13 @@ class _DiscoveryComponentRenderer extends StatelessWidget {
         component: PluginDiscoveryCategoryCollectionComponent(id: component.id, layout: layout, categories: categories),
         onSelected: onCategorySelected,
       ),
+      PluginDiscoverySearchInputComponent input => DiscoverySearchInput(
+        key: ValueKey('$pluginId-${input.id}'),
+        pluginId: pluginId,
+        component: input,
+        onContentPressed: onContentPressed,
+        isInBookshelf: isInBookshelf,
+      ),
       PluginDiscoveryTextComponent(:final text) => Text(
         text,
         style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppThemeTokens.of(context).mutedText),
@@ -300,6 +298,7 @@ class _ChildrenComponent extends StatelessWidget {
     children: <Widget>[
       for (var index = 0; index < children.length; index++) ...<Widget>[
         _DiscoveryComponentRenderer(
+          pluginId: renderer.pluginId,
           component: children[index],
           onTabSelected: renderer.onTabSelected,
           onCategorySelected: renderer.onCategorySelected,
@@ -423,6 +422,7 @@ class _GroupComponent extends StatelessWidget {
     final children = component.children
         .map(
           (child) => _DiscoveryComponentRenderer(
+            pluginId: renderer.pluginId,
             component: child,
             onTabSelected: renderer.onTabSelected,
             onCategorySelected: renderer.onCategorySelected,

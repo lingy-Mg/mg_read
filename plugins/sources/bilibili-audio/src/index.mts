@@ -5,7 +5,9 @@
  * stable audio summaries, multipart catalogs, and on-demand proxied playback.
  * Lifecycle: Runtime injects the public context through activate; no account
  * cookies or login session are read or stored.
- * IO: Search/view/playurl JSON uses ctx.http; cover and media use Runtime proxy.
+ * IO: Search/view/playurl JSON and short links use ctx.http; media uses Runtime proxy.
+ * Discovery declares an inline input; URLs resolve through search to normal details.
+ * View requests share a bounded one-minute cache, cleared on activation and failure.
  * IDs: audio items use BV identifiers and track IDs use stable CIDs.
  */
 import type { MgReadPluginContext } from '@mgread/source-api';
@@ -18,22 +20,32 @@ const site = 'https://www.bilibili.com';
 const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/136.0.0.0 Safari/537.36';
 const requestHeaders = Object.freeze({ Accept: 'application/json, text/plain, */*', 'Accept-Language': 'zh-CN,zh;q=0.9', Referer: `${site}/`, 'User-Agent': userAgent });
 let context: Context | undefined;
+const views = new Map<string, { expires: number; value: Promise<Json> }>();
 
 export async function activate(next: Context): Promise<void> {
   context = next;
+  views.clear();
   next.log.info('source_activated');
 }
 
-// The public plugin ABI currently requires discover. This source intentionally
-// returns no browseable sections; search and direct URL playback are its entry points.
 export async function discover(request: { target: string | null; cursor: string | null; collectionId: string | null }) {
   if (request.target !== null || request.cursor !== null || request.collectionId !== null) throw new Error('Discovery is not supported.');
-  return frozen({ kind: 'document' as const, document: { components: [] } });
+  return frozen({ kind: 'document' as const, document: { components: [{
+    type: 'section', id: 'audio-links', title: 'B站链接听书',
+    subtitle: '粘贴视频链接、分享文本或 BV 号，读取后选择分 P 播放音频。', icon: 'audio',
+    children: [{ type: 'searchInput', id: 'video-link', label: 'B站视频链接或 BV 号',
+      placeholder: 'https://www.bilibili.com/video/BV… 或 b23.tv 短链接', submitLabel: '读取音频' }],
+  }] } });
 }
 
 export async function search(request: { query: string; cursor: string | null; pageSize: number }) {
   const query = request.query.trim();
   if (query === '') return frozen({ items: [], nextCursor: null, totalCount: 0 });
+  const bvid = await inputBvid(query);
+  if (bvid !== null) {
+    const detail = await getDetail({ id: `bvid:${bvid}` });
+    return frozen({ items: [detail], nextCursor: null, totalCount: 1 });
+  }
   const page = cursorPage(request.cursor);
   const limit = clamp(request.pageSize);
   const json = await fetchJson(`${api}/x/web-interface/search/type?${new URLSearchParams({ search_type: 'video', keyword: query, page: String(page) })}`);
@@ -96,12 +108,17 @@ export async function getChapters(request: { id: string }) {
 export async function getContent(request: { id: string; chapterId: string }) {
   const bvid = contentBvid(request.id);
   const cid = episodeCid(request.chapterId, bvid);
-  const params = new URLSearchParams({ bvid, cid, qn: '80', fnval: '0', fourk: '1' });
+  const params = new URLSearchParams({ bvid, cid, qn: '80', fnval: '16', fourk: '1' });
   const data = await fetchJson(`${api}/x/player/playurl?${params}`);
   const payload = asObject(data.data);
-  const durl = Array.isArray(payload.durl) ? payload.durl.filter(isObject) : [];
-  const upstream = text(durl[0]?.url);
-  if (!safeHttpUrl(upstream)) throw new Error('Bilibili playback address is unavailable.');
+  const dash = asObject(payload.dash);
+  const tracks = (Array.isArray(dash.audio) ? dash.audio.filter(isObject) : [])
+    .filter((track) => text(track.codecs).startsWith('mp4a.') && safeHttpUrl(text(track.baseUrl || track.base_url)))
+    .sort((left, right) => (numberOrNull(right.bandwidth) ?? 0) - (numberOrNull(left.bandwidth) ?? 0));
+  const upstream = text(tracks[0]?.baseUrl || tracks[0]?.base_url);
+  if (!safeHttpUrl(upstream)) return requireContext().errors.raise({
+    code: 'source_media_resolution_failed', message: 'B站未返回可播放的独立音轨。', annotation: '请确认视频公开可用后重试。',
+  });
   const headers = { Referer: `${site}/video/${bvid}/`, 'User-Agent': userAgent };
   return frozen({
     chapterId: request.chapterId, contentKind: 'audio', title: null, updatedAt: null,
@@ -115,17 +132,51 @@ export async function getContent(request: { id: string; chapterId: string }) {
 }
 
 async function view(bvid: string): Promise<Json> {
-  const response = await fetchJson(`${api}/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`);
-  return asObject(response.data);
+  const cached = views.get(bvid);
+  if (cached !== undefined && cached.expires > Date.now()) return cached.value;
+  if (views.size >= 16) views.delete(views.keys().next().value!);
+  const value = fetchJson(`${api}/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`).then((response) => {
+    const data = asObject(response.data);
+    if (text(data.bvid) !== bvid) throw new Error('B站返回的视频与输入不一致。');
+    return data;
+  });
+  const entry = { expires: Date.now() + 60_000, value };
+  views.set(bvid, entry);
+  try { return await value; }
+  catch (error) { if (views.get(bvid) === entry) views.delete(bvid); throw error; }
 }
 
 async function fetchJson(url: string): Promise<Json> {
   const response = await requireContext().http.fetch(url, { headers: requestHeaders });
-  if (!response.ok) throw new Error(`Bilibili request failed with HTTP ${response.status}.`);
+  if (!response.ok) {
+    if ([403, 412, 429].includes(response.status)) blocked(`B站请求被拒绝（HTTP ${response.status}）。`);
+    throw new Error(`B站请求失败（HTTP ${response.status}）。`);
+  }
   const payload: unknown = await response.json();
   const root = asObject(payload);
-  if (Number(root.code) !== 0) throw new Error('Bilibili did not return video data.');
+  if ([-352, -412].includes(Number(root.code))) blocked(`B站访问受限（${root.code}）。`);
+  if (Number(root.code) !== 0) throw new Error(`B站未返回视频数据：${text(root.message) || text(root.code)}。`);
   return root;
+}
+
+function blocked(message: string): never {
+  return requireContext().errors.raise({ code: 'source_access_blocked', message, annotation: '请稍后重试；这不表示数据源未安装。' });
+}
+
+async function inputBvid(input: string): Promise<string | null> {
+  const direct = /(?<![A-Za-z0-9])BV[1-9A-HJ-NP-Za-km-z]{10}(?![A-Za-z0-9])/u.exec(input)?.[0];
+  if (direct !== undefined) return direct;
+  const short = /https?:\/\/b23\.tv\/[A-Za-z0-9]+/u.exec(input)?.[0];
+  if (short !== undefined) {
+    const response = await requireContext().http.fetch(short, { headers: requestHeaders });
+    if ([403, 412, 429].includes(response.status)) blocked(`B站短链接请求被拒绝（HTTP ${response.status}）。`);
+    const target = new URL(response.url || short);
+    const match = /^\/video\/(BV[1-9A-HJ-NP-Za-km-z]{10})(?:\/|$)/u.exec(target.pathname);
+    if (response.ok && (target.hostname === 'www.bilibili.com' || target.hostname === 'bilibili.com') && match?.[1]) return match[1];
+    throw new Error('无法解析 B站短链接，请使用完整视频链接或 BV 号。');
+  }
+  if (/bilibili\.com|b23\.tv|^BV/u.test(input)) throw new Error('请输入有效的 B站视频链接或 BV 号。');
+  return null;
 }
 
 function summary(value: { bvid: string; title: string; author: string | null; cover: string; description: string | null; duration: number | null }) {

@@ -46,7 +46,6 @@ class DiscoveryDestinationPage extends ConsumerWidget {
     this.onComicChapterRequested,
     this.onAudioChapterRequested,
     this.onVideoEpisodeRequested,
-    this.onBilibiliUrlRequested,
     super.key,
   });
 
@@ -57,7 +56,6 @@ class DiscoveryDestinationPage extends ConsumerWidget {
   final SourceComicChapterRequested? onComicChapterRequested;
   final SourceAudioChapterRequested? onAudioChapterRequested;
   final SourceVideoEpisodeRequested? onVideoEpisodeRequested;
-  final VoidCallback? onBilibiliUrlRequested;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -79,7 +77,6 @@ class DiscoveryDestinationPage extends ConsumerWidget {
         onComicChapterRequested: onComicChapterRequested,
         onAudioChapterRequested: onAudioChapterRequested,
         onVideoEpisodeRequested: onVideoEpisodeRequested,
-        onBilibiliUrlRequested: onBilibiliUrlRequested,
       );
     }
 
@@ -129,13 +126,6 @@ class DiscoveryDestinationPage extends ConsumerWidget {
         toolbarHeight: AppSpacing.pageHeaderHeight,
         title: const AppPageTitle(title: '发现'),
         actions: <Widget>[
-          if (onBilibiliUrlRequested != null)
-            IconButton(
-              key: const Key('bilibili-url-play-action'),
-              tooltip: 'B站链接播放',
-              onPressed: onBilibiliUrlRequested,
-              icon: const Icon(Icons.link_rounded),
-            ),
           if (AppTheme.darkModeEnabled)
             IconButton(
               key: const Key('theme-mode-toggle'),
@@ -187,7 +177,6 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
     required this.onComicChapterRequested,
     required this.onAudioChapterRequested,
     required this.onVideoEpisodeRequested,
-    required this.onBilibiliUrlRequested,
     this.isPredictiveBackRoute = false,
   });
 
@@ -199,7 +188,6 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
   final SourceComicChapterRequested? onComicChapterRequested;
   final SourceAudioChapterRequested? onAudioChapterRequested;
   final SourceVideoEpisodeRequested? onVideoEpisodeRequested;
-  final VoidCallback? onBilibiliUrlRequested;
   final bool isPredictiveBackRoute;
 
   @override
@@ -273,7 +261,6 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
       contentFailureCopyPayload: isActiveLayer && state.status == DiscoveryPageStatus.failure
           ? _sourceErrorCopyPayload(source: selectedSource, error: state.error!)
           : null,
-      onBilibiliUrlRequested: onBilibiliUrlRequested,
     );
   }
 
@@ -294,7 +281,6 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
             onComicChapterRequested: onComicChapterRequested,
             onAudioChapterRequested: onAudioChapterRequested,
             onVideoEpisodeRequested: onVideoEpisodeRequested,
-            onBilibiliUrlRequested: onBilibiliUrlRequested,
           ),
         ),
       ),
@@ -313,7 +299,6 @@ class _DiscoveryPredictiveBackChildPage extends ConsumerWidget {
     required this.onComicChapterRequested,
     required this.onAudioChapterRequested,
     required this.onVideoEpisodeRequested,
-    required this.onBilibiliUrlRequested,
   });
 
   final int visualDepth;
@@ -324,7 +309,6 @@ class _DiscoveryPredictiveBackChildPage extends ConsumerWidget {
   final SourceComicChapterRequested? onComicChapterRequested;
   final SourceAudioChapterRequested? onAudioChapterRequested;
   final SourceVideoEpisodeRequested? onVideoEpisodeRequested;
-  final VoidCallback? onBilibiliUrlRequested;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => PopScope<void>(
@@ -341,7 +325,6 @@ class _DiscoveryPredictiveBackChildPage extends ConsumerWidget {
       onComicChapterRequested: onComicChapterRequested,
       onAudioChapterRequested: onAudioChapterRequested,
       onVideoEpisodeRequested: onVideoEpisodeRequested,
-      onBilibiliUrlRequested: onBilibiliUrlRequested,
       isPredictiveBackRoute: true,
     ),
   );

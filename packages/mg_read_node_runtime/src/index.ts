@@ -142,6 +142,7 @@ export type {
   PluginDiscoveryTab,
   PluginDiscoveryTabsComponent,
   PluginDiscoveryTextComponent,
+  PluginDiscoverySearchInputComponent,
   PluginLatestChapter,
   PluginMangaPage,
   PluginSearchRequest,

@@ -10,6 +10,19 @@ const content = {
   latestChapter: null, categories: [], tags: [], attributes: [],
 };
 
+test('inline discovery search validates required bounded labels', () => {
+  const input = { type: 'searchInput', id: 'link', label: '视频链接', placeholder: 'BV…', submitLabel: '读取音频' };
+  const validate = (component) => validateDiscoverResult('org.example.input', '输入来源', {
+    kind: 'document', document: { components: [component] },
+  });
+  assert.deepEqual(validate(input).document.components[0], input);
+  for (const field of ['label', 'placeholder', 'submitLabel']) {
+    for (const value of [undefined, null, '', 'x'.repeat(10000)]) {
+      assert.throws(() => validate({ ...input, [field]: value }), PluginContentValidationError);
+    }
+  }
+});
+
 test('recursive discovery document accepts bounded semantic components', () => {
   const result = validateDiscoverResult('org.example.tree', '树数据源', {
     kind: 'document',

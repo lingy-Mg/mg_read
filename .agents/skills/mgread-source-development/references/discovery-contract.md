@@ -13,6 +13,8 @@
 ## 当前组件与布局
 
 - 容器：`tabs`、`section`、`group`、`text`、`divider`。
+- 输入：`searchInput` 提供必填有界 `label/placeholder/submitLabel`；宿主在内容区收集文本，仅提交时调用
+  当前来源 `source.search.v1`，就地显示结果并复用详情入口。来源负责链接/BV/关键词解析；不得在宿主硬编码站点入口。
 - 内容集合：`featured`、`carousel`、`coverGrid`、`shelf`、`compact`、`ranking`、`list`。`ranking` 是旧
   插件兼容别名，宿主必须与带 rank 的 `compact` 使用同一标准榜单；新来源只输出 `compact`。
 - 分类集合：`grid`、`chips`、`list`。

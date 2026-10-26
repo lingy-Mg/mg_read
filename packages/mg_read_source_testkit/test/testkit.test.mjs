@@ -11,6 +11,7 @@ import {
   assertInlineJsonSize,
   assertStandardSourceContract,
   collectDiscoveryContinuations,
+  collectDiscoveryInputs,
   collectDiscoveryTargets,
   createSourceTestHarness,
   parseSourceTestArguments,
@@ -48,6 +49,17 @@ function fakePlugin(overrides = {}) {
     ...overrides,
   };
 }
+
+test('input-only discovery requires explicit search and follows the standard reading flow', async () => {
+  const input = { type: 'searchInput', id: 'link', label: '链接', placeholder: 'https://…', submitLabel: '读取' };
+  const discovery = { kind: 'document', document: { components: [{ type: 'section', children: [input] }] } };
+  assert.deepEqual(collectDiscoveryInputs(discovery), [input]);
+  assert.deepEqual(collectDiscoveryInputs({ kind: 'document', document: { components: [{ ...input, label: null }] } }), []);
+  const plugin = fakePlugin({ async discover() { return discovery; } });
+  await assert.rejects(runReadingSourceFlow({ plugin, discoverRequest: {} }), { code: 'source_discovery_empty' });
+  const flow = await runReadingSourceFlow({ plugin, discoverRequest: {}, searchRequest: { query: 'fixture' } });
+  assert.equal(flow.detail.id, 'novel:1');
+});
 
 test('asserts standard exports and package metadata with stable failures', () => {
   const plugin = fakePlugin();

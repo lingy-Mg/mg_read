@@ -260,6 +260,15 @@ export interface PluginDiscoveryCategoryCollectionComponent extends JsonObject {
   readonly type: "categoryCollection";
 }
 
+/** Inline source search. Input and results stay in the discovery document. */
+export interface PluginDiscoverySearchInputComponent extends JsonObject {
+  readonly id: string;
+  readonly type: "searchInput";
+  readonly label: string;
+  readonly placeholder: string;
+  readonly submitLabel: string;
+}
+
 export interface PluginDiscoveryTextComponent extends JsonObject {
   readonly id: string;
   readonly text: string;
@@ -289,6 +298,7 @@ export type PluginDiscoveryComponent =
   | PluginDiscoveryContentCollectionComponent
   | PluginDiscoveryCategoryCollectionComponent
   | PluginDiscoveryTextComponent
+  | PluginDiscoverySearchInputComponent
   | PluginDiscoveryProfileCardComponent
   | PluginDiscoveryDividerComponent;
 

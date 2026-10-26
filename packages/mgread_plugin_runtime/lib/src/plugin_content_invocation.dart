@@ -1093,6 +1093,7 @@ PluginDiscoveryComponent _decodeDiscoveryComponent(
     ),
     'contentCollection' => _decodeDiscoveryContentCollection(item, id),
     'categoryCollection' => _decodeDiscoveryCategoryCollection(item, id),
+    'searchInput' => _decodeDiscoverySearchInput(item, id, context),
     'text' => PluginDiscoveryTextComponent(
       id: id,
       text: _contentString(item, 'text', context),

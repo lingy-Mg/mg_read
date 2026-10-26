@@ -12,6 +12,7 @@ import { assertStandardSourceContract, loadSourcePackage } from './contract.js';
 import { SourceTestFailure, failureFromCause } from './diagnostics.js';
 import {
   collectDiscoveryContent,
+  collectDiscoveryInputs,
   collectDiscoveryContinuations,
   collectDiscoveryTargets,
   runReadingSourceFlow,
@@ -198,7 +199,7 @@ async function runProject(project, options) {
       discoverySurfaces.push({ name: `discover.append.${index + 1}`, items: collectDiscoveryContent(append) });
     }
     const discoveryItems = uniqueContent(discoverySurfaces.flatMap((surface) => surface.items));
-    if (discoveryItems.length === 0) {
+    if (discoveryItems.length === 0 && collectDiscoveryInputs(discovery).length === 0) {
       throw new SourceTestFailure('source_discovery_empty', 'discover', {});
     }
     let suggestionItems = [];

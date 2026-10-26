@@ -16,6 +16,7 @@ export { createSourceTestHarness } from './src/harness.js';
 export { probeReachableResource, probeResourceGroups } from './src/resource.js';
 export {
   collectDiscoveryContent,
+  collectDiscoveryInputs,
   collectDiscoveryContinuations,
   collectDiscoveryTargets,
   runReadingSourceFlow,

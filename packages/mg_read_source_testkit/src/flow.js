@@ -5,6 +5,19 @@
  */
 import { SourceTestFailure, failureFromCause } from './diagnostics.js';
 
+/** Input-only discovery is valid, but requires an explicit test search query. */
+export function collectDiscoveryInputs(result) {
+  const inputs = [];
+  const visit = (component) => {
+    if (component?.type === 'searchInput' && ['id', 'label', 'placeholder', 'submitLabel'].every(
+      (key) => typeof component[key] === 'string' && component[key].trim().length > 0,
+    )) inputs.push(component);
+    for (const child of component?.children ?? []) visit(child);
+  };
+  for (const component of result?.document?.components ?? []) visit(component);
+  return Object.freeze(inputs);
+}
+
 export function collectDiscoveryContent(result) {
   if (result?.kind === 'append') {
     return Object.freeze(result.items?.map((item) => item.content).filter(Boolean) ?? []);
@@ -84,7 +97,9 @@ export async function runReadingSourceFlow({
   if (discoverRequest !== null) {
     const discovery = await runStage('discover', () => plugin.discover(discoverRequest));
     discoveryItems = collectDiscoveryContent(discovery);
-    requireNonEmpty(discoveryItems, 'source_discovery_empty', 'discover');
+    if (searchRequest === null || collectDiscoveryInputs(discovery).length === 0) {
+      requireNonEmpty(discoveryItems, 'source_discovery_empty', 'discover');
+    }
   }
   if (searchRequest !== null) {
     const requests = Array.isArray(searchRequest) ? searchRequest : [searchRequest];

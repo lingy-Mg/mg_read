@@ -8,9 +8,9 @@ test('packages Bilibili source deterministically with required search and playba
   assert.deepEqual(Object.keys(plugin).sort(), ['activate', 'discover', 'getChapters', 'getContent', 'getDetail', 'search', 'searchSuggestions']);
   const descriptor = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   assert.equal(descriptor.mgread.id, 'org.mgread.bilibili-audio');
-  assert.equal(descriptor.version, '1.0.1');
+  assert.equal(descriptor.version, '1.0.2');
   assert.deepEqual(descriptor.mgread.contentKinds, ['audio']);
-  assert.match(descriptor.mgread.description, /不提供发现内容/);
+  assert.match(descriptor.mgread.description, /发现页链接输入/);
   const first = await buildPluginArtifact();
   const second = await buildPluginArtifact();
   assert.deepEqual(first.bytes, second.bytes);

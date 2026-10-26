@@ -65,6 +65,13 @@ Map<String, Object?> _debugDiscoveryComponent(PluginDiscoveryComponent component
         )
         .toList(growable: false),
   },
+  PluginDiscoverySearchInputComponent(:final label, :final placeholder, :final submitLabel) => <String, Object?>{
+    'type': 'searchInput',
+    'id': component.id,
+    'label': label,
+    'placeholder': placeholder,
+    'submitLabel': submitLabel,
+  },
   PluginDiscoveryTextComponent(:final text) => <String, Object?>{'type': 'text', 'id': component.id, 'text': text},
   PluginDiscoveryProfileCardComponent(:final name, :final subtitle, :final badge, :final avatarUrl, :final details) => <String, Object?>{
     'type': 'profileCard',

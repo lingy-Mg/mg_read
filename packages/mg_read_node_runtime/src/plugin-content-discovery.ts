@@ -215,6 +215,13 @@ function validateDiscoveryComponent(
         type,
       });
     }
+    case "searchInput":
+      return Object.freeze({
+        id, type,
+        label: readRequiredString(raw, "label", MAX_LABEL_CHARACTERS),
+        placeholder: readRequiredString(raw, "placeholder", MAX_LABEL_CHARACTERS),
+        submitLabel: readRequiredString(raw, "submitLabel", MAX_LABEL_CHARACTERS),
+      });
     case "text":
       return Object.freeze({
         id,

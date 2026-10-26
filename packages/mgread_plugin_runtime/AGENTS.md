@@ -43,6 +43,7 @@
 ## 验证
 
 - Dart/Facade：运行目标 Flutter 测试；Node 桌面 transport 变化时追加 Node package 的 `test:flutter-desktop`。
+- 发现 `searchInput` 的公开模型和解码属于 `plugin_discovery_input.dart`，输入请求和结果状态由主应用拥有。
   原生 transport 使用 `test/native_supervisor_test.dart` 和真实原生宿主验收；共享类型需覆盖旧 decoder 测试。
 - 双引擎并存或按来源路由变化：运行 `test/hybrid_runtime_test.dart`；Android 正常包的实际内容调用另用根目录
   `integration_test/android_hybrid_source_test.dart` 验证，不把单宿主或 native-only 结果当作并存证据。
