@@ -4,6 +4,7 @@
 /// - Translate typed audio queues into MediaKit playlists with HTTP headers.
 /// - Normalize MediaKit streams, including real completion, into one snapshot.
 /// - Preserve active position and errors across append/open stream races.
+/// - Wait for media readiness and observed position before completing a seek.
 ///
 /// Notes:
 /// - Native library selection remains the host application's responsibility.
@@ -200,9 +201,58 @@ final class AudioMediaKitPlaybackBackend implements AudioPlaybackBackend {
   }
 
   @override
-  Future<void> seek(Duration position) {
+  Future<void> seek(Duration position) async {
     _ensureUsable();
-    return _player.seek(position < Duration.zero ? Duration.zero : position);
+    // open() returns after submitting the playlist, before mpv loads the file.
+    // A seek submitted in that gap is silently ignored by the native player.
+    await _waitForSnapshot((value) => value.duration > Duration.zero);
+    _ensureUsable();
+    final target = position < Duration.zero
+        ? Duration.zero
+        : position > _snapshot.duration
+        ? _snapshot.duration
+        : position;
+    // Subscribe before submitting the command: position events can arrive
+    // either before or after its Future returns. Persistence must see the new
+    // timestamp when the caller flushes immediately after dragging or exit.
+    final observed = _waitForSnapshot(
+      (value) => (value.position - target).abs() <= const Duration(seconds: 1),
+    );
+    // Attach an error handler immediately even if the command itself fails.
+    observed.ignore();
+    await _player.seek(target);
+    await observed;
+  }
+
+  Future<void> _waitForSnapshot(
+    bool Function(AudioPlaybackBackendSnapshot) accepts,
+  ) async {
+    _ensureUsable();
+    if (accepts(_snapshot)) return;
+    final ready = Completer<void>();
+    final subscription = _snapshots.stream.listen(
+      (value) {
+        if (ready.isCompleted) return;
+        try {
+          if (value.errorMessage?.isNotEmpty ?? false) {
+            throw StateError(value.errorMessage!);
+          }
+          if (accepts(value)) ready.complete();
+        } on Object catch (error, stack) {
+          ready.completeError(error, stack);
+        }
+      },
+      onDone: () {
+        if (!ready.isCompleted) {
+          ready.completeError(StateError('Audio backend closed during seek.'));
+        }
+      },
+    );
+    try {
+      await ready.future.timeout(const Duration(seconds: 15));
+    } finally {
+      await subscription.cancel();
+    }
   }
 
   @override

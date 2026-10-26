@@ -2,6 +2,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +10,9 @@ import 'package:mg_read_audio_player/mg_read_audio_player.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/core/settings/settings.dart';
+import 'package:mg_read/app/app_startup.dart';
+import 'package:mg_read/core/content_library/content_library.dart';
+import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/media/application/source_audio_playback_service.dart';
 
@@ -16,6 +20,83 @@ import '../../../core/settings/settings_testkit.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('closing the floating shelf player flushes the latest position and reopening resumes it', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-floating-audio-resume-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    final settings = AppSettingsManager(store: FakeSettingsStore(), registry: AppSettingKeys.registry);
+    await settings.initialize();
+    final startup = AppStartupController(
+      openResources: () async => AppStartupResources(contentLibrary: library),
+      diagnostics: DiagnosticsManager(
+        sink: const NoopDiagnosticEventSink(),
+        registry: AppDiagnosticEvents.registry,
+        source: DiagnosticSource.app,
+      ),
+    );
+    await startup.start();
+    final item = await library.addLibraryItem(
+      const BookshelfAddRequest(
+        title: '浮动播放器续播',
+        author: null,
+        kind: ContentKind.audio,
+        pluginId: 'test.audio',
+        pluginVersion: '1.0.0',
+        remoteContentId: 'audio-1',
+      ),
+    );
+    final seed = _request();
+    final request = SourceAudioPlaybackRequest(
+      detail: seed.detail,
+      firstCatalogPage: seed.firstCatalogPage,
+      chapter: seed.chapter,
+      libraryItemId: item.id.value,
+    );
+    final backends = <_RecordingBackend>[];
+    final container = ProviderContainer(
+      overrides: [
+        appStartupControllerProvider.overrideWithValue(startup),
+        appSettingsProvider.overrideWithValue(settings),
+        sourceContentGatewayProvider.overrideWithValue(_AudioGateway(request)),
+        sourceAudioPlaybackBackendFactoryProvider.overrideWithValue(() {
+          final backend = _RecordingBackend();
+          backends.add(backend);
+          return backend;
+        }),
+      ],
+    );
+    final service = container.read(sourceAudioPlaybackServiceProvider.notifier);
+    addTearDown(() async {
+      await service.stop();
+      container.dispose();
+      await startup.close();
+      await settings.close();
+      await root.delete(recursive: true);
+    });
+    final firstPlayback = service.open(request);
+    await _waitUntil(() => service.controller?.snapshot.status == AudioPlayerStatus.ready);
+    await service.controller!.seek(const Duration(seconds: 42));
+    await service.controller!.requestExit();
+    await service.resolveExitDecision(
+      sessionId: container.read(sourceAudioPlaybackServiceProvider).sessionId!,
+      continuePlaying: true,
+      remember: false,
+    );
+    expect(container.read(sourceAudioPlaybackServiceProvider).presentation, SourceAudioPresentation.minimized);
+    // No ten-second timer elapses: the floating player's close must itself
+    // commit playback that advanced after the earlier drag/return flush.
+    backends.single._emit(backends.single.snapshot.copyWith(position: const Duration(seconds: 47)));
+    await service.stop();
+    await firstPlayback;
+    expect((await library.loadProgress(item.id) as LibraryAudioPlaybackProgress).position, const Duration(seconds: 47));
+
+    final secondPlayback = service.open(request);
+    await _waitUntil(() => service.controller?.snapshot.status == AudioPlayerStatus.ready);
+    expect(service.controller!.snapshot.position, const Duration(seconds: 47));
+    expect(backends, hasLength(2));
+    await service.stop();
+    await secondPlayback;
+  });
 
   test('keeps loading and controlling playback with no player UI mounted', () async {
     final settings = AppSettingsManager(store: FakeSettingsStore(), registry: AppSettingKeys.registry);
