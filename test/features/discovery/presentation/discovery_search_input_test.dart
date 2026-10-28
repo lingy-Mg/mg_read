@@ -3,6 +3,7 @@ library;
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -12,6 +13,29 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/discovery/presentation/runtime_discovery_page.dart';
 
 void main() {
+  testWidgets('paste reads clipboard only on demand and never starts a request', (tester) async {
+    var reads = 0;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.getData') {
+        reads++;
+        return {'text': 'BV1tGe36YEap'};
+      }
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+    final gateway = _Gateway();
+    await tester.pumpWidget(_page(gateway));
+    expect(reads, 0);
+    await tester.tap(find.text('粘贴内容'));
+    await tester.pumpAndSettle();
+    expect(reads, 1);
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, 'BV1tGe36YEap');
+    expect(gateway.calls, 0);
+    await tester.tap(find.text('读取音频'));
+    await tester.pumpAndSettle();
+    expect(gateway.query, 'BV1tGe36YEap');
+  });
+
   testWidgets('renders source input in the document and opens resolved content', (tester) async {
     final gateway = _Gateway();
     PluginContentSummary? opened;

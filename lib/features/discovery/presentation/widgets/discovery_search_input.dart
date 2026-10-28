@@ -1,9 +1,11 @@
 /// Source-declared inline discovery search, including URL resolution.
 /// Owns transient input/results and cancels requests when edited or disposed;
 /// content identity and opening remain with the normal source detail flow.
+/// Clipboard is read only after the explicit paste action; stale reads are ignored.
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
@@ -62,6 +64,34 @@ class _DiscoverySearchInputState extends ConsumerState<DiscoverySearchInput> {
     super.dispose();
   }
 
+  Future<void> _paste() async {
+    final source = widget.pluginId;
+    final component = widget.component.id;
+    final previousText = _input.text;
+    try {
+      final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
+      if (!mounted || widget.pluginId != source || widget.component.id != component || _input.text != previousText) return;
+      final text = clipboard?.text?.trim() ?? '';
+      if (text.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('剪贴板中没有可粘贴的文字')));
+        return;
+      }
+      if (text.characters.length > 2000) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('内容过长，请只粘贴链接或关键词')));
+        return;
+      }
+      setState(() {
+        _clear();
+        _input.value = TextEditingValue(
+          text: text,
+          selection: TextSelection.collapsed(offset: text.length),
+        );
+      });
+    } on PlatformException {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('暂时无法读取剪贴板，可长按输入框粘贴')));
+    }
+  }
+
   Future<void> _submit() async {
     final query = _input.text.trim();
     if (query.isEmpty || _loading) return;
@@ -110,17 +140,43 @@ class _DiscoverySearchInputState extends ConsumerState<DiscoverySearchInput> {
           ),
         ),
         const SizedBox(height: AppSpacing.compact),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton.icon(
-            key: ValueKey('discovery-input-submit-${component.id}'),
-            onPressed: _loading || _input.text.trim().isEmpty ? null : _submit,
-            icon: _loading
-                ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.search_rounded),
-            label: Text(component.submitLabel),
-          ),
+        Wrap(
+          spacing: AppSpacing.compact,
+          runSpacing: AppSpacing.unit,
+          children: [
+            FilledButton.icon(
+              key: ValueKey('discovery-input-submit-${component.id}'),
+              onPressed: _loading || _input.text.trim().isEmpty ? null : _submit,
+              icon: _loading
+                  ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.search_rounded),
+              label: Text(_loading ? '正在读取…' : component.submitLabel),
+            ),
+            OutlinedButton.icon(
+              key: ValueKey('discovery-input-paste-${component.id}'),
+              onPressed: _loading ? null : _paste,
+              icon: const Icon(Icons.content_paste_rounded, size: 18),
+              label: const Text('粘贴内容'),
+            ),
+            if (_input.text.isNotEmpty)
+              IconButton(
+                tooltip: '清空输入',
+                onPressed: () => setState(() {
+                  _clear();
+                  _input.clear();
+                }),
+                icon: const Icon(Icons.clear_rounded),
+              ),
+          ],
         ),
+        if (_items == null && !_loading && error == null)
+          Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.compact),
+            child: Text(
+              '粘贴后点击“${component.submitLabel}”，读取成功后选择内容继续。',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppThemeTokens.of(context).mutedText),
+            ),
+          ),
         if (error != null) ...[
           const SizedBox(height: AppSpacing.compact),
           Text(
