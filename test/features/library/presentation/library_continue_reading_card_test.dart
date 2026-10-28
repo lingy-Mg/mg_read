@@ -97,7 +97,8 @@ void main() {
     expect(authorText.style?.color, onSurface);
     expect(descriptionText.style?.color, onSurface);
     expect(descriptionText.maxLines, 1);
-    expect(find.byKey(const Key('continue-reading-position')), findsOneWidget);
+    expect(find.byKey(const Key('continue-reading-position')), findsNothing);
+    expect(find.text('第1章 · 50%'), findsNothing);
     expect(descriptionText.overflow, TextOverflow.ellipsis);
     expect(tester.takeException(), isNull);
   });

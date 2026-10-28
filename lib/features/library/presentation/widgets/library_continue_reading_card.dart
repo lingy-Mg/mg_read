@@ -9,6 +9,7 @@
 /// - 不访问持久化、Runtime 或路由实现。
 /// - 首页沉浸模式下封面居左并与顶部操作栏同高起始，书名、作者、简介与按钮居右。
 /// - 进度只叠加明暗，不以透明底色承载按钮文字，保证低进度时仍可读。
+/// - 不展示章节和百分比文字；按钮固定在详情区底部，移除文字不改变按钮位置。
 ///
 library;
 
@@ -220,14 +221,6 @@ class _ContinueReadingDetails extends StatelessWidget {
             ),
           ] else
             const Spacer(),
-          Text(
-            data.hasDeterminateProgress ? '${data.chapter} · ${(data.progress * 100).round()}%' : data.chapter,
-            key: const Key('continue-reading-position'),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall?.copyWith(color: tokens.accent, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: AppSpacing.compact),
           Align(
             alignment: Alignment.center,
             child: _ContinueReadingAction(
@@ -261,14 +254,6 @@ class _ContinueReadingDetails extends StatelessWidget {
           style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600, height: 1.18, letterSpacing: -0.2),
         ),
         const Spacer(),
-        Text(
-          data.hasDeterminateProgress ? '${data.chapter} · ${(data.progress * 100).round()}%' : data.chapter,
-          key: const Key('continue-reading-position'),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface),
-        ),
-        const SizedBox(height: AppSpacing.compact),
         Align(
           alignment: Alignment.center,
           child: _ContinueReadingAction(

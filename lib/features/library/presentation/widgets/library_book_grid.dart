@@ -8,6 +8,7 @@
 /// - 不读取书架、封面缓存或持久化；封面继续使用共享请求组件。
 /// - 卡片模式必须保留列表模式已有的书籍操作，不建立第二套业务回调。
 /// - 图片解码前使用来源方向作为占位比例；解码后高度跟随原图像素比例。
+/// - 更新数量使用主题表面色胶囊，避免封面上的高饱和色圆点；超过 99 显示 99+。
 ///
 library;
 
@@ -173,21 +174,25 @@ class LibraryBookGridItem extends StatelessWidget {
                         top: AppSpacing.compact,
                         child: DecoratedBox(
                           decoration: BoxDecoration(
-                            color: tokens.notification,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: tokens.surface, width: 0.5),
+                            color: data.unreadChapterCount > 0 ? theme.colorScheme.surfaceContainerHigh : tokens.accent,
+                            borderRadius: AppRadii.pill,
+                            border: Border.all(color: theme.colorScheme.outlineVariant),
+                            boxShadow: <BoxShadow>[
+                              BoxShadow(color: tokens.shadow.withValues(alpha: 0.12), blurRadius: 4, offset: const Offset(0, 1)),
+                            ],
                           ),
                           child: data.unreadChapterCount > 0
-                              ? SizedBox.square(
-                                  dimension: AppSpacing.unreadDotSize + 14,
+                              ? Container(
+                                  constraints: const BoxConstraints(minWidth: 26, minHeight: 22),
+                                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.compact),
                                   child: Center(
                                     child: Text(
-                                      data.unreadChapterCount > 99 ? '99' : '${data.unreadChapterCount}',
+                                      data.unreadChapterCount > 99 ? '99+' : '${data.unreadChapterCount}',
                                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                        color: Colors.white,
-                                        fontSize: 9,
+                                        color: theme.colorScheme.onSurface,
+                                        fontSize: 11,
                                         height: 1,
-                                        fontWeight: FontWeight.w700,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                   ),

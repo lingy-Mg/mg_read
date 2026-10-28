@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_grid.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_shell.dart';
@@ -26,16 +27,42 @@ void main() {
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/library_home_compact_light.png'));
   });
 
-  testWidgets('matches the compact light home card baseline', (WidgetTester tester) async {
-    await _setViewport(tester, const Size(390, 900));
-    await tester.pumpWidget(_host(themeMode: ThemeMode.light, initialLayoutMode: LibraryHomeLayoutMode.card));
-    await tester.pumpAndSettle();
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
-    await tester.pump();
+  for (final mode in <ThemeMode>[ThemeMode.light, ThemeMode.dark]) {
+    testWidgets('matches the compact ${mode.name} home card baseline', (WidgetTester tester) async {
+      await _setViewport(tester, const Size(390, 900));
+      final fixture = LibraryHomeFixtures.preview;
+      final book = fixture.books.first;
+      await tester.pumpWidget(
+        _host(
+          themeMode: mode,
+          initialLayoutMode: LibraryHomeLayoutMode.card,
+          data: LibraryHomeViewData(
+            isPresentationFixture: true,
+            continueReading: fixture.continueReading,
+            books: <LibraryBookListItemViewData>[
+              LibraryBookListItemViewData(
+                id: book.id,
+                title: book.title,
+                subtitle: book.subtitle,
+                coverVariant: book.coverVariant,
+                coverAssetPath: book.coverAssetPath,
+                status: book.status,
+                unreadChapterCount: 128,
+              ),
+              ...fixture.books.skip(1),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+      await tester.pump();
 
-    expect(find.byType(LibraryBookSliverGrid), findsOneWidget);
-    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/library_home_compact_card_light.png'));
-  });
+      expect(find.byType(LibraryBookSliverGrid), findsOneWidget);
+      expect(find.text('99+'), findsOneWidget);
+      await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/library_home_compact_card_${mode.name}.png'));
+    });
+  }
 
   for (final (mode, size, name) in [
     (ThemeMode.dark, const Size(390, 900), 'library_home_compact_dark.png'),
@@ -54,7 +81,11 @@ void main() {
   }
 }
 
-Widget _host({required ThemeMode themeMode, LibraryHomeLayoutMode initialLayoutMode = LibraryHomeLayoutMode.list}) {
+Widget _host({
+  required ThemeMode themeMode,
+  LibraryHomeLayoutMode initialLayoutMode = LibraryHomeLayoutMode.list,
+  LibraryHomeViewData? data,
+}) {
   return ProviderScope(
     child: MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -69,7 +100,7 @@ Widget _host({required ThemeMode themeMode, LibraryHomeLayoutMode initialLayoutM
         );
       },
       home: LibraryHomeShell(
-        data: LibraryHomeFixtures.preview,
+        data: data ?? LibraryHomeFixtures.preview,
         initialLayoutMode: initialLayoutMode,
         onLayoutModeChanged: (_) async {},
         isRefreshing: false,

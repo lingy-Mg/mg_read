@@ -203,6 +203,7 @@ void _registerLibraryHomeShellLayout() {
     expect(continueSurface.contains(continueAction.bottomRight), isTrue);
     expect(continueCover.right, lessThan(continueTitle.left));
     expect(continueCover.right, lessThan(continueAction.left));
+    expect(continueAction.bottom, closeTo(continueCover.bottom - AppSpacing.compact / 2, 0.1));
     expect(continueAction.center.dx, closeTo((continueCover.right + AppSpacing.comfortable + continueSurface.right) / 2, 0.1));
     expect(tester.widget<FractionallySizedBox>(find.byKey(const Key('continue-reading-cta-progress'))).widthFactor, 0.72);
   });
