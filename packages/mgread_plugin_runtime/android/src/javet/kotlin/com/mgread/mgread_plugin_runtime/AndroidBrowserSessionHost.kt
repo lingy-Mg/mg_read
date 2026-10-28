@@ -17,12 +17,10 @@ import android.app.Activity
 import android.app.Dialog
 import android.content.Context
 import android.content.MutableContextWrapper
-import android.graphics.Color
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.view.Gravity
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
@@ -35,8 +33,6 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Button
-import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.webkit.NavigationParameters
 import androidx.webkit.WebViewCompat
@@ -498,7 +494,11 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
 
     private fun isPageVisible(session: Session): Boolean = foregroundPluginId == session.pluginId && foregroundDialog?.isShowing == true && session.webView.isAttachedToWindow
 
-    private fun updateStatus(session: Session, action: String) { session.statusView?.text = "${session.pluginName}正在进行探测 - $action"; session.urlView?.text = session.webView.url.orEmpty() }
+    private fun updateStatus(session: Session, action: String) {
+        session.statusView?.text = session.pluginName
+        session.statusView?.contentDescription = "${session.pluginName}：$action"
+        session.urlView?.text = session.webView.url.orEmpty()
+    }
 
     private fun loadPage(job: Job, session: Session) {
         if (!isCurrent(job, session)) return
@@ -743,43 +743,13 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         if (foregroundDialog?.isShowing == true) return true
         session.contextWrapper.baseContext = currentActivity
         (session.webView.parent as? ViewGroup)?.removeView(session.webView)
-        val root = LinearLayout(currentActivity).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.WHITE)
-        }
-        val bar = LinearLayout(currentActivity).apply {
-            gravity = Gravity.CENTER_VERTICAL
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(24, 16, 16, 16)
-        }
-        val status = TextView(currentActivity).apply {
-            text = "${session.pluginName}正在进行探测 - ${androidPageActionLabel(job.request.operation)}"
-            textSize = 18f
-            setTextColor(Color.BLACK)
-        }
-        bar.addView(status, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        if (session.pluginId !in debugPinnedPlugins) {
-            bar.addView(Button(currentActivity).apply { text = "隐藏"; setOnClickListener { hideForeground() } })
-            bar.addView(Button(currentActivity).apply { text = "关闭"; setOnClickListener { closeForeground(session) } })
-        }
-        root.addView(bar, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        val address = TextView(currentActivity).apply {
-            text = session.webView.url.orEmpty()
-            textSize = 13f
-            setTextColor(Color.DKGRAY)
-            setBackgroundColor(Color.rgb(245, 247, 250))
-            setPadding(24, 12, 24, 12)
-            setTextIsSelectable(true)
-        }
-        root.addView(address, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        root.addView(session.webView, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            0,
-            1f,
-        ))
         val dialog = runCatching {
-            Dialog(currentActivity, android.R.style.Theme_Material_Light_NoActionBar).apply {
-                setContentView(root)
+            AndroidBrowserDialog(
+                currentActivity, session.pluginName, session.webView,
+                pinned = session.pluginId in debugPinnedPlugins,
+                onHide = { hideForeground() },
+                onClose = { closeForeground(session) },
+            ).apply {
                 setOnCancelListener { closeForeground(session) }
                 setOnDismissListener {
                     (session.webView.parent as? ViewGroup)?.removeView(session.webView)
@@ -797,8 +767,8 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         }
         foregroundDialog = dialog
         foregroundPluginId = job.request.pluginId
-        session.statusView = status
-        session.urlView = address
+        session.statusView = dialog.titleView
+        session.urlView = dialog.addressView
         Log.i(TAG, "browser_session_window_shown plugin_id=${job.request.pluginId}")
         return true
     }
