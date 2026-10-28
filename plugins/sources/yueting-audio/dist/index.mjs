@@ -1,7 +1,7 @@
 import { createRequire as __mgreadCreateRequire } from 'node:module'; const require = __mgreadCreateRequire(import.meta.url);
 
 // src/index.mts
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { createDecipheriv, randomUUID } from "node:crypto";
 
 // src/discovery-channels.ts
 var channels = [
@@ -286,21 +286,22 @@ function position(cursor, target) {
 
 // src/index.mts
 var catalogRoot = "https://json.tingyou8.vip/azybk/json_v1/";
-var apiRoot = "https://tingyou.fm/api/";
+var apiRoot = "https://tingyou.fm/listening-api/";
 var key = Buffer.from("ea9d9d4f9a983fe6f6382f29c7b46b8d6dc47abc6da36662e6ddff8c78902f65", "hex");
 var appAgent = "zybk/1.0.6";
-var webAgent = "Mozilla/5.0 (Linux; Android 13; Pixel 7 Build/TQ3A.230805.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/116.0.0.0 Mobile Safari/537.36";
 var context;
+var listeningSession = "";
 var deferredGroups = true;
 async function activate(next) {
   context = next;
+  listeningSession = randomUUID();
   next.log.info("source_activated");
 }
 async function search(request) {
   const query = request.query.trim();
   if (query === "") return frozen({ items: [], nextCursor: null, totalCount: 0 });
-  const page = cursorPage(request.cursor, "search"), payload = encryptRequest(JSON.stringify({ keyword: query, page })), data = decryptObject(await postPayload("search", payload, { "User-Agent": appAgent })), values = records(data.results), items = summaries(values).slice(0, clamp(request.pageSize));
-  return frozen({ items, nextCursor: values.length >= clamp(request.pageSize) ? `search:${page + 1}` : null, totalCount: nonNegative(data.total) });
+  const page = cursorPage(request.cursor, "search"), data = await listeningRequest("search", { keyword: query, page }), values = records(data.results), items = summaries(values).slice(0, clamp(request.pageSize));
+  return frozen({ items, nextCursor: data.has_more === true ? `search:${page + 1}` : null, totalCount: nonNegative(data.total) });
 }
 async function searchSuggestions(_request) {
   return frozen({ items: [], nextCursor: null });
@@ -368,19 +369,18 @@ async function getChapters(request) {
   return frozen({ items: groups[0]?.episodes ?? [], groups: projected });
 }
 async function getContent(request) {
-  const albumId = contentId(request.id), chapterIndex = chapterNative(request.chapterId, albumId), dfp = makeDfp(), cookieHeaders = { "User-Agent": webAgent, Cookie: `dfp=${dfp}` };
-  await requestText(new URL("me", apiRoot).toString(), { method: "POST", headers: cookieHeaders, body: "" });
-  const payload = encryptRequest(JSON.stringify({ album_id: numericId(albumId), chapter_idx: numericId(chapterIndex) })), data = decryptObject(await postPayload("play_token", payload, cookieHeaders)), upstream = text(data.play_url);
+  const albumId = contentId(request.id), chapterIndex = chapterNative(request.chapterId, albumId), data = await listeningRequest("play", { album_id: albumId, chapter_idx: Number(chapterIndex) }), upstream = text(data.play_url);
   if (!safeUrl(upstream)) throw new Error("Audio address is unavailable.");
-  const mediaHeaders = { Referer: "https://tingyou.fm/", "User-Agent": webAgent };
+  const mediaHeaders = { Referer: "https://tingyou.fm/" };
   return frozen({ chapterId: request.chapterId, contentKind: "audio", title: nullable(data.title), updatedAt: null, text: null, pages: [], media: { url: requireContext().resource.proxy({ kind: "audio", url: upstream, headers: mediaHeaders }), resourceType: "audio", resourcePolicy: "sessionOnly", expiresAt: null, mimeType: /\.m4a(?:$|[?#])/iu.test(upstream) ? "audio/mp4" : "audio/mpeg", headers: mediaHeaders } });
+}
+async function listeningRequest(path, body) {
+  const raw = await requestText(new URL(path, apiRoot).toString(), { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", "x-listening-timezone": "Asia/Shanghai", "x-listening-session": listeningSession }, body: JSON.stringify(body) }), value = parseJson(raw);
+  if (!isObject(value)) throw new Error("Source response is invalid.");
+  return value;
 }
 async function getPayload(path) {
   const raw = await requestText(new URL(path, catalogRoot).toString(), { headers: { "User-Agent": appAgent } }), value = parseJson(raw);
-  return payloadOf(value);
-}
-async function postPayload(path, body, headers) {
-  const raw = await requestText(new URL(path, apiRoot).toString(), { method: "POST", headers, body }), value = parseJson(raw);
   return payloadOf(value);
 }
 async function requestText(url, init) {
@@ -396,10 +396,6 @@ function payloadOf(value) {
   const raw = text(value);
   if (raw !== "") return raw;
   throw new Error("Encrypted payload is missing.");
-}
-function encryptRequest(plain) {
-  const iv = randomBytes(12), cipher = createCipheriv("aes-256-gcm", key, iv), encrypted = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]), tag = cipher.getAuthTag();
-  return Buffer.concat([Buffer.from([1]), iv, encrypted, tag]).toString("hex");
 }
 function decryptObject(payload) {
   const bytes = Buffer.from(payload.replaceAll(/\s/gu, ""), "hex");
@@ -446,10 +442,6 @@ function add(a, b) {
 function rotate(value, bits) {
   return (value << bits | value >>> 32 - bits) >>> 0;
 }
-function makeDfp() {
-  const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(/* @__PURE__ */ new Date()).replaceAll("-", ""), dailyKey = createHash("sha256").update(`fa317cd29b|${date}`).digest().subarray(0, 16), plain = `1a60ec86|212b95ee|4ec312a9||${webAgent}|Asia/Shanghai`, cipher = createCipheriv("sm4-ecb", dailyKey, null), encrypted = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-  return `f-${Number(date).toString(36)}:f-${encrypted.toString("base64")}`;
-}
 function summaries(values) {
   const result = /* @__PURE__ */ new Map();
   for (const value of values) {
@@ -480,10 +472,6 @@ function chapterGroups(albumId, items, size = 500) {
 function sourceId(value) {
   const id = text(value);
   return /^\d+$/u.test(id) ? id : null;
-}
-function numericId(value) {
-  const result = Number(value);
-  return Number.isSafeInteger(result) ? result : value;
 }
 function contentId(id) {
   const value = /^album:(\d+)$/u.exec(id)?.[1];

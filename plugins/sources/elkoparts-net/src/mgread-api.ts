@@ -127,7 +127,7 @@ export type DiscoverResult =
     };
 
 export interface ContentReferenceRequest { readonly id: string }
-export interface ChaptersRequest { readonly id: string }
+export type { PluginChaptersRequest as ChaptersRequest } from '@mgread/source-api';
 
 export interface ChapterSummary {
   readonly id: string;
@@ -141,7 +141,7 @@ export interface ChapterSummary {
   readonly attributes: readonly ContentAttribute[];
 }
 
-export interface ChaptersResult { readonly items: readonly ChapterSummary[] }
+export interface ChaptersResult { readonly items: readonly ChapterSummary[]; readonly groups?: readonly { readonly id:string; readonly title:string; readonly order:number; readonly episodes:readonly ChapterSummary[]; readonly deferred?:boolean }[] }
 export interface ContentRequest { readonly id: string; readonly chapterId: string }
 
 export interface ChapterContent {

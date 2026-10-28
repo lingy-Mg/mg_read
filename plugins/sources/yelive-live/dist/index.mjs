@@ -50,7 +50,7 @@ async function getContent(request) {
   const id = contentId(request.id), quality = chapterQuality(request.chapterId, id), model = await locate(id), upstream = hlsUrl(model, quality);
   if (!safeUrl(upstream)) throw new Error("Live stream is unavailable.");
   const mediaHeaders = { "User-Agent": agent, Accept: "*/*", Origin: root.slice(0, -1), Referer: `${root}${encodeURIComponent(model.username)}` };
-  return frozen({ chapterId: request.chapterId, contentKind: "video", title: model.username, updatedAt: null, text: null, pages: [], media: { url: requireContext().resource.proxy({ kind: "video", url: upstream, headers: mediaHeaders }), resourceType: "video", resourcePolicy: "sessionOnly", expiresAt: null, mimeType: "application/vnd.apple.mpegurl", headers: mediaHeaders } });
+  return frozen({ chapterId: request.chapterId, contentKind: "video", title: model.username, updatedAt: null, text: null, pages: [], media: { url: requireContext().resource.proxy({ kind: "hls", url: upstream, headers: mediaHeaders }), resourceType: "hls", resourcePolicy: "sessionOnly", expiresAt: null, mimeType: "application/vnd.apple.mpegurl", headers: mediaHeaders } });
 }
 async function locate(id) {
   const cached = cache.get(id);
@@ -75,7 +75,7 @@ function models(value) {
   for (const row of rows) {
     const id = text(first(row.id, row.modelId, row.streamName));
     if (!/^\d+$/u.test(id)) continue;
-    const status = text(first(row.status, row.broadcastStatus)), model = { id, username: text(first(row.username, row.userName, row.login, row.name)) || id, cover: absolute(text(first(row.previewUrlThumbSmall, row.previewUrlThumbBig, row.previewUrl, row.avatarUrl, row.avatar))), status: status || (row.isOnline === true ? "public" : ""), viewers: number(first(row.viewersCount, row.viewers)), hls: absolute(text(first(row.hlsPlaylist, row.hls, row.hlsUrl))), presets: Array.isArray(row.presets) ? row.presets.map(text).filter(Boolean) : [] };
+    const status = text(first(row.status, row.broadcastStatus)), previous = cache.get(id), model = { id, username: text(first(row.username, row.userName, row.login, row.name)) || id, cover: absolute(text(first(row.previewUrlThumbSmall, row.previewUrlThumbBig, row.previewUrl, row.avatarUrl, row.avatar))), status: status || (row.isOnline === true ? "public" : ""), viewers: number(first(row.viewersCount, row.viewers)), hls: ["hlsPlaylist", "hls", "hlsUrl"].some((key) => Object.hasOwn(row, key)) ? absolute(text(first(row.hlsPlaylist, row.hls, row.hlsUrl))) : previous?.hls ?? "", presets: Array.isArray(row.presets) ? row.presets.map(text).filter(Boolean) : previous?.presets ?? [] };
     cache.set(id, model);
     result.push(model);
   }
@@ -110,8 +110,13 @@ function qualityList(model) {
   return ["auto", ...new Set(known)].slice(0, 5);
 }
 function hlsUrl(model, quality) {
-  const candidate = model.hls || `https://edge-hls.doppiocdn.com/hls/${model.id}/master/${model.id}_240p.m3u8`, url = new URL(candidate), host = url.host || "edge-hls.doppiocdn.com", suffix = quality === "auto" ? "auto" : quality;
-  return `https://${host}/hls/${model.id}/master/${model.id}_${suffix}.m3u8?playlistType=lowLatency`;
+  if (!safeUrl(model.hls)) throw new Error("Live stream is unavailable.");
+  if (quality === "auto") return model.hls;
+  if (!model.presets.includes(quality)) throw new Error("Live quality is unavailable.");
+  const url = new URL(model.hls);
+  if (!/_(?:\d+p)\.m3u8$/u.test(url.pathname)) throw new Error("Live quality URL is unavailable.");
+  url.pathname = url.pathname.replace(/_\d+p\.m3u8$/u, `_${quality}.m3u8`);
+  return url.toString();
 }
 function absolute(value) {
   if (value.startsWith("//")) return `https:${value}`;

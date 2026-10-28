@@ -46,6 +46,8 @@ test('fixtures cover POST search, cached GET projections, paged content, and cov
     plugin.getChapters({ id: search.items[0].id }),
   ]);
   assert.equal(detailResult.status, 'completed');
+  assert.equal(detailResult.updatedAt, '2026-08-01T10:00:00+08:00');
+  assert.equal(detailResult.latestChapter.updatedAt, detailResult.updatedAt);
   assert.deepEqual(chapters.items.map((chapter) => chapter.title), ['Fixture One', 'Fixture Two']);
   await Promise.all([plugin.getDetail({ id: detailResult.id }), plugin.getChapters({ id: detailResult.id })]);
   assert.equal(calls.filter(({ url }) => url.pathname === '/book/123.html').length, 1);

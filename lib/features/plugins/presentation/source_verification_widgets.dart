@@ -221,6 +221,7 @@ String _stageCodeLabel(String code) => switch (code) {
   'resource_unreachable' => '资源无法访问',
   'chapters_truncated' => '返回的目录数量不足',
   'discovery_empty' => '发现页未返回可检测内容',
+  'source_input_required' => '该来源需要先输入作品链接或搜索词',
   'search_empty' => '搜索未返回内容',
   'content_interaction_required' || 'interaction_required' => '需要登录、验证或其他人工操作',
   _ => code,

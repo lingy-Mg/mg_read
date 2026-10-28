@@ -84,7 +84,7 @@ export class TianyueSource {
             const status = parseStatus(/小说状态[：:]?\s*([^收]+?)(?:收藏总数|$)/u.exec(table)?.[1] ?? null);
             const latest = $('.book_newchap p.ti').last();
             const href = latest.find('a[href]').attr('href');
-            const updatedAt = clean(latest.find('em').text());
+            const updatedAt = sourceTimestamp(clean(latest.find('em').text()));
             const cover = $('.box_intro .pic img').first().attr('src');
             return Object.freeze({ ...summary({ bookId, title, author, url: readUrl(bookId), coverUrl: cover === undefined ? null : this.#proxyImage(new URL(cover, url), url), description: clean($('.box_info .intro').text()), status, updatedAt, latestTitle: clean(latest.find('a').text()), latestUrl: href === undefined ? null : new URL(href, url), categories: category === null ? [] : [category] }), aliases: Object.freeze([]), catalogUrl: readUrl(bookId).toString() });
         });
@@ -210,3 +210,11 @@ function parseStatus(value) { if (value === null)
     return 'ongoing'; if (/(?:停更|暂停)/u.test(value))
     return 'hiatus'; return 'unknown'; }
 function isNoise(value) { return /(?:天悦小说网|手机阅读|无弹窗|小主，这个章节后面还有哦|请点击下一页继续阅读|请大家收藏：|更新速度全网最快|章节报错|加入书签)/u.test(value); }
+/** The source renders Chinese local time without a zone; API timestamps must be ISO 8601. */
+function sourceTimestamp(value) {
+    if (value === null)
+        return null;
+    const match = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})(?::(\d{2}))?$/u.exec(value);
+    const normalized = match === null ? value : `${match[1]}T${match[2]}:${match[3] ?? '00'}+08:00`;
+    return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u.test(normalized) && Number.isFinite(Date.parse(normalized)) ? normalized : null;
+}

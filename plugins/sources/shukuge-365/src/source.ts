@@ -227,9 +227,10 @@ export class ShukugeSource {
     return body;
   }
 
+  // This origin serves PNG bytes as image/jpeg; Runtime corrects MIME from the same response prefix.
   #proxyImage(url: URL, referer: URL): string | null {
     if (url.origin !== origin) return null;
-    return this.context.resource.proxy({ kind: 'image', url: url.toString(), headers: { Accept: 'image/*', Referer: referer.toString() } });
+    return this.context.resource.proxy({ kind: 'image', url: url.toString(), resourceTransform: 'sniff-image-content-type-v1', headers: { Accept: 'image/*', Referer: referer.toString() } });
   }
 }
 

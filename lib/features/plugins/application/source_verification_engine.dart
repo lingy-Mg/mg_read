@@ -312,7 +312,12 @@ final class SourceVerificationEngine {
         if (items.isNotEmpty) break;
       }
     }
-    if (items.isEmpty) throw const _VerificationFailure('discovery_empty');
+    if (items.isEmpty) {
+      if (_hasDiscoveryInput(root) || _hasDiscoveryInput(result)) {
+        throw const _VerificationFailure('source_input_required', interactionRequired: true);
+      }
+      throw const _VerificationFailure('discovery_empty');
+    }
     return _DiscoverySelection(result: result, items: items, followedTargets: followedTargets);
   }
 
@@ -575,6 +580,16 @@ List<PluginDiscoveryContentItem> _collectDiscoveryItems(PluginDiscoverResult res
 
   if (result case PluginDiscoveryDocumentResult(:final document)) document.components.forEach(visit);
   return List<PluginDiscoveryContentItem>.unmodifiable(items);
+}
+
+// Link-only sources cannot supply an automatic sample until the user submits input.
+bool _hasDiscoveryInput(PluginDiscoverResult result) {
+  bool visit(PluginDiscoveryComponent component) => switch (component) {
+    PluginDiscoverySearchInputComponent() => true,
+    PluginDiscoverySectionComponent(:final children) || PluginDiscoveryGroupComponent(:final children) => children.any(visit),
+    _ => false,
+  };
+  return result is PluginDiscoveryDocumentResult && result.document.components.any(visit);
 }
 
 List<String> _collectDiscoveryTargets(Iterable<PluginDiscoveryComponent> components) {

@@ -1,9 +1,77 @@
 import { createRequire as __mgreadCreateRequire } from 'node:module'; const require = __mgreadCreateRequire(import.meta.url);
 
+// src/catalog.ts
+var ElkopartsCatalog = class {
+  constructor(read, pages, parse) {
+    this.read = read;
+    this.pages = pages;
+    this.parse = parse;
+  }
+  read;
+  pages;
+  parse;
+  #cache = /* @__PURE__ */ new Map();
+  async load(request, firstUrl) {
+    if (request.refresh) this.#cache.delete(request.id);
+    let pending = this.#cache.get(request.id);
+    if (!pending) {
+      pending = this.read(firstUrl).then((firstHtml) => {
+        const pages = this.pages(firstHtml, firstUrl);
+        if (pages.length > 1024) throw new Error("Catalog exceeds the supported page bound.");
+        return { firstHtml, pages, expires: Date.now() + 15 * 6e4 };
+      }).catch((error) => {
+        if (this.#cache.get(request.id) === pending) this.#cache.delete(request.id);
+        throw error;
+      });
+      this.#cache.set(request.id, pending);
+      while (this.#cache.size > 4) this.#cache.delete(this.#cache.keys().next().value);
+    }
+    const catalog = await pending;
+    if (catalog.expires < Date.now()) {
+      this.#cache.delete(request.id);
+      return this.load(request, firstUrl);
+    }
+    const width = Math.max(1, Math.ceil(catalog.pages.length / 128));
+    const starts = Array.from({ length: Math.ceil(catalog.pages.length / width) }, (_, index) => index * width);
+    const groupId = (start2) => `${request.id}:catalog:${Buffer.from(catalog.pages[start2].pathname).toString("base64url")}`;
+    const read = async (start2, count) => {
+      const pages = catalog.pages.slice(start2, start2 + count);
+      const chunks = new Array(pages.length);
+      let next = 0;
+      const worker = async () => {
+        while (next < pages.length) {
+          const index = next++, url = pages[index];
+          const html = start2 + index === 0 ? catalog.firstHtml : await this.read(url);
+          chunks[index] = this.parse(html, url, request.id);
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(8, pages.length) }, worker));
+      const seen = /* @__PURE__ */ new Set();
+      const items2 = chunks.flat().filter((item) => {
+        if (seen.has(item.id)) return false;
+        seen.add(item.id);
+        return true;
+      }).map((item, order) => ({ ...item, order }));
+      if (items2.length > 5e3) throw new Error("Catalog requires deferred chapter groups.");
+      return items2;
+    };
+    if (request.supportsDeferredGroups !== true && request.groupId === void 0) return { items: await read(0, catalog.pages.length) };
+    const start = request.groupId === void 0 ? 0 : starts.find((value) => groupId(value) === request.groupId);
+    if (start === void 0) throw new Error("Requested catalog group is unavailable.");
+    const items = await read(start, width);
+    const groups = starts.map((value, order) => ({
+      id: groupId(value),
+      title: `目录第${value + 1}${width > 1 ? `–${Math.min(value + width, catalog.pages.length)}` : ""}页`,
+      order,
+      episodes: value === start ? items : [],
+      ...value === start ? {} : { deferred: true }
+    }));
+    return { items, groups };
+  }
+};
+
 // src/source.ts
 var sourceOrigin = "http://www.elkoparts.net";
-var catalogPageLimit = 250;
-var catalogConcurrency = 8;
 var categories = Object.freeze([
   { id: "1", title: "玄幻奇幻", icon: "fantasy" },
   { id: "2", title: "武侠仙侠", icon: "wuxia" },
@@ -15,6 +83,11 @@ var categories = Object.freeze([
 ]);
 var ElkopartsSource = class {
   #context;
+  #catalog = new ElkopartsCatalog(
+    (url) => this.#fetchHtml(url),
+    catalogPageUrls,
+    (html, url, id) => this.#parseChapterPage(html, url, decodeBookId(id))
+  );
   constructor(context2) {
     this.#context = context2;
   }
@@ -126,7 +199,7 @@ var ElkopartsSource = class {
     const category = prefixedValue(infoLines, "类别：");
     const statusText = prefixedValue(infoLines, "状态：");
     const coverTag = firstCapture(html, /<div\s+class=["'][^"']*imgbox[^"']*["'][^>]*>[\s\S]*?(<img\b[^>]*>)/iu);
-    const cover = this.#coverProxy(normalizeSourceUrl(coverTag === null ? void 0 : attribute(coverTag, "src"), url));
+    const cover = this.#coverProxy(normalizeCoverUrl(coverTag === null ? void 0 : attribute(coverTag, "src"), url));
     const description = normalizeDescription(
       textFromMatch(html, /<div\s+class=["'][^"']*\bxdesc\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/iu) ?? textFromMatch(html, /<div\s+class=["'][^"']*\bdesc\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/iu)
     );
@@ -152,28 +225,7 @@ var ElkopartsSource = class {
     };
   }
   async getChapters(request) {
-    const key = decodeBookId(request.id);
-    const firstUrl = bookUrl(key);
-    const firstHtml = await this.#fetchHtml(firstUrl);
-    const pageUrls = catalogPageUrls(firstHtml, firstUrl).slice(0, catalogPageLimit);
-    const htmlPages = new Array(pageUrls.length);
-    htmlPages[0] = firstHtml;
-    let nextIndex = 1;
-    const worker = async () => {
-      while (nextIndex < pageUrls.length) {
-        const index = nextIndex;
-        nextIndex += 1;
-        htmlPages[index] = await this.#fetchHtml(pageUrls[index]);
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(catalogConcurrency, Math.max(0, pageUrls.length - 1)) }, worker));
-    const seen = /* @__PURE__ */ new Set();
-    const chapters = htmlPages.flatMap((html, pageIndex) => this.#parseChapterPage(html, pageUrls[pageIndex], key)).filter((chapter) => {
-      if (seen.has(chapter.id)) return false;
-      seen.add(chapter.id);
-      return true;
-    }).slice(0, 5e3).map((chapter, order) => ({ ...chapter, order }));
-    return { items: chapters };
+    return this.#catalog.load(request, bookUrl(decodeBookId(request.id)));
   }
   async getContent(request) {
     const book = decodeBookId(request.id);
@@ -246,7 +298,7 @@ var ElkopartsSource = class {
         title,
         author: textFromHtml(authorBlock),
         category: null,
-        coverUrl: this.#coverProxy(normalizeSourceUrl(imageTag === null ? void 0 : attribute(imageTag, "src"), pageUrl) ?? coverUrl(key)),
+        coverUrl: this.#coverProxy(normalizeCoverUrl(imageTag === null ? void 0 : attribute(imageTag, "src"), pageUrl) ?? coverUrl(key)),
         description: textFromMatch(root, /<dd[^>]*>([\s\S]*?)<\/dd>/iu),
         status: "unknown",
         chapterCount: null,
@@ -282,13 +334,13 @@ var ElkopartsSource = class {
   }
   async #fetchHtml(url) {
     assertSourceUrl(url);
-    const response = await this.#context.http.fetch(url, { method: "GET" });
+    const response = await this.#context.http.fetch(url, { method: "GET", proxyMode: "direct", signal: AbortSignal.timeout(15e3) });
     if (!response.ok) throw new Error("Source request failed.");
     return response.text();
   }
   #coverProxy(url) {
     if (url === null) return null;
-    return this.#context.resource.proxy({ kind: "image", url: url.toString(), headers: { Accept: "image/*" } });
+    return this.#context.resource.proxy({ kind: "image", url: url.toString(), proxyMode: "direct", headers: { Accept: "image/*" } });
   }
 };
 function summary(input) {
@@ -487,11 +539,18 @@ function normalizeSourceUrl(value, base) {
   assertSourceUrl(url);
   return url;
 }
+function normalizeCoverUrl(value, base) {
+  if (value === void 0 || value.trim().length === 0) return null;
+  const url = new URL(value, base);
+  if (!["http:", "https:"].includes(url.protocol) || url.username !== "" || url.password !== "" || url.port !== "" || !["www.elkoparts.net", "www.elkoparts.info"].includes(url.hostname)) throw new Error("Source cover URL is outside the allowed origin.");
+  return url;
+}
 function assertSourceUrl(url) {
   if (url.origin !== sourceOrigin || url.protocol !== "http:") throw new Error("Source URL is outside the allowed origin.");
 }
 
 // src/index.mts
+var deferredGroups = true;
 var context;
 var source;
 async function activate(nextContext) {
@@ -542,6 +601,7 @@ function requireActivated(value) {
 }
 export {
   activate,
+  deferredGroups,
   discover,
   getChapters,
   getContent,

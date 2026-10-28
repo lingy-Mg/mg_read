@@ -1,18 +1,100 @@
 /**
- * 小黄书 xChina 原生套图数据源。
- *
- * 职责：直接解析 xChina 的列表、搜索、详情及跨页图片，不执行旧数据源脚本。
- * 生命周期：activate 只保存 Runtime 上下文；章节读取最多访问 30 个站内分页。
- * IO：网页走 ctx.http，封面和原图统一经 ctx.resource.proxy。
- * 稳定标识：作品使用站内 photo 路径，章节固定为该套图的完整图集。
+ * 小黄书混合来源：套图、短篇/带目录小说和视频使用各自公开内容类型。
+ * IO 经 ctx.http 与资源代理；章节入口验证使用宿主 WebView，不读取凭据或持有正文缓存。
+ * 身份保留旧套图 ID；短篇使用稳定全文章节，长篇只使用真实目录路径。
  */
-import{load}from'cheerio';import type{MgReadPluginContext}from'@mgread/source-api';type Context=MgReadPluginContext;type Item={path:string;title:string;cover:string;author:string;category:string;remark:string;date:string};const base='https://xchina001.ink',headers={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36',Accept:'text/html,application/xhtml+xml,*/*;q=0.8',Referer:`${base}/photos.html`},channels=[['latest','最新','/photos/'],['hot','热门','/photos/sort-hot/'],['comment','评论最多','/photos/sort-comment/'],['recent','最近评论','/photos/sort-recent/']]as const;let context:Context|undefined;
-export async function activate(next:Context){context=next;next.log.info('source_activated');}
-export async function search(request:{query:string;cursor:string|null;pageSize:number}){const query=clean(request.query).replaceAll(/[\\*"?&<>]/gu,'').replaceAll(/\s+/gu,'+');if(query.length<2)return frozen({items:[],nextCursor:null,totalCount:0});const page=cursorPage(request.cursor,'search'),path=page===1?`/photos/keyword-${encodeURIComponent(query)}.html`:`/photos/keyword-${encodeURIComponent(query)}/${page}.html`,values=parseList(await get(path)),size=clamp(request.pageSize),items=values.map(summary).slice(0,size);return frozen({items,nextCursor:values.length>=size?`search:${page+1}`:null,totalCount:null});}
-export async function searchSuggestions(_request:{cursor:string|null;pageSize:number}){return frozen({items:[],nextCursor:null});}
-export async function discover(request:{target:string|null;cursor:string|null;collectionId:string|null;pageSize:number}){if(request.target===null)return frozen({kind:'document'as const,document:{components:[{type:'section',id:'xchina-channels',title:'小黄书套图',subtitle:'xChina 写真分类',icon:'manga',children:[{type:'categoryCollection',id:'xchina-channel-list',layout:'chips',categories:channels.map(([id,title])=>({id,title,target:`channel:${id}`,count:null,url:null,icon:'manga'}))}]}]}});const channel=channels.find(([id])=>request.target===`channel:${id}`);if(!channel)throw new Error('Discovery target is invalid.');const page=cursorPage(request.cursor,request.target),values=parseList(await get(`${channel[2]}${page}.html`)),size=clamp(request.pageSize),contents=values.map(summary).slice(0,size),collectionId=`xchina:${channel[0]}`,items=contents.map(content=>frozen({content,rank:null,metric:null,recommendation:null})),continuation=values.length>=size?frozen({target:request.target,cursor:`${request.target}:${page+1}`}):null;if(request.collectionId!==null){if(request.collectionId!==collectionId)throw new Error('Discovery collection is invalid.');return frozen({kind:'append'as const,collectionId,items,continuation});}return frozen({kind:'document'as const,document:{components:[{type:'section',id:`${collectionId}:section`,title:channel[1],subtitle:null,icon:'manga',children:[{type:'contentCollection',id:collectionId,layout:'coverGrid',items,continuation}]}]}});}
-export async function getDetail(request:{id:string}){const path=contentPath(request.id),html=await get(path),$=load(html),raw=clean($('meta[property="og:title"]').attr('content')??$('h1').first().text()).replace(/\s+-\s+小黄书.*$/u,''),parts=raw.split(/\s+-\s+/u),title=parts.shift()||path,description=clean($('meta[property="og:description"]').attr('content')??''),detail=clean($('.photo-detail').first().text()),remark=detail.match(/\d+\s*P(?:\s*\+\s*\d+\s*V)?/iu)?.[0]??'全部',date=detail.match(/\d{4}\.\d{2}\.\d{2}/u)?.[0]??'',item=summary({path,title,cover:$('meta[property="og:image"]').attr('content')??'',author:clean($('.photo-detail .model-item').first().text()),category:clean(parts.join(' / ')||$('.photo-detail a[href^="/photos/series"]').first().text()),remark,date});return frozen({...item,description:description||null,chapterCount:1,aliases:[],catalogUrl:new URL(path,base).toString()});}
-export async function getChapters(request:{id:string}){const path=contentPath(request.id),chapter=frozen({id:`manga:${encode(path)}:main`,title:'全部',order:0,url:null,volumeTitle:'套图',wordCount:null,updatedAt:null,isLocked:false,attributes:[]});return frozen({items:[chapter],groups:[frozen({id:`group:${encode(path)}`,title:'套图',order:0,episodes:[chapter]})]});}
-export async function getContent(request:{id:string;chapterId:string}){const path=contentPath(request.id);if(request.chapterId!==`manga:${encode(path)}:main`)throw new Error('Chapter ID is invalid.');const first=await get(path),seen=new Set<string>(),images:string[]=[];let firstImages=parseImages(first),count=Number(clean(load(first)('.photo-detail').text()).match(/(\d+)\s*P/iu)?.[1]??0);if(firstImages.length&&count>1&&count<=2000){const generated=sequential(firstImages[0]??'',count);if(generated.length)firstImages=generated;}for(const value of firstImages)if(!seen.has(value)){seen.add(value);images.push(value);}if(images.length===firstImages.length&&sequential(firstImages[0]??'',count).length===0){const max=maxPage(first);for(let page=2;page<=max&&page<=30;page+=1)for(const value of parseImages(await get(paged(path,page))))if(!seen.has(value)){seen.add(value);images.push(value);}}if(!images.length)throw new Error('Album images are unavailable.');const referer=new URL(path,base).toString(),pages=images.map((url,index)=>frozen({id:`page:${index+1}`,index,url:requireContext().resource.proxy({kind:'image',url,headers:{...headers,Referer:referer}}),mimeType:imageMime(url),width:null,height:null}));return frozen({chapterId:request.chapterId,contentKind:'manga',title:null,updatedAt:null,text:null,pages:Object.freeze(pages)});}
-async function get(path:string){const url=new URL(path,base).toString(),response=await requireContext().http.fetch(url,{headers});if(!response.ok)throw new Error('Source request failed.');return response.text();}function parseList(html:string):Item[]{const $=load(html),values=new Map<string,Item>();for(const node of $('.list .item.photo').toArray()){const card=$(node),link=card.find('a[href^="/photo/"]').first(),href=link.attr('href')??'';if(!href)continue;const path=new URL(href,base).pathname,title=clean(link.attr('title')??card.find('.title').text());if(!title)continue;const style=card.find('.img').attr('style')??'',cover=/background-image\s*:\s*url\(["']?([^"')]+)/iu.exec(style)?.[1]??'',subs=clean(card.find('.subs').text());values.set(path,{path,title,cover,author:clean(card.find('.model-item').text()),category:clean(card.find('.subs a').first().text()),remark:clean(card.find('.tags div').first().text()),date:subs.match(/\d{4}\.\d{2}\.\d{2}/u)?.[0]??''});}return[...values.values()];}function parseImages(html:string){const $=load(html),values:string[]=[];for(const node of $('.photo-items .item.photo-image .img').toArray()){const style=$(node).attr('style')??'',raw=/background-image\s*:\s*url\(["']?([^"')]+)/iu.exec(style)?.[1]??'';if(raw)values.push(absolute(raw).replace(/\/(\d{4,5})_600x0\.webp(?:[?#].*)?$/iu,'/$1.jpg'));}return values;}function sequential(first:string,count:number){const match=/^(.*\/)(\d+)(\.jpg(?:[?#].*)?)$/iu.exec(first);if(!match||count<2||count>2000)return[];const width=(match[2]??'').length;return Array.from({length:count},(_,index)=>`${match[1]}${String(index+1).padStart(width,'0')}${match[3]}`);}function maxPage(html:string){let max=1;for(const match of html.matchAll(/\/photo\/id-[^"']+\/(\d+)\.html/gu))max=Math.max(max,Number(match[1]??1));return max;}function paged(path:string,page:number){return path.replace(/\.html$/u,`/${page}.html`);}
-function summary(value:Item){return frozen({id:`manga:${encode(value.path)}`,title:value.title,contentKind:'manga',coverOrientation:'portrait',author:value.author||null,url:new URL(value.path,base).toString(),coverUrl:proxyImage(value.cover,value.path),description:null,language:'zh-CN',status:'completed',access:'free',wordCount:null,chapterCount:1,publishedAt:null,updatedAt:value.date?timestamp(value.date):null,latestChapter:{id:`manga:${encode(value.path)}:main`,title:value.remark||'全部',url:null,updatedAt:null},categories:value.category?[value.category]:[],tags:['写真','套图'],attributes:[]});}function proxyImage(value:string,path:string){if(!value)return null;const url=absolute(value);return requireContext().resource.proxy({kind:'image',url,headers:{...headers,Referer:new URL(path,base).toString()}});}function absolute(value:string){return new URL(value,base).toString();}function imageMime(url:string){const path=new URL(url).pathname.toLowerCase();return path.endsWith('.png')?'image/png':path.endsWith('.webp')?'image/webp':'image/jpeg';}function timestamp(value:string){const match=/^(\d{4})\.(\d{2})\.(\d{2})$/u.exec(value);if(match===null)throw new Error('Source date is invalid.');const year=Number(match[1]),month=Number(match[2]),day=Number(match[3]),date=new Date(Date.UTC(year,month-1,day));if(date.getUTCFullYear()!==year||date.getUTCMonth()!==month-1||date.getUTCDate()!==day)throw new Error('Source date is invalid.');return date.toISOString();}function contentPath(id:string){const value=/^manga:([A-Za-z0-9_-]+)$/u.exec(id)?.[1],path=value?decode(value):'';if(!/^\/photo\/id-[^/]+\.html$/u.test(path))throw new Error('Content ID is invalid.');return path;}function encode(value:string){return Buffer.from(value).toString('base64url');}function decode(value:string){return Buffer.from(value,'base64url').toString('utf8');}function clean(value:string){return value.replaceAll(/<[^>]+>/gu,' ').replaceAll(/\s+/gu,' ').trim();}function cursorPage(cursor:string|null,target:string){if(cursor===null)return 1;const page=Number(cursor.startsWith(`${target}:`)?cursor.slice(target.length+1):'');if(!Number.isSafeInteger(page)||page<2)throw new Error('Cursor is invalid.');return page;}function clamp(value:number){return Math.max(1,Math.min(50,Math.floor(value)));}function frozen<T>(value:T):T{return Object.freeze(value);}function requireContext(){if(!context)throw new Error('Source is not activated.');return context;}
+import type { MgReadPluginContext } from '@mgread/source-api';
+import { base, clean, encode, entry, fromId, idOf, resource, sitePath, type Entry } from './identity.js';
+import { chapterGate, detail, fictionChapters, fictionText, listing, nextPage, photoImages, searchLists, videoUrl, type Item } from './parsers.js';
+import { readSessionChapter, resetChapterSession } from './chapter-session.js';
+let context: MgReadPluginContext | undefined;
+const channels = [
+  ['latest', '最新套图', '/photos', 'manga'], ['hot', '热门套图', '/photos?sort=hot', 'manga'],
+  ['comment', '评论最多', '/photos?sort=comment', 'manga'], ['recent', '最近评论', '/photos?sort=recent', 'manga'],
+  ['fiction', '小说', '/fictions', 'book'], ['video', '视频', '/videos', 'video'],
+] as const;
+const headers = { Accept: 'text/html,application/xhtml+xml,*/*;q=0.8', Referer: base + '/' };
+const ctx = () => { if (!context) throw new Error('Source is not activated.'); return context; };
+export async function activate(next: MgReadPluginContext) { context = next; resetChapterSession(); next.log.info('source_activated'); }
+async function get(path: string) {
+  const response = await ctx().http.fetch(base + sitePath(path), { headers, signal: AbortSignal.timeout(20000) });
+  if (!response.ok) throw new Error(`Source request failed (${response.status}).`);
+  return response.text();
+}
+function proxy(url: string, path: string, kind: 'image' | 'hls' | 'video') {
+  return ctx().resource.proxy({ kind, url: resource(url), headers: { Referer: base + path } });
+}
+function summary(value: Item) {
+  return { id: idOf(value), title: value.title, contentKind: value.kind,
+    coverOrientation: value.kind === 'video' ? 'landscape' : 'portrait', author: value.author || null,
+    url: base + value.path, coverUrl: value.cover ? proxy(value.cover, value.path, 'image') : null,
+    description: value.description, language: 'zh-CN', status: 'unknown', access: 'unknown',
+    wordCount: null, chapterCount: value.kind === 'novel' ? null : 1, publishedAt: null, updatedAt: null,
+    latestChapter: null, categories: [], tags: [], attributes: [] };
+}
+type Cursor = { scope: string; path: string; offset: number; pending: string[] };
+function cursor(raw: string | null, scope: string, path: string): Cursor {
+  if (!raw) return { scope, path, offset: 0, pending: [] };
+  if (raw.length > 8192) throw new Error('Cursor is invalid.');
+  const v = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')) as Cursor;
+  if (v.scope !== scope || !Number.isSafeInteger(v.offset) || v.offset < 0 || !Array.isArray(v.pending) || v.pending.length > 3) throw new Error('Cursor is invalid.');
+  const validate = (s: string) => { const u = new URL(sitePath(s), base); if (!/^\/(photos|videos|fictions)(?:\/\d+)?$/u.test(u.pathname) && u.pathname !== '/search') throw new Error('Cursor path is invalid.'); };
+  validate(v.path); v.pending.forEach(validate); return v;
+}
+async function page(v: Cursor, size: number, supplied?: string) {
+  const html = supplied ?? await get(v.path), values = listing(html), limit = Math.max(1, Math.min(50, Math.floor(size)));
+  const items = values.slice(v.offset, v.offset + limit).map(summary);
+  const next = v.offset + limit < values.length ? { ...v, offset: v.offset + limit } : (() => {
+    const pending = [...v.pending], path = nextPage(html, v.path) ?? pending.shift();
+    return path ? { ...v, path, offset: 0, pending } : null;
+  })();
+  return { items, nextCursor: next ? encode(JSON.stringify(next)) : null };
+}
+export async function search(request: { query: string; cursor: string | null; pageSize: number }) {
+  const query = clean(request.query); if (!query) return { items: [], nextCursor: null, totalCount: 0 };
+  const path = `/search?q=${encodeURIComponent(query)}`, state = cursor(request.cursor, `search:${query}`, path);
+  if (!request.cursor) {
+    const html = await get(path), paths = searchLists(html, query);
+    if (!paths.length) return { ...await page(state, request.pageSize, html), totalCount: null };
+    state.path = paths.shift()!; state.pending = paths;
+  }
+  return { ...await page(state, request.pageSize), totalCount: null };
+}
+export async function searchSuggestions(_request: { cursor: string | null; pageSize: number }) { return { items: [], nextCursor: null }; }
+export async function discover(request: { target: string | null; cursor: string | null; collectionId: string | null; pageSize: number }) {
+  if (request.target === null) return { kind: 'document' as const, document: { components: [{ type: 'section', id: 'xchina-channels', title: '小黄书', subtitle: null, icon: 'manga', children: [{ type: 'categoryCollection', id: 'xchina-channel-list', layout: 'chips', categories: channels.map(([id, title, , icon]) => ({ id, title, target: `channel:${id}`, count: null, url: null, icon })) }] }] } };
+  const channel = channels.find(([id]) => request.target === `channel:${id}`);
+  if (!channel) throw new Error('Discovery target is invalid.');
+  const result = await page(cursor(request.cursor, request.target, channel[2]), request.pageSize), collectionId = `xchina:${channel[0]}`;
+  const items = result.items.map(content => ({ content, rank: null, metric: null, recommendation: null }));
+  const continuation = result.nextCursor ? { target: request.target, cursor: result.nextCursor } : null;
+  if (request.collectionId !== null) { if (request.collectionId !== collectionId) throw new Error('Discovery collection is invalid.'); return { kind: 'append' as const, collectionId, items, continuation }; }
+  return { kind: 'document' as const, document: { components: [{ type: 'section', id: `${collectionId}:section`, title: channel[1], subtitle: null, icon: channel[3], children: [{ type: 'contentCollection', id: collectionId, layout: 'coverGrid', items, continuation }] }] } };
+}
+export async function getDetail(request: { id: string }) {
+  const e = fromId(request.id), html = await get(e.path), value = summary(detail(html, e));
+  return { ...value, chapterCount: e.kind === 'novel' ? fictionChapters(html, e).length : 1, aliases: [], catalogUrl: base + e.path };
+}
+function chapter(id: string, title: string, order: number, path: string) {
+  return { id, title, order, url: base + path, volumeTitle: null, wordCount: null, updatedAt: null, isLocked: false, attributes: [] };
+}
+async function chapters(e: Entry) {
+  const id = idOf(e);
+  if (e.kind !== 'novel') return [chapter(`${id}:main`, e.kind === 'manga' ? '全部' : '播放', 0, e.path)];
+  return fictionChapters(await get(e.path), e).map((value, order) => chapter(`${id}:chapter:${encode(value.path)}`, value.title, order, value.path));
+}
+export async function getChapters(request: { id: string }) { return { items: await chapters(fromId(request.id)), groups: [] }; }
+export async function getContent(request: { id: string; chapterId: string }) {
+  const e = fromId(request.id), prefix = { chapterId: request.chapterId, contentKind: e.kind, title: null, updatedAt: null, text: null, pages: [] };
+  if (e.kind === 'novel') {
+    const value = (await chapters(e)).find(x => x.id === request.chapterId);
+    if (!value) throw new Error('Chapter ID is invalid.');
+    const path = sitePath(value.url), html = await get(path);
+    return { ...prefix, ...fictionText(chapterGate(html, path) ? await readSessionChapter(ctx(), path) : html) };
+  }
+  if (request.chapterId !== `${request.id}:main`) throw new Error('Chapter ID is invalid.');
+  const html = await get(e.path);
+  if (e.kind === 'manga') return { ...prefix, pages: photoImages(html, e).map((url, index) => ({ id: `page:${index + 1}`, index, url: proxy(url, e.path, 'image'), mimeType: new URL(url).pathname.endsWith('.webp') ? 'image/webp' : null, width: null, height: null })) };
+  const url = videoUrl(html), resourceType = /\.m3u8(?:$|[?#])/iu.test(url) ? 'hls' : 'video';
+  return { ...prefix, media: { url: proxy(url, e.path, resourceType), resourceType, resourcePolicy: 'sessionOnly', expiresAt: null, mimeType: resourceType === 'hls' ? 'application/vnd.apple.mpegurl' : 'video/mp4', headers: { Referer: base + e.path } } };
+}

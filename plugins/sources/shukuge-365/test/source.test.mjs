@@ -54,6 +54,8 @@ test('fixtures cover categories search detail paged catalog content and image pr
   assert.equal(new URL(resources[0].url).origin, 'http://www.shukuge.com');
   assert.ok(calls.every(({ init }) => init.headers.cookie === undefined && init.headers['user-agent'] === undefined));
   assert.ok(calls.every(({ init }) => init.method === undefined || init.method === 'GET'));
+  assert.ok(resources.length > 0);
+  assert.ok(resources.every(request => request.resourceTransform === 'sniff-image-content-type-v1'));
 });
 
 test('invalid opaque ids and cross-book chapters are rejected', async () => {

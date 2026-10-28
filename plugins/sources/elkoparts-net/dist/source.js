@@ -2,11 +2,11 @@
  * Elkoparts public-page parser and MgRead projection.
  *
  * Responsibilities: own stable source IDs, same-origin navigation, HTML parsing, bounded catalog fan-out,
- * and source-resource proxy requests. This module never owns shelf/progress state and never uses browser sessions.
+ * and source-resource proxy requests. Public HTTP pages and covers use direct routing after proxy/direct comparison;
+ * the site times out through the configured proxy. No shelf/progress state or browser sessions are owned here.
  */
+import { ElkopartsCatalog } from './catalog.js';
 const sourceOrigin = 'http://www.elkoparts.net';
-const catalogPageLimit = 250;
-const catalogConcurrency = 8;
 const categories = Object.freeze([
     { id: '1', title: '玄幻奇幻', icon: 'fantasy' },
     { id: '2', title: '武侠仙侠', icon: 'wuxia' },
@@ -18,6 +18,7 @@ const categories = Object.freeze([
 ]);
 export class ElkopartsSource {
     #context;
+    #catalog = new ElkopartsCatalog(url => this.#fetchHtml(url), catalogPageUrls, (html, url, id) => this.#parseChapterPage(html, url, decodeBookId(id)));
     constructor(context) {
         this.#context = context;
     }
@@ -135,7 +136,7 @@ export class ElkopartsSource {
         const category = prefixedValue(infoLines, '类别：');
         const statusText = prefixedValue(infoLines, '状态：');
         const coverTag = firstCapture(html, /<div\s+class=["'][^"']*imgbox[^"']*["'][^>]*>[\s\S]*?(<img\b[^>]*>)/iu);
-        const cover = this.#coverProxy(normalizeSourceUrl(coverTag === null ? undefined : attribute(coverTag, 'src'), url));
+        const cover = this.#coverProxy(normalizeCoverUrl(coverTag === null ? undefined : attribute(coverTag, 'src'), url));
         const description = normalizeDescription(textFromMatch(html, /<div\s+class=["'][^"']*\bxdesc\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/iu)
             ?? textFromMatch(html, /<div\s+class=["'][^"']*\bdesc\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/iu));
         const latestBlock = firstCapture(html, /<p[^>]*>\s*最新(?:章节)?[：:]([\s\S]*?)<\/p>/iu) ?? '';
@@ -162,32 +163,7 @@ export class ElkopartsSource {
         };
     }
     async getChapters(request) {
-        const key = decodeBookId(request.id);
-        const firstUrl = bookUrl(key);
-        const firstHtml = await this.#fetchHtml(firstUrl);
-        const pageUrls = catalogPageUrls(firstHtml, firstUrl).slice(0, catalogPageLimit);
-        const htmlPages = new Array(pageUrls.length);
-        htmlPages[0] = firstHtml;
-        let nextIndex = 1;
-        const worker = async () => {
-            while (nextIndex < pageUrls.length) {
-                const index = nextIndex;
-                nextIndex += 1;
-                htmlPages[index] = await this.#fetchHtml(pageUrls[index]);
-            }
-        };
-        await Promise.all(Array.from({ length: Math.min(catalogConcurrency, Math.max(0, pageUrls.length - 1)) }, worker));
-        const seen = new Set();
-        const chapters = htmlPages.flatMap((html, pageIndex) => this.#parseChapterPage(html, pageUrls[pageIndex], key))
-            .filter((chapter) => {
-            if (seen.has(chapter.id))
-                return false;
-            seen.add(chapter.id);
-            return true;
-        })
-            .slice(0, 5000)
-            .map((chapter, order) => ({ ...chapter, order }));
-        return { items: chapters };
+        return this.#catalog.load(request, bookUrl(decodeBookId(request.id)));
     }
     async getContent(request) {
         const book = decodeBookId(request.id);
@@ -275,7 +251,7 @@ export class ElkopartsSource {
                 title,
                 author: textFromHtml(authorBlock),
                 category: null,
-                coverUrl: this.#coverProxy(normalizeSourceUrl(imageTag === null ? undefined : attribute(imageTag, 'src'), pageUrl) ?? coverUrl(key)),
+                coverUrl: this.#coverProxy(normalizeCoverUrl(imageTag === null ? undefined : attribute(imageTag, 'src'), pageUrl) ?? coverUrl(key)),
                 description: textFromMatch(root, /<dd[^>]*>([\s\S]*?)<\/dd>/iu),
                 status: 'unknown',
                 chapterCount: null,
@@ -310,7 +286,7 @@ export class ElkopartsSource {
     }
     async #fetchHtml(url) {
         assertSourceUrl(url);
-        const response = await this.#context.http.fetch(url, { method: 'GET' });
+        const response = await this.#context.http.fetch(url, { method: 'GET', proxyMode: 'direct', signal: AbortSignal.timeout(15_000) });
         if (!response.ok)
             throw new Error('Source request failed.');
         return response.text();
@@ -318,7 +294,7 @@ export class ElkopartsSource {
     #coverProxy(url) {
         if (url === null)
             return null;
-        return this.#context.resource.proxy({ kind: 'image', url: url.toString(), headers: { Accept: 'image/*' } });
+        return this.#context.resource.proxy({ kind: 'image', url: url.toString(), proxyMode: 'direct', headers: { Accept: 'image/*' } });
     }
 }
 function summary(input) {
@@ -527,6 +503,16 @@ function normalizeSourceUrl(value, base) {
         return null;
     const url = new URL(value, base);
     assertSourceUrl(url);
+    return url;
+}
+// The source's current detail HTML publishes .info images; navigation remains .net-only.
+function normalizeCoverUrl(value, base) {
+    if (value === undefined || value.trim().length === 0)
+        return null;
+    const url = new URL(value, base);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username !== '' || url.password !== '' || url.port !== '' ||
+        !['www.elkoparts.net', 'www.elkoparts.info'].includes(url.hostname))
+        throw new Error('Source cover URL is outside the allowed origin.');
     return url;
 }
 function assertSourceUrl(url) {

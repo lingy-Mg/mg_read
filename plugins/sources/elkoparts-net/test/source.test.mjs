@@ -18,7 +18,8 @@ test('projects discovery, search, detail, catalog, content, and cover resources'
     dataDir: 'data',
     cacheDir: 'cache',
     http: {
-      async fetch(input) {
+      async fetch(input, init) {
+        assert.equal(init.proxyMode, 'direct');
         const url = new URL(input);
         if (url.pathname === '/') return new Response(home);
         if (url.pathname === '/ksl/1/1.html') return new Response(category);
@@ -69,6 +70,7 @@ test('projects discovery, search, detail, catalog, content, and cover resources'
   assert.equal(detailResult.status, 'completed');
   assert.equal(detailResult.chapterCount, 3);
   assert.equal(detailResult.latestChapter.id, 'chapter:10:1001:2002');
+  assert.ok(proxyRequests.every(request => request.proxyMode === 'direct'));
   assert.match(detailResult.coverUrl, /^http:\/\/127\.0\.0\.1:1234\/v1\/source-resource\//u);
 
   const chapters = await plugin.getChapters({ id: 'novel:10:1001' });
@@ -85,4 +87,5 @@ test('projects discovery, search, detail, catalog, content, and cover resources'
   assert.deepEqual(proxyRequests[0].headers, { Accept: 'image/*' });
   assert.equal(new URL(proxyRequests[0].url).origin, 'http://www.elkoparts.net');
   assert.ok(logEvents.every((event) => /^[a-z_]+$/u.test(event)));
+  assert.ok(proxyRequests.some(request => new URL(request.url).hostname === 'www.elkoparts.info'));
 });

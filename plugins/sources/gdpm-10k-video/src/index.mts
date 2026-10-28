@@ -7,7 +7,7 @@
  * 稳定标识：内容使用 API video ID，单集章节使用固定 main 后缀。
  */
 import type{MgReadPluginContext}from'@mgread/source-api';type Json=Record<string,unknown>;type Context=MgReadPluginContext;
-const site='https://gdpm.kpyaqxe.com',apiBase='https://hdwtoqv.com/api',headers=Object.freeze({Accept:'application/json, text/plain, */*','Accept-Language':'zh-CN,zh;q=0.9',Origin:site,Referer:`${site}/`,'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/136.0.0.0'});let context:Context|undefined;
+const site='https://gdpm.kpyaqxe.com',apiBase='https://kpvmnw.com/api',headers=Object.freeze({Accept:'application/json, text/plain, */*','Accept-Language':'zh-CN,zh;q=0.9',Origin:site,Referer:`${site}/`,'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/136.0.0.0'});let context:Context|undefined;
 export async function activate(next:Context):Promise<void>{context=next;next.log.info('source_activated');}
 export async function search(request:{query:string;cursor:string|null;pageSize:number}){const query=request.query.trim();if(query==='')return frozen({items:[],nextCursor:null,totalCount:0});const page=cursorPage(request.cursor,'search'),limit=clamp(request.pageSize),data=object(await api('/data/searchVideos',{keyword:query,page,pageSize:limit})),values=records(data.video).slice(0,limit),pagination=object(data.pagination);return frozen({items:values.map(summary),nextCursor:values.length>=limit?`search:${page+1}`:null,totalCount:integer(first(pagination.total,data.total))});}
 export async function searchSuggestions(_request:{cursor:string|null;pageSize:number}){return frozen({items:[],nextCursor:null});}

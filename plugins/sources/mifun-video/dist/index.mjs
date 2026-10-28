@@ -67,8 +67,8 @@ async function getContent(request) {
   }
   const input = isRecord(data) ? text(data.url) : "", upstream = safeUrl(input) ? input : await resolvePlayer(input, pageUrl);
   if (!safeUrl(upstream)) throw new Error("Video address is unavailable.");
-  const mediaHeaders = { "User-Agent": agent, Referer: pageUrl };
-  return frozen({ chapterId: request.chapterId, contentKind: "video", title: null, updatedAt: null, text: null, pages: [], media: { url: requireContext().resource.proxy({ kind: "video", url: upstream, headers: mediaHeaders }), resourceType: "video", resourcePolicy: "sessionOnly", expiresAt: null, mimeType: /\.m3u8(?:$|[?#])/iu.test(upstream) ? "application/vnd.apple.mpegurl" : "video/mp4", headers: mediaHeaders } });
+  const resourceType = /\.m3u8(?:$|[?#])/iu.test(upstream) ? "hls" : "video", mediaHeaders = { "User-Agent": agent, Referer: pageUrl };
+  return frozen({ chapterId: request.chapterId, contentKind: "video", title: null, updatedAt: null, text: null, pages: [], media: { url: requireContext().resource.proxy({ kind: resourceType, url: upstream, headers: mediaHeaders }), resourceType, resourcePolicy: "sessionOnly", expiresAt: null, mimeType: /\.m3u8(?:$|[?#])/iu.test(upstream) ? "application/vnd.apple.mpegurl" : "video/mp4", headers: mediaHeaders } });
 }
 async function resolvePlayer(input, chapterUrl) {
   if (!input) throw new Error("Player token is unavailable.");

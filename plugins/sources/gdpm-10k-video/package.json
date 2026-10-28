@@ -1,13 +1,18 @@
 {
   "name": "@mgread-plugin/gdpm-10k-video",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
   "description": "MgRead native source for 10K video.",
   "type": "module",
   "main": "dist/index.mjs",
-  "bin": { "mgread": "tools/mgread.mjs" },
+  "bin": {
+    "mgread": "tools/mgread.mjs"
+  },
   "packageManager": "npm@11.19.1",
-  "engines": { "node": ">=24", "npm": "11.13.0 || 11.19.1" },
+  "engines": {
+    "node": ">=24",
+    "npm": "11.13.0 || 11.19.1"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json && node tools/mgread.mjs build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -16,7 +21,12 @@
     "pack:plugin": "npm run build && node tools/mgread.mjs pack",
     "verify": "npm run typecheck && npm test && npm run pack:plugin"
   },
-  "devDependencies": { "@mgread/source-api": "file:../../../packages/mg_read_source_api", "@types/node": "24.13.3", "esbuild": "0.28.2", "typescript": "5.9.3" },
+  "devDependencies": {
+    "@mgread/source-api": "file:../../../packages/mg_read_source_api",
+    "@types/node": "24.13.3",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  },
   "mgread": {
     "sourceUrl": "https://gdpm.kpyaqxe.com/",
     "schemaVersion": 1,
@@ -24,8 +34,11 @@
     "displayName": "10KAV视频",
     "description": "10KAV视频是成人向视频网站，按分类展示视频作品。可浏览分类、按关键词查找内容，查看作品介绍并打开视频。",
     "pluginApi": 1,
-    "packageMode": "single-file","icon":"assets/icon.png",
-    "contentKinds": ["video"],
+    "packageMode": "single-file",
+    "icon": "assets/icon.png",
+    "contentKinds": [
+      "video"
+    ],
     "r18": true
   }
 }

@@ -9,6 +9,16 @@ import 'package:mg_read/features/plugins/application/source_verification.dart';
 import 'package:mg_read/features/plugins/application/source_verification_catalog.dart';
 
 void main() {
+  test('input-only discovery needs user input rather than being a broken source', () async {
+    final gateway = _VerificationGateway(chapterCount: 1, inputOnly: true);
+    final report = await SourceVerificationEngine(gateway).run();
+    expect(report.sources.single.status, SourceVerificationResultStatus.interactionRequired);
+    expect(report.sources.single.failure?.code, 'source_input_required');
+    expect(report.failedCount, 0);
+    expect(report.passedCount, 0);
+    expect(gateway.searchCalls, 0);
+  });
+
   test('cancels an in-flight Runtime request and ignores its late result', () async {
     final gate = Completer<void>();
     final entered = Completer<void>();
@@ -403,10 +413,18 @@ final class _VideoVerificationGateway implements SourceContentGateway {
 }
 
 final class _VerificationGateway implements SourceContentGateway, CancellableSourceContentGateway {
-  _VerificationGateway({required this.chapterCount, this.coverUrl, this.onDiscover, this.onList, this.sourceCount = 1});
+  _VerificationGateway({
+    required this.chapterCount,
+    this.coverUrl,
+    this.onDiscover,
+    this.onList,
+    this.sourceCount = 1,
+    this.inputOnly = false,
+  });
   final Future<void> Function()? onDiscover;
   final Future<void> Function()? onList;
   final int sourceCount;
+  final bool inputOnly;
   int discoverCalls = 0;
   int searchCalls = 0;
   PluginInvocationCancellation? activeCancellation;
@@ -472,14 +490,22 @@ final class _VerificationGateway implements SourceContentGateway, CancellableSou
       sourceName: 'Fixture Source',
       document: PluginDiscoveryDocument(
         components: <PluginDiscoveryComponent>[
-          PluginDiscoveryContentCollectionComponent(
-            id: 'fixture-collection',
-            layout: PluginDiscoveryContentLayout.list,
-            items: <PluginDiscoveryContentItem>[
-              PluginDiscoveryContentItem(content: summary, rank: null, metric: null, recommendation: null),
-            ],
-            continuation: null,
-          ),
+          if (inputOnly)
+            PluginDiscoverySectionComponent(
+              id: 'input-section',
+              title: '链接入口',
+              subtitle: null,
+              children: [PluginDiscoverySearchInputComponent(id: 'link', label: '作品链接', placeholder: '粘贴链接', submitLabel: '读取')],
+            ),
+          if (!inputOnly)
+            PluginDiscoveryContentCollectionComponent(
+              id: 'fixture-collection',
+              layout: PluginDiscoveryContentLayout.list,
+              items: <PluginDiscoveryContentItem>[
+                PluginDiscoveryContentItem(content: summary, rank: null, metric: null, recommendation: null),
+              ],
+              continuation: null,
+            ),
         ],
       ),
     );

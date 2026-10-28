@@ -2,7 +2,7 @@ import { createRequire as __mgreadCreateRequire } from 'node:module'; const requ
 
 // src/index.mts
 var site = "https://gdpm.kpyaqxe.com";
-var apiBase = "https://hdwtoqv.com/api";
+var apiBase = "https://kpvmnw.com/api";
 var headers = Object.freeze({ Accept: "application/json, text/plain, */*", "Accept-Language": "zh-CN,zh;q=0.9", Origin: site, Referer: `${site}/`, "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/136.0.0.0" });
 var context;
 async function activate(next) {

@@ -3586,7 +3586,7 @@ var require_lib = __commonJS({
       var trail = encoder.end();
       return trail && trail.length > 0 ? Buffer2.concat([res, trail]) : res;
     };
-    iconv2.decode = function decode2(buf, encoding, options) {
+    iconv2.decode = function decode(buf, encoding, options) {
       if (typeof buf === "string") {
         if (!iconv2.skipDecodeWarning) {
           console.error("Iconv-lite warning: decode()-ing strings is deprecated. Refer to https://github.com/ashtuchkin/iconv-lite/wiki/Use-Buffers-when-decoding");
@@ -8436,11 +8436,11 @@ var require_webidl = __commonJS({
         }
       };
     };
-    webidl.argumentLengthCheck = function({ length }, min, ctx) {
+    webidl.argumentLengthCheck = function({ length }, min, ctx2) {
       if (length < min) {
         throw webidl.errors.exception({
           message: `${min} argument${min !== 1 ? "s" : ""} required, but${length ? " only" : ""} ${length} found.`,
-          header: ctx
+          header: ctx2
         });
       }
     };
@@ -9122,8 +9122,8 @@ var require_util2 = __commonJS({
         request.headersList.append("origin", serializedOrigin, true);
       }
     }
-    function coarsenTime(timestamp2, crossOriginIsolatedCapability) {
-      return timestamp2;
+    function coarsenTime(timestamp, crossOriginIsolatedCapability) {
+      return timestamp;
     }
     function clampAndCoarsenConnectionTimingInfo(connectionTimingInfo, defaultStartTime, crossOriginIsolatedCapability) {
       if (!connectionTimingInfo?.startTime || connectionTimingInfo.startTime < defaultStartTime) {
@@ -9782,22 +9782,22 @@ var require_formdata = __commonJS({
         } else {
           value = webidl.converters.USVString(value);
         }
-        const entry = makeEntry(name, value, filename);
-        this.#state.push(entry);
+        const entry3 = makeEntry(name, value, filename);
+        this.#state.push(entry3);
       }
       delete(name) {
         webidl.brandCheck(this, _FormData);
         const prefix = "FormData.delete";
         webidl.argumentLengthCheck(arguments, 1, prefix);
         name = webidl.converters.USVString(name);
-        this.#state = this.#state.filter((entry) => entry.name !== name);
+        this.#state = this.#state.filter((entry3) => entry3.name !== name);
       }
       get(name) {
         webidl.brandCheck(this, _FormData);
         const prefix = "FormData.get";
         webidl.argumentLengthCheck(arguments, 1, prefix);
         name = webidl.converters.USVString(name);
-        const idx = this.#state.findIndex((entry) => entry.name === name);
+        const idx = this.#state.findIndex((entry3) => entry3.name === name);
         if (idx === -1) {
           return null;
         }
@@ -9808,14 +9808,14 @@ var require_formdata = __commonJS({
         const prefix = "FormData.getAll";
         webidl.argumentLengthCheck(arguments, 1, prefix);
         name = webidl.converters.USVString(name);
-        return this.#state.filter((entry) => entry.name === name).map((entry) => entry.value);
+        return this.#state.filter((entry3) => entry3.name === name).map((entry3) => entry3.value);
       }
       has(name) {
         webidl.brandCheck(this, _FormData);
         const prefix = "FormData.has";
         webidl.argumentLengthCheck(arguments, 1, prefix);
         name = webidl.converters.USVString(name);
-        return this.#state.findIndex((entry) => entry.name === name) !== -1;
+        return this.#state.findIndex((entry3) => entry3.name === name) !== -1;
       }
       set(name, value, filename = void 0) {
         webidl.brandCheck(this, _FormData);
@@ -9830,16 +9830,16 @@ var require_formdata = __commonJS({
         } else {
           value = webidl.converters.USVString(value);
         }
-        const entry = makeEntry(name, value, filename);
-        const idx = this.#state.findIndex((entry2) => entry2.name === name);
+        const entry3 = makeEntry(name, value, filename);
+        const idx = this.#state.findIndex((entry4) => entry4.name === name);
         if (idx !== -1) {
           this.#state = [
             ...this.#state.slice(0, idx),
-            entry,
-            ...this.#state.slice(idx + 1).filter((entry2) => entry2.name !== name)
+            entry3,
+            ...this.#state.slice(idx + 1).filter((entry4) => entry4.name !== name)
           ];
         } else {
-          this.#state.push(entry);
+          this.#state.push(entry3);
         }
       }
       [nodeUtil.inspect.custom](depth, options) {
@@ -13162,10 +13162,10 @@ var require_pool_base = __commonJS({
       [kClients] = [];
       [kNeedDrain] = false;
       [kOnDrain](client, origin, targets) {
-        const queue = this[kQueue];
+        const queue2 = this[kQueue];
         let needDrain = false;
         while (!needDrain) {
-          const item = queue.shift();
+          const item = queue2.shift();
           if (!item) {
             break;
           }
@@ -13177,7 +13177,7 @@ var require_pool_base = __commonJS({
           this[kNeedDrain] = false;
           this.emit("drain", origin, [this, ...targets]);
         }
-        if (this[kClosedResolve] && queue.isEmpty()) {
+        if (this[kClosedResolve] && queue2.isEmpty()) {
           const closeAll = [];
           for (let i = 0; i < this[kClients].length; i++) {
             const client2 = this[kClients][i];
@@ -14844,14 +14844,14 @@ var require_env_http_proxy_agent = __commonJS({
           return false;
         }
         for (let i = 0; i < this.#noProxyEntries.length; i++) {
-          const entry = this.#noProxyEntries[i];
-          if (entry.port && entry.port !== port) {
+          const entry3 = this.#noProxyEntries[i];
+          if (entry3.port && entry3.port !== port) {
             continue;
           }
-          if (hostname === entry.hostname) {
+          if (hostname === entry3.hostname) {
             return false;
           }
-          if (hostname.slice(-(entry.hostname.length + 1)) === `.${entry.hostname}`) {
+          if (hostname.slice(-(entry3.hostname.length + 1)) === `.${entry3.hostname}`) {
             return false;
           }
         }
@@ -14862,14 +14862,14 @@ var require_env_http_proxy_agent = __commonJS({
         const noProxySplit = noProxyValue.split(/[,\s]/);
         const noProxyEntries = [];
         for (let i = 0; i < noProxySplit.length; i++) {
-          const entry = noProxySplit[i];
-          if (!entry) {
+          const entry3 = noProxySplit[i];
+          if (!entry3) {
             continue;
           }
-          const parsed = entry.match(/^(.+):(\d+)$/);
+          const parsed = entry3.match(/^(.+):(\d+)$/);
           noProxyEntries.push({
             // strip leading dot or asterisk with dot
-            hostname: (parsed ? parsed[1] : entry).replace(/^\*?\./, "").toLowerCase(),
+            hostname: (parsed ? parsed[1] : entry3).replace(/^\*?\./, "").toLowerCase(),
             port: parsed ? Number.parseInt(parsed[2], 10) : 0
           });
         }
@@ -19151,11 +19151,11 @@ var require_dns = __commonJS({
         return ip;
       }
       setRecords(origin, addresses) {
-        const timestamp2 = Date.now();
+        const timestamp = Date.now();
         const records = { records: { 4: null, 6: null } };
         let minTTL = this.#maxTTL;
         for (const record of addresses) {
-          record.timestamp = timestamp2;
+          record.timestamp = timestamp;
           if (typeof record.ttl === "number") {
             record.ttl = Math.min(record.ttl, this.#maxTTL);
             minTTL = Math.min(minTTL, record.ttl);
@@ -20880,18 +20880,18 @@ var require_memory_cache_store = __commonJS({
         const topLevelKey = `${key.origin}:${key.path}`;
         const now = Date.now();
         const entries = this.#entries.get(topLevelKey);
-        const entry = entries ? findEntry(key, entries, now) : null;
-        return entry == null ? void 0 : {
-          statusMessage: entry.statusMessage,
-          statusCode: entry.statusCode,
-          headers: entry.headers,
-          body: entry.body,
-          vary: entry.vary ? entry.vary : void 0,
-          etag: entry.etag,
-          cacheControlDirectives: entry.cacheControlDirectives,
-          cachedAt: entry.cachedAt,
-          staleAt: entry.staleAt,
-          deleteAt: entry.deleteAt
+        const entry3 = entries ? findEntry(key, entries, now) : null;
+        return entry3 == null ? void 0 : {
+          statusMessage: entry3.statusMessage,
+          statusCode: entry3.statusCode,
+          headers: entry3.headers,
+          body: entry3.body,
+          vary: entry3.vary ? entry3.vary : void 0,
+          etag: entry3.etag,
+          cacheControlDirectives: entry3.cacheControlDirectives,
+          cachedAt: entry3.cachedAt,
+          staleAt: entry3.staleAt,
+          deleteAt: entry3.deleteAt
         };
       }
       /**
@@ -20904,17 +20904,17 @@ var require_memory_cache_store = __commonJS({
         assertCacheValue(val2);
         const topLevelKey = `${key.origin}:${key.path}`;
         const store = this;
-        const entry = { ...key, ...val2, body: [], size: 0 };
+        const entry3 = { ...key, ...val2, body: [], size: 0 };
         return new Writable3({
           write(chunk, encoding, callback) {
             if (typeof chunk === "string") {
               chunk = Buffer.from(chunk, encoding);
             }
-            entry.size += chunk.byteLength;
-            if (entry.size >= store.#maxEntrySize) {
+            entry3.size += chunk.byteLength;
+            if (entry3.size >= store.#maxEntrySize) {
               this.destroy();
             } else {
-              entry.body.push(chunk);
+              entry3.body.push(chunk);
             }
             callback(null);
           },
@@ -20927,13 +20927,13 @@ var require_memory_cache_store = __commonJS({
             const previousEntry = findEntry(key, entries, Date.now());
             if (previousEntry) {
               const index2 = entries.indexOf(previousEntry);
-              entries.splice(index2, 1, entry);
+              entries.splice(index2, 1, entry3);
               store.#size -= previousEntry.size;
             } else {
-              entries.push(entry);
+              entries.push(entry3);
               store.#count += 1;
             }
-            store.#size += entry.size;
+            store.#size += entry3.size;
             if (store.#size > store.#maxSize || store.#count > store.#maxCount) {
               if (!store.#hasEmittedMaxSizeEvent) {
                 store.emit("maxSizeExceeded", {
@@ -20945,8 +20945,8 @@ var require_memory_cache_store = __commonJS({
                 store.#hasEmittedMaxSizeEvent = true;
               }
               for (const [key2, entries2] of store.#entries) {
-                for (const entry2 of entries2.splice(0, entries2.length / 2)) {
-                  store.#size -= entry2.size;
+                for (const entry4 of entries2.splice(0, entries2.length / 2)) {
+                  store.#size -= entry4.size;
                   store.#count -= 1;
                 }
                 if (entries2.length === 0) {
@@ -20969,8 +20969,8 @@ var require_memory_cache_store = __commonJS({
           throw new TypeError(`expected key to be object, got ${typeof key}`);
         }
         const topLevelKey = `${key.origin}:${key.path}`;
-        for (const entry of this.#entries.get(topLevelKey) ?? []) {
-          this.#size -= entry.size;
+        for (const entry3 of this.#entries.get(topLevelKey) ?? []) {
+          this.#size -= entry3.size;
           this.#count -= 1;
         }
         this.#entries.delete(topLevelKey);
@@ -20978,18 +20978,18 @@ var require_memory_cache_store = __commonJS({
     };
     function findEntry(key, entries, now) {
       for (let i = 0; i < entries.length; i++) {
-        const entry = entries[i];
-        if (entry.deleteAt > now && entry.method === key.method && varyMatches(key, entry)) {
-          return entry;
+        const entry3 = entries[i];
+        if (entry3.deleteAt > now && entry3.method === key.method && varyMatches(key, entry3)) {
+          return entry3;
         }
       }
     }
-    function varyMatches(key, entry) {
-      if (entry.vary == null) {
+    function varyMatches(key, entry3) {
+      if (entry3.vary == null) {
         return true;
       }
-      for (const headerName in entry.vary) {
-        if (Object.hasOwn(entry.vary, headerName) && !headerValueEquals(key.headers?.[headerName], entry.vary[headerName])) {
+      for (const headerName in entry3.vary) {
+        if (Object.hasOwn(entry3.vary, headerName) && !headerValueEquals(key.headers?.[headerName], entry3.vary[headerName])) {
           return false;
         }
       }
@@ -25406,8 +25406,8 @@ var require_fetch = __commonJS({
                 }
                 const headerName = name.toLowerCase();
                 if (Array.isArray(value)) {
-                  for (const entry of value) {
-                    headersList.append(headerName, String(entry), true);
+                  for (const entry3 of value) {
+                    headersList.append(headerName, String(entry3), true);
                   }
                 } else {
                   headersList.append(headerName, String(value), true);
@@ -27899,9 +27899,9 @@ var require_sender = __commonJS({
       }
       async #run() {
         this.#running = true;
-        const queue = this.#queue;
-        while (!queue.isEmpty()) {
-          const node = queue.shift();
+        const queue2 = this.#queue;
+        while (!queue2.isEmpty()) {
+          const node = queue2.shift();
           if (node.promise !== null) {
             await node.promise;
           }
@@ -29910,6 +29910,39 @@ var require_mime_type = __commonJS({
   }
 });
 
+// src/identity.ts
+var base = "https://xchina001.ink";
+var clean = (s) => s.replace(/\s+/gu, " ").trim();
+var encode = (s) => Buffer.from(s).toString("base64url");
+function entry(path) {
+  const m = /^\/(photo|fiction|video)\/(?:id-)?([a-zA-Z0-9_-]+?)(?:\.html)?$/u.exec(path);
+  if (!m) throw new Error("Content path is invalid.");
+  const kind = m[1] === "photo" ? "manga" : m[1] === "fiction" ? "novel" : "video";
+  return { path: `/${m[1]}/${m[2]}`, kind, nativeId: m[2] };
+}
+function idOf(e) {
+  return `${e.kind}:${encode(e.kind === "manga" ? `/photo/id-${e.nativeId}.html` : e.path)}`;
+}
+function fromId(id) {
+  const m = /^(manga|novel|video):([A-Za-z0-9_-]+)$/u.exec(id);
+  if (!m) throw new Error("Content ID is invalid.");
+  const e = entry(Buffer.from(m[2], "base64url").toString("utf8"));
+  if (e.kind !== m[1] || idOf(e) !== id) throw new Error("Content ID is invalid.");
+  return e;
+}
+function sitePath(value) {
+  const u = new URL(value, base);
+  if (u.origin !== base || u.username || u.password || u.hash) throw new Error("Source URL is invalid.");
+  return u.pathname + u.search;
+}
+function resource(value) {
+  const u = new URL(value, base);
+  if (u.protocol !== "https:" || u.username || u.password || u.port || ![new URL(base).hostname, "img.xchina.io", "upload.xchina.io", "r2.xchina.download"].includes(u.hostname)) {
+    throw new Error("Resource URL is invalid.");
+  }
+  return u.href;
+}
+
 // node_modules/cheerio/dist/esm/options.js
 var defaultOpts = {
   _useHtmlParser2: false
@@ -31601,22 +31634,22 @@ function getAtomFeed(feedRoot) {
     items: getElementsByTagName("entry", childs).map((item) => {
       var _a6;
       const { children: children2 } = item;
-      const entry = { media: getMediaElements(children2) };
-      addConditionally(entry, "id", "id", children2);
-      addConditionally(entry, "title", "title", children2);
+      const entry3 = { media: getMediaElements(children2) };
+      addConditionally(entry3, "id", "id", children2);
+      addConditionally(entry3, "title", "title", children2);
       const href2 = (_a6 = getOneElement("link", children2)) === null || _a6 === void 0 ? void 0 : _a6.attribs["href"];
       if (href2) {
-        entry.link = href2;
+        entry3.link = href2;
       }
       const description = fetch("summary", children2) || fetch("content", children2);
       if (description) {
-        entry.description = description;
+        entry3.description = description;
       }
       const pubDate = fetch("updated", children2);
       if (pubDate) {
-        entry.pubDate = new Date(pubDate);
+        entry3.pubDate = new Date(pubDate);
       }
-      return entry;
+      return entry3;
     })
   };
   addConditionally(feed, "id", "id", childs);
@@ -31641,15 +31674,15 @@ function getRssFeed(feedRoot) {
     id: "",
     items: getElementsByTagName("item", feedRoot.children).map((item) => {
       const { children: children2 } = item;
-      const entry = { media: getMediaElements(children2) };
-      addConditionally(entry, "id", "guid", children2);
-      addConditionally(entry, "title", "title", children2);
-      addConditionally(entry, "link", "link", children2);
-      addConditionally(entry, "description", "description", children2);
+      const entry3 = { media: getMediaElements(children2) };
+      addConditionally(entry3, "id", "guid", children2);
+      addConditionally(entry3, "title", "title", children2);
+      addConditionally(entry3, "link", "link", children2);
+      addConditionally(entry3, "description", "description", children2);
       const pubDate = fetch("pubDate", children2) || fetch("dc:date", children2);
       if (pubDate)
-        entry.pubDate = new Date(pubDate);
-      return entry;
+        entry3.pubDate = new Date(pubDate);
+      return entry3;
     })
   };
   addConditionally(feed, "title", "title", childs);
@@ -40591,11 +40624,11 @@ var FormattingElementList = class {
     const neTagName = this.treeAdapter.getTagName(newElement);
     const neNamespaceURI = this.treeAdapter.getNamespaceURI(newElement);
     for (let i = 0; i < this.entries.length; i++) {
-      const entry = this.entries[i];
-      if (entry.type === EntryType.Marker) {
+      const entry3 = this.entries[i];
+      if (entry3.type === EntryType.Marker) {
         break;
       }
-      const { element } = entry;
+      const { element } = entry3;
       if (this.treeAdapter.getTagName(element) === neTagName && this.treeAdapter.getNamespaceURI(element) === neNamespaceURI) {
         const elementAttrs = this.treeAdapter.getAttrList(element);
         if (elementAttrs.length === neAttrsLength) {
@@ -40644,8 +40677,8 @@ var FormattingElementList = class {
       token
     });
   }
-  removeEntry(entry) {
-    const entryIndex = this.entries.indexOf(entry);
+  removeEntry(entry3) {
+    const entryIndex = this.entries.indexOf(entry3);
     if (entryIndex !== -1) {
       this.entries.splice(entryIndex, 1);
     }
@@ -40665,11 +40698,11 @@ var FormattingElementList = class {
   }
   //Search
   getElementEntryInScopeWithTagName(tagName) {
-    const entry = this.entries.find((entry2) => entry2.type === EntryType.Marker || this.treeAdapter.getTagName(entry2.element) === tagName);
-    return entry && entry.type === EntryType.Element ? entry : null;
+    const entry3 = this.entries.find((entry4) => entry4.type === EntryType.Marker || this.treeAdapter.getTagName(entry4.element) === tagName);
+    return entry3 && entry3.type === EntryType.Element ? entry3 : null;
   }
   getElementEntry(element) {
-    return this.entries.find((entry) => entry.type === EntryType.Element && entry.element === element);
+    return this.entries.find((entry3) => entry3.type === EntryType.Element && entry3.element === element);
   }
 };
 
@@ -41595,12 +41628,12 @@ var Parser2 = class {
   _reconstructActiveFormattingElements() {
     const listLength = this.activeFormattingElements.entries.length;
     if (listLength) {
-      const endIndex = this.activeFormattingElements.entries.findIndex((entry) => entry.type === EntryType.Marker || this.openElements.contains(entry.element));
+      const endIndex = this.activeFormattingElements.entries.findIndex((entry3) => entry3.type === EntryType.Marker || this.openElements.contains(entry3.element));
       const unopenIdx = endIndex === -1 ? listLength - 1 : endIndex - 1;
       for (let i = unopenIdx; i >= 0; i--) {
-        const entry = this.activeFormattingElements.entries[i];
-        this._insertElement(entry.token, this.treeAdapter.getNamespaceURI(entry.element));
-        entry.element = this.openElements.current;
+        const entry3 = this.activeFormattingElements.entries[i];
+        this._insertElement(entry3.token, this.treeAdapter.getNamespaceURI(entry3.element));
+        entry3.element = this.openElements.current;
       }
     }
   }
@@ -44720,157 +44753,261 @@ var undici = __toESM(require_undici(), 1);
 var import_whatwg_mimetype = __toESM(require_mime_type(), 1);
 import { Writable as Writable2, finished } from "node:stream";
 
-// src/index.mts
-var base = "https://xchina001.ink";
-var headers = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36", Accept: "text/html,application/xhtml+xml,*/*;q=0.8", Referer: `${base}/photos.html` };
-var channels = [["latest", "最新", "/photos/"], ["hot", "热门", "/photos/sort-hot/"], ["comment", "评论最多", "/photos/sort-comment/"], ["recent", "最近评论", "/photos/sort-recent/"]];
-var context;
-async function activate(next2) {
-  context = next2;
-  next2.log.info("source_activated");
-}
-async function search(request) {
-  const query = clean(request.query).replaceAll(/[\\*"?&<>]/gu, "").replaceAll(/\s+/gu, "+");
-  if (query.length < 2) return frozen({ items: [], nextCursor: null, totalCount: 0 });
-  const page = cursorPage(request.cursor, "search"), path = page === 1 ? `/photos/keyword-${encodeURIComponent(query)}.html` : `/photos/keyword-${encodeURIComponent(query)}/${page}.html`, values = parseList(await get2(path)), size = clamp(request.pageSize), items = values.map(summary).slice(0, size);
-  return frozen({ items, nextCursor: values.length >= size ? `search:${page + 1}` : null, totalCount: null });
-}
-async function searchSuggestions(_request) {
-  return frozen({ items: [], nextCursor: null });
-}
-async function discover(request) {
-  if (request.target === null) return frozen({ kind: "document", document: { components: [{ type: "section", id: "xchina-channels", title: "小黄书套图", subtitle: "xChina 写真分类", icon: "manga", children: [{ type: "categoryCollection", id: "xchina-channel-list", layout: "chips", categories: channels.map(([id, title]) => ({ id, title, target: `channel:${id}`, count: null, url: null, icon: "manga" })) }] }] } });
-  const channel = channels.find(([id]) => request.target === `channel:${id}`);
-  if (!channel) throw new Error("Discovery target is invalid.");
-  const page = cursorPage(request.cursor, request.target), values = parseList(await get2(`${channel[2]}${page}.html`)), size = clamp(request.pageSize), contents2 = values.map(summary).slice(0, size), collectionId = `xchina:${channel[0]}`, items = contents2.map((content) => frozen({ content, rank: null, metric: null, recommendation: null })), continuation = values.length >= size ? frozen({ target: request.target, cursor: `${request.target}:${page + 1}` }) : null;
-  if (request.collectionId !== null) {
-    if (request.collectionId !== collectionId) throw new Error("Discovery collection is invalid.");
-    return frozen({ kind: "append", collectionId, items, continuation });
+// src/parsers.ts
+function listing(html3) {
+  const $2 = load(html3), result = /* @__PURE__ */ new Map();
+  for (const node of $2("main a.group[href]").toArray()) {
+    const a = $2(node), href = a.attr("href") ?? "";
+    if (!/^\/(photo|fiction|video)\/[a-zA-Z0-9_-]+$/u.test(href)) continue;
+    const e = entry(href), title = clean(a.find(".font-medium").first().text() || a.find("span").filter((_, x) => /(?:^|\s)mt-2(?:\s|$)/u.test($2(x).attr("class") ?? "")).first().text());
+    if (!title) continue;
+    result.set(e.path, {
+      ...e,
+      title: title.slice(0, 256),
+      cover: a.find("img").first().attr("src") ?? "",
+      author: "",
+      description: null
+    });
   }
-  return frozen({ kind: "document", document: { components: [{ type: "section", id: `${collectionId}:section`, title: channel[1], subtitle: null, icon: "manga", children: [{ type: "contentCollection", id: collectionId, layout: "coverGrid", items, continuation }] }] } });
+  return [...result.values()];
 }
-async function getDetail(request) {
-  const path = contentPath(request.id), html3 = await get2(path), $2 = load(html3), raw = clean($2('meta[property="og:title"]').attr("content") ?? $2("h1").first().text()).replace(/\s+-\s+小黄书.*$/u, ""), parts = raw.split(/\s+-\s+/u), title = parts.shift() || path, description = clean($2('meta[property="og:description"]').attr("content") ?? ""), detail = clean($2(".photo-detail").first().text()), remark = detail.match(/\d+\s*P(?:\s*\+\s*\d+\s*V)?/iu)?.[0] ?? "全部", date = detail.match(/\d{4}\.\d{2}\.\d{2}/u)?.[0] ?? "", item = summary({ path, title, cover: $2('meta[property="og:image"]').attr("content") ?? "", author: clean($2(".photo-detail .model-item").first().text()), category: clean(parts.join(" / ") || $2('.photo-detail a[href^="/photos/series"]').first().text()), remark, date });
-  return frozen({ ...item, description: description || null, chapterCount: 1, aliases: [], catalogUrl: new URL(path, base).toString() });
-}
-async function getChapters(request) {
-  const path = contentPath(request.id), chapter = frozen({ id: `manga:${encode(path)}:main`, title: "全部", order: 0, url: null, volumeTitle: "套图", wordCount: null, updatedAt: null, isLocked: false, attributes: [] });
-  return frozen({ items: [chapter], groups: [frozen({ id: `group:${encode(path)}`, title: "套图", order: 0, episodes: [chapter] })] });
-}
-async function getContent(request) {
-  const path = contentPath(request.id);
-  if (request.chapterId !== `manga:${encode(path)}:main`) throw new Error("Chapter ID is invalid.");
-  const first2 = await get2(path), seen = /* @__PURE__ */ new Set(), images = [];
-  let firstImages = parseImages(first2), count = Number(clean(load(first2)(".photo-detail").text()).match(/(\d+)\s*P/iu)?.[1] ?? 0);
-  if (firstImages.length && count > 1 && count <= 2e3) {
-    const generated = sequential(firstImages[0] ?? "", count);
-    if (generated.length) firstImages = generated;
-  }
-  for (const value of firstImages) if (!seen.has(value)) {
-    seen.add(value);
-    images.push(value);
-  }
-  if (images.length === firstImages.length && sequential(firstImages[0] ?? "", count).length === 0) {
-    const max = maxPage(first2);
-    for (let page = 2; page <= max && page <= 30; page += 1) for (const value of parseImages(await get2(paged(path, page)))) if (!seen.has(value)) {
-      seen.add(value);
-      images.push(value);
+function nextPage(html3, path) {
+  const $2 = load(html3), current = new URL(path, base);
+  const match = /^(\/(?:photos|fictions|videos))(?:\/(\d+))?$/u.exec(current.pathname);
+  const page2 = Number(match?.[2] ?? current.searchParams.get("page") ?? "1");
+  for (const node of $2("main a[href]").toArray()) {
+    let candidate;
+    try {
+      candidate = new URL($2(node).attr("href"), base);
+    } catch {
+      continue;
+    }
+    if (candidate.origin !== base) continue;
+    if (match && candidate.pathname === `${match[1]}/${page2 + 1}` && candidate.search === current.search) return sitePath(candidate.href);
+    if (candidate.pathname === current.pathname && Number(candidate.searchParams.get("page")) === page2 + 1) {
+      const a = new URL(current), b = new URL(candidate);
+      a.searchParams.delete("page");
+      b.searchParams.delete("page");
+      if (a.searchParams.toString() === b.searchParams.toString()) return sitePath(candidate.href);
     }
   }
-  if (!images.length) throw new Error("Album images are unavailable.");
-  const referer = new URL(path, base).toString(), pages = images.map((url, index2) => frozen({ id: `page:${index2 + 1}`, index: index2, url: requireContext().resource.proxy({ kind: "image", url, headers: { ...headers, Referer: referer } }), mimeType: imageMime(url), width: null, height: null }));
-  return frozen({ chapterId: request.chapterId, contentKind: "manga", title: null, updatedAt: null, text: null, pages: Object.freeze(pages) });
+  return null;
 }
-async function get2(path) {
-  const url = new URL(path, base).toString(), response = await requireContext().http.fetch(url, { headers });
-  if (!response.ok) throw new Error("Source request failed.");
-  return response.text();
-}
-function parseList(html3) {
-  const $2 = load(html3), values = /* @__PURE__ */ new Map();
-  for (const node of $2(".list .item.photo").toArray()) {
-    const card = $2(node), link = card.find('a[href^="/photo/"]').first(), href = link.attr("href") ?? "";
-    if (!href) continue;
-    const path = new URL(href, base).pathname, title = clean(link.attr("title") ?? card.find(".title").text());
-    if (!title) continue;
-    const style = card.find(".img").attr("style") ?? "", cover = /background-image\s*:\s*url\(["']?([^"')]+)/iu.exec(style)?.[1] ?? "", subs = clean(card.find(".subs").text());
-    values.set(path, { path, title, cover, author: clean(card.find(".model-item").text()), category: clean(card.find(".subs a").first().text()), remark: clean(card.find(".tags div").first().text()), date: subs.match(/\d{4}\.\d{2}\.\d{2}/u)?.[0] ?? "" });
+function searchLists(html3, query) {
+  const $2 = load(html3), paths = /* @__PURE__ */ new Set();
+  for (const node of $2("main a[href]").toArray()) {
+    const u = new URL($2(node).attr("href"), base);
+    if (u.origin === base && u.pathname === "/search" && u.searchParams.get("q") === query && ["photo", "fiction", "video"].includes(u.searchParams.get("type") ?? "")) paths.add(sitePath(u.href));
   }
-  return [...values.values()];
+  return [...paths];
 }
-function parseImages(html3) {
-  const $2 = load(html3), values = [];
-  for (const node of $2(".photo-items .item.photo-image .img").toArray()) {
-    const style = $2(node).attr("style") ?? "", raw = /background-image\s*:\s*url\(["']?([^"')]+)/iu.exec(style)?.[1] ?? "";
-    if (raw) values.push(absolute(raw).replace(/\/(\d{4,5})_600x0\.webp(?:[?#].*)?$/iu, "/$1.jpg"));
+function detail(html3, e) {
+  const $2 = load(html3), title = clean($2("main h1").first().text());
+  if (!title) throw new Error("Content detail is unavailable.");
+  return {
+    ...e,
+    title: title.slice(0, 256),
+    cover: $2('meta[property="og:image"]').attr("content") ?? "",
+    author: "",
+    description: clean($2('meta[property="og:description"]').attr("content") ?? "") || null
+  };
+}
+function fictionChapters(html3, e) {
+  const $2 = load(html3), result = /* @__PURE__ */ new Map();
+  for (const node of $2("main a[href]").toArray()) {
+    const a = $2(node), path = a.attr("href") ?? "";
+    if (!path.startsWith(e.path + "/") || !/^\d+$/u.test(path.slice(e.path.length + 1))) continue;
+    if (!a.hasClass("flex") || !a.hasClass("py-3")) continue;
+    const title = clean(a.text());
+    if (title) result.set(path, title.slice(0, 256));
   }
-  return values;
+  if (result.size) return [...result].map(([path, title]) => ({ path, title }));
+  if ($2("article.reader .font-serif").text().trim()) return [{ path: e.path, title: "全文" }];
+  throw new Error("Fiction catalog and inline text are unavailable.");
 }
-function sequential(first2, count) {
-  const match = /^(.*\/)(\d+)(\.jpg(?:[?#].*)?)$/iu.exec(first2);
-  if (!match || count < 2 || count > 2e3) return [];
-  const width = (match[2] ?? "").length;
-  return Array.from({ length: count }, (_, index2) => `${match[1]}${String(index2 + 1).padStart(width, "0")}${match[3]}`);
+function fictionText(html3) {
+  const $2 = load(html3), body = $2("article.reader .font-serif").first().clone();
+  body.find("script,style,nav,aside").remove();
+  body.find("br").replaceWith("\n");
+  body.find("p,div").append("\n\n");
+  const text3 = body.text().split(/\n/u).map((x) => x.trim()).filter(Boolean).join("\n\n");
+  if (!text3) throw new Error("Fiction text is unavailable.");
+  return { text: text3, title: clean($2("article.reader h1").first().text()).slice(0, 256) || null };
 }
-function maxPage(html3) {
-  let max = 1;
-  for (const match of html3.matchAll(/\/photo\/id-[^"']+\/(\d+)\.html/gu)) max = Math.max(max, Number(match[1] ?? 1));
-  return max;
+function photoImages(html3, e) {
+  const $2 = load(html3), images = /* @__PURE__ */ new Set();
+  for (const node of $2("main img[src]").toArray()) {
+    const url = new URL($2(node).attr("src"), base);
+    if (url.hostname === "img.xchina.io" && url.pathname.startsWith(`/photos/${e.nativeId}/`)) images.add(resource(url.href));
+  }
+  if (!images.size) throw new Error("Album images are unavailable.");
+  return [...images];
 }
-function paged(path, page) {
-  return path.replace(/\.html$/u, `/${page}.html`);
+function videoUrl(html3) {
+  const $2 = load(html3), src = $2("#video-player").attr("data-src") || $2("main #player-box video").attr("src");
+  if (!src) throw new Error("Video address is unavailable.");
+  return resource(src);
 }
-function summary(value) {
-  return frozen({ id: `manga:${encode(value.path)}`, title: value.title, contentKind: "manga", coverOrientation: "portrait", author: value.author || null, url: new URL(value.path, base).toString(), coverUrl: proxyImage(value.cover, value.path), description: null, language: "zh-CN", status: "completed", access: "free", wordCount: null, chapterCount: 1, publishedAt: null, updatedAt: value.date ? timestamp(value.date) : null, latestChapter: { id: `manga:${encode(value.path)}:main`, title: value.remark || "全部", url: null, updatedAt: null }, categories: value.category ? [value.category] : [], tags: ["写真", "套图"], attributes: [] });
+function chapterGate(html3, path) {
+  const $2 = load(html3);
+  return !$2("article.reader .font-serif").text().trim() && $2("main a.btn-primary[href]").toArray().some((x) => $2(x).attr("href") === path && clean($2(x).text()).includes("继续看"));
 }
-function proxyImage(value, path) {
-  if (!value) return null;
-  const url = absolute(value);
-  return requireContext().resource.proxy({ kind: "image", url, headers: { ...headers, Referer: new URL(path, base).toString() } });
+
+// src/chapter-session.ts
+var queue = Promise.resolve();
+function resetChapterSession() {
+  queue = Promise.resolve();
 }
-function absolute(value) {
-  return new URL(value, base).toString();
+function readSessionChapter(context2, path) {
+  const run = queue.then(async () => {
+    const page2 = await context2.webview.open({ visible: false, timeoutMs: 15e3 });
+    await page2.navigate(base + path, { timeoutMs: 2e4 });
+    const ready = await page2.executeJavaScript(`return (async()=>{
+      for(let i=0;i<20;i++){
+        if(document.querySelector('article.reader .font-serif')?.textContent.trim())return true;
+        if(document.querySelector('iframe[src*="captcha"],input[type="password"]'))return false;
+        await new Promise(r=>setTimeout(r,250));
+      }return false;
+    })()`, { timeoutMs: 7e3 });
+    if (ready !== true) {
+      await page2.show({ timeoutMs: 5e3 });
+      context2.errors.raise({ code: "source_access_blocked", message: "小黄书章节需要在来源页面完成访问验证后重试。" });
+    }
+    return page2.getHtml({ timeoutMs: 1e4 });
+  });
+  queue = run.catch(() => void 0);
+  return run;
 }
-function imageMime(url) {
-  const path = new URL(url).pathname.toLowerCase();
-  return path.endsWith(".png") ? "image/png" : path.endsWith(".webp") ? "image/webp" : "image/jpeg";
-}
-function timestamp(value) {
-  const match = /^(\d{4})\.(\d{2})\.(\d{2})$/u.exec(value);
-  if (match === null) throw new Error("Source date is invalid.");
-  const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]), date = new Date(Date.UTC(year, month - 1, day));
-  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) throw new Error("Source date is invalid.");
-  return date.toISOString();
-}
-function contentPath(id) {
-  const value = /^manga:([A-Za-z0-9_-]+)$/u.exec(id)?.[1], path = value ? decode(value) : "";
-  if (!/^\/photo\/id-[^/]+\.html$/u.test(path)) throw new Error("Content ID is invalid.");
-  return path;
-}
-function encode(value) {
-  return Buffer.from(value).toString("base64url");
-}
-function decode(value) {
-  return Buffer.from(value, "base64url").toString("utf8");
-}
-function clean(value) {
-  return value.replaceAll(/<[^>]+>/gu, " ").replaceAll(/\s+/gu, " ").trim();
-}
-function cursorPage(cursor, target) {
-  if (cursor === null) return 1;
-  const page = Number(cursor.startsWith(`${target}:`) ? cursor.slice(target.length + 1) : "");
-  if (!Number.isSafeInteger(page) || page < 2) throw new Error("Cursor is invalid.");
-  return page;
-}
-function clamp(value) {
-  return Math.max(1, Math.min(50, Math.floor(value)));
-}
-function frozen(value) {
-  return Object.freeze(value);
-}
-function requireContext() {
+
+// src/index.mts
+var context;
+var channels = [
+  ["latest", "最新套图", "/photos", "manga"],
+  ["hot", "热门套图", "/photos?sort=hot", "manga"],
+  ["comment", "评论最多", "/photos?sort=comment", "manga"],
+  ["recent", "最近评论", "/photos?sort=recent", "manga"],
+  ["fiction", "小说", "/fictions", "book"],
+  ["video", "视频", "/videos", "video"]
+];
+var headers = { Accept: "text/html,application/xhtml+xml,*/*;q=0.8", Referer: base + "/" };
+var ctx = () => {
   if (!context) throw new Error("Source is not activated.");
   return context;
+};
+async function activate(next2) {
+  context = next2;
+  resetChapterSession();
+  next2.log.info("source_activated");
+}
+async function get2(path) {
+  const response = await ctx().http.fetch(base + sitePath(path), { headers, signal: AbortSignal.timeout(2e4) });
+  if (!response.ok) throw new Error(`Source request failed (${response.status}).`);
+  return response.text();
+}
+function proxy(url, path, kind) {
+  return ctx().resource.proxy({ kind, url: resource(url), headers: { Referer: base + path } });
+}
+function summary(value) {
+  return {
+    id: idOf(value),
+    title: value.title,
+    contentKind: value.kind,
+    coverOrientation: value.kind === "video" ? "landscape" : "portrait",
+    author: value.author || null,
+    url: base + value.path,
+    coverUrl: value.cover ? proxy(value.cover, value.path, "image") : null,
+    description: value.description,
+    language: "zh-CN",
+    status: "unknown",
+    access: "unknown",
+    wordCount: null,
+    chapterCount: value.kind === "novel" ? null : 1,
+    publishedAt: null,
+    updatedAt: null,
+    latestChapter: null,
+    categories: [],
+    tags: [],
+    attributes: []
+  };
+}
+function cursor(raw, scope, path) {
+  if (!raw) return { scope, path, offset: 0, pending: [] };
+  if (raw.length > 8192) throw new Error("Cursor is invalid.");
+  const v = JSON.parse(Buffer.from(raw, "base64url").toString("utf8"));
+  if (v.scope !== scope || !Number.isSafeInteger(v.offset) || v.offset < 0 || !Array.isArray(v.pending) || v.pending.length > 3) throw new Error("Cursor is invalid.");
+  const validate = (s) => {
+    const u = new URL(sitePath(s), base);
+    if (!/^\/(photos|videos|fictions)(?:\/\d+)?$/u.test(u.pathname) && u.pathname !== "/search") throw new Error("Cursor path is invalid.");
+  };
+  validate(v.path);
+  v.pending.forEach(validate);
+  return v;
+}
+async function page(v, size, supplied) {
+  const html3 = supplied ?? await get2(v.path), values = listing(html3), limit = Math.max(1, Math.min(50, Math.floor(size)));
+  const items = values.slice(v.offset, v.offset + limit).map(summary);
+  const next2 = v.offset + limit < values.length ? { ...v, offset: v.offset + limit } : (() => {
+    const pending = [...v.pending], path = nextPage(html3, v.path) ?? pending.shift();
+    return path ? { ...v, path, offset: 0, pending } : null;
+  })();
+  return { items, nextCursor: next2 ? encode(JSON.stringify(next2)) : null };
+}
+async function search(request) {
+  const query = clean(request.query);
+  if (!query) return { items: [], nextCursor: null, totalCount: 0 };
+  const path = `/search?q=${encodeURIComponent(query)}`, state = cursor(request.cursor, `search:${query}`, path);
+  if (!request.cursor) {
+    const html3 = await get2(path), paths = searchLists(html3, query);
+    if (!paths.length) return { ...await page(state, request.pageSize, html3), totalCount: null };
+    state.path = paths.shift();
+    state.pending = paths;
+  }
+  return { ...await page(state, request.pageSize), totalCount: null };
+}
+async function searchSuggestions(_request) {
+  return { items: [], nextCursor: null };
+}
+async function discover(request) {
+  if (request.target === null) return { kind: "document", document: { components: [{ type: "section", id: "xchina-channels", title: "小黄书", subtitle: null, icon: "manga", children: [{ type: "categoryCollection", id: "xchina-channel-list", layout: "chips", categories: channels.map(([id, title, , icon]) => ({ id, title, target: `channel:${id}`, count: null, url: null, icon })) }] }] } };
+  const channel = channels.find(([id]) => request.target === `channel:${id}`);
+  if (!channel) throw new Error("Discovery target is invalid.");
+  const result = await page(cursor(request.cursor, request.target, channel[2]), request.pageSize), collectionId = `xchina:${channel[0]}`;
+  const items = result.items.map((content) => ({ content, rank: null, metric: null, recommendation: null }));
+  const continuation = result.nextCursor ? { target: request.target, cursor: result.nextCursor } : null;
+  if (request.collectionId !== null) {
+    if (request.collectionId !== collectionId) throw new Error("Discovery collection is invalid.");
+    return { kind: "append", collectionId, items, continuation };
+  }
+  return { kind: "document", document: { components: [{ type: "section", id: `${collectionId}:section`, title: channel[1], subtitle: null, icon: channel[3], children: [{ type: "contentCollection", id: collectionId, layout: "coverGrid", items, continuation }] }] } };
+}
+async function getDetail(request) {
+  const e = fromId(request.id), html3 = await get2(e.path), value = summary(detail(html3, e));
+  return { ...value, chapterCount: e.kind === "novel" ? fictionChapters(html3, e).length : 1, aliases: [], catalogUrl: base + e.path };
+}
+function chapter(id, title, order, path) {
+  return { id, title, order, url: base + path, volumeTitle: null, wordCount: null, updatedAt: null, isLocked: false, attributes: [] };
+}
+async function chapters(e) {
+  const id = idOf(e);
+  if (e.kind !== "novel") return [chapter(`${id}:main`, e.kind === "manga" ? "全部" : "播放", 0, e.path)];
+  return fictionChapters(await get2(e.path), e).map((value, order) => chapter(`${id}:chapter:${encode(value.path)}`, value.title, order, value.path));
+}
+async function getChapters(request) {
+  return { items: await chapters(fromId(request.id)), groups: [] };
+}
+async function getContent(request) {
+  const e = fromId(request.id), prefix = { chapterId: request.chapterId, contentKind: e.kind, title: null, updatedAt: null, text: null, pages: [] };
+  if (e.kind === "novel") {
+    const value = (await chapters(e)).find((x) => x.id === request.chapterId);
+    if (!value) throw new Error("Chapter ID is invalid.");
+    const path = sitePath(value.url), html4 = await get2(path);
+    return { ...prefix, ...fictionText(chapterGate(html4, path) ? await readSessionChapter(ctx(), path) : html4) };
+  }
+  if (request.chapterId !== `${request.id}:main`) throw new Error("Chapter ID is invalid.");
+  const html3 = await get2(e.path);
+  if (e.kind === "manga") return { ...prefix, pages: photoImages(html3, e).map((url2, index2) => ({ id: `page:${index2 + 1}`, index: index2, url: proxy(url2, e.path, "image"), mimeType: new URL(url2).pathname.endsWith(".webp") ? "image/webp" : null, width: null, height: null })) };
+  const url = videoUrl(html3), resourceType = /\.m3u8(?:$|[?#])/iu.test(url) ? "hls" : "video";
+  return { ...prefix, media: { url: proxy(url, e.path, resourceType), resourceType, resourcePolicy: "sessionOnly", expiresAt: null, mimeType: resourceType === "hls" ? "application/vnd.apple.mpegurl" : "video/mp4", headers: { Referer: base + e.path } } };
 }
 export {
   activate,

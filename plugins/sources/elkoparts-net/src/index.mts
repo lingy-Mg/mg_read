@@ -20,6 +20,8 @@ import type {
 } from './mgread-api.js';
 import { ElkopartsSource } from './source.js';
 
+export const deferredGroups = true;
+
 let context: MgReadPluginContext | undefined;
 let source: ElkopartsSource | undefined;
 

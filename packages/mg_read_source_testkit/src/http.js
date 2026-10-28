@@ -2,12 +2,13 @@
  * Node 测试宿主的公开 HTTP 行为投影。
  *
  * 职责：像正式 Runtime 的 ctx.http.fetch 一样，在来源未声明时补充精简桌面 UA，并让 proxyMode=direct 绕过环境代理。
- * IO：默认请求仍委托 CLI 注入的 fetch；直连请求只使用 Node HTTP(S)，有界跟随重定向且不读取响应正文。
+ * IO：默认请求仍委托 CLI 注入的 fetch；直连请求只使用 Node HTTP(S)，有界跟随重定向，并流式解压正文以匹配正式 fetch。
  */
 import { Buffer } from 'node:buffer';
 import { request as requestHttp } from 'node:http';
 import { request as requestHttps } from 'node:https';
-import { Readable } from 'node:stream';
+import { Readable, compose } from 'node:stream';
+import { createGunzip, createInflate, createBrotliDecompress, createZstdDecompress } from 'node:zlib';
 
 export const defaultSourceTestUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36';
 const maximumRedirects = 10;
@@ -52,7 +53,12 @@ async function directHttpFetch(input, init = {}, redirects = 0) {
       for (const [name, value] of Object.entries(incoming.headers)) {
         for (const item of Array.isArray(value) ? value : value === undefined ? [] : [value]) responseHeaders.append(name, item);
       }
-      const response = new Response(Readable.toWeb(incoming), { status, statusText: incoming.statusMessage, headers: responseHeaders });
+      const coding = String(incoming.headers['content-encoding'] ?? '').trim().toLowerCase();
+      const decoder = coding === 'gzip' ? createGunzip() : coding === 'deflate' ? createInflate()
+        : coding === 'br' ? createBrotliDecompress() : coding === 'zstd' ? createZstdDecompress() : null;
+      // compose propagates cancellation/errors to the HTTP response as well as the decoder.
+      const body = decoder === null ? incoming : compose(incoming, decoder);
+      const response = new Response(Readable.toWeb(body), { status, statusText: incoming.statusMessage, headers: responseHeaders });
       Object.defineProperty(response, 'url', { value: url.toString() });
       resolve(response);
     });
