@@ -30,6 +30,10 @@ import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
 export 'widgets/discovery_top_action.dart';
 
 part 'discovery_content_sections.dart';
+part 'discovery_carousel.dart';
+part 'discovery_ranking_sections.dart';
+part 'discovery_category_sections.dart';
+part 'discovery_editor_sections.dart';
 
 /// Mobile-first discovery presentation owned by the host UI layer.
 ///

@@ -40,6 +40,10 @@ import 'package:mg_read/shared/presentation/widgets/app_operation_error_dialog.d
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
 part 'source_content_detail_sections.dart';
+part 'source_content_detail_shelf_actions.dart';
+part 'source_content_detail_recommendations.dart';
+part 'source_content_detail_chapter_actions.dart';
+part 'source_content_detail_failures.dart';
 part 'source_content_detail_catalog.dart';
 part 'source_content_detail_loading.dart';
 part 'source_content_detail_primitives.dart';

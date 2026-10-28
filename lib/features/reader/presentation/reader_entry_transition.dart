@@ -352,9 +352,8 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
 
   @override
   Widget build(BuildContext context) {
-    final Animation<double> entryCurve = CurvedAnimation(parent: _entryController, curve: Curves.easeOutCubic);
-    final Animation<double> handoffCurve = CurvedAnimation(parent: _handoffController, curve: Curves.easeOutQuart);
-    final double handoff = handoffCurve.value;
+    final double entryProgress = Curves.easeOutCubic.transform(_entryController.value);
+    final double handoff = Curves.easeOutQuart.transform(_handoffController.value);
     return Theme(
       data: AppTheme.novelReader(),
       child: PopScope<void>(
@@ -367,7 +366,7 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
           child: Stack(
             fit: StackFit.expand,
             children: <Widget>[
-              _ReaderEntryBackdrop(progress: entryCurve.value),
+              _ReaderEntryBackdrop(progress: entryProgress),
               Transform.translate(
                 offset: Offset(0, (1 - handoff) * 7),
                 child: Opacity(
@@ -382,7 +381,7 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
                 AnnotatedRegion<SystemUiOverlayStyle>(
                   value: _readerEntrySystemUiStyle,
                   child: _ReaderEntryCover(
-                    progress: entryCurve.value,
+                    progress: entryProgress,
                     disappearance: handoff,
                     kind: switch (_boundRequest) {
                       NovelReaderLaunchRequest() => DefaultCoverKind.novel,

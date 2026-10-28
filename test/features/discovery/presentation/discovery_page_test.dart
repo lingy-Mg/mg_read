@@ -1,5 +1,6 @@
 import 'dart:ui' show PointerDeviceKind, Tristate;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -213,7 +214,117 @@ void main() {
     await tester.pump();
 
     expect(position.pixels, greaterThan(0));
+    await tester.pump(const Duration(seconds: 5));
+    expect(find.text('第一本推荐书'), findsOneWidget);
     await gesture.up();
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('第二本推荐书'), findsOneWidget);
+  });
+
+  testWidgets('pauses and resumes autoplay when ticker mode changes', (WidgetTester tester) async {
+    const books = <DiscoveryHeroViewData>[
+      DiscoveryHeroViewData(title: '轮播第一本', category: null, description: null, metadata: null, coverVariant: DiscoveryCoverVariant.gothic),
+      DiscoveryHeroViewData(title: '轮播第二本', category: null, description: null, metadata: null, coverVariant: DiscoveryCoverVariant.abyss),
+    ];
+
+    final ValueNotifier<bool> tickerEnabled = ValueNotifier<bool>(false);
+    final ValueNotifier<bool> disableAnimations = ValueNotifier<bool>(false);
+    addTearDown(tickerEnabled.dispose);
+    addTearDown(disableAnimations.dispose);
+    await tester.pumpWidget(_carouselApp(books, tickerEnabled: tickerEnabled, disableAnimations: disableAnimations));
+    await tester.pump(const Duration(seconds: 5));
+    expect(find.text('轮播第一本'), findsOneWidget);
+
+    tickerEnabled.value = true;
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('轮播第二本'), findsOneWidget);
+  });
+
+  testWidgets('pauses and resumes autoplay when reduced motion changes', (WidgetTester tester) async {
+    const books = <DiscoveryHeroViewData>[
+      DiscoveryHeroViewData(title: '低动态第一本', category: null, description: null, metadata: null, coverVariant: DiscoveryCoverVariant.gothic),
+      DiscoveryHeroViewData(title: '低动态第二本', category: null, description: null, metadata: null, coverVariant: DiscoveryCoverVariant.abyss),
+    ];
+
+    final ValueNotifier<bool> tickerEnabled = ValueNotifier<bool>(true);
+    final ValueNotifier<bool> disableAnimations = ValueNotifier<bool>(true);
+    addTearDown(tickerEnabled.dispose);
+    addTearDown(disableAnimations.dispose);
+    await tester.pumpWidget(_carouselApp(books, tickerEnabled: tickerEnabled, disableAnimations: disableAnimations));
+    await tester.pump(const Duration(seconds: 5));
+    expect(find.text('低动态第一本'), findsOneWidget);
+
+    disableAnimations.value = false;
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('低动态第二本'), findsOneWidget);
+  });
+
+  testWidgets('pauses and resumes autoplay with app lifecycle visibility', (WidgetTester tester) async {
+    const books = <DiscoveryHeroViewData>[
+      DiscoveryHeroViewData(
+        title: '生命周期第一本',
+        category: null,
+        description: null,
+        metadata: null,
+        coverVariant: DiscoveryCoverVariant.gothic,
+      ),
+      DiscoveryHeroViewData(title: '生命周期第二本', category: null, description: null, metadata: null, coverVariant: DiscoveryCoverVariant.abyss),
+    ];
+
+    final ValueNotifier<bool> tickerEnabled = ValueNotifier<bool>(true);
+    final ValueNotifier<bool> disableAnimations = ValueNotifier<bool>(false);
+    addTearDown(tickerEnabled.dispose);
+    addTearDown(disableAnimations.dispose);
+    await tester.pumpWidget(_carouselApp(books, tickerEnabled: tickerEnabled, disableAnimations: disableAnimations));
+    await tester.pump();
+    expect(find.text('生命周期第一本'), findsOneWidget);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    await tester.pump(const Duration(seconds: 5));
+    expect(find.text('生命周期第一本'), findsOneWidget);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('生命周期第二本'), findsOneWidget);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump(const Duration(seconds: 5));
+    expect(find.text('生命周期第二本'), findsOneWidget);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('生命周期第一本'), findsOneWidget);
+  });
+
+  testWidgets('pauses autoplay while another route covers the carousel', (WidgetTester tester) async {
+    const books = <DiscoveryHeroViewData>[
+      DiscoveryHeroViewData(title: '被覆盖第一本', category: null, description: null, metadata: null, coverVariant: DiscoveryCoverVariant.gothic),
+      DiscoveryHeroViewData(title: '被覆盖第二本', category: null, description: null, metadata: null, coverVariant: DiscoveryCoverVariant.abyss),
+    ];
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: DiscoveryCarouselBooks(books: books, onBookPressed: (_) {}),
+        ),
+      ),
+    );
+    await tester.pump();
+    Navigator.of(tester.element(find.byType(DiscoveryCarouselBooks))).push<void>(MaterialPageRoute<void>(builder: (_) => const Scaffold()));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 5));
+    Navigator.of(tester.element(find.byType(Scaffold).last)).pop();
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('被覆盖第二本'), findsOneWidget);
   });
 }
 
@@ -244,6 +355,32 @@ Widget _hostCarousel(List<DiscoveryHeroViewData> books) {
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: DiscoveryCarouselBooks(books: books, onBookPressed: (_) {}),
+      ),
+    ),
+  );
+}
+
+Widget _carouselApp(
+  List<DiscoveryHeroViewData> books, {
+  required ValueListenable<bool> tickerEnabled,
+  required ValueListenable<bool> disableAnimations,
+}) {
+  return MaterialApp(
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.light(),
+    home: Scaffold(
+      body: ValueListenableBuilder<bool>(
+        valueListenable: tickerEnabled,
+        builder: (BuildContext context, bool tickerOn, Widget? child) => ValueListenableBuilder<bool>(
+          valueListenable: disableAnimations,
+          builder: (BuildContext context, bool motionDisabled, Widget? child) => TickerMode(
+            enabled: tickerOn,
+            child: MediaQuery(
+              data: MediaQuery.of(context).copyWith(disableAnimations: motionDisabled),
+              child: DiscoveryCarouselBooks(books: books, onBookPressed: (_) {}),
+            ),
+          ),
+        ),
       ),
     ),
   );

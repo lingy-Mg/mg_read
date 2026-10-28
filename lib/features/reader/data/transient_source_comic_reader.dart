@@ -15,7 +15,7 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 import 'package:mg_read/features/reader/data/bounded_reader_session_cache.dart';
-import 'package:mg_read/features/reader/data/content_library_source_comic_reader.dart';
+import 'package:mg_read/features/reader/data/comic_image_transport.dart';
 
 /// Serves one discovery/detail comic session without requiring a shelf item.
 final class TransientSourceComicReaderDataSource implements ComicReaderDataSource, DisposableReaderDataSource {
