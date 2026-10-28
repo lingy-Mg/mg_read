@@ -65,7 +65,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('找到想看的内容'), findsOneWidget);
+    expect(find.text('6 个数据源'), findsOneWidget);
+    expect(find.text('阅文集团旗下原创文学平台'), findsNothing);
+    await tester.tap(find.byKey(const Key('data-source-density')));
+    await tester.pumpAndSettle();
     expect(find.text('阅文集团旗下原创文学平台'), findsOneWidget);
     expect(find.text('https://www.qidian.com/'), findsOneWidget);
     expect(find.byType(Switch), findsNothing);

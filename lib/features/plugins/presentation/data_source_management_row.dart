@@ -56,6 +56,7 @@ class DataSourceManagementRow extends StatelessWidget {
     this.onDiscover,
     this.onSearch,
     this.onOpenSourceUrl,
+    this.compact = false,
     super.key,
   });
 
@@ -66,6 +67,7 @@ class DataSourceManagementRow extends StatelessWidget {
   final VoidCallback? onDiscover;
   final VoidCallback? onSearch;
   final VoidCallback? onOpenSourceUrl;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -82,7 +84,7 @@ class DataSourceManagementRow extends StatelessWidget {
           onTap: onPressed,
           borderRadius: AppRadii.detailCard,
           child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.comfortable),
+            padding: EdgeInsets.all(compact ? AppSpacing.regular : AppSpacing.comfortable),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
@@ -94,7 +96,7 @@ class DataSourceManagementRow extends StatelessWidget {
                       borderRadius: AppRadii.detailControl,
                       child: SizedBox.square(
                         key: ValueKey<String>('data-source-icon-${source.id}'),
-                        dimension: AppSpacing.dataSourceManagementMarkExtent,
+                        dimension: compact ? AppSpacing.minimumTouchTarget : AppSpacing.dataSourceManagementMarkExtent,
                         child: _DataSourceBrandMark(
                           sourceId: source.id,
                           displayName: source.name,
@@ -113,7 +115,10 @@ class DataSourceManagementRow extends StatelessWidget {
                           children: <Widget>[
                             Text(source.name, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                             const SizedBox(height: AppSpacing.unit),
-                            Text(source.kindLabel, style: theme.textTheme.bodySmall?.copyWith(color: tokens.dataSourceAccent)),
+                            Text(
+                              '${source.kindLabel} · ${source.enabled ? '已启用' : '已停用'}',
+                              style: theme.textTheme.bodySmall?.copyWith(color: tokens.dataSourceAccent),
+                            ),
                           ],
                         ),
                       ),
@@ -134,37 +139,39 @@ class DataSourceManagementRow extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: AppSpacing.regular),
-                Text(source.description, style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText, height: 1.5)),
-                const SizedBox(height: AppSpacing.compact),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Icon(Icons.public_rounded, size: 18, color: tokens.mutedText),
-                    const SizedBox(width: AppSpacing.compact),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text('来源网址', style: theme.textTheme.labelSmall?.copyWith(color: tokens.mutedText)),
-                          SelectableText(
-                            source.sourceUrl ?? '缺少',
-                            key: ValueKey<String>('data-source-url-${source.id}'),
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: source.sourceUrl == null ? tokens.mutedText : tokens.dataSourceAccent,
+                if (!compact) ...<Widget>[
+                  const SizedBox(height: AppSpacing.regular),
+                  Text(source.description, style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText, height: 1.5)),
+                  const SizedBox(height: AppSpacing.compact),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Icon(Icons.public_rounded, size: 18, color: tokens.mutedText),
+                      const SizedBox(width: AppSpacing.compact),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text('来源网址', style: theme.textTheme.labelSmall?.copyWith(color: tokens.mutedText)),
+                            SelectableText(
+                              source.sourceUrl ?? '缺少',
+                              key: ValueKey<String>('data-source-url-${source.id}'),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: source.sourceUrl == null ? tokens.mutedText : tokens.dataSourceAccent,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      key: ValueKey<String>('data-source-open-url-${source.id}'),
-                      tooltip: source.sourceUrl == null ? '此数据源未提供来源网址' : '在浏览器打开 ${source.name}',
-                      onPressed: source.sourceUrl == null ? null : onOpenSourceUrl,
-                      icon: const Icon(Icons.open_in_new_rounded, size: 19),
-                    ),
-                  ],
-                ),
+                      IconButton(
+                        key: ValueKey<String>('data-source-open-url-${source.id}'),
+                        tooltip: source.sourceUrl == null ? '此数据源未提供来源网址' : '在浏览器打开 ${source.name}',
+                        onPressed: source.sourceUrl == null ? null : onOpenSourceUrl,
+                        icon: const Icon(Icons.open_in_new_rounded, size: 19),
+                      ),
+                    ],
+                  ),
+                ],
                 if (!available) ...<Widget>[
                   const SizedBox(height: AppSpacing.compact),
                   Text(

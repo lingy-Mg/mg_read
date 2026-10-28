@@ -284,6 +284,7 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
   final TextEditingController _searchController = TextEditingController();
   _DataSourceFilter _filter = _DataSourceFilter.all;
   String _query = '';
+  bool _compactSources = true;
 
   @override
   void dispose() {
@@ -426,7 +427,12 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
               const SizedBox(height: AppSpacing.regular),
               _DataSourceFilterBar(selected: _filter, onSelected: (_DataSourceFilter value) => setState(() => _filter = value)),
               const SizedBox(height: AppSpacing.regular),
-              _DataSourceListHeader(visibleCount: visibleSources.length, totalCount: widget.sources.length),
+              _DataSourceListHeader(
+                visibleCount: visibleSources.length,
+                totalCount: widget.sources.length,
+                compact: _compactSources,
+                onToggle: () => setState(() => _compactSources = !_compactSources),
+              ),
               const SizedBox(height: AppSpacing.regular),
               if (widget.sources.isEmpty)
                 const _DataSourceEmptyState(message: '暂无已安装的数据源')
@@ -462,6 +468,7 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
             border: Border.all(color: tokens.divider),
           ),
           child: DataSourceManagementRow(
+            compact: _compactSources,
             source: source,
             isPending: importState.isImporting || isClearingAll || pendingSourceIds.contains(source.id),
             onPressed: () => widget.onSourcePressed(source.id),
@@ -560,6 +567,17 @@ class _DataSourceOverviewCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = AppThemeTokens.of(context);
+    if (sourceCount > 0 && !importState.isImporting && !isClearingAll) {
+      return Row(
+        key: const Key('data-source-management-card'),
+        children: [
+          Expanded(
+            child: Text('$sourceCount 个数据源', key: const Key('data-source-enabled-count'), style: theme.textTheme.titleMedium),
+          ),
+          _AddDataSourceButton(isImporting: false, onPressed: onAddPressed),
+        ],
+      );
+    }
     return Container(
       key: const Key('data-source-management-card'),
       padding: const EdgeInsets.all(AppSpacing.comfortable),
@@ -701,10 +719,12 @@ class _DataSourceFilterBar extends StatelessWidget {
 }
 
 class _DataSourceListHeader extends StatelessWidget {
-  const _DataSourceListHeader({required this.visibleCount, required this.totalCount});
+  const _DataSourceListHeader({required this.visibleCount, required this.totalCount, required this.compact, required this.onToggle});
 
   final int visibleCount;
   final int totalCount;
+  final bool compact;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -713,6 +733,12 @@ class _DataSourceListHeader extends StatelessWidget {
     return Row(
       children: <Widget>[
         Expanded(child: Text('我的数据源', style: theme.textTheme.titleMedium)),
+        IconButton(
+          key: const Key('data-source-density'),
+          tooltip: compact ? '切换详细视图' : '切换紧凑视图',
+          onPressed: onToggle,
+          icon: Icon(compact ? Icons.view_agenda_outlined : Icons.view_list_outlined),
+        ),
         Text(
           visibleCount == totalCount ? '共 $totalCount 个' : '$visibleCount / $totalCount',
           style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
