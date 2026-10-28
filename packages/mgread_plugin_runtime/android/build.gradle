@@ -135,6 +135,20 @@ dependencies {
     hybridImplementation 'androidx.webkit:webkit:1.17.0'
     hybridImplementation 'com.caoccao.javet:javet-node-android:6.0.1'
     testImplementation 'junit:junit:4.13.2'
+    // Optional desktop JNI checks use the same fixed Javet API version and
+    // never enter Android packaging. Normal CI unit tests need no desktop DLL.
+    if (findProperty('mgreadJavetNativeTests') == 'true') {
+        if (!System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('windows')) {
+            throw new GradleException('mgreadJavetNativeTests currently supports the local Windows validation host only.')
+        }
+        testRuntimeOnly 'com.caoccao.javet:javet-node-windows-x86_64:6.0.1'
+    }
+}
+
+tasks.withType(Test).configureEach {
+    if (project.findProperty('mgreadJavetNativeTests') == 'true') {
+        systemProperty 'mgread.javet.nativeTest', 'true'
+    }
 }
 
 if (includesNativeRuntime) {

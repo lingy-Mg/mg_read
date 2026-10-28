@@ -77,7 +77,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
     private val network = Executors.newFixedThreadPool(2) { runnable ->
         Thread(runnable, "mgread-browser-http").apply { isDaemon = true }
     }
-    private val completed = ConcurrentHashMap<String, String>()
+    private val completed = AndroidBrowserResults()
     private val jobs = ConcurrentHashMap<String, Job>()
     private val sessions = mutableMapOf<String, Session>()
     private val debugPinnedPlugins = mutableSetOf<String>()
@@ -96,16 +96,16 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
     fun start(raw: String): String {
         val id = UUID.randomUUID().toString()
         if (disposed.get()) {
-            completed[id] = errorResult("unsupported")
+            completed.complete(id, errorResult("unsupported"))
             return id
         }
         val request = runCatching { AndroidBrowserSessionRequest.parse(raw) }.getOrElse {
-            completed[id] = errorResult("plugin_execution_failed")
+            completed.complete(id, errorResult("plugin_execution_failed"))
             return id
         }
         Log.i(TAG, "browser_session_start transport=${request.transport} presentation=${request.presentation}")
         if (jobs.size >= MAX_PENDING_REQUESTS) {
-            completed[id] = errorResult("overloaded")
+            completed.complete(id, errorResult("overloaded"))
             return id
         }
         val job = Job(
@@ -124,28 +124,14 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         return id
     }
 
-    /**
-     * Polls from the Javet thread without relying on the embedded Node timer
-     * queue. The WebView callbacks still run on the Android main thread, so a
-     * short wait here does not block page loading or the visible browser
-     * surface. The wait is bounded to keep the private bridge responsive.
-     */
-    fun poll(id: String, waitMillis: Long = 0L): String {
-        val deadline = System.nanoTime() + waitMillis.coerceIn(0L, MAX_POLL_WAIT_MILLIS) * 1_000_000L
-        do {
-            completed.remove(id)?.let {
-                Log.i(TAG, "browser_session_poll_complete")
-                return it
-            }
-            if (System.nanoTime() >= deadline) return PENDING_RESULT
-            try {
-                Thread.sleep(POLL_SLEEP_MILLIS)
-            } catch (_: InterruptedException) {
-                Thread.currentThread().interrupt()
-                return PENDING_RESULT
-            }
-        } while (true)
-    }
+    /** Compatibility read for the independent Node adapter; never blocks. */
+    @Suppress("UNUSED_PARAMETER")
+    fun poll(id: String, waitMillis: Long = 0L): String = completed.take(id) ?: PENDING_RESULT
+
+    /** A single completion handoff for the in-process asynchronous Javet bridge. */
+    fun awaitResult(id: String, listener: (String) -> Unit) = completed.listen(id, listener)
+
+    fun forgetResult(id: String) = completed.forget(id)
 
     fun cancel(id: String) {
         jobs[id]?.let { job ->
@@ -489,7 +475,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
 
     private fun completePageSuccess(job: Job, response: JSONObject) {
         if (!isCurrent(job)) return
-        completed[job.id] = JSONObject().put("state", "done").put("response", response).toString(); finish(job)
+        completed.complete(job.id, JSONObject().put("state", "done").put("response", response).toString()); finish(job)
     }
 
     private fun isPageVisible(session: Session): Boolean = foregroundPluginId == session.pluginId && foregroundDialog?.isShowing == true && session.webView.isAttachedToWindow
@@ -603,7 +589,7 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
                 response.remove("height")
                 response.remove("devicePixelRatio")
             }
-            completed[job.id] = JSONObject().put("state", "done").put("response", response).toString()
+            completed.complete(job.id, JSONObject().put("state", "done").put("response", response).toString())
             finish(job)
         }
     }
@@ -701,14 +687,14 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         if (!isCurrent(job)) return
         response.put("version", 1)
         Log.i(TAG, "browser_session_fetch_complete plugin_id=${job.request.pluginId}")
-        completed[job.id] = JSONObject().put("state", "done").put("response", response).toString()
+        completed.complete(job.id, JSONObject().put("state", "done").put("response", response).toString())
         finish(job)
     }
 
     private fun completeError(job: Job, code: String) {
         if (jobs.remove(job.id) == null) return
         Log.i(TAG, "browser_session_complete_error code=$code")
-        completed[job.id] = errorResult(code)
+        completed.complete(job.id, errorResult(code))
         sessions[job.request.pluginId]?.let { session ->
             expirePageAsyncResult(job, session)
             if (session.activeJobId == job.id) session.activeJobId = null
@@ -944,8 +930,6 @@ internal class AndroidBrowserSessionHost(private val context: Context) {
         const val MAX_RESIDENT_WEBVIEWS = 8
         const val PAGE_POLL_MILLIS = 400L
         const val PAGE_OPERATION_POLL_MILLIS = 50L
-        const val POLL_SLEEP_MILLIS = 10L
-        const val MAX_POLL_WAIT_MILLIS = 120_000L
         const val TAG = "MgReadAndroidBrowser"
         const val PENDING_RESULT = "{\"state\":\"pending\"}"
         val PAGE_ASYNC_OPERATIONS = setOf("page.evaluate", "page.html", "page.fetch")

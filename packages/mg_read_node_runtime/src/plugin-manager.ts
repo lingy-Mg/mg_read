@@ -943,7 +943,7 @@ export class PluginManager {
       // compile the bundled plugin module so it and Node builtin modules
       // stay in the same VM/module cache as the Runtime Core.
       const loader = (globalThis as {
-        __mgreadLoadPluginModule?: (path: string) => Record<string, unknown>;
+        __mgreadLoadPluginModule?: (path: string) => Record<string, unknown> | Promise<Record<string, unknown>>;
       }).__mgreadLoadPluginModule;
       if (typeof loader === "function") {
         return loader(entryPath);
