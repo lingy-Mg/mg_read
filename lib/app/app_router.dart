@@ -11,6 +11,7 @@
 library;
 
 import 'dart:async';
+import 'app_navigation_activity.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -77,6 +78,7 @@ final appRouterProvider = Provider<GoRouter>((Ref ref) {
   final diagnostics = ref.watch(diagnosticsManagerProvider);
   final GoRouter router = GoRouter(
     navigatorKey: appRootNavigatorKey,
+    observers: [ref.read(appNavigationActivityProvider)],
     routes: $appRoutes,
     errorBuilder: (BuildContext context, GoRouterState state) {
       return const _UnknownRoutePage();

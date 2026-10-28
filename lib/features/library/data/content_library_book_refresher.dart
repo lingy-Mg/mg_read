@@ -7,6 +7,8 @@
 /// 注意：
 /// - 详情和目录都成功后再更新详情；目录追加不修订或删除既有章节。
 /// - 旧封面缓存只按当前书籍键失效，不能清空全局封面缓存。
+/// - 应用生命周期内复用队列；自动与手动请求合并但不降低完整刷新语义。
+/// - 元数据以原条目 revision 条件提交，保留私密状态并拒绝迟到回写。
 library;
 
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -15,14 +17,18 @@ import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/discovery/application/persisted_source_detail.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/library/application/library_book_refresher.dart';
+import 'package:mg_read/features/library/application/library_refresh_queue.dart';
 
 /// Refreshes one source-backed shelf item through typed source and library APIs.
 final class ContentLibraryBookRefresher implements LibraryBookRefresher, LibraryBookRefreshReporter, LibraryCatalogOnlyRefresher {
-  ContentLibraryBookRefresher(this._library, this._gateway);
+  ContentLibraryBookRefresher(this._library, this._gateway, {this.mayStartAutomatic});
 
   final ContentLibrary _library;
   final SourceContentGateway _gateway;
-  final Map<String, Future<bool>> _active = <String, Future<bool>>{};
+  final bool Function()? mayStartAutomatic;
+  final LibraryRefreshQueue _queue = LibraryRefreshQueue();
+  final Map<String, Future<bool>> _full = {};
+  final Map<String, Future<bool>> _catalog = {};
 
   @override
   Future<void> refresh(String bookId) async {
@@ -31,24 +37,46 @@ final class ContentLibraryBookRefresher implements LibraryBookRefresher, Library
 
   @override
   Future<bool> refreshAndReport(String bookId) {
-    final current = _active[bookId];
+    final current = _full[bookId];
     if (current != null) return current;
-    final task = _refresh(bookId);
-    _active[bookId] = task;
-    return task.whenComplete(() {
-      if (identical(_active[bookId], task)) _active.remove(bookId);
-    });
+    final catalog = _catalog[bookId];
+    final task =
+        (() async {
+          if (catalog != null) {
+            try {
+              await catalog;
+            } on Object {
+              /* A manual retry must still run. */
+            }
+          }
+          return _schedule(bookId, automatic: false);
+        })().whenComplete(() {
+          _full.remove(bookId);
+        });
+    _full[bookId] = task;
+    return task;
   }
 
   @override
   Future<bool> refreshCatalogOnly(String bookId) {
-    final current = _active[bookId];
+    final current = _full[bookId] ?? _catalog[bookId];
     if (current != null) return current;
-    final task = _refreshCatalogOnly(bookId);
-    _active[bookId] = task;
-    return task.whenComplete(() {
-      if (identical(_active[bookId], task)) _active.remove(bookId);
+    final task = _schedule(bookId, automatic: true).whenComplete(() {
+      _catalog.remove(bookId);
     });
+    _catalog[bookId] = task;
+    return task;
+  }
+
+  Future<bool> _schedule(String bookId, {required bool automatic}) async {
+    final item = await _library.getLibraryItem(LibraryItemId(bookId));
+    if (item == null) throw const LibraryRefreshSkipped();
+    return _queue.run(
+      item.source.pluginId,
+      () => automatic ? _refreshCatalogOnly(bookId) : _refresh(bookId),
+      automatic: automatic,
+      mayStart: mayStartAutomatic,
+    );
   }
 
   Future<bool> _refreshCatalogOnly(String bookId) async {
@@ -85,7 +113,8 @@ final class ContentLibraryBookRefresher implements LibraryBookRefresher, Library
     if (summary.contentKind != kind) throw StateError('The refreshed content kind does not match the shelf item.');
 
     final int catalogAdded = await _syncCatalog(item, chapters);
-    await _library.addLibraryItem(
+    final updated = await _library.updateExistingLibraryItem(
+      item,
       BookshelfAddRequest(
         title: summary.title.isEmpty ? item.title : summary.title,
         author: summary.author ?? item.author,
@@ -119,6 +148,7 @@ final class ContentLibraryBookRefresher implements LibraryBookRefresher, Library
         labels: <String>[...summary.categories, ...summary.tags, for (final attribute in summary.attributes) attribute.value],
       ),
     );
+    if (updated == null) throw const LibraryRefreshSkipped();
     final coverUrls = <Uri>{
       if (item.coverUrl case final Uri oldCover) oldCover,
       if (summary.coverUrl case final Uri refreshedCover) refreshedCover,

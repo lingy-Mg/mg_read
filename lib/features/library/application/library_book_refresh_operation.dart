@@ -10,6 +10,29 @@ library;
 
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/library/application/library_book_refresher.dart';
+import 'package:mg_read/features/library/application/library_refresh_queue.dart';
+
+enum LibraryRefreshItemStatus { success, failure, skipped }
+
+final class LibraryRefreshItemResult {
+  const LibraryRefreshItemResult(this.bookId, this.status, {this.changed = false, this.error});
+  final String bookId;
+  final LibraryRefreshItemStatus status;
+  final bool changed;
+  final Object? error;
+}
+
+final class LibraryRefreshReport {
+  LibraryRefreshReport(Iterable<LibraryRefreshItemResult> items) : items = List.unmodifiable(items);
+  final List<LibraryRefreshItemResult> items;
+  Set<String> get changedBookIds => {
+    for (final item in items)
+      if (item.changed) item.bookId,
+  };
+  int get succeeded => items.where((item) => item.status == LibraryRefreshItemStatus.success).length;
+  int get failed => items.where((item) => item.status == LibraryRefreshItemStatus.failure).length;
+  int get skipped => items.where((item) => item.status == LibraryRefreshItemStatus.skipped).length;
+}
 
 /// Records one complete shelf refresh attempt.
 final class LibraryBookRefreshOperation {
@@ -54,32 +77,37 @@ final class LibraryBookRefreshOperation {
   /// Refreshes every requested shelf item without allowing one source failure
   /// to prevent the remaining content types from being checked.
   Future<Set<String>> refreshAll(Iterable<String> bookIds) async {
-    return _refreshAll(bookIds, catalogOnly: false);
+    return (await refreshBatch(bookIds)).changedBookIds;
   }
 
   /// Best-effort automatic chapter checks that preserve saved book metadata.
   Future<Set<String>> refreshAllCatalogsOnly(Iterable<String> bookIds) async {
-    return _refreshAll(bookIds, catalogOnly: true);
+    return (await refreshBatch(bookIds, catalogOnly: true)).changedBookIds;
   }
 
-  Future<Set<String>> _refreshAll(Iterable<String> bookIds, {required bool catalogOnly}) async {
-    final changedBookIds = <String>{};
-    await Future.wait<void>(
-      bookIds.map((bookId) async {
+  Future<LibraryRefreshReport> refreshBatch(Iterable<String> bookIds, {bool catalogOnly = false}) async {
+    final results = <LibraryRefreshItemResult>[];
+    final pending = bookIds.toSet().iterator;
+    Future<void> worker() async {
+      while (pending.moveNext()) {
+        final bookId = pending.current;
         try {
           final bool changed = catalogOnly && refresher is LibraryCatalogOnlyRefresher
               ? await (refresher as LibraryCatalogOnlyRefresher).refreshCatalogOnly(bookId)
               : refresher is LibraryBookRefreshReporter
               ? await (refresher as LibraryBookRefreshReporter).refreshAndReport(bookId)
               : await _refreshConservatively(bookId);
-          if (changed) changedBookIds.add(bookId);
-        } on Object {
-          // Automatic checks are best-effort; the previous local catalog is
-          // retained and the next scheduled opening can try again.
+          results.add(LibraryRefreshItemResult(bookId, LibraryRefreshItemStatus.success, changed: changed));
+        } on LibraryRefreshSkipped {
+          results.add(LibraryRefreshItemResult(bookId, LibraryRefreshItemStatus.skipped));
+        } on Object catch (error) {
+          results.add(LibraryRefreshItemResult(bookId, LibraryRefreshItemStatus.failure, error: error));
         }
-      }),
-    );
-    return changedBookIds;
+      }
+    }
+
+    await Future.wait<void>(List.generate(4, (_) => worker()));
+    return LibraryRefreshReport(results);
   }
 
   Future<bool> _refreshConservatively(String bookId) async {

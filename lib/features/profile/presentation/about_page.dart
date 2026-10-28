@@ -34,7 +34,7 @@ class AboutPage extends StatelessWidget {
   final ValueChanged<AppNavigationDestination> onDestinationRequested;
   final String appVersion;
   final ValueChanged<String>? onItemRequested;
-  final Future<GitHubApkRelease?> Function()? onCheckForUpdate;
+  final Future<UpdateCheckResult<GitHubApkRelease>> Function()? onCheckForUpdate;
   final Future<void> Function(GitHubApkRelease release)? onInstallUpdate;
 
   @override
@@ -184,7 +184,7 @@ class _AboutSettingsCard extends StatefulWidget {
   const _AboutSettingsCard({required this.onItemPressed, this.onCheckForUpdate, this.onInstallUpdate});
 
   final ValueChanged<String> onItemPressed;
-  final Future<GitHubApkRelease?> Function()? onCheckForUpdate;
+  final Future<UpdateCheckResult<GitHubApkRelease>> Function()? onCheckForUpdate;
   final Future<void> Function(GitHubApkRelease release)? onInstallUpdate;
 
   @override
@@ -203,10 +203,11 @@ class _AboutSettingsCardState extends State<_AboutSettingsCard> {
     }
     setState(() => _checkingForUpdate = true);
     try {
-      final release = await check();
+      final result = await check();
+      final release = result.value;
       if (!mounted) return;
       if (release == null) {
-        _showMessage('当前已是最新版本。');
+        _showMessage(result.message);
         return;
       }
       final accepted = await showGitHubApkUpdatePrompt(context, release);

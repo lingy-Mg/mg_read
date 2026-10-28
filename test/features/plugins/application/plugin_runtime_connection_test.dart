@@ -79,12 +79,7 @@ void main() {
   });
 
   test('invalid Runtime launch options map to a safe actionable startup detail', () {
-    final error = normalizePluginRuntimeError(
-      const PluginRuntimeException(
-        'runtime_invalid_launch_options',
-        'Runtime 启动参数无效或与当前应用版本不兼容。',
-      ),
-    );
+    final error = normalizePluginRuntimeError(const PluginRuntimeException('runtime_invalid_launch_options', 'Runtime 启动参数无效或与当前应用版本不兼容。'));
 
     expect(error.code, AppErrorCode.runtimeStartFailed);
     expect(error.detail, 'Runtime 启动参数无效或与当前应用版本不兼容。');
@@ -310,7 +305,7 @@ void main() {
 
     expect(find.text('数据源'), findsOneWidget);
     expect(find.text('我的数据源'), findsOneWidget);
-    expect(find.textContaining('1 个数据源 ·'), findsOneWidget);
+    expect(find.textContaining('1 个数据源'), findsOneWidget);
     expect(find.text('示例插件'), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('data-source-org.example.fixture')), findsOneWidget);
     expect(find.byKey(const Key('data-source-add')), findsOneWidget);

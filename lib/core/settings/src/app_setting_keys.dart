@@ -258,7 +258,33 @@ final class AppSettingKeys {
     validator: _validateAudioMiniPlayerStyle,
   );
 
+  static const updatesDocument = SettingsDocumentDefinition(id: 'app-settings:settings.updates', kind: 'settings.updates');
+  static const sourceAutoUpdateCheckEnabled = SettingKey<bool>(
+    id: 'updates.sourceAutoCheckEnabled',
+    documentKind: 'settings.updates',
+    defaultValue: true,
+    codec: SettingCodec<bool>(_boolEncode, _boolDecode),
+    validator: _validateBool,
+  );
+  static const sourceUpdateCheckState = SettingKey<Map<String, Object?>>(
+    id: 'updates.sourceCheckState',
+    documentKind: 'settings.updates',
+    defaultValue: <String, Object?>{},
+    codec: SettingCodec<Map<String, Object?>>(_readerPreferencesEncode, _readerPreferencesDecode, freeze: freezeJsonSettingMap),
+    validator: _validateReaderPreferences,
+  );
+  static const bookshelfCatalogCheckState = SettingKey<Map<String, Object?>>(
+    id: 'updates.catalogCheckState',
+    documentKind: 'settings.updates',
+    defaultValue: <String, Object?>{},
+    codec: SettingCodec<Map<String, Object?>>(_readerPreferencesEncode, _readerPreferencesDecode, freeze: freezeJsonSettingMap),
+    validator: _validateReaderPreferences,
+  );
+
   static const all = <SettingKey<dynamic>>[
+    sourceAutoUpdateCheckEnabled,
+    sourceUpdateCheckState,
+    bookshelfCatalogCheckState,
     themeMode,
     themeColor,
     darkThemeColor,
@@ -288,6 +314,7 @@ final class AppSettingKeys {
   static final registry = SettingsRegistry(
     keys: all,
     documents: const [
+      updatesDocument,
       appearanceDocument,
       searchHistoryDocument,
       discoveryDocument,

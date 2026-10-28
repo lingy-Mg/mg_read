@@ -3,6 +3,15 @@ part of 'content_library.dart';
 final class _BookshelfOperations {
   _BookshelfOperations(this._library);
   final ContentLibrary _library;
+  Future<LibraryItem?> updateExisting(LibraryItem expected, BookshelfAddRequest request) => _library._withStorageMaintenance(() async {
+    final item = await get(expected.id);
+    if (item == null || item.state != 'active' || item.revision != expected.revision) return null;
+    if (item.source.pluginId != request.pluginId || item.source.remoteContentId != request.remoteContentId || item.kind != request.kind) {
+      throw ArgumentError('A metadata refresh cannot replace the shelf identity.');
+    }
+    return (await _add(request, visibility: item.visibility)).item;
+  });
+
   Future<LibraryItem> add(BookshelfAddRequest request) async {
     final result = await _library._trace(
       operation: 'bookshelfAdd',
@@ -58,7 +67,7 @@ final class _BookshelfOperations {
   Future<void> setVisibility(LibraryItemId id, LibraryVisibility visibility) =>
       _library._trace(operation: 'bookshelfSetVisibility', itemCount: 1, action: () => _setVisibility(id, visibility));
 
-  Future<_BookshelfAddResult> _add(BookshelfAddRequest request) async {
+  Future<_BookshelfAddResult> _add(BookshelfAddRequest request, {LibraryVisibility visibility = LibraryVisibility.normal}) async {
     _safeText(request.title);
     final details = _shelfSummary(request);
     try {
@@ -67,7 +76,7 @@ final class _BookshelfOperations {
         contentKind: request.kind.code,
         title: request.title,
         author: request.author,
-        visibility: LibraryVisibility.normal.wireValue,
+        visibility: visibility.wireValue,
         coverUrl: details['coverUrl'] as String?,
         sourceName: details['sourceName'] as String?,
         pluginId: request.pluginId,

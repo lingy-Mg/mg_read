@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -8,6 +9,61 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/library/data/content_library_book_refresher.dart';
 
 void main() {
+  test('manual refresh joins then upgrades an automatic catalog check', () async {
+    final root = await Directory.systemTemp.createTemp('mgread-refresh-upgrade-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    addTearDown(() async {
+      await library.close();
+      await root.delete(recursive: true);
+    });
+    final item = await library.addLibraryItem(
+      const BookshelfAddRequest(
+        title: 'old',
+        author: null,
+        kind: ContentKind.novel,
+        pluginId: 'org.example.source',
+        pluginVersion: '1.0.0',
+        remoteContentId: 'book',
+      ),
+    );
+    final gateway = _ControlledCatalogGateway();
+    final refresher = ContentLibraryBookRefresher(library, gateway);
+    final automatic = refresher.refreshCatalogOnly(item.id.value);
+    await gateway.started.future;
+    final manual = refresher.refreshAndReport(item.id.value);
+    final duplicate = refresher.refreshAndReport(item.id.value);
+    expect(gateway.detailIds, isEmpty);
+    gateway.release.complete();
+    await Future.wait([automatic, manual, duplicate]);
+    expect(gateway.detailIds, ['book']);
+    expect(gateway.chapterIds, ['book', 'book']);
+    expect((await library.getLibraryItem(item.id))?.title, '新书名');
+  });
+
+  test('late metadata updates cannot recreate a removed or re-added item', () async {
+    final root = await Directory.systemTemp.createTemp('mgread-refresh-removed-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    addTearDown(() async {
+      await library.close();
+      await root.delete(recursive: true);
+    });
+    const request = BookshelfAddRequest(
+      title: 'original',
+      author: null,
+      kind: ContentKind.novel,
+      pluginId: 'org.example.source',
+      pluginVersion: '1.0.0',
+      remoteContentId: 'book',
+    );
+    final item = await library.addLibraryItem(request);
+    await library.removeLibraryItem(item.id, LibraryRemovalPolicy.removeIncludingUnreferencedContent);
+    expect(await library.updateExistingLibraryItem(item, request), isNull);
+    final readded = await library.addLibraryItem(request);
+    expect(readded.id, isNot(item.id));
+    expect(await library.updateExistingLibraryItem(item, request), isNull);
+    expect(await library.getLibraryItem(readded.id), isNotNull);
+  });
+
   test('refreshes the shelf metadata, complete catalog, and cached cover from the source identity', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-book-refresh-');
     final library = await ContentLibrary.open(dataRoot: root);
@@ -237,3 +293,16 @@ PluginChapterSummary _chapter(String id, String title, int order) => PluginChapt
   isLocked: false,
   attributes: const <PluginContentAttribute>[],
 );
+
+final class _ControlledCatalogGateway extends _RefreshGateway {
+  final started = Completer<void>();
+  final release = Completer<void>();
+  @override
+  Future<PluginChaptersResult> getChapters({required String pluginId, required String id}) async {
+    if (!started.isCompleted) {
+      started.complete();
+      await release.future;
+    }
+    return super.getChapters(pluginId: pluginId, id: id);
+  }
+}

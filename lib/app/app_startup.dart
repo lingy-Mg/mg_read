@@ -11,7 +11,7 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
@@ -497,16 +497,32 @@ final class DeferredLibraryBookDetailLauncher implements LibraryBookDetailLaunch
   Future<LibraryBookDetailLaunchData> load(String bookId) async => ContentLibraryBookDetailLauncher(await _get()).load(bookId);
 }
 
-final class DeferredLibraryBookRefresher implements LibraryBookRefresher, LibraryBookRefreshReporter {
-  const DeferredLibraryBookRefresher(this._get, this._gateway);
+final class DeferredLibraryBookRefresher implements LibraryBookRefresher, LibraryBookRefreshReporter, LibraryCatalogOnlyRefresher {
+  DeferredLibraryBookRefresher(this._get, this._gateway);
   final ContentLibraryGetter _get;
   final SourceContentGateway _gateway;
+  ContentLibraryBookRefresher? _delegate;
+
+  Future<ContentLibraryBookRefresher> _resolve() async {
+    final library = await _get();
+    return _delegate ??= ContentLibraryBookRefresher(
+      library,
+      _gateway,
+      mayStartAutomatic: () {
+        final lifecycle = WidgetsBinding.instance.lifecycleState;
+        return lifecycle == null || lifecycle == AppLifecycleState.resumed;
+      },
+    );
+  }
 
   @override
-  Future<void> refresh(String bookId) async => ContentLibraryBookRefresher(await _get(), _gateway).refresh(bookId);
+  Future<void> refresh(String bookId) async => (await _resolve()).refresh(bookId);
 
   @override
-  Future<bool> refreshAndReport(String bookId) async => ContentLibraryBookRefresher(await _get(), _gateway).refreshAndReport(bookId);
+  Future<bool> refreshAndReport(String bookId) async => (await _resolve()).refreshAndReport(bookId);
+
+  @override
+  Future<bool> refreshCatalogOnly(String bookId) async => (await _resolve()).refreshCatalogOnly(bookId);
 }
 
 final class DeferredProfileReadingStatsLoader implements ProfileReadingStatsLoader {
@@ -596,7 +612,7 @@ final class DeferredBookCoverBytesLoader implements BookCoverBytesLoader {
 }
 
 final class DeferredDiscoveryBookshelfSaver implements DiscoveryBookshelfSaver {
-  const DeferredDiscoveryBookshelfSaver(
+  DeferredDiscoveryBookshelfSaver(
     this._get,
     this._gateway,
     this._membership, {
@@ -605,6 +621,8 @@ final class DeferredDiscoveryBookshelfSaver implements DiscoveryBookshelfSaver {
     this.onMutationCommitted,
     this.onMutationFailed,
   });
+  ContentLibraryDiscoveryBookshelfSaver? _delegate;
+  ContentLibrary? _library;
   final ContentLibraryGetter _get;
   final SourceContentGateway _gateway;
   final BookshelfMembershipController _membership;
@@ -621,7 +639,11 @@ final class DeferredDiscoveryBookshelfSaver implements DiscoveryBookshelfSaver {
     PluginChaptersResult? catalog,
   }) async {
     final library = await _get();
-    await ContentLibraryDiscoveryBookshelfSaver(
+    if (!identical(_library, library)) {
+      _library = library;
+      _delegate = null;
+    }
+    final saver = _delegate ??= ContentLibraryDiscoveryBookshelfSaver(
       library,
       prefetcher: prefetchers.resolve(library, _gateway),
       membership: _membership,
@@ -664,7 +686,8 @@ final class DeferredDiscoveryBookshelfSaver implements DiscoveryBookshelfSaver {
         );
       },
       onMutationFailed: onMutationFailed,
-    ).save(source: source, content: content, detail: detail, catalog: catalog);
+    );
+    await saver.save(source: source, content: content, detail: detail, catalog: catalog);
   }
 }
 

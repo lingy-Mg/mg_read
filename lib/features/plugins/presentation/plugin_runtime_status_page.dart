@@ -18,7 +18,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/plugins/application/source_collection_import.dart';
-import 'package:mg_read/features/plugins/application/source_plugin_transfer_gateway.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
@@ -29,6 +28,7 @@ import 'plugin_runtime_help_page.dart';
 import 'plugin_import_error_dialog.dart';
 import 'plugin_runtime_source_projection.dart';
 import 'source_collection_import_sheet.dart';
+import 'source_update_actions.dart';
 
 /// Runtime-backed data-source management presentation.
 class PluginRuntimeStatusPage extends ConsumerWidget {
@@ -100,51 +100,7 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
 
   Future<void> _checkSourceUpdates(BuildContext context, WidgetRef ref) async {
     if (!supportsSourceCollectionImport || _managementBusy(ref)) return;
-    List<SourceCollectionCandidate>? updates;
-    var failureStage = '读取在线数据源仓库';
-    try {
-      final results = await ref.read(pluginRuntimeSourceImportProvider.notifier).importSourceCollection(() async {
-        final collection = await ref.read(onlineSourceCatalogServiceProvider).loadCatalog();
-        failureStage = '检查本机已安装版本';
-        final transferGateway = ref.read(sourcePluginTransferGatewayProvider);
-        final plan = await transferGateway.plan(<PluginTransferArtifact>[for (final item in collection.plugins) item.artifact]);
-        final connection = await ref.read(pluginRuntimeConnectionProvider.future);
-        final candidates = planSourceCollection(collection: collection, plan: plan, installed: connection.plugins);
-        final availableUpdates = sourceCollectionAvailableUpdates(candidates);
-        updates = availableUpdates;
-        if (!context.mounted) return null;
-        if (availableUpdates.isEmpty) return const <PluginTransferImportResult>[];
-        final confirmed = await showSourceUpdatesConfirmationDialog(context, availableUpdates);
-        if (!confirmed || !context.mounted) return null;
-        failureStage = '下载并覆盖更新';
-        final selection = sourceCollectionSelection(availableUpdates, <String>{
-          for (final candidate in availableUpdates) candidate.plugin.id,
-        });
-        if (selection == null) return null;
-        return transferGateway.importArtifacts(selection.artifacts, forceUpgradePluginIds: selection.forceUpgradePluginIds);
-      }, initialMessage: '正在检查在线数据源更新');
-      if (!context.mounted || results == null || updates == null) return;
-      if (updates!.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已检查，当前已安装的数据源均为最新版本。')));
-        return;
-      }
-      await showSourceCollectionImportResults(context, results, updates!, onlineRepository: true, updating: true);
-    } on Object catch (error) {
-      if (!context.mounted) return;
-      final message = switch (error) {
-        SourceCollectionImportException() => error.message,
-        PluginRuntimeException() => '失败阶段：$failureStage\n错误代码：${error.code}\n${error.message}',
-        _ => '失败阶段：$failureStage\n${error.runtimeType}: $error',
-      };
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('数据源更新失败'),
-          content: SelectableText(message),
-          actions: <Widget>[TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('知道了'))],
-        ),
-      );
-    }
+    await checkSourceUpdates(context, ref);
   }
 
   Future<void> _clearAllSources(BuildContext context, WidgetRef ref, List<DataSourceManagementRowData> sources) async {

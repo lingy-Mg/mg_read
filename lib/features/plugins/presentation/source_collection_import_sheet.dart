@@ -64,6 +64,7 @@ Future<void> showSourceCollectionImportResults(
   List<SourceCollectionCandidate> candidates, {
   bool onlineRepository = false,
   bool updating = false,
+  Set<String> pendingPluginIds = const {},
 }) => showDialog<void>(
   context: context,
   builder: (dialogContext) {
@@ -87,6 +88,7 @@ Future<void> showSourceCollectionImportResults(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               Text('成功 ${results.length - failed} 项，失败 $failed 项。'),
+              if (pendingPluginIds.isNotEmpty) const Text('部分数据源已保存更新，重启后生效。'),
               const SizedBox(height: AppSpacing.compact),
               for (final result in results)
                 Padding(

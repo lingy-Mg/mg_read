@@ -2,6 +2,8 @@
 library;
 
 import 'dart:io';
+import 'dart:convert';
+import 'dart:async';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -26,6 +28,58 @@ GitHubApkRelease _release({required Uri apkUrl, required String apkName, require
 );
 
 void main() {
+  test('malformed manifests fail explicitly and a forced retry finds an upgrade without installing', () async {
+    final root = await Directory.systemTemp.createTemp('mgread-update-outcome-');
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    var valid = false;
+    var requests = 0;
+    final gate = Completer<void>();
+    final received = Completer<void>();
+    final listener = server.listen((request) async {
+      requests++;
+      if (!received.isCompleted) received.complete();
+      await gate.future;
+      request.response.write(
+        valid
+            ? jsonEncode({
+                'schema': 'mgread.android-update.v1',
+                'repository': 'lingy-Mg/mg_read',
+                'version': '1.2.3',
+                'buildNumber': 4,
+                'tag': 'v1.2.3+4',
+                'publishedAt': '2026-10-28T00:00:00Z',
+                'apk': {'name': 'MgRead-1.2.3+4-android-arm64.apk', 'sha256': List.filled(64, 'a').join()},
+              })
+            : '{}',
+      );
+      await request.response.close();
+    });
+    addTearDown(() async {
+      await server.close(force: true);
+      await listener.cancel();
+      await root.delete(recursive: true);
+    });
+    final coordinator = GitHubApkUpdateCoordinator(
+      currentVersion: () async => const AppVersionInfo(platform: AppUpdatePlatform.android, version: '1.0.0', buildNumber: 1),
+      downloadAndInstall: (_, {onProgress}) async => fail('checks must not install'),
+      supportDirectory: () async => root,
+      manifestUri: Uri.parse('http://127.0.0.1:${server.port}/manifest'),
+      isAndroid: true,
+    );
+    final a = coordinator.checkForUpdate();
+    await received.future;
+    final b = coordinator.checkForUpdate(force: true);
+    gate.complete();
+    expect((await a).status, UpdateCheckStatus.failed);
+    expect((await b).status, UpdateCheckStatus.failed);
+    expect(requests, 1);
+    valid = true;
+    final upgraded = await coordinator.checkForUpdate(force: true);
+    expect(upgraded.status, UpdateCheckStatus.available);
+    expect(upgraded.value?.tag, 'v1.2.3+4');
+    expect((await coordinator.checkForUpdate()).status, UpdateCheckStatus.skipped);
+  });
+
   test('startup checks become due at the 30 minute boundary', () {
     final checkedAt = DateTime.utc(2026, 10, 23, 10);
 
@@ -52,11 +106,11 @@ void main() {
       isAndroid: false,
     );
 
-    expect(await coordinator.checkForUpdate(), isNull);
+    expect((await coordinator.checkForUpdate()).status, UpdateCheckStatus.unsupported);
     expect(currentVersionRead, isFalse);
   });
 
-  test('manual check bypasses the startup interval and refreshes its marker', () async {
+  test('manual check bypasses interval and failed checks preserve the legacy success marker', () async {
     final support = await Directory.systemTemp.createTemp('mgread-update-marker-test-');
     final marker = File('${support.path}${Platform.pathSeparator}github-apk-update-check.txt');
     final now = DateTime.utc(2026, 10, 23, 10, 15);
@@ -84,12 +138,15 @@ void main() {
       isAndroid: true,
     );
 
-    expect(await coordinator.checkForUpdate(), isNull);
+    expect((await coordinator.checkForUpdate()).status, UpdateCheckStatus.skipped);
     expect(requests, 0);
-    expect(await coordinator.checkForUpdate(force: true), isNull);
+    expect((await coordinator.checkForUpdate(force: true)).status, UpdateCheckStatus.failed);
     expect(requests, 1);
     expect(cacheBust, now.add(const Duration(minutes: 5)).microsecondsSinceEpoch.toString());
-    expect(await marker.readAsString(), now.add(const Duration(minutes: 5)).toIso8601String());
+    expect(await marker.readAsString(), now.toIso8601String());
+    expect((await coordinator.checkForUpdate()).status, UpdateCheckStatus.skipped);
+    expect(requests, 1);
+    expect(await File('${support.path}${Platform.pathSeparator}github-apk-update-state.json').exists(), isTrue);
   });
 
   test('APK download verifies release SHA-256 and exposes a bounded installer package', () async {

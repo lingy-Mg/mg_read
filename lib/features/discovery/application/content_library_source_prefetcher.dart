@@ -1,3 +1,7 @@
+/// Lifecycle-scoped source prefetch. Catalog/body work is best effort and cannot
+/// restore removed shelf entries; metadata commits require the original revision.
+library;
+
 // ignore_for_file: prefer_initializing_formals
 
 import 'dart:async';
@@ -186,7 +190,8 @@ final class ContentLibrarySourcePrefetcher {
 
       final detail = await detailFuture;
       if (detail != null) {
-        await _library.addLibraryItem(
+        await _library.updateExistingLibraryItem(
+          item,
           BookshelfAddRequest(
             title: detail.summary.title.isEmpty ? item.title : detail.summary.title,
             author: detail.summary.author ?? item.author,
@@ -269,6 +274,7 @@ final class ContentLibrarySourcePrefetcher {
     var cached = 0;
     final int end = (1 + _followingChapterCount).clamp(1, chapters.length);
     for (var index = 1; index < end; index++) {
+      if (await _library.getLibraryItem(item.id) == null) break;
       final chapter = chapters[index];
       try {
         final content = await _gateway.getContent(pluginId: source.pluginId, id: source.remoteContentId, chapterId: chapter.id);

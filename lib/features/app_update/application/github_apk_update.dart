@@ -8,6 +8,9 @@
 /// system remains responsible for signing and user confirmation.
 library;
 
+import 'update_check_result.dart';
+export 'update_check_result.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -41,7 +44,7 @@ final class GitHubApkDownloadProgress {
 typedef GitHubApkDownloadProgressCallback = void Function(GitHubApkDownloadProgress progress);
 
 bool isGitHubApkUpdateCheckDue(DateTime? lastCheck, DateTime now) =>
-    lastCheck == null || now.difference(lastCheck) >= githubApkUpdateCheckInterval;
+    lastCheck == null || now.isBefore(lastCheck) || now.difference(lastCheck) >= githubApkUpdateCheckInterval;
 
 String githubAndroidApkAssetName(AppVersionInfo version) =>
     'MgRead-${version.version}${version.buildNumber > 0 ? '+${version.buildNumber}' : ''}-android-arm64.apk';
@@ -426,11 +429,18 @@ final class GitHubApkUpdateCoordinator {
   final HttpClient Function() _httpClientFactory;
   final Uri _manifestUri;
   final bool _isAndroid;
-  Future<GitHubApkRelease?>? _checkInFlight;
+  Future<UpdateCheckResult<GitHubApkRelease>>? _checkInFlight;
+  final AutomaticCheckTiming _timing = AutomaticCheckTiming();
+  bool _timingLoaded = false;
   Future<void>? _installInFlight;
 
-  Future<GitHubApkRelease?> checkForUpdate({bool force = false}) {
-    if (!_isAndroid) return Future<GitHubApkRelease?>.value();
+  Future<UpdateCheckResult<GitHubApkRelease>> checkForUpdate({bool force = false}) async {
+    if (!_isAndroid) return const UpdateCheckResult(UpdateCheckStatus.unsupported);
+    final current = _checkInFlight;
+    if (current != null) {
+      final result = await current;
+      if (!force || result.status != UpdateCheckStatus.skipped) return result;
+    }
     return _checkInFlight ??= _check(force: force).whenComplete(() => _checkInFlight = null);
   }
 
@@ -439,14 +449,15 @@ final class GitHubApkUpdateCoordinator {
     return _installInFlight ??= _downloadAndInstall(release, onProgress: onProgress).whenComplete(() => _installInFlight = null);
   }
 
-  Future<GitHubApkRelease?> _check({required bool force}) async {
-    final marker = await _checkMarker();
+  Future<UpdateCheckResult<GitHubApkRelease>> _check({required bool force}) async {
+    await _loadTiming();
     final now = _clock();
-    if (!force && !isGitHubApkUpdateCheckDue(marker, now)) return null;
-    await _writeMarker(now);
-
-    final client = _httpClientFactory();
+    if (!force && !_timing.isDue(now, githubApkUpdateCheckInterval)) {
+      return const UpdateCheckResult(UpdateCheckStatus.skipped);
+    }
+    HttpClient? client;
     try {
+      client = _httpClientFactory();
       final requestUri = _manifestUri.replace(
         queryParameters: <String, String>{..._manifestUri.queryParameters, 'check': '${now.microsecondsSinceEpoch}'},
       );
@@ -455,37 +466,50 @@ final class GitHubApkUpdateCoordinator {
       request.headers.set(HttpHeaders.cacheControlHeader, 'no-cache');
       request.headers.set(HttpHeaders.userAgentHeader, 'MgRead-Android-Updater');
       final response = await request.close().timeout(_requestTimeout);
-      if (response.statusCode != HttpStatus.ok) return null;
-      final body = await _readBounded(response, _maxReleaseMetadataBytes);
+      if (response.statusCode != HttpStatus.ok) throw HttpException('Update HTTP ${response.statusCode}');
+      final body = await _readBounded(response, _maxReleaseMetadataBytes).timeout(_requestTimeout);
       final release = _parseManifest(body);
-      if (release == null) return null;
+      if (release == null) throw const FormatException('Invalid update manifest');
       final local = await _currentVersion();
-      if (local.platform != AppUpdatePlatform.android || !isRemoteAppUpgrade(release.version, local)) return null;
-      return release;
-    } on Object {
-      return null;
+      _timing.complete(now, success: true);
+      if (local.platform != AppUpdatePlatform.android) return const UpdateCheckResult(UpdateCheckStatus.unsupported);
+      return isRemoteAppUpgrade(release.version, local)
+          ? UpdateCheckResult(UpdateCheckStatus.available, value: release)
+          : const UpdateCheckResult(UpdateCheckStatus.upToDate);
+    } on Object catch (error) {
+      _timing.complete(now, success: false);
+      return UpdateCheckResult(UpdateCheckStatus.failed, error: error);
     } finally {
-      client.close(force: true);
+      client?.close(force: true);
+      await _saveTiming();
     }
   }
 
-  Future<DateTime?> _checkMarker() async {
+  Future<void> _loadTiming() async {
+    if (_timingLoaded) return;
+    _timingLoaded = true;
     try {
-      final marker = File('${(await _supportDirectory()).path}${Platform.pathSeparator}github-apk-update-check.txt');
-      if (!await marker.exists()) return null;
-      return DateTime.tryParse((await marker.readAsString()).trim());
+      final root = (await _supportDirectory()).path;
+      final state = File('$root${Platform.pathSeparator}github-apk-update-state.json');
+      if (await state.exists()) {
+        _timing.restore((jsonDecode(await state.readAsString()) as Map).cast<String, Object?>());
+      } else {
+        final legacy = File('$root${Platform.pathSeparator}github-apk-update-check.txt');
+        if (await legacy.exists()) _timing.succeededAt = DateTime.tryParse((await legacy.readAsString()).trim());
+      }
     } on Object {
-      return null;
+      /* Unavailable timing storage must not prevent checking. */
     }
   }
 
-  Future<void> _writeMarker(DateTime at) async {
+  Future<void> _saveTiming() async {
     try {
-      final marker = File('${(await _supportDirectory()).path}${Platform.pathSeparator}github-apk-update-check.txt');
-      await marker.parent.create(recursive: true);
-      await marker.writeAsString(at.toUtc().toIso8601String(), flush: true);
+      final root = (await _supportDirectory()).path;
+      final state = File('$root${Platform.pathSeparator}github-apk-update-state.json');
+      await state.parent.create(recursive: true);
+      await state.writeAsString(jsonEncode(_timing.toJson()), flush: true);
     } on Object {
-      // A read-only or unavailable marker must never block app startup.
+      /* Retain the in-memory cadence when storage is unavailable. */
     }
   }
 

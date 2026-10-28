@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/features/app_update/application/github_apk_update.dart';
 import 'package:mg_read/features/profile/presentation/about_document_page.dart';
 import 'package:mg_read/features/profile/presentation/about_page.dart';
 import 'package:mg_read/features/profile/presentation/contact_page.dart';
@@ -30,7 +31,7 @@ void main() {
           onBackRequested: () {},
           onDestinationRequested: (_) {},
           onItemRequested: requestedItems.add,
-          onCheckForUpdate: () async => null,
+          onCheckForUpdate: () async => const UpdateCheckResult(UpdateCheckStatus.upToDate),
         ),
       ),
     );

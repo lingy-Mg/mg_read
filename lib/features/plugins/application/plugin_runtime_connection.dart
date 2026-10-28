@@ -594,7 +594,9 @@ final class PluginRuntimeSourceImportController extends Notifier<PluginSourceImp
       final results = await operation();
       if (results != null && results.isNotEmpty) {
         state = const PluginSourceImportState(isImporting: true, message: '正在刷新数据源列表', logs: <String>['合集处理完成', '正在刷新数据源列表']);
-        ref.read(pluginRuntimeCatalogChangeProvider.notifier).publish();
+        ref
+            .read(pluginRuntimeCatalogChangeProvider.notifier)
+            .publish(pluginIds: results.where((item) => item.status == PluginTransferImportStatus.installed).map((item) => item.pluginId));
         await ref.read(pluginRuntimeConnectionProvider.future);
       }
       return results;

@@ -38,7 +38,8 @@ void main() {
     expect(refresher.bookIds, containsAllInOrder(<String>['novel-book', 'manga-book', 'audio-book', 'video-book']));
     expect(refresher.bookIds, hasLength(4));
     expect(reloadCount, 1);
-    expect(settings.get(AppSettingKeys.bookshelfCatalogLastCheckedAtMs), now.millisecondsSinceEpoch);
+    expect(settings.get(AppSettingKeys.bookshelfCatalogLastCheckedAtMs), 0);
+    expect(settings.get(AppSettingKeys.bookshelfCatalogCheckState)['failures'], 1);
 
     now = now.add(const Duration(hours: 24, minutes: 1));
     await coordinator.maybeRefresh(bookIds: const <String>['novel-book'], onChanged: (_) async => reloadCount++);

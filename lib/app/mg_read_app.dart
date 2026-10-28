@@ -23,8 +23,7 @@ import 'package:mg_read/app/data_source_system_error_reporter.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
-import 'package:mg_read/features/app_update/application/github_apk_update.dart';
-import 'package:mg_read/features/app_update/presentation/github_apk_update_prompt.dart';
+import 'app_background_tasks.dart';
 import 'package:mg_read/features/lan_sync/application/device_sync_controller.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/media/presentation/source_audio_playback_host.dart';
@@ -44,8 +43,6 @@ class MgReadApp extends ConsumerStatefulWidget {
 class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserver {
   Timer? _developmentSyncDebounce;
   StreamSubscription<RuntimeInitializationProgress>? _runtimeInitializationSubscription;
-  GitHubApkRelease? _pendingApkUpdate;
-  bool _apkUpdatePromptOpen = false;
 
   @override
   void initState() {
@@ -81,49 +78,6 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
     });
   }
 
-  Future<void> _checkForApkUpdate() async {
-    try {
-      final release = await ref.read(githubApkUpdateCoordinatorProvider).checkForUpdate();
-      if (mounted && release != null) await _showApkUpdatePrompt(release);
-    } on Object {
-      // Update discovery is best effort and must not affect startup.
-    }
-  }
-
-  Future<void> _showApkUpdatePrompt(GitHubApkRelease release) async {
-    if (_apkUpdatePromptOpen || !mounted) return;
-    final navigator = appRootNavigatorKey.currentState;
-    if (navigator == null) return;
-    _apkUpdatePromptOpen = true;
-    try {
-      final accepted = await showGitHubApkUpdatePrompt(navigator.context, release);
-      if (accepted == true && mounted) {
-        _pendingApkUpdate = release;
-        await _installPendingApkUpdate();
-      }
-    } on Object {
-      // Dialog failures are also best effort and stay out of the user's way.
-    } finally {
-      _apkUpdatePromptOpen = false;
-    }
-  }
-
-  Future<void> _installPendingApkUpdate() async {
-    final release = _pendingApkUpdate;
-    if (release == null || !mounted) return;
-    try {
-      await showGitHubApkUpdateInstallProgress(
-        context,
-        (onProgress) => ref.read(githubApkUpdateCoordinatorProvider).install(release, onProgress: onProgress),
-      );
-      _pendingApkUpdate = null;
-    } on Object catch (error) {
-      // Android opens its per-app "install unknown apps" settings page when
-      // required. Keep this offer so it can resume automatically on return.
-      if (!error.toString().contains('app_update_install_permission_required')) _pendingApkUpdate = null;
-    }
-  }
-
   Future<void> _warmAfterLibrary(AppStartupController startup) async {
     await startup.waitForSuccessfulLibraryTerminalFrame();
     if (!mounted || startup.isClosed) return;
@@ -142,7 +96,6 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
       // Retention is maintenance, not startup; it must follow Runtime warmup.
       final maintenanceResult = await startup.runDeferredDiagnosticsMaintenance();
       startup.recordStage('maintenanceComplete', resultState: maintenanceResult);
-      if (mounted) unawaited(_checkForApkUpdate());
     }
   }
 
@@ -212,7 +165,6 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
         if (ref.read(appStartupControllerProvider).isInteractive) {
           unawaited(ref.read(deviceSyncControllerProvider.notifier).start());
         }
-        if (_pendingApkUpdate != null) unawaited(_installPendingApkUpdate());
         break;
       case AppLifecycleState.hidden || AppLifecycleState.paused || AppLifecycleState.detached:
         unawaited(ref.read(deviceSyncControllerProvider.notifier).stop());
@@ -286,6 +238,7 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
                   ),
                 ),
               ),
+              const AppBackgroundTasks(),
               const ChapterCacheTaskBar(),
               SourceAudioPlaybackNavigator(backButtonDispatcher: router.backButtonDispatcher),
             ],

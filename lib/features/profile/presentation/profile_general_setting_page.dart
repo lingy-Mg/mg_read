@@ -67,13 +67,21 @@ class ProfileGeneralSettingPage extends ConsumerWidget {
   }
 
   List<Widget> _readingSections(BuildContext context, AppSettingsManager settings) => <Widget>[
+    SwitchListTile.adaptive(
+      key: const Key('source-auto-update-check'),
+      contentPadding: EdgeInsets.zero,
+      title: const Text('自动检查书源更新'),
+      subtitle: const Text('每 24 小时检查，确认后安装'),
+      value: settings.get(AppSettingKeys.sourceAutoUpdateCheckEnabled),
+      onChanged: (value) => settings.set(AppSettingKeys.sourceAutoUpdateCheckEnabled, value),
+    ),
     const _SectionHeading(title: '小说阅读', description: '只保留影响章节加载的设置'),
     const SizedBox(height: AppSpacing.regular),
     SwitchListTile.adaptive(
       key: const Key('bookshelf-auto-catalog-refresh'),
       contentPadding: EdgeInsets.zero,
       title: const Text('自动检查新章节'),
-      subtitle: const Text('打开书架时只检查章节目录，不更新封面和书籍信息'),
+      subtitle: const Text('打开书架或回到前台时只检查章节目录，不更新封面和书籍信息'),
       value: settings.get(AppSettingKeys.bookshelfCatalogAutoRefreshEnabled),
       onChanged: (bool value) => settings.set(AppSettingKeys.bookshelfCatalogAutoRefreshEnabled, value),
     ),

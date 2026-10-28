@@ -167,6 +167,11 @@ final class ContentLibrary {
       _persistence.metadataRecords.contentLibrary.deleteBookmark(itemId.value, bookmarkId);
 
   Future<LibraryItem> addLibraryItem(BookshelfAddRequest request) => _bookshelf.add(request);
+
+  /// Updates only the exact surviving shelf identity. A late network response
+  /// cannot recreate a removed book or mutate a subsequently re-added copy.
+  Future<LibraryItem?> updateExistingLibraryItem(LibraryItem expected, BookshelfAddRequest request) =>
+      _bookshelf.updateExisting(expected, request);
   Future<void> removeLibraryItem(LibraryItemId id, LibraryRemovalPolicy policy) => _bookshelf.remove(id, policy);
   Future<void> setLibraryItemVisibility(LibraryItemId id, LibraryVisibility visibility) => _bookshelf.setVisibility(id, visibility);
   Future<Page<LibraryItem>> listLibrary(LibraryQuery query) => _bookshelf.list(query);
