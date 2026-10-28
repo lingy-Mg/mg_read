@@ -29,7 +29,7 @@ void main() {
     expect(find.byType(ProfileOverviewCard), findsOneWidget);
     expect(find.text('书海行者'), findsOneWidget);
     expect(find.text('VIP'), findsOneWidget);
-    expect(find.text('设置与管理'), findsOneWidget);
+    expect(find.text('阅读与外观'), findsOneWidget);
     expect(find.text('阅读器与播放器'), findsOneWidget);
     expect(find.text('数据源管理'), findsOneWidget);
     expect(find.text('缓存管理'), findsOneWidget);
@@ -37,7 +37,8 @@ void main() {
     expect(find.text('清理缓存'), findsNothing);
     expect(find.text('关于与其他'), findsOneWidget);
     expect(find.text('隐私与权限'), findsNothing);
-    expect(find.text('问题诊断'), findsOneWidget);
+    expect(find.text('问题诊断'), findsNothing);
+    expect(find.text('高级设置'), findsOneWidget);
     expect(find.byType(AppBottomNavigation), findsOneWidget);
 
     final Rect card = tester.getRect(find.byType(ProfileOverviewCard));
@@ -120,12 +121,8 @@ void main() {
     await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
 
-    await tester.drag(find.byKey(const Key('profile-page-content')), const Offset(0, -360));
-    await tester.pumpAndSettle();
-
-    final Finder backupRow = find.byKey(const Key('profile-setting-data-backup'));
-    expect(find.descendant(of: backupRow, matching: find.text('局域网同步')), findsOneWidget);
-    expect(find.descendant(of: backupRow, matching: find.text('同一网络传输数据源、书架与进度')), findsOneWidget);
+    expect(find.text('局域网同步'), findsOneWidget);
+    expect(find.byKey(const Key('profile-setting-data-backup')), findsNothing);
     expect(find.text('已开启'), findsNothing);
   });
 
@@ -183,6 +180,10 @@ void main() {
 
     await tester.drag(find.byKey(const Key('profile-page-content')), const Offset(0, -600));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('profile-advanced-settings')));
+    await tester.tap(find.text('高级设置'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('profile-setting-diagnostics')));
     final diagnostics = find.byKey(const Key('profile-setting-diagnostics'));
     await tester.tap(diagnostics);
 
@@ -199,6 +200,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.drag(find.byKey(const Key('profile-page-content')), const Offset(0, -200));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('profile-setting-downloads-cache')));
 
     expect(cacheRequested, isTrue);

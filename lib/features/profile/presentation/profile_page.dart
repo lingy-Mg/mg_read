@@ -1,7 +1,7 @@
 /// “我的”主页面。
 ///
 /// 职责：
-/// - 展示用户概览和设置入口，并将路由意图交给应用层。
+/// - 按阅读外观、内容存储和高级设置分组；同步只保留概览卡入口。
 /// - 作为设置子页面的顶部节奏基准。
 ///
 /// 注意：
@@ -140,25 +140,49 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                           ],
                           const SizedBox(height: AppSpacing.section - 2),
-                          _ProfileSectionTitle(title: '设置与管理'),
-                          const SizedBox(height: AppSpacing.comfortable / 2),
-                          ProfileSettingsList(
-                            items: [
-                              ...data.settings,
-                              if (Platform.isAndroid && !const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME'))
-                                const ProfileSettingsItemViewData(
-                                  id: 'node-runtime',
-                                  title: 'Node.js 运行时',
-                                  description: '切换运行时，重启后生效',
-                                  icon: ProfileSettingsIcon.sources,
+                          ..._settingsGroup(
+                            '阅读与外观',
+                            data.settings.where((item) => const {'reading-settings', 'theme-appearance'}.contains(item.id)).toList(),
+                          ),
+                          ..._settingsGroup(
+                            '内容与存储',
+                            data.settings
+                                .where((item) => const {'source-management', 'downloads-cache', 'import-export'}.contains(item.id))
+                                .toList(),
+                          ),
+                          Material(
+                            color: Colors.transparent,
+                            child: ExpansionTile(
+                              key: const Key('profile-advanced-settings'),
+                              tilePadding: EdgeInsets.zero,
+                              title: const Text('高级设置'),
+                              subtitle: const Text('代理、运行时与问题诊断'),
+                              children: [
+                                ProfileSettingsList(
+                                  items: [
+                                    ...data.settings.where((item) => item.id == 'network-proxy'),
+                                    if (Platform.isAndroid && !const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME'))
+                                      const ProfileSettingsItemViewData(
+                                        id: 'node-runtime',
+                                        title: 'Node.js 运行时',
+                                        description: '切换运行时，重启后生效',
+                                        icon: ProfileSettingsIcon.sources,
+                                      ),
+                                    ...data.about.where((item) => item.id == 'diagnostics'),
+                                  ],
+                                  onItemPressed: (item) =>
+                                      item.id == 'diagnostics' ? _handleAboutItemPressed(item) : _handleSettingsItemPressed(item),
                                 ),
-                            ],
-                            onItemPressed: _handleSettingsItemPressed,
+                              ],
+                            ),
                           ),
                           const SizedBox(height: AppSpacing.section - 4),
                           _ProfileSectionTitle(title: '关于与其他'),
                           const SizedBox(height: AppSpacing.comfortable / 2),
-                          ProfileSettingsList(items: data.about, onItemPressed: _handleAboutItemPressed),
+                          ProfileSettingsList(
+                            items: data.about.where((item) => item.id != 'diagnostics').toList(),
+                            onItemPressed: _handleAboutItemPressed,
+                          ),
                         ],
                       ),
                     ),
@@ -175,6 +199,13 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
     );
   }
+
+  List<Widget> _settingsGroup(String title, List<ProfileSettingsItemViewData> items) => [
+    _ProfileSectionTitle(title: title),
+    const SizedBox(height: AppSpacing.comfortable / 2),
+    ProfileSettingsList(items: items, onItemPressed: _handleSettingsItemPressed),
+    const SizedBox(height: AppSpacing.comfortable),
+  ];
 
   void _handleDestinationSelected(AppNavigationDestination destination) {
     if (destination == AppNavigationDestination.profile) {
