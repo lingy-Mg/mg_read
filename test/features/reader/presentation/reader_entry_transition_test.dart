@@ -30,8 +30,10 @@ import '../../../core/diagnostics/diagnostics_testkit.dart';
 import '../../../support/visual_evidence.dart';
 
 part 'reader_visual_evidence_part.dart';
+part 'reader_snack_bar_isolation_part.dart';
 
 void main() {
+  _registerReaderSnackBarIsolation();
   testWidgets('route preparation uses immersive black fallback system bars', (WidgetTester tester) async {
     final systemUi = _recordReaderSystemUi();
     await tester.pumpWidget(

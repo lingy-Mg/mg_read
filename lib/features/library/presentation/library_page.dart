@@ -39,6 +39,7 @@ import 'package:mg_read/features/library/presentation/library_book_list_view_dat
 import 'package:mg_read/features/library/presentation/library_media_entry_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_shell.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_first_frame.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_reader_launch_error.dart';
 import 'package:mg_read/features/media/application/source_audio_playback_service.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/source_content_detail_sheet.dart';
@@ -197,15 +198,12 @@ class LibraryPage extends ConsumerWidget {
         if (!prepared) {
           if (context.mounted) {
             final failure = ref.read(shelfReaderLaunchCoordinatorProvider).failure;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  failure?.error.detail?.trim().isNotEmpty == true
-                      ? failure!.error.detail!
-                      : failure?.reason.userMessage ?? '阅读内容准备失败，请稍后重试。',
-                ),
-                action: SnackBarAction(label: '重试', onPressed: () => prepareAndOpen(bookId)),
-              ),
+            showLibraryReaderLaunchError(
+              context,
+              message: failure?.error.detail?.trim().isNotEmpty == true
+                  ? failure!.error.detail!
+                  : failure?.reason.userMessage ?? '阅读内容准备失败，请稍后重试。',
+              onRetry: () => prepareAndOpen(bookId),
             );
           }
           return;
