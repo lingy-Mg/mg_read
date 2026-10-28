@@ -8,6 +8,7 @@
 ///
 /// 注意：
 /// - 只消费宿主已经持有的封面字节，不自行读取网络、Runtime 或持久化。
+/// - 封面黑底铺满视口，安全区只约束交互内容，避免顶部露出渐变色边。
 /// - 减少动态效果时立即完成交接，不保留不可见动画层。
 library;
 
@@ -187,35 +188,36 @@ final class MediaEntryCoverSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = AppThemeTokens.of(context);
     final bytes = coverBytes;
+    final hasCoverArtwork = bytes != null && bytes.isNotEmpty;
     final hasFailure = failureMessage != null;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: _mediaEntrySystemUiStyle,
       child: Material(
-        color: tokens.pageBackground,
+        color: Colors.black,
         child: Stack(
           fit: StackFit.expand,
           children: <Widget>[
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: <Color>[tokens.coverIndigoStart, tokens.coverOceanEnd],
+            if (hasCoverArtwork)
+              Positioned.fill(child: _MediaEntryCoverArtwork(bytes: bytes))
+            else
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: <Color>[tokens.coverIndigoStart, tokens.coverOceanEnd],
+                  ),
                 ),
               ),
-            ),
             SafeArea(
               child: LayoutBuilder(
                 builder: (BuildContext context, BoxConstraints constraints) {
                   final coverWidth = (constraints.maxWidth * .58).clamp(168.0, 268.0);
                   final coverHeight = coverWidth / .68;
-                  final hasCoverArtwork = bytes != null && bytes.isNotEmpty;
                   return Stack(
                     fit: StackFit.expand,
                     children: <Widget>[
-                      if (hasCoverArtwork)
-                        Positioned.fill(child: _MediaEntryCoverArtwork(bytes: bytes))
-                      else
+                      if (!hasCoverArtwork)
                         Align(
                           alignment: const Alignment(0, -.08),
                           child: TweenAnimationBuilder<double>(

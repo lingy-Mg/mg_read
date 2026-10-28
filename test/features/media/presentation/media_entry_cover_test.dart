@@ -102,18 +102,25 @@ void main() {
     expect(exits, 1);
   });
 
-  testWidgets('shows video artwork in the player viewport without stretching it', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light(),
-        home: MediaEntryCoverSurface(kind: MediaEntryKind.video, title: '横屏视频', coverBytes: _onePixelPng, onExit: () {}),
-      ),
-    );
+  for (final kind in MediaEntryKind.values) {
+    testWidgets('fills the ${kind.name} viewport with artwork behind safe insets without stretching it', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: MediaQuery(
+            data: const MediaQueryData(size: Size(800, 600), padding: EdgeInsets.fromLTRB(24, 48, 24, 32)),
+            child: MediaEntryCoverSurface(kind: kind, title: '测试媒体', coverBytes: _onePixelPng, onExit: () {}),
+          ),
+        ),
+      );
 
-    final image = tester.widget<Image>(find.byKey(const Key('media-entry-cover-image')));
-    expect(image.fit, BoxFit.contain);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-  });
+      final image = tester.widget<Image>(find.byKey(const Key('media-entry-cover-image')));
+      expect(image.fit, BoxFit.contain);
+      expect(tester.getRect(find.byKey(const Key('media-entry-cover-image'))), const Rect.fromLTWH(0, 0, 800, 600));
+      expect(tester.getTopLeft(find.byKey(const Key('media-entry-back'))).dy, 48);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    });
+  }
 
   testWidgets('turns setup failure into a visible retry action', (tester) async {
     var retries = 0;
