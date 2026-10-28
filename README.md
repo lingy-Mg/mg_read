@@ -1,285 +1,148 @@
+<!-- 面向使用者的仓库首页；宣传插画位于 .github/readme，不代表应用界面。开发规范见 AGENTS.md。 -->
 <div align="center">
 
-<img src="./assets/branding/mg_read_logo.png" width="120" alt="MgRead Logo">
+<img src="assets/branding/mg_read_logo.png" width="88" alt="MgRead 橘猫阅读 Logo">
 
 # MgRead
 
-### 阅读，自由一点。
+**阅读，自由一点。**
 
-**一个本地优先、可安装数据源、面向多种内容形态的跨平台阅读器。**
+小说、漫画、听书、影音，一个应用，装下你的闲暇时光。
 
-小说 · 漫画 · 音频 · 视频 · Android · Windows · macOS
+<img src=".github/readme/hero.svg" width="100%" alt="把喜欢的故事，留在身边。MgRead 阅读主题插画：暖橙色的阳光下，一本翻开的书。">
 
 <br>
 
-[![Flutter](https://img.shields.io/badge/Flutter-3.x-02569B?logo=flutter&logoColor=white)](https://flutter.dev/)
-[![Dart](https://img.shields.io/badge/Dart-3.x-0175C2?logo=dart&logoColor=white)](https://dart.dev/)
-[![Node.js](https://img.shields.io/badge/Runtime-Node.js%2024-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
-[![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Windows%20%7C%20macOS-4F7CFF)](#-支持平台)
-[![GitHub stars](https://img.shields.io/github/stars/lingy-Mg/mg_read?style=flat&logo=github)](https://github.com/lingy-Mg/mg_read/stargazers)
-[![GitHub last commit](https://img.shields.io/github/last-commit/lingy-Mg/mg_read)](https://github.com/lingy-Mg/mg_read/commits/main)
+[![下载 MgRead](https://img.shields.io/badge/下载_MgRead-E07835?style=for-the-badge&logo=github&logoColor=white)](https://github.com/lingy-Mg/mg_read/releases/latest)
+[![开始使用](https://img.shields.io/badge/开始使用-FFF1DA?style=for-the-badge&logo=readme&logoColor=80522F)](#三步开启你的阅读时光)
+[![Star](https://img.shields.io/github/stars/lingy-Mg/mg_read?style=for-the-badge&color=80522F&label=STAR&logo=github&logoColor=white)](https://github.com/lingy-Mg/mg_read/stargazers)
 
-[快速开始](#-快速开始) · [核心能力](#-核心能力) · [数据源](#-数据源与扩展) · [开发文档](#-开发入口) · [GitHub](https://github.com/lingy-Mg/mg_read)
+Android · Windows · macOS
+
+[阅读与影音](#总有一种方式让你沉浸其中) · [贴心体验](#让每一次打开都刚刚好) · [下载应用](#把-mgread-带到你的设备上) · [常见问题](#开始之前你可能想知道)
 
 </div>
 
----
+<br>
 
-## ✨ MgRead 是什么？
+## 总有一种方式，让你沉浸其中
 
-MgRead 是一款 **本地优先（Local-first）** 的 Flutter 阅读应用。
+读到舍不得放下的一章，听完一段陪你回家的故事，或在周末看点喜欢的内容。MgRead 把这些小小的快乐，放进同一个入口。
 
-它不把在线内容入口固定在主应用里，而是通过 **可安装数据源** 扩展内容来源。主应用负责统一的书架、搜索、详情、阅读、播放与本地持久化，数据源负责连接不同内容服务。
+<table>
+<tr>
+<td width="50%" valign="top">
+<h3>📖 读一本，忘记时间</h3>
+<p>为文字留一片舒服的空间。按喜好调整字号、配色与翻页方式，让长篇阅读也合自己的习惯。</p>
+<p><sub>小说阅读 · 阅读设置 · 进度保存</sub></p>
+</td>
+<td width="50%" valign="top">
+<h3>🖼️ 翻一页，走进画面</h3>
+<p>喜欢的漫画，收进自己的书架。打开章节，跟着画面与对白，慢慢走进故事。</p>
+<p><sub>漫画阅读 · 章节目录 · 书架收藏</sub></p>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<h3>🎧 戴上耳机，故事继续</h3>
+<p>通勤时听一段，睡前再听一会儿。倍速播放、定时停止和续播，让声音跟上你的生活节奏。</p>
+<p><sub>音频播放 · 倍速调节 · 定时停止</sub></p>
+</td>
+<td width="50%" valign="top">
+<h3>🎬 留点时间，看点喜欢的</h3>
+<p>从发现内容到打开播放，在同一个应用里完成。文字之外，也给自己一段看故事的时间。</p>
+<p><sub>视频播放 · 内容发现 · 统一入口</sub></p>
+</td>
+</tr>
+</table>
 
-> **一个应用，统一管理小说、漫画、音频和视频。**
+<br>
 
-### 为什么做 MgRead？
+## 让每一次打开，都刚刚好
 
-- **本地优先**：书架、阅读进度和业务数据由本地应用掌控。
-- **数据源可扩展**：内容入口不写死，可以按需安装和开发数据源。
-- **多内容形态**：小说、漫画、音频、视频使用独立阅读器/播放器。
-- **跨平台**：面向 Android、Windows 和 macOS，其中 Android 优先。
-- **开放开发**：Runtime、阅读器、播放器和数据源均按独立模块维护。
+### 📚 喜欢的内容，有自己的位置
 
----
+把想读、想听、想看的内容加入书架。阅读与播放进度保存在本地，下次打开，接着上次的故事。
 
-## 🚀 快速开始
+### 🎨 白天与深夜，都有舒服的颜色
 
-### 普通用户
+日间与夜间主题可以分别设置。让每次打开 MgRead，都有你喜欢的样子。
 
-MgRead 的使用流程很简单：
+### 🧩 内容从哪里来，由你选择
 
-```text
-安装 MgRead
-    ↓
-安装 / 启用数据源
-    ↓
-搜索或发现内容
-    ↓
-加入书架
-    ↓
-开始阅读 / 收听 / 播放
-```
+按需添加数据源，再去搜索、发现和收藏喜欢的内容。可以单独导入，也可以从数据源合集中勾选，一次添加多个来源。
 
-> 当前仓库仍处于持续开发阶段。正式安装包发布后会通过 GitHub Releases 提供。
+### 🔄 换一台设备，也能带上阅读日常
 
-### 开发者本地运行
+手机与电脑连接同一局域网后，可配对并同步书架、进度等数据。同步时让两端应用保持打开，把熟悉的阅读日常带到另一块屏幕。
 
-确保本机已配置 Flutter 环境：
+<br>
 
-```powershell
-flutter pub get
-flutter run
-```
+## 把 MgRead 带到你的设备上
 
----
+手机上随手读，电脑上慢慢看。选择适合你设备的安装包，开始自己的阅读时光。
 
-## 🌟 核心能力
+| Android | Windows | macOS |
+| :---: | :---: | :---: |
+| 随身携带的阅读角落 | 留给大屏的闲暇时光 | 桌面上的故事空间 |
+| ARM64 · APK | x64 · ZIP | Apple Silicon · ZIP |
+| [下载 Android 版](https://github.com/lingy-Mg/mg_read/releases/latest) | [下载 Windows 版](https://github.com/lingy-Mg/mg_read/releases/latest) | [下载 macOS 版](https://github.com/lingy-Mg/mg_read/releases/latest) |
 
-| 能力 | 说明 |
-| --- | --- |
-| 📚 **统一书架** | 管理内容、阅读进度和本地业务数据 |
-| 🧩 **可安装数据源** | 通过独立数据源扩展在线内容入口 |
-| 🔎 **搜索与发现** | 数据源提供发现、搜索、详情和目录能力 |
-| 📖 **小说阅读** | 独立小说阅读器与阅读进度模型 |
-| 🖼️ **漫画阅读** | 独立漫画阅读体验与图片资源代理 |
-| 🎧 **音频播放** | 支持独立音频播放器与后台播放能力 |
-| 🎬 **视频播放** | 独立视频播放器与按需播放资源解析 |
-| 💾 **本地优先** | 主应用拥有书架、目录、进度等业务权威 |
-| 🔄 **局域网同步** | 支持可信设备之间的前台点对点同步 |
-| 🖥️ **跨平台** | Android / Windows / macOS |
+进入发布页后，在 **Assets** 中选择对应平台的文件。应用持续更新，功能与可用平台以所下载版本为准。
 
----
+<br>
 
-## 🧩 数据源与扩展
+## 三步，开启你的阅读时光
 
-MgRead 的核心设计之一是 **主应用与内容来源解耦**。
+**01 · 安装应用**
 
-```text
-数据源
-  │
-  ├─ discover
-  ├─ search
-  ├─ getDetail
-  ├─ getChapters
-  └─ getContent
-       │
-       ▼
-MgRead Runtime
-       │
-       ▼
-Flutter 主应用
-       │
-       ├─ 书架
-       ├─ 小说阅读器
-       ├─ 漫画阅读器
-       ├─ 音频播放器
-       └─ 视频播放器
-```
+前往 [下载页面](https://github.com/lingy-Mg/mg_read/releases/latest)，获取适合设备的 MgRead 安装包。
 
-数据源采用 Node.js 24 ESM 项目形式，`package.json.mgread` 作为 MgRead 元数据入口。
+**02 · 添加喜欢的数据源**
 
-数据源发布为单个 `.mgplugin.js`，或包含单个 JS、元数据与图标的 `.mgplugin` 压缩包。开发时使用的第三方
-npm 包必须在构建时打入 JS，发布后只使用 Node.js 内置模块，不需要下载或安装 npm 依赖。
+在应用的「添加数据源」中导入数据源文件。也可以到 [发布列表](https://github.com/lingy-Mg/mg_read/releases) 找到 **MgRead source collection**，下载其中的 `mgread-sources.mgplugins`，然后选择「导入数据源合集」，勾选需要的来源。
 
-`main` 分支的数据源或共享 Source 包变化后，
-[数据源合集工作流](https://github.com/lingy-Mg/mg_read/actions/workflows/source-collection.yml)会生成可直接下载的
-`mgread-sources.mgplugins` 合集。它包含仓库中可发布的 Node 数据源，不包含原生数据源。在 App 的
-“添加数据源”中选择“导入数据源合集”，即可勾选要新增或覆盖更新的来源；现有来源会显示版本供确认。
+**03 · 找到故事，收进书架**
 
-仓库中的真实数据源位于：
+启用数据源后，搜索或发现喜欢的内容。加入书架，开始阅读、收听或播放。
 
-```text
-plugins/sources/
-```
+<br>
 
-默认参考实现：
-
-```text
-plugins/sources/aisishuwu/
-```
-
-开发期可以使用纯 Node.js 测试工具直接验证数据源：
-
-👉 [mg_read_source_testkit](packages/mg_read_source_testkit/README.md)
-
----
-
-## 💻 支持平台
-
-| 平台 | 状态 | 说明 |
-| --- | --- | --- |
-| **Android** | 🟢 主要平台 | 当前优先开发与验证 |
-| **Windows** | 🟢 支持 | 桌面 Runtime、阅读器与播放器 |
-| **macOS** | 🟢 支持 | arm64 Runtime 与桌面能力 |
-| **iOS** | ⚪ 暂未作为首发平台 | 后续可继续适配 |
-
----
-
-## 🏗️ 项目结构
-
-```text
-mg_read/
-├─ lib/                                Flutter 主应用
-│
-├─ packages/
-│  ├─ mg_read_node_runtime/            Node.js Runtime Core
-│  ├─ mgread_plugin_runtime/           Flutter Runtime Facade / 平台宿主
-│  ├─ mg_read_reader_ui/               小说 / 漫画阅读器
-│  ├─ mg_read_audio_player/            音频播放器
-│  ├─ mg_read_video_player/            视频播放器
-│  └─ mg_read_source_testkit/          数据源开发测试工具
-│
-├─ plugins/
-│  └─ sources/                         数据源项目
-│
-├─ assets/                             Logo、插图及应用资源
-├─ docs/                               核心开发规范
-├─ android/
-├─ windows/
-└─ macos/
-```
-
-整体依赖方向：
-
-```text
-Flutter App
-    │
-    ├── Reader UI
-    ├── Audio Player
-    ├── Video Player
-    │
-    ▼
-Runtime Facade
-    │
-    ▼
-Node.js Runtime
-    │
-    ▼
-Installed Sources
-```
-
----
-
-## 🧪 Windows 数据源自检
-
-Windows App 内置正式 Runtime 数据源检测能力，可在：
-
-**我的 → 管理数据源**
-
-中检测全部已启用来源，也可以进入单个数据源详情执行检测。
-
-自动化场景可以通过发布 bundle 中的 CLI 入口调用：
-
-```powershell
-.\mg_read_cli.exe --source-check=org.mgread.aisishuwu
-.\mg_read_cli.exe --source-check-all
-```
-
-退出码：
-
-| Code | 含义 |
-| ---: | --- |
-| `0` | 全部通过 |
-| `1` | 检测完成，但包含失败 |
-| `2` | 内部错误 |
-| `3` | 需要人工交互 |
-| `4` | 参数错误或平台不支持 |
+## 开始之前，你可能想知道
 
 <details>
-<summary><strong>自检说明</strong></summary>
+<summary><strong>安装后，为什么还需要添加数据源？</strong></summary>
 
-CLI 会等待完整链路测试结束后退出。
-
-检测过程会经过正式 Runtime，覆盖发现、搜索、详情、完整目录、首/中/末内容和资源代理，不依赖 Flutter 测试框架。
-
-`stdout` 输出普通测试过程、完整解码结果与日志，`stderr` 输出错误。
+MgRead 提供阅读、播放与收藏体验，内容由你添加的数据源提供。先安装并启用合适的数据源，再搜索或浏览内容；不同来源提供的内容和可用功能可能不同。
 
 </details>
 
----
+<details>
+<summary><strong>支持云端同步阅读进度吗？</strong></summary>
 
-## 📖 开发入口
+书架和进度优先保存在本地，目前不提供云端同步。跨设备传递可使用局域网同步：将两台设备连接到同一局域网，保持应用在前台，配对后同步；也可以手动发起同步。
 
-如果你准备参与 MgRead 开发，建议从以下入口开始：
+</details>
 
-| 文档 | 用途 |
-| --- | --- |
-| [AGENTS.md](AGENTS.md) | 仓库开发与 AI Agent 入口规范 |
-| [docs/development/README.md](docs/development/README.md) | 开发文档最小路由 |
-| [docs/core.md](docs/core.md) | 跨模块核心规范 |
-| [Source Testkit](packages/mg_read_source_testkit/README.md) | 数据源测试工具 |
+<details>
+<summary><strong>遇到打不开的内容，或想提一个建议？</strong></summary>
 
-当前实现事实以 **公开类型、源码文件头和直接测试** 为准。
+可以在 [Issues](https://github.com/lingy-Mg/mg_read/issues) 留言。遇到问题时，附上应用版本、设备平台与复现步骤，会更容易定位；如果只在某个数据源中出现，也请注明来源名称。
 
----
+</details>
 
-## 🤝 参与项目
-
-欢迎通过 GitHub 参与 MgRead：
-
-- ⭐ 如果项目对你有帮助，可以点一个 Star
-- 🐛 发现问题可以提交 [Issue](https://github.com/lingy-Mg/mg_read/issues)
-- 💡 新功能建议也可以通过 Issue 讨论
-- 🔧 欢迎提交 Pull Request
-- 🧩 也欢迎开发新的数据源与扩展能力
-
----
-
-## ⚠️ 说明
-
-MgRead 的定位是 **阅读应用、运行时与数据源扩展平台**。
-
-不同数据源所连接的内容、服务和访问权限由对应数据源及其目标服务决定。使用者应自行确认相关内容来源、服务条款与当地法律要求。
+<br>
 
 ---
 
 <div align="center">
 
-### MgRead
+### 给自己一点时间，读点喜欢的。
 
-**阅读，自由一点。**
+如果 MgRead 恰好合你心意，欢迎点亮一颗 **Star**，陪它一起成长。
 
-[回到顶部](#mgread)
+[下载 MgRead](https://github.com/lingy-Mg/mg_read/releases/latest) · [反馈与建议](https://github.com/lingy-Mg/mg_read/issues) · [参与开发](docs/development/README.md)
+
+<sub>MgRead 提供阅读与播放工具，内容由所选数据源及其服务提供。请在获得相应授权的前提下使用。</sub>
 
 </div>
