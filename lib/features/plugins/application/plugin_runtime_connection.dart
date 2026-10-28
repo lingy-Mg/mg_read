@@ -3,7 +3,7 @@
 /// 职责：
 /// - 将版本化 Runtime Facade 投影为主应用的窄类型与状态。
 /// - 统一管理数据源操作和 Runtime 检查页开关。
-/// - 在 Runtime 预热前应用系统默认或数据源 HTTP 自定义上游代理。
+/// - 在 Runtime 预热前和系统代理变化后应用当前默认或自定义上游代理。
 ///
 /// 注意：
 /// - 不暴露 Runtime 端口、控制协议、路径或资源 token。
@@ -426,9 +426,14 @@ final pluginRuntimeConnectionProvider = FutureProvider<PluginRuntimeConnection>(
   final gateway = ref.watch(pluginRuntimeGatewayProvider);
   final runtime = ref.watch(pluginRuntimeFacadeProvider);
   final proxyManager = ref.watch(configuredFlutterNetworkProxyManagerProvider);
-  await runtime.configureNodeEnvironmentProxy(true);
-  await runtime.configurePluginHttpProxy(await proxyManager.runtimeSourceProxyUri());
   final diagnostics = ref.watch(diagnosticsManagerProvider);
+  // Observe changes without gating readiness on a stream's first event. A
+  // non-listened catalog action must still be able to inspect the Runtime.
+  final systemEnvironment = ref.watch(systemProxyEnvironmentProvider).value;
+  await runtime.configureNodeEnvironmentProxy(true);
+  final proxy = await proxyManager.runtimeSourceProxyUri(systemEnvironment: systemEnvironment);
+  if (!ref.mounted) throw StateError('Runtime proxy configuration was superseded.');
+  await runtime.configurePluginHttpProxy(proxy);
   final span = diagnostics.startSpan(
     AppDiagnosticEvents.runtimeFacadeCall,
     attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{

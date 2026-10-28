@@ -42,6 +42,10 @@ export function discover() {
 
 export async function search(request) {
   let title = `fixture:${request.query}`;
+  if (request.query === "android-http-proxy") {
+    const response = await context.http.fetch("http://proxy-fixture.invalid/cover");
+    title = await response.text();
+  }
   if (request.query === "slow") {
     await new Promise((resolve) => setTimeout(resolve, 10_000));
   }

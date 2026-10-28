@@ -26,6 +26,8 @@ class JavetRuntimeBackendPlugin : FlutterPlugin, MethodChannel.MethodCallHandler
     private var channel: MethodChannel? = null
     private var applicationContext: Context? = null
     private var progressChannel: EventChannel? = null
+    private var proxyChannel: EventChannel? = null
+    private var proxyObserver: AndroidSystemProxyObserver? = null
     private var progressSink: EventChannel.EventSink? = null
     private var runtime: AndroidRuntimeHost? = null
     private var nodeBridge: AndroidNodeFlutterBridge? = null
@@ -95,6 +97,9 @@ class JavetRuntimeBackendPlugin : FlutterPlugin, MethodChannel.MethodCallHandler
             binding.binaryMessenger,
             "mgread_plugin_runtime/android/progress",
         ).also { it.setStreamHandler(this) }
+        proxyObserver = AndroidSystemProxyObserver(context, ::readSystemProxyEnvironment)
+        proxyChannel = EventChannel(binding.binaryMessenger, "mgread_plugin_runtime/android/system_proxy")
+            .also { it.setStreamHandler(proxyObserver) }
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -237,6 +242,10 @@ class JavetRuntimeBackendPlugin : FlutterPlugin, MethodChannel.MethodCallHandler
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        proxyObserver?.dispose()
+        proxyObserver = null
+        proxyChannel?.setStreamHandler(null)
+        proxyChannel = null
         backendSettings?.dispose()
         backendSettings = null
         activityBinding?.removeActivityResultListener(activityResultListener)

@@ -7,6 +7,41 @@ import 'package:mg_read/features/network_proxy/application/flutter_network_proxy
 import 'package:mg_read/features/network_proxy/application/network_proxy_settings.dart';
 
 void main() {
+  test('existing global clients follow proxy replacement and keep loopback direct', () async {
+    final previous = HttpOverrides.current;
+    final changes = StreamController<Map<String, String>>();
+    final first = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final second = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final origin = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    for (final entry in {first: 'first', second: 'second', origin: 'direct'}.entries) {
+      entry.key.listen((request) async {
+        request.response.write(entry.value);
+        await request.response.close();
+      });
+    }
+    addTearDown(() async {
+      await changes.close();
+      await installSystemProxyHttpOverrides(loader: () async => {});
+      HttpOverrides.global = previous;
+      await first.close(force: true);
+      await second.close(force: true);
+      await origin.close(force: true);
+    });
+    Map<String, String> route(HttpServer server) => {'HTTP_PROXY': 'http://127.0.0.1:${server.port}', 'NO_PROXY': ''};
+    await installSystemProxyHttpOverrides(loader: () async => route(first), changes: changes.stream);
+    final client = HttpClient();
+    addTearDown(() => client.close(force: true));
+    Future<String> get(String url) async => utf8.decodeStream(await (await client.getUrl(Uri.parse(url))).close());
+    expect(await get('http://example.invalid/first'), 'first');
+    changes.add(route(second));
+    await Future<void>.delayed(Duration.zero);
+    expect(await get('http://example.invalid/second'), 'second');
+    expect(await get('http://127.0.0.1:${origin.port}/cover'), 'direct');
+    changes.add({});
+    await Future<void>.delayed(Duration.zero);
+    expect(await get('http://127.0.0.1:${origin.port}/cover'), 'direct');
+  });
+
   test('uses the system proxy when a traffic class has no custom override', () async {
     final proxy = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final seen = <Uri>[];

@@ -1,4 +1,55 @@
-part of mgread_plugin_runtime;
+part of '../mgread_plugin_runtime.dart';
+
+final _androidSystemProxyEvents = const EventChannel(
+  'mgread_plugin_runtime/android/system_proxy',
+).receiveBroadcastStream();
+
+/// Current system route followed by Android proxy changes, including removal.
+/// Multiple consumers share one platform subscription. This never selects or
+/// starts a Runtime backend; explicit process environment overrides still win.
+Stream<Map<String, String>> watchSystemProxyEnvironment() {
+  if (!Platform.isAndroid ||
+      const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME')) {
+    return Stream.fromFuture(readSystemProxyEnvironment());
+  }
+  return Stream<Map<String, String>>.multi((controller) {
+    var receivedEvent = false;
+    var cancelled = false;
+    final subscription = _androidSystemProxyEvents.listen(
+      (raw) {
+        receivedEvent = true;
+        final platform = raw is Map
+            ? Map<String, String>.from(raw)
+            : <String, String>{};
+        controller.add(_mergeSystemProxyEnvironment(platform));
+      },
+      onError: (Object error, StackTrace stack) {
+        if (error is! MissingPluginException) controller.addError(error, stack);
+      },
+    );
+    // A shared EventChannel does not replay its initial event to late listeners.
+    // Subscribe first, then sample; never overwrite a newer event with this read.
+    unawaited(
+      readSystemProxyEnvironment().then((environment) {
+        if (!receivedEvent && !cancelled) controller.add(environment);
+      }),
+    );
+    controller.onCancel = () async {
+      cancelled = true;
+      await subscription.cancel();
+    };
+  }).distinct(mapEquals);
+}
+
+Map<String, String> _mergeSystemProxyEnvironment(Map<String, String> platform) {
+  final values = <String, String>{...platform};
+  for (final name in const ['HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY']) {
+    final value = _environmentValueIgnoringCase(Platform.environment, name);
+    if (value != null && value.isNotEmpty) values[name] = value;
+  }
+  _ensureLoopbackNoProxy(values);
+  return Map<String, String>.unmodifiable(values);
+}
 
 /// Returns the current platform proxy as the environment shape understood by
 /// Dart and Node HTTP clients.

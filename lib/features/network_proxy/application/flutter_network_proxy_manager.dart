@@ -2,6 +2,7 @@
 ///
 /// Responsibilities:
 /// - inherit the platform proxy when a traffic class has no custom override;
+/// - refresh the default Runtime route and global clients on Android proxy changes;
 /// - expose the user-configured upstream endpoint without a loopback adapter;
 /// - configure Dart HTTP clients directly for HTTP, HTTPS and SOCKS5;
 /// - keep Runtime-owned loopback resources on a direct local connection.
@@ -10,6 +11,7 @@
 /// forwards Node.js traffic. Runtime consumers receive only resolved endpoints.
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,6 +24,12 @@ import 'player_local_proxy_policy.dart';
 typedef SystemProxyEnvironmentLoader = Future<Map<String, String>> Function();
 
 final flutterNetworkProxyManagerProvider = Provider<FlutterNetworkProxyManager>((Ref ref) => FlutterNetworkProxyManager());
+
+/// Android VPNs can replace their loopback listener without restarting MgRead.
+/// Keep Runtime configuration dependent on the live route, including removal.
+final systemProxyEnvironmentProvider = StreamProvider<Map<String, String>>(
+  (ref) => Platform.isAndroid ? watchSystemProxyEnvironment() : const Stream.empty(),
+);
 
 /// Samples persisted settings and keeps direct client configuration current.
 final configuredFlutterNetworkProxyManagerProvider = Provider<FlutterNetworkProxyManager>((Ref ref) {
@@ -58,20 +66,17 @@ final class FlutterNetworkProxyManager {
   /// Resolves the platform proxy for an ordinary HTTP or HTTPS target.
   Future<Uri?> systemProxyUriFor(Uri target) async {
     final route = _systemProxyRoute(target, await _systemProxyEnvironmentLoader());
-    if (!route.startsWith('PROXY ')) return null;
-    final endpoint = route.substring('PROXY '.length).trim();
-    final uri = Uri.tryParse(endpoint.contains('://') ? endpoint : 'http://$endpoint');
-    if (uri == null || uri.host.isEmpty || uri.userInfo.isNotEmpty) return null;
-    return uri;
+    return _proxyUriFromRoute(route);
   }
 
   /// Returns the explicit Runtime source override, or Android's system route.
   /// Windows Runtime inherits its full environment map at process startup so
   /// per-scheme proxy and NO_PROXY behavior remain intact there.
-  Future<Uri?> runtimeSourceProxyUri() async {
+  Future<Uri?> runtimeSourceProxyUri({Map<String, String>? systemEnvironment}) async {
     final custom = proxyUriFor(NetworkProxyTraffic.sourceHttp);
     if (custom != null || !Platform.isAndroid) return custom;
-    return systemProxyUriFor(Uri.parse('https://system-proxy.invalid'));
+    final route = _systemProxyRoute(Uri.parse('https://system-proxy.invalid'), systemEnvironment ?? await _systemProxyEnvironmentLoader());
+    return _proxyUriFromRoute(route);
   }
 
   /// Creates an isolated Dart client using the custom route or system default.
@@ -88,15 +93,29 @@ final class FlutterNetworkProxyManager {
   }
 }
 
-/// Installs the platform proxy baseline for otherwise-unowned Flutter clients.
-Future<void> installSystemProxyHttpOverrides({SystemProxyEnvironmentLoader loader = readSystemProxyEnvironment}) async {
-  HttpOverrides.global = _SystemProxyHttpOverrides(await loader());
+StreamSubscription<Map<String, String>>? _systemProxySubscription;
+
+/// Installs a live platform baseline for otherwise-unowned Flutter clients.
+/// The process owns the subscription; reinstalling first cancels the old one.
+Future<void> installSystemProxyHttpOverrides({
+  SystemProxyEnvironmentLoader loader = readSystemProxyEnvironment,
+  Stream<Map<String, String>>? changes,
+}) async {
+  await _systemProxySubscription?.cancel();
+  final overrides = _SystemProxyHttpOverrides(await loader());
+  HttpOverrides.global = overrides;
+  _systemProxySubscription = (changes ?? (Platform.isAndroid ? watchSystemProxyEnvironment() : null))?.listen(
+    (environment) => overrides.environment = environment,
+    onError: (Object _) {
+      // Retain the last confirmed route if platform observation is unavailable.
+    },
+  );
 }
 
 final class _SystemProxyHttpOverrides extends HttpOverrides {
   _SystemProxyHttpOverrides(this.environment);
 
-  final Map<String, String> environment;
+  Map<String, String> environment;
 
   @override
   HttpClient createHttpClient(SecurityContext? context) {
@@ -111,6 +130,14 @@ HttpClient _createSystemProxyHttpClient(Map<String, String> environment) =>
 
 String _systemProxyRoute(Uri target, Map<String, String> environment) =>
     _isLoopbackTarget(target) ? 'DIRECT' : HttpClient.findProxyFromEnvironment(target, environment: environment);
+
+Uri? _proxyUriFromRoute(String route) {
+  if (!route.startsWith('PROXY ')) return null;
+  final endpoint = route.substring('PROXY '.length).trim();
+  final uri = Uri.tryParse(endpoint.contains('://') ? endpoint : 'http://$endpoint');
+  if (uri == null || uri.host.isEmpty || uri.userInfo.isNotEmpty) return null;
+  return uri;
+}
 
 HttpClient _createHttpProxyClient(NetworkProxySettings settings) => HttpClient()
   ..connectionTimeout = const Duration(seconds: 15)

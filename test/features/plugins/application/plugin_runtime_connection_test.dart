@@ -19,6 +19,36 @@ import '../../../app/mg_read_app_test_support.dart';
 import '../../../core/diagnostics/diagnostics_testkit.dart';
 
 void main() {
+  test('system proxy replacement and removal reconfigure the cached Runtime connection', () async {
+    final diagnostics = DiagnosticsTestkit();
+    addTearDown(diagnostics.dispose);
+    final routes = StreamController<Map<String, String>>();
+    addTearDown(routes.close);
+    final gateway = _FakePluginRuntimeGateway(_connected);
+    final container = ProviderContainer(
+      overrides: [
+        diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
+        pluginRuntimeGatewayProvider.overrideWithValue(gateway),
+        configuredFlutterNetworkProxyManagerProvider.overrideWithValue(_testProxyManager()),
+        systemProxyEnvironmentProvider.overrideWith((ref) => routes.stream),
+      ],
+    );
+    addTearDown(container.dispose);
+    final subscription = container.listen(pluginRuntimeConnectionProvider, (_, _) {}, fireImmediately: true);
+    addTearDown(subscription.close);
+    await container.read(pluginRuntimeConnectionProvider.future);
+    for (final endpoint in ['http://127.90.34.61:42695', 'http://127.128.122.21:39373', null]) {
+      final next = Completer<void>();
+      final listener = container.listen(pluginRuntimeConnectionProvider, (_, state) {
+        if (!state.isLoading && state.hasValue && !next.isCompleted) next.complete();
+      });
+      routes.add({'HTTPS_PROXY': ?endpoint});
+      await next.future.timeout(const Duration(seconds: 5));
+      listener.close();
+    }
+    expect(gateway.calls, 4);
+  });
+
   test('application port projects success with exactly one span terminal', () async {
     final diagnostics = DiagnosticsTestkit();
     addTearDown(diagnostics.dispose);
