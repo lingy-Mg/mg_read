@@ -2,6 +2,8 @@
  * Android Runtime host.
  *
  * Owns the single Javet NodeRuntime, its HandlerThread, and the bounded event-loop pump.
+ * Active Promise waits use completion checks and bounded backoff; idle HTTP
+ * servicing stays on the separately scheduled non-blocking event-loop pump.
  * Flutter only receives typed capability results through the package bridge.
  */
 package com.mgread.mgread_plugin_runtime
@@ -614,19 +616,18 @@ internal class AndroidRuntimeHost(
         if (value !is V8ValuePromise) return value.toString()
         value.use { promise ->
             var cancellationDelivered = false
-            while (promise.isPending) {
+            AndroidPromisePump.await(isPending = { promise.isPending }, beforePump = {
                 if (!cancellationDelivered && cancellation?.get() == true && cancellationRequestId != null) {
                     runtime.getExecutor(
                         "globalThis.__mgreadCancelJson(${JSONObject.quote(cancellationRequestId)})",
                     ).execute<V8Value>().use { }
                     cancellationDelivered = true
                 }
-                // A Runtime HTTP listener is intentionally persistent. Never
-                // drain until no tasks remain: advance one non-blocking turn
-                // and leave the HandlerThread free for its next command.
+            }, pump = {
+                // The persistent HTTP listener prevents draining all tasks.
+                // One non-blocking turn also keeps cancellation observable.
                 runtime.await(V8AwaitMode.RunNoWait)
-                Thread.sleep(EVENT_LOOP_PUMP_MILLIS)
-            }
+            })
             if (promise.isRejected) {
                 throw IllegalStateException("Javet promise rejected.")
             }
@@ -713,10 +714,9 @@ internal class AndroidRuntimeHost(
             return
         }
         value.use { promise ->
-            while (promise.isPending) {
+            AndroidPromisePump.await(isPending = { promise.isPending }, pump = {
                 nodeRuntime?.await(V8AwaitMode.RunNoWait)
-                Thread.sleep(EVENT_LOOP_PUMP_MILLIS)
-            }
+            })
             if (promise.isRejected) {
                 throw IllegalStateException("Javet module evaluation rejected.")
             }

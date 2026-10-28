@@ -55,6 +55,9 @@
   与 Kotlin `AndroidPluginArtifactTransferTest`。
 - Javet 模块解析在 JNI 编译前记录模块名和引用者；异常只记录 Java 类型，禁止读取或格式化原始
   Javet Throwable 的 message/toString/stackTrace，也不得作为 cause 继续跨 JNI 传播。
+- Javet 能力调用与模块初始化的 Promise 等待共用 `AndroidPromisePump`：完成后立即返回，短等待有界快进，
+  慢 IO 逐步退避至 10 ms；保持 `RunNoWait`、同线程访问和逐轮取消检查。后台 HTTP pump 独立调度，
+  不得通过提高空闲轮询频率消除调用延迟；直接回归为 `AndroidPromisePumpTest`。
 - Android：执行目标 Gradle 编译；原生 Service 的启动、退出与重启需 Integration Test 验证真实进程生命周期，
   不能只用 Kotlin mock 代替。真实流程仍需用户明确授权。
 - Windows：增加 reverse-broker、Dart fake-platform/HTTP 和 Facade reverse-wire fixture；原生修改再构建
