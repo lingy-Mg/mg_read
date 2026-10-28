@@ -1,3 +1,7 @@
+/// 搜索建议、状态与结果展示；来源和请求生命周期由页面控制器持有。
+/// 搜索过程中保持已展示结果顺序，完成或用户改排序后再统一排序。
+library;
+
 import 'package:flutter/material.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
@@ -146,7 +150,7 @@ class _SearchHistoryRowState extends State<_SearchHistoryRow> {
   }
 }
 
-class SearchResultsSection extends StatelessWidget {
+class SearchResultsSection extends StatefulWidget {
   const SearchResultsSection({
     required this.result,
     required this.status,
@@ -158,6 +162,8 @@ class SearchResultsSection extends StatelessWidget {
     required this.onContentPressed,
     required this.onRetry,
     required this.onLoadMore,
+    this.hasSources = true,
+    this.onManageSources,
     super.key,
   });
 
@@ -171,9 +177,34 @@ class SearchResultsSection extends StatelessWidget {
   final ValueChanged<AggregatedSearchItem> onContentPressed;
   final VoidCallback onRetry;
   final VoidCallback onLoadMore;
+  final bool hasSources;
+  final VoidCallback? onManageSources;
+
+  @override
+  State<SearchResultsSection> createState() => _SearchResultsSectionState();
+}
+
+class _SearchResultsSectionState extends State<SearchResultsSection> {
+  final List<String> _visibleKeys = <String>[];
+  String? _resultQuery;
+  SearchResultSortOrder? _order;
 
   @override
   Widget build(BuildContext context) {
+    final SearchResultsSection(
+      :result,
+      :status,
+      :query,
+      :error,
+      :sortOrder,
+      :onSortOrderChanged,
+      :isInBookshelf,
+      :onContentPressed,
+      :onRetry,
+      :onLoadMore,
+      :hasSources,
+      :onManageSources,
+    ) = widget;
     final isSearching = status == SearchPageStatus.searching;
     if (result == null) {
       return AnimatedSwitcher(
@@ -196,20 +227,31 @@ class SearchResultsSection extends StatelessWidget {
                 title: status == SearchPageStatus.loadingSources
                     ? '正在准备搜索'
                     : error == null
-                    ? '输入关键词开始搜索'
-                    : _sourceErrorTitle(error!),
+                    ? (hasSources ? '输入关键词开始搜索' : '先添加一个数据源')
+                    : _sourceErrorTitle(error),
                 message: status == SearchPageStatus.loadingSources
                     ? '正在读取可用数据源。'
                     : error == null
-                    ? '数据源接入后，结果会显示在这里。'
-                    : '稳定错误码：${error!.code.wireValue}',
+                    ? (hasSources ? '输入书名、作者，或点选上方关键词。' : '添加并启用数据源后，即可搜索喜欢的内容。')
+                    : '稳定错误码：${error.code.wireValue}',
                 loading: status == SearchPageStatus.loadingSources,
                 onRetry: error == null ? null : onRetry,
+                onManageSources: !hasSources && error == null ? onManageSources : null,
               ),
       );
     }
-    final searchResult = result!;
-    final sortedItems = searchResult.sortedItems(sortOrder);
+    final searchResult = result;
+    final ordered = searchResult.sortedItems(sortOrder);
+    if (_resultQuery != searchResult.query || _order != sortOrder || !isSearching) {
+      _visibleKeys.clear();
+    }
+    _resultQuery = searchResult.query;
+    _order = sortOrder;
+    final byKey = {for (final item in ordered) item.key: item};
+    _visibleKeys.removeWhere((key) => !byKey.containsKey(key));
+    final known = _visibleKeys.toSet();
+    _visibleKeys.addAll(ordered.where((item) => known.add(item.key)).map((item) => item.key));
+    final sortedItems = _visibleKeys.map((key) => byKey[key]!).toList(growable: false);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -222,11 +264,11 @@ class SearchResultsSection extends StatelessWidget {
           child: isSearching && searchResult.items.isNotEmpty
               ? Padding(
                   padding: const EdgeInsets.only(top: AppSpacing.compact),
-                  child: _RetainedResultsSearchProgress(query: query),
+                  child: Text('搜索中 · 新结果追加在下方', style: Theme.of(context).textTheme.bodySmall),
                 )
               : const SizedBox.shrink(),
         ),
-        if (error != null) ...<Widget>[const SizedBox(height: AppSpacing.compact), _InlineSearchFailure(error: error!, onRetry: onRetry)],
+        if (error != null) ...<Widget>[const SizedBox(height: AppSpacing.compact), _InlineSearchFailure(error: error, onRetry: onRetry)],
         if (searchResult.failedSources.isNotEmpty) ...<Widget>[
           const SizedBox(height: AppSpacing.compact),
           _PartialSearchFailure(result: searchResult, onRetry: onRetry),
@@ -254,6 +296,7 @@ class SearchResultsSection extends StatelessWidget {
             children: <Widget>[
               for (var index = 0; index < sortedItems.length; index++) ...<Widget>[
                 SearchResultTile(
+                  key: ValueKey(sortedItems[index].key),
                   item: sortedItems[index],
                   variant: _coverVariantFor(sortedItems[index].content, index),
                   isInBookshelf: isInBookshelf(sortedItems[index]),
@@ -302,41 +345,6 @@ class _SearchInProgressState extends StatelessWidget {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RetainedResultsSearchProgress extends StatelessWidget {
-  const _RetainedResultsSearchProgress({required this.query});
-
-  final String query;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppThemeTokens.of(context);
-    return Semantics(
-      label: '正在搜索“$query”',
-      liveRegion: true,
-      child: ExcludeSemantics(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                const SizedBox(
-                  width: AppSpacing.comfortable,
-                  height: AppSpacing.comfortable,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                const SizedBox(width: AppSpacing.compact),
-                Text('正在搜索“$query”', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText)),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.unit),
-            const LinearProgressIndicator(),
-          ],
         ),
       ),
     );
@@ -561,7 +569,7 @@ class _PartialSearchFailure extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Material(
-    color: Theme.of(context).colorScheme.errorContainer.withValues(alpha: .72),
+    color: AppThemeTokens.of(context).mutedSurface,
     borderRadius: AppRadii.control,
     child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.regular, vertical: AppSpacing.compact),
@@ -602,6 +610,7 @@ class _SearchResultMessage extends StatelessWidget {
     required this.message,
     this.loading = false,
     this.onRetry,
+    this.onManageSources,
     super.key,
   });
   final IconData icon;
@@ -609,6 +618,7 @@ class _SearchResultMessage extends StatelessWidget {
   final String message;
   final bool loading;
   final VoidCallback? onRetry;
+  final VoidCallback? onManageSources;
   @override
   Widget build(BuildContext context) {
     final tokens = AppThemeTokens.of(context);
@@ -630,6 +640,7 @@ class _SearchResultMessage extends StatelessWidget {
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
             ),
             if (onRetry != null) TextButton(onPressed: onRetry, child: const Text('重试')),
+            if (onManageSources != null) TextButton(onPressed: onManageSources, child: const Text('添加数据源')),
           ],
         ),
       ),

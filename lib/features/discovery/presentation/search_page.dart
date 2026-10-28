@@ -191,6 +191,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                   ),
                   const SizedBox(height: AppSpacing.regular),
                   SearchResultsSection(
+                    hasSources: state.sources.isNotEmpty,
+                    onManageSources: widget.onSourceManagementRequested,
                     result: displayedResult,
                     status: state.status,
                     query: state.query,
@@ -370,9 +372,11 @@ class _SearchTopBar extends StatelessWidget {
                 key: const Key('source-search-query'),
                 controller: queryController,
                 focusNode: queryFocusNode,
-                enabled: !isSearching,
+                readOnly: isSearching,
                 textInputAction: TextInputAction.search,
-                onSubmitted: (_) => onSearch(),
+                onSubmitted: (_) {
+                  if (!isSearching) onSearch();
+                },
                 decoration: InputDecoration(
                   hintText: '书名、作者或关键词',
                   prefixIcon: const Icon(Icons.search_rounded),
@@ -431,6 +435,8 @@ class _SearchFieldProgress extends StatelessWidget {
     child: ExcludeSemantics(
       child: Center(
         key: Key('source-search-field-progress'),
+        widthFactor: 1,
+        heightFactor: 1,
         child: SizedBox(width: AppSpacing.comfortable, height: AppSpacing.comfortable, child: CircularProgressIndicator(strokeWidth: 2)),
       ),
     ),

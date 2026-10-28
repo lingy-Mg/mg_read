@@ -18,6 +18,45 @@ import 'package:mg_read/features/discovery/application/search_page_state.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 
 void main() {
+  testWidgets('streaming results keep visible order until completion', (tester) async {
+    AggregatedSearchItem item(String id, int score) {
+      final hit = SourceSearchHit(source: _source('test', '测试'), content: _content(id), sourceIndex: 0, sourceRank: 0);
+      return AggregatedSearchItem(key: id, primary: hit, variants: [hit], score: score);
+    }
+
+    final first = item('first', 1);
+    final later = item('later', 100);
+    Future<void> show(List<AggregatedSearchItem> items, SearchPageStatus status) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: SearchResultsSection(
+                result: AggregatedSearchResult(query: 'test', items: items, sourceStates: const []),
+                status: status,
+                query: 'test',
+                error: null,
+                sortOrder: SearchResultSortOrder.relevance,
+                onSortOrderChanged: (_) {},
+                onContentPressed: (_) {},
+                onRetry: () {},
+                onLoadMore: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    await show([first], SearchPageStatus.searching);
+    await show([later, first], SearchPageStatus.searching);
+    expect(tester.getTopLeft(find.byKey(const ValueKey('first'))).dy, lessThan(tester.getTopLeft(find.byKey(const ValueKey('later'))).dy));
+    await show([later, first], SearchPageStatus.loaded);
+    expect(tester.getTopLeft(find.byKey(const ValueKey('later'))).dy, lessThan(tester.getTopLeft(find.byKey(const ValueKey('first'))).dy));
+  });
+
   testWidgets('wraps the source progress line at compact width with enlarged text', (tester) async {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.binding.setSurfaceSize(const Size(260, 600));
@@ -279,6 +318,8 @@ void main() {
   });
 
   testWidgets('cancels an all-source search from the search action', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(384, 820));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     final completion = Completer<PluginSearchResult>();
     final gateway = _SearchGateway(
       sources: <PluginSourceDescriptor>[_source('source.first', '第一个数据源'), _source('source.second', '第二个数据源')],
@@ -302,6 +343,10 @@ void main() {
     await tester.pump();
     final cancellation = gateway.cancellations.last;
     expect(find.text('取消搜索'), findsOneWidget);
+    final field = find.byKey(const Key('source-search-query'));
+    expect(tester.widget<TextField>(field).controller!.text, '诡秘之主');
+    expect(tester.getSize(find.byKey(const Key('source-search-field-progress'))).width, lessThan(60));
+    expect(tester.getRect(find.byKey(const Key('source-search-submit'))).right, lessThanOrEqualTo(384));
 
     await tester.tap(find.byKey(const Key('source-search-submit')));
     await tester.pump();
