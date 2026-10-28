@@ -16,6 +16,30 @@ import 'package:mg_read/features/plugins/application/plugin_runtime_connection.d
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_source_projection.dart';
 
 void main() {
+  for (final state in ['disabled', 'invalid']) {
+    test('keeps $state source visible for management and blocks discovery/search', () {
+      final source = PluginRuntimePlugin(
+        activeVersion: '1.0.0',
+        contentKinds: const ['audio'],
+        displayName: '听书中国',
+        enabled: true,
+        id: 'org.test.unavailable',
+        name: 'test',
+        pendingVersion: null,
+        status: 'active',
+        sourceState: state,
+        sourceStateReason: '网站已禁用播放',
+      );
+      final rows = pluginManagementSourcesFromConnection(
+        PluginRuntimeConnection(isHealthy: true, nodeVersion: 'test', runtimeVersion: 'test', plugins: [source]),
+      );
+      expect(rows.single.canOpen, isFalse);
+      expect(rows.single.enabled, isTrue);
+      expect(rows.single.kindLabel, contains(state == 'invalid' ? '已失效' : '已禁用'));
+      expect(rows.single.description, contains('网站已禁用播放'));
+    });
+  }
+
   test('projects audio and video sources into the management list', () {
     const connection = PluginRuntimeConnection(
       isHealthy: true,

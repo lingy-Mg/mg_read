@@ -24,6 +24,8 @@
   第二 VM 或自定义 loader。
 - 标准链路是 `discover/search/getDetail/getChapters/getContent`。必填值存在，未知值显式 `null`，零值不是未知，
   集合始终为数组；稳定 ID 不能用标题、索引或页码代替。
+- 来源退化可声明 `mgread.sourceState=disabled|invalid` 和可选 `sourceStateReason`；缺省为 `available`，修复后恢复并升级插件 patch。
+  该状态随 artifact 传播，仅限制发现、搜索和建议，不删除主应用内容缓存；不复用 Runtime 安装启停字段。
 - 私有缓存按项目声明区分发现/搜索与详情/目录；stale 可读、刷新单飞、失败按 miss。日志记录能力阶段和结果。
 
 ## 内容与资源

@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/tingchina-audio",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": true,
   "description": "MgRead audio source for the user-provided Ting China rule.",
   "type": "module",
@@ -42,6 +42,8 @@
     "contentKinds": [
       "audio"
     ],
-    "r18": true
+    "r18": true,
+    "sourceState": "invalid",
+    "sourceStateReason": "网站已禁用播放，暂时无法收听。"
   }
 }

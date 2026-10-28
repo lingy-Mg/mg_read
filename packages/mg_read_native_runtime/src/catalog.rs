@@ -38,7 +38,14 @@ pub struct Manifest {
     /// Source-declared adult-content marker; absent in older manifests.
     #[serde(default)]
     pub r18: bool,
+    /// Source availability restricts discovery/search, independently of loading.
+    #[serde(default = "available_source_state")]
+    pub source_state: String,
+    #[serde(default)]
+    pub source_state_reason: Option<String>,
 }
+
+fn available_source_state() -> String { "available".into() }
 
 fn normalize_source_url(value: &str) -> Option<String> {
     let mut url = url::Url::parse(value.trim()).ok()?;
@@ -237,6 +244,8 @@ impl Catalog {
             || m.name.len() > 256
             || m.description.len() > 960
             || m.source_url.as_deref().is_some_and(|value| normalize_source_url(value).as_deref() != Some(value))
+            || !["available", "disabled", "invalid"].contains(&m.source_state.as_str())
+            || m.source_state_reason.as_ref().is_some_and(|reason| reason.trim().is_empty() || reason.chars().count() > 240)
             || m.content_kinds.is_empty()
             || m.content_kinds.len() > 4
             || m.content_kinds
@@ -374,7 +383,7 @@ impl Catalog {
         let m = &e.manifest;
         json!({"id":m.id,"name":m.name,"displayName":m.name,"description":m.description,"iconUrl":null,
                "activeVersion":m.version,"pendingVersion":e.pending.as_ref().map(|p|&p.version),"enabled":e.enabled,
-               "status":if e.enabled {"active"}else{"disabled"},"contentKinds":m.content_kinds,"r18":m.r18,"sourceUrl":m.source_url,"engine":"native"})
+               "status":if e.enabled {"active"}else{"disabled"},"contentKinds":m.content_kinds,"r18":m.r18,"sourceUrl":m.source_url,"sourceState":m.source_state,"sourceStateReason":m.source_state_reason,"engine":"native"})
     }
     pub fn list(&self) -> Value {
         Value::Array(
@@ -455,6 +464,7 @@ mod tests {
     fn r18_defaults_false_for_older_manifests() {
         let without = r#"{"format":"mgread-native","engine":"native","abi":3,"id":"org.mgread.alice","name":"Alice","version":"0.1.0","description":"","contentKinds":["novel"],"capabilities":["search"],"targets":{}}"#;
         assert!(!serde_json::from_str::<Manifest>(without).unwrap().r18);
+        assert_eq!(serde_json::from_str::<Manifest>(without).unwrap().source_state, "available");
         let with = without.replace("\"targets\":{}", "\"targets\":{},\"r18\":true");
         assert!(serde_json::from_str::<Manifest>(&with).unwrap().r18);
     }
@@ -474,6 +484,16 @@ mod tests {
             "targets":{target():{"path":"native/source.dll", "sha256":"a".repeat(64)}}
         })).unwrap();
         assert!(Catalog::validate_manifest(&manifest).is_ok());
+        for state in ["available", "disabled", "invalid"] {
+            manifest.source_state = state.into();
+            assert!(Catalog::validate_manifest(&manifest).is_ok());
+        }
+        manifest.source_state = "unknown".into();
+        assert!(Catalog::validate_manifest(&manifest).is_err());
+        manifest.source_state = "available".into();
+        manifest.source_state_reason = Some(" ".into());
+        assert!(Catalog::validate_manifest(&manifest).is_err());
+        manifest.source_state_reason = None;
         manifest.source_url = Some("https://source.example/".into());
         assert!(Catalog::validate_manifest(&manifest).is_ok());
         for invalid_url in ["", "javascript:alert(1)", "http://localhost/", "https://source.example/?q=x"] {
@@ -511,6 +531,8 @@ mod tests {
             capabilities: vec!["search".into()],
             targets: BTreeMap::from([(target().into(), selected.clone()), ("other".into(), other)]),
             r18: false,
+            source_state: available_source_state(),
+            source_state_reason: None,
         };
         let mut subset = manifest.clone();
         subset.targets.retain(|name, _| name == target());

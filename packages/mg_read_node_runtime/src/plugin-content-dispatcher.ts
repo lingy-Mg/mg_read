@@ -232,6 +232,11 @@ export class PluginContentDispatcher {
       }
       const execution = (async () => {
         try {
+          const snapshot = this.#snapshots().find((item) => item.id === pluginId);
+          if ((operation === "discover" || operation === "search" || operation === "searchSuggestions") &&
+              snapshot !== undefined && snapshot.sourceState !== "available") {
+            throw new PluginManagerError("plugin_disabled");
+          }
           development = await this.#development.ensureLoaded(pluginId);
           if (development !== undefined) this.#development.retain(development);
           const installed = development === undefined

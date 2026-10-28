@@ -23,3 +23,5 @@ artifact 模式以 Node 来源 `package.json.mgread` 或原生来源构建生成
   `@mgread/source-api` 声明使用；Android 当前返回 `unsupported`。
 - Windows 使用仓库固定 Node/npm，运行目标 package 实际声明的 typecheck、离线测试和 `verify`；只有请求、
   选择器、分页或解析变化才增加明确存在的 `test:live`。
+
+来源可声明 `mgread.sourceState=available|disabled|invalid` 与可选 `sourceStateReason`；维护标记随插件版本发布，恢复时改回 available。

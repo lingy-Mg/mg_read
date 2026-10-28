@@ -164,7 +164,9 @@ class _DetailContent extends ConsumerWidget {
                     _DetailFieldData(label: '类型', value: pluginContentKindsLabel(source.contentKinds)),
                     if (source.r18) const _DetailFieldData(label: '分级', value: 'R18'),
                     _DetailFieldData(label: '版本', value: source.activeVersion ?? '等待激活', wide: true, expandable: true),
-                    _DetailFieldData(label: '状态', value: _statusLabel(source)),
+                    _DetailFieldData(label: '状态', value: source.canDiscoverAndSearch ? _statusLabel(source) : source.sourceStateLabel),
+                    if (!source.canDiscoverAndSearch)
+                      _DetailFieldData(label: '不可用说明', value: '${source.sourceStateReason ?? '发现和搜索不可用。'} 已缓存内容仍可查看。', wide: true),
                     _DetailFieldData(label: '标识', value: source.id, wide: true),
                   ],
                 ),

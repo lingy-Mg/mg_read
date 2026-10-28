@@ -128,6 +128,9 @@ plugins/sources/                    真实数据源及其他能力参考实现
   缺省时局域网传输、导入、索引、执行与 Facade 解码均须兼容，UI 显示“缺少”并禁用打开网址，不影响内容能力；
   仓库维护的新来源仍应提供主页。Runtime 只接收绝对 HTTP(S) URL，移除非根路径末尾斜线并规范化主机及默认端口；拒绝凭据、查询、
   片段和本机主机名。Flutter 展示完整 URL 并在用户点击时交给系统浏览器打开；来源不得使用内容 URL 或资源 CDN 冒充主页。
+- 数据源元数据 `sourceState=available|disabled|invalid`（缺省 `available`）与可选 `sourceStateReason` 声明维护状态，独立于安装启停。
+  `disabled/invalid` 禁止发现、搜索及搜索建议，并从发现和搜索来源列表排除；状态随 artifact 和安装索引保存，
+  更新为 `available` 后恢复。标记不会删除主应用的详情、目录、正文或受控文件缓存，已缓存内容仍可查看。
 - 数据源只返回允许的语义组件、布局和图标名。`contentKind` 表达小说、漫画、音频、视频等媒介能力；
   `coverOrientation=portrait|square|landscape` 独立表达真实封面的竖版、方形或横版构图，二者不得互相推断。Flutter 宿主按封面构图
   选择通用组件，并拥有主题、尺寸、断点、可访问性、导航和交互实现；横向组件不等同于视频播放器入口，

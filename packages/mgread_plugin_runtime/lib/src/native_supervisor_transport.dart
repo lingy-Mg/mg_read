@@ -47,6 +47,26 @@ extension _NativeRuntimeSupervisorTransport on _NativeRuntimeSupervisor {
           'invalid_request',
           'Resource engine does not match its plugin.',
         );
+      if (const {
+        'source.discover.v1',
+        'source.search.v1',
+        'source.searchSuggestions.v1',
+      }.contains(method)) {
+        final raw = await _invokeReadyRpc(
+          ready,
+          method: 'plugins.list.v1',
+          params: const {},
+          cancellation: cancellation,
+        );
+        final plugins = const InstalledPluginsInvocation()._decodeResult(raw);
+        final source = plugins.where((plugin) => plugin.id == id).firstOrNull;
+        if (source != null && source.sourceState != 'available') {
+          throw const PluginRuntimeException(
+            'plugin_disabled',
+            '该数据源已禁用或失效，发现和搜索不可用。',
+          );
+        }
+      }
       final endpoint = await _awaitPluginInvocation(
         _initializePlugin(ready, id),
         cancellation,

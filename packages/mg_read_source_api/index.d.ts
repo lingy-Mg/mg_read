@@ -7,6 +7,9 @@
  * semantics with plugin-owned HTTP/cache; see native-source-contract.md.
  */
 
+/** Source-owned availability; omitted metadata means available. Blocks discovery/search only. */
+export type PluginSourceState = "available" | "disabled" | "invalid";
+
 export type PluginJsonValue =
   | null
   | boolean

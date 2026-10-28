@@ -11,3 +11,5 @@
 独立原生模式的公开边界见 `native-source-contract.md`；C ABI 唯一定义属于同级
 `mg_read_native_runtime/abi`。上述 TypeScript Context 规则适用于 JS 来源，原生来源直接消费 ABI crate，
 不复制 Node Context，也不通过 JS 适配器执行。公开内容语义仍与 Flutter `PluginRuntime` 保持一致。
+
+来源维护状态 `PluginSourceState` 的元数据缺省为 available；disabled/invalid 仅拦截发现、搜索与建议，已缓存内容归主应用所有。

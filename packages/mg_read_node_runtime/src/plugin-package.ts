@@ -5,6 +5,7 @@
  * Runtime 安装契约只包含自包含的插件文件与 descriptor。
  * sourceUrl 是可缺省的展示元数据；缺省不影响安装或执行，显式提供时仍校验 URL。
  */
+import type { PluginSourceState } from "@mgread/source-api";
 import { access, lstat, readFile } from "node:fs/promises";
 import { isAbsolute, resolve, sep } from "node:path";
 
@@ -37,6 +38,9 @@ export interface PluginPackageDescriptor {
   readonly description?: string;
   /** Optional source-owned adult-content marker surfaced to the host UI. */
   readonly r18?: boolean;
+  /** Source-owned availability, independent of the installation enable switch. */
+  readonly sourceState?: PluginSourceState;
+  readonly sourceStateReason?: string;
   readonly displayName: string;
   readonly entry: string;
   readonly id: string;
@@ -174,6 +178,8 @@ export function parsePluginPackageDescriptor(
   const api = mgread.pluginApi;
   const contentKinds = mgread.contentKinds;
   const r18 = mgread.r18;
+  const sourceState = mgread.sourceState;
+  const sourceStateReason = mgread.sourceStateReason;
   const packageMode = mgread.packageMode ?? "single-file";
   const icon = mgread.icon;
   if (
@@ -195,6 +201,8 @@ export function parsePluginPackageDescriptor(
     new Set(contentKinds).size !== contentKinds.length ||
     (packageMode !== "single-file" && packageMode !== "archive") ||
     (r18 !== undefined && typeof r18 !== "boolean") ||
+    (sourceState !== undefined && !["available", "disabled", "invalid"].includes(sourceState as string)) ||
+    (sourceStateReason !== undefined && (typeof sourceStateReason !== "string" || sourceStateReason.trim().length === 0 || sourceStateReason.length > 240)) ||
     (icon !== undefined && !isSupportedIconPath(icon))
   ) {
     throw new PluginPackageError("plugin_package_invalid");
@@ -220,6 +228,8 @@ export function parsePluginPackageDescriptor(
     projectRoot,
     ...(sourceUrl === undefined ? {} : { sourceUrl }),
     ...(r18 === undefined ? {} : { r18 }),
+    ...(sourceState === undefined ? {} : { sourceState: sourceState as PluginSourceState }),
+    ...(sourceStateReason === undefined ? {} : { sourceStateReason: sourceStateReason as string }),
     version,
   });
 }

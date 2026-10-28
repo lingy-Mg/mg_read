@@ -313,6 +313,8 @@ PluginRuntimePlugin _toPluginRuntimePlugin(InstalledPlugin plugin) {
     name: plugin.name,
     pendingVersion: plugin.pendingVersion,
     r18: plugin.r18,
+    sourceState: plugin.sourceState,
+    sourceStateReason: plugin.sourceStateReason,
     sourceUrl: plugin.sourceUrl,
     status: plugin.status,
   );

@@ -96,6 +96,8 @@ final class PluginRuntimePlugin {
     this.engine = 'node',
     this.r18 = false,
     this.sourceUrl,
+    this.sourceState = 'available',
+    this.sourceStateReason,
   });
 
   final String? activeVersion;
@@ -112,5 +114,15 @@ final class PluginRuntimePlugin {
   /// 来源元数据声明的成人内容标记;旧 Runtime 结果缺省为 false。
   final bool r18;
   final String? sourceUrl;
+
+  /// 插件声明的可用状态；仅限制发现和搜索，不删除内容缓存。
+  final String sourceState;
+  bool get canDiscoverAndSearch => sourceState == 'available';
+  String get sourceStateLabel => switch (sourceState) {
+    'disabled' => '已禁用',
+    'invalid' => '已失效',
+    _ => '可用',
+  };
+  final String? sourceStateReason;
   final String status;
 }

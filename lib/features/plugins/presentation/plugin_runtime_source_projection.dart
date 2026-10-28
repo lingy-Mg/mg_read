@@ -23,15 +23,19 @@ List<DataSourceManagementRowData> pluginManagementSourcesFromConnection(PluginRu
         (PluginRuntimePlugin plugin) => DataSourceManagementRowData(
           id: plugin.id,
           name: plugin.displayName,
-          description: _websiteDescription(plugin),
-          kindLabel: _sourceMetadataLabel(plugin),
+          description: plugin.canDiscoverAndSearch
+              ? _websiteDescription(plugin)
+              : '${plugin.sourceStateLabel}：${plugin.sourceStateReason ?? '发现和搜索不可用，已缓存内容仍可查看。'}',
+          kindLabel: plugin.canDiscoverAndSearch
+              ? _sourceMetadataLabel(plugin)
+              : '${_sourceMetadataLabel(plugin)} · ${plugin.sourceStateLabel}',
           enabled: plugin.enabled,
           brand: dataSourceBrandFor(plugin.displayName),
           isDevelopment: plugin.status == 'development',
           iconUrl: plugin.iconUrl,
           contentKinds: plugin.contentKinds,
           r18: plugin.r18,
-          canOpen: plugin.enabled && plugin.activeVersion != null,
+          canOpen: plugin.enabled && plugin.canDiscoverAndSearch && plugin.activeVersion != null,
           sourceUrl: plugin.sourceUrl,
         ),
       )

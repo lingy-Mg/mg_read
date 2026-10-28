@@ -59,7 +59,7 @@ void main() {
     expect(completed, isFalse);
 
     readiness.complete(
-      const PluginRuntimeConnection(
+      PluginRuntimeConnection(
         isHealthy: true,
         nodeVersion: '26.10.0',
         runtimeVersion: '0.2.0-standard.2',
@@ -75,6 +75,18 @@ void main() {
             pendingVersion: null,
             status: 'active',
           ),
+          for (final state in ['disabled', 'invalid'])
+            PluginRuntimePlugin(
+              activeVersion: '1.0.0',
+              contentKinds: ['audio'],
+              displayName: '不可用数据源',
+              enabled: true,
+              id: 'org.example.$state',
+              name: state,
+              pendingVersion: null,
+              status: 'active',
+              sourceState: state,
+            ),
           PluginRuntimePlugin(
             activeVersion: null,
             contentKinds: <String>['manga'],

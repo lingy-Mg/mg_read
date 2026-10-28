@@ -13,6 +13,7 @@ void main() {
   late Completer<void> exportSeen;
   late Completer<void> releaseExport;
   late Completer<void> uninstallSeen;
+  var sourceState = 'available';
   var holdNextPing = false;
   var holdNativeExport = false;
 
@@ -23,6 +24,7 @@ void main() {
     releaseExport = Completer<void>();
     uninstallSeen = Completer<void>();
     holdNativeExport = false;
+    sourceState = 'available';
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen((request) async {
       if (!{
@@ -77,6 +79,21 @@ void main() {
           'runtimeVersion': 'native-test',
         },
         'runtime.status.v1' => _nativeStatus(),
+        'plugins.list.v1' => [
+          {
+            'id': 'native-test',
+            'name': 'native-test',
+            'displayName': 'Native test',
+            'engine': 'native',
+            'activeVersion': '1.0.0',
+            'pendingVersion': null,
+            'enabled': true,
+            'status': 'active',
+            'contentKinds': ['novel'],
+            'iconUrl': null,
+            'sourceState': sourceState,
+          },
+        ],
         'plugins.native.initialize.v1' => {
           'pluginId': 'native-test',
           'generation': 'a' * 64,
@@ -153,6 +170,39 @@ void main() {
       expect(requests.single['params'], isEmpty);
     },
   );
+
+  for (final state in ['disabled', 'invalid']) {
+    test(
+      'blocks $state native discovery before initializing foreign code',
+      () async {
+        sourceState = state;
+        final runtime = createRuntime();
+        addTearDown(runtime.debugDispose);
+        await expectLater(
+          runtime.invoke(
+            const SourceDiscoverInvocation(pluginId: 'native-test'),
+          ),
+          throwsA(
+            isA<PluginRuntimeException>().having(
+              (e) => e.code,
+              'code',
+              'plugin_disabled',
+            ),
+          ),
+        );
+        expect(
+          requests.any(
+            (request) => request['method'] == 'plugins.native.initialize.v1',
+          ),
+          isFalse,
+        );
+        expect(
+          requests.any((request) => request['method'] == 'source.discover.v1'),
+          isFalse,
+        );
+      },
+    );
+  }
 
   test('restarts a stopped worker after cache removal fails', () async {
     final runtime = createRuntime();

@@ -866,6 +866,8 @@ InstalledPlugin _decodeInstalledPlugin(Object? value) {
   final status = item['status'];
   final kinds = item['contentKinds'];
   final r18 = item['r18'];
+  final sourceState = item['sourceState'] ?? 'available';
+  final sourceStateReason = item['sourceStateReason'];
   if (engine == null ||
       id is! String ||
       name is! String ||
@@ -880,6 +882,11 @@ InstalledPlugin _decodeInstalledPlugin(Object? value) {
       enabled is! bool ||
       status is! String ||
       (r18 != null && r18 is! bool) ||
+      !const {'available', 'disabled', 'invalid'}.contains(sourceState) ||
+      (sourceStateReason != null &&
+          (sourceStateReason is! String ||
+              sourceStateReason.trim().isEmpty ||
+              sourceStateReason.length > 240)) ||
       kinds is! List<Object?> ||
       kinds.any((Object? kind) => kind is! String)) {
     throw const PluginRuntimeException(
@@ -900,6 +907,8 @@ InstalledPlugin _decodeInstalledPlugin(Object? value) {
     name: name,
     pendingVersion: pendingVersion as String?,
     r18: r18 is bool ? r18 : false,
+    sourceState: sourceState as String,
+    sourceStateReason: sourceStateReason as String?,
     status: status,
   );
 }
@@ -941,6 +950,8 @@ final class InstalledPlugin {
     this.iconUrl,
     this.r18 = false,
     this.sourceUrl,
+    this.sourceState = 'available',
+    this.sourceStateReason,
   });
 
   final PluginEngine engine;
@@ -951,6 +962,10 @@ final class InstalledPlugin {
   final List<String> contentKinds;
   final String? description;
   final String? sourceUrl;
+
+  /// 插件声明的可用状态；仅限制发现和搜索，不删除内容缓存。
+  final String sourceState;
+  final String? sourceStateReason;
   final String displayName;
   final bool enabled;
   final String? iconUrl;

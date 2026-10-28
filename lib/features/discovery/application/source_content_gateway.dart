@@ -400,6 +400,7 @@ final availablePluginSourcesProvider = FutureProvider<List<PluginSourceDescripto
 
 bool _isUsableSource(PluginRuntimePlugin plugin) {
   return plugin.enabled &&
+      plugin.canDiscoverAndSearch &&
       plugin.activeVersion != null &&
       plugin.contentKinds.any((kind) => kind == 'novel' || kind == 'manga' || kind == 'audio' || kind == 'video');
 }
