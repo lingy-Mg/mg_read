@@ -1,0 +1,25 @@
+MgRead README artwork — 2026-10-28
+
+Generation mode: built-in image_gen.
+
+Source captures: screenshots/*.png were rendered from the current production Flutter
+widgets with isolated, in-memory demonstration data. They are not captures of an
+installed release, and do not prove availability of the demonstrated books or audio.
+The six illustrative cover designs are demo data, not publisher cover reproductions.
+The reading excerpt is public-domain Chinese text from 红楼梦.
+No user library, personal reading history, or production database was changed.
+
+showcase-hero.png
+Inputs: screenshots/shelf-light.png, screenshots/reader.png,
+screenshots/audio.png, ../../assets/branding/mg_read_logo.png
+
+Use case: ads-marketing / compositing. Create one polished landscape 3:2 marketing hero image for the actual MgRead reading app GitHub README. Input images 1,2,3 are REAL application UI screenshots: shelf with 流浪地球 三体 红楼梦 etc; classical literature reader; 三体 audiobook player. Image 4 is the actual orange cat brand logo. Treat UI screenshots as locked compositing inserts: preserve complete screens, all layout, Chinese words, colors, icons, controls and artwork. Do NOT invent or redesign UI or replace the titles. Place the three screenshots in elegant slim rounded smartphone frames, nearly front-on so the screens are legible: shelf largest in the middle, text reader on the left, audio player on the right, slight depth and perspective only. All screens must remain full and uncropped, no glaring reflections on screens. Premium software product campaign, editorial studio composition on a warm ivory background, soft apricot ambient light, understated pale stone plinths, subtle paper grain, delicate shadows; lots of intentional breathing room, beautiful balanced geometry. Small actual orange cat logo and brand MgRead in upper-left. Large headline exactly: '阅读，自由一点。' Under it smaller type exactly: '小说 · 漫画 · 听书 · 影音'. Arrange header along top with phones occupying lower two thirds. Crisp high-resolution image, restrained beautiful visual design, warm sophisticated quiet reading mood. No extra claims, fake download buttons, invented badges, watermarks, rating, price, or extra books. This is a product screenshot showcase, not an abstract illustration. Keep actual screenshot contents faithful.
+
+Final correction prompt:
+Edit the supplied MgRead marketing image. Keep the composition, warm studio environment, app screenshot contents, Chinese headline, MgRead name and cat logo unchanged. Make ONLY this correction: all THREE phones must be generic ANDROID devices, not iPhones. Remove every Dynamic Island / pill-shaped camera cutout and every Apple-like notch; replace them with a tiny circular centered front camera, thin uniform black bezels, simple generic Android status indicators. No Apple logos, no iOS implications. Preserve the existing screenshot layout and Chinese text faithfully; do not add new UI. Keep full three-phone premium product campaign composition at landscape 3:2.
+
+showcase-themes.png
+Inputs: screenshots/shelf-light.png, screenshots/shelf-dark.png
+
+Use case: ads-marketing / compositing. Create a refined wide 3:2 feature image for MgRead's README demonstrating its actual light and dark bookshelf themes. Inputs 1 and 2 are locked exact real screenshots of the same shelf in light and dark mode. Preserve their full UI, Chinese titles including 流浪地球 三体 红楼梦 西游记 水浒传 三国演义, all text, list rows, icons, bottom navigation, spacing and cover artwork. Present both full screenshots side by side, large and front facing, in simple elegant rounded screen panels with thin rims (no OS status bar, no Apple devices, no extra controls). Screen 1 on a warm ivory environment to the left, screen 2 on a deep midnight navy environment to the right; seamless sophisticated gradient transition across the background, editorial product design, gentle sun halo versus faint moonlight, subtle shadows, premium uncluttered composition. Above panels a short centered Chinese heading exactly: '你的书架，自有风格。' Small labels just above the panels exactly: '日间模式' and '夜间模式'. Screens take most of the image and are not cut off. No extra marketing text, no false features, no watermarks. All interface content comes from the screenshots; do not invent UI. High detail, crisp typography.
+
