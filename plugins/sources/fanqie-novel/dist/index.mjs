@@ -172,7 +172,7 @@ async function openBookshelf(request) {
       title: "番茄书架",
       subtitle: `已读取 ${snapshot.bookIds.length} 本书的 ID，并通过来源接口加载详情。`,
       icon: "books",
-      children: [{ type: "contentCollection", id: collectionId, layout: "shelf", items, continuation }]
+      children: [{ type: "contentCollection", id: collectionId, layout: "coverGrid", items, continuation }]
     }] }
   });
 }
@@ -291,8 +291,16 @@ async function getDetail(request) {
   const id = contentId(request.id);
   try {
     const data = findBook(await getJson(`${BOOK_HOST}/info?book_id=${id}`, HEADERS));
-    const item = summary({ ...data, book_id: id });
+    let item = summary({ ...data, book_id: id });
     if (item) {
+      if (!item.coverUrl) {
+        try {
+          const web = parseWebDetail(await getText(`${WEB_HOST}/page/${id}`, WEB_HEADERS), id);
+          if (web?.coverUrl) item = frozen({ ...item, coverUrl: web.coverUrl });
+        } catch {
+          requireContext().log.warn(`detail_cover_unavailable:${id}`);
+        }
+      }
       return frozen({ ...item, description: clean(text(data.abstract || data.intro)) || null, chapterCount: number(data.chapter_number) || null, latestChapter: latestChapter(data, id), aliases: [], catalogUrl: `${WEB_HOST}/api/reader/directory/detail?bookId=${id}` });
     }
   } catch {
@@ -449,7 +457,8 @@ function parseWebDetail(html, id) {
   if (!name) return null;
   const authorValue = readJsonLd(html, "author");
   const author = isObject(authorValue) ? text(authorValue.name) : Array.isArray(authorValue) && isObject(authorValue[0]) ? text(authorValue[0].name) : text(authorValue);
-  const cover = replaceCover(text(readJsonLd(html, "image") || readMeta(html, "og:image")));
+  const image = readJsonLd(html, "image");
+  const cover = (Array.isArray(image) ? image.map(text).find(safeUrl) : text(image)) || readMeta(html, "og:image");
   return summary({ book_id: id, book_name: name, author, thumb_url: cover, abstract: readMeta(html, "description") });
 }
 function readJsonLd(html, key) {

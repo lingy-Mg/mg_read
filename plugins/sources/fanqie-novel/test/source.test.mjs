@@ -87,6 +87,7 @@ test('Fanqie home shows account state and login still imports bookshelf IDs thro
 
   const shelf = await plugin.discover({ target: 'bookshelf', cursor: null, collectionId: null, pageSize: 10 });
   const items = shelf.document.components[0].children[0].items;
+  assert.equal(shelf.document.components[0].children[0].layout, 'coverGrid');
   assert.deepEqual(items.map((item) => item.content.id), ['novel:12', 'novel:55']);
   assert.match(shelf.document.components[0].subtitle, /读取 2 本书的 ID/u);
   const sessionCalls = calls.filter(([kind]) => kind === 'session').map(([, request]) => request);
@@ -174,6 +175,62 @@ test('Fanqie detail reuses a cover field from the same API response', async () =
   assert.equal(resources.length, 1);
   assert.equal(resources[0].url, 'https://p6-novel.byteimg.com/origin/reused.jpg');
   assert.equal(resources[0].headers.Referer, 'https://fanqienovel.com/');
+});
+
+test('Fanqie bookshelf keeps grid covers and continuation across pages with web image arrays', async () => {
+  const resources = [];
+  const ids = ['11', '22', '33', '44', '55'];
+  await plugin.activate({
+    log: { info() {}, warn() {} },
+    resource: { proxy(value) { resources.push(value); return value.url; } },
+    browser: { sessionV1: { async request(request) {
+      return { version: 1, status: 200, body: JSON.stringify({ code: 0, data: {
+        book_shelf_info: ids.map((book_id) => ({ book_id })),
+      } }), headers: {}, finalUrl: request.url };
+    } } },
+    http: { async fetch(input) {
+      const url = String(input);
+      if (url.includes('/info?')) {
+        const id = new URL(url).searchParams.get('book_id');
+        // Both an unavailable API and a successful detail without a cover need the web metadata.
+        return Response.json({ data: { data: id === '22' ? {} : { book_name: `书${id}`, author: '接口作者' } } });
+      }
+      const id = /\/page\/(\d+)$/u.exec(url)?.[1];
+      if (id) return new Response(`<html><head><title>书${id}_番茄小说</title></head><body><script type="application/ld+json">${JSON.stringify({
+        headline: `书${id}`, image: [`https://p9-novel-sign.byteimg.com/novel-pic/${id}~tplv-resize:225:300.image?x-signature=fixture`],
+      })}</script></body></html>`);
+      throw new Error(url);
+    } },
+  });
+  const first = await plugin.discover({ target: 'bookshelf', cursor: null, collectionId: null, pageSize: 3 });
+  const grid = first.document.components[0].children[0];
+  assert.equal(grid.layout, 'coverGrid');
+  assert.deepEqual(grid.items.map(({ content }) => content.id), ['novel:11', 'novel:22', 'novel:33']);
+  assert.equal(grid.items[0].content.author, '接口作者');
+  assert.deepEqual(grid.continuation, { target: 'bookshelf', cursor: 'bookshelf:3' });
+  const next = await plugin.discover({ ...grid.continuation, collectionId: grid.id, pageSize: 3 });
+  assert.equal(next.kind, 'append');
+  assert.equal(next.collectionId, grid.id);
+  assert.deepEqual(next.items.map(({ content }) => content.id), ['novel:44', 'novel:55']);
+  assert.equal(next.continuation, null);
+  assert.deepEqual([...grid.items, ...next.items].map(({ content }) => content.coverUrl),
+    ids.map((id) => `https://p6-novel.byteimg.com/origin/novel-pic/${id}`));
+  assert.equal(resources.length, 5);
+  assert.ok(resources.every((resource) => resource.kind === 'image' && resource.headers.Referer === 'https://fanqienovel.com/'));
+});
+
+test('Fanqie optional web cover failure preserves a usable API detail', async () => {
+  await plugin.activate({
+    log: { info() {}, warn() {} },
+    resource: { proxy(value) { return value.url; } },
+    http: { async fetch(input) {
+      if (String(input).includes('/info?')) return Response.json({ data: { book_name: '无封面作品', author: '作者' } });
+      throw new Error('web unavailable');
+    } },
+  });
+  const detail = await plugin.getDetail({ id: 'novel:77' });
+  assert.equal(detail.title, '无封面作品');
+  assert.equal(detail.coverUrl, null);
 });
 
 test('Fanqie source strips legacy inline image blocks from novel text', async () => {

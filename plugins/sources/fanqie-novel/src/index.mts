@@ -3,7 +3,7 @@
  *
  * 职责：迁移旧书源中可落到公开 Source API 的搜索、分类、详情、目录、正文、封面和官方书架 ID 读取。
  * 生命周期：activate 只保存 Runtime 上下文；不注册设备、不保存登录凭据、不创建后台任务。
- * IO：公开 HTTP 接口统一经 ctx.http；封面经 ctx.resource.proxy 交给 Runtime 数据面；登录由可见 WebView 完成，发现主页的账号资料和书架读取使用同一宿主浏览器 Profile 的隐藏 HTTP 会话。
+ * IO：公开 HTTP 接口统一经 ctx.http；详情缺封面时有界补取官网元数据，封面仅归一化一次后经 ctx.resource.proxy 交给 Runtime 数据面；登录由可见 WebView 完成，发现主页的账号资料和书架读取使用同一宿主浏览器 Profile 的隐藏 HTTP 会话。
  * 稳定标识：作品使用 book_id，章节使用 item_id，均不会用标题或数组位置替代。
  * 边界：旧版 legado 设置页、设备签名、段评回调没有对应公开 Source API，因此不在本插件伪造。
  */
@@ -173,7 +173,7 @@ async function openBookshelf(request: { cursor: string | null; collectionId: str
     document: { components: [{
       type: 'section' as const, id: 'fanqie-bookshelf:section', title: '番茄书架',
       subtitle: `已读取 ${snapshot.bookIds.length} 本书的 ID，并通过来源接口加载详情。`, icon: 'books',
-      children: [{ type: 'contentCollection' as const, id: collectionId, layout: 'shelf' as const, items, continuation }],
+      children: [{ type: 'contentCollection' as const, id: collectionId, layout: 'coverGrid' as const, items, continuation }],
     }] },
   });
 }
@@ -308,8 +308,16 @@ export async function getDetail(request: { id: string }) {
   const id = contentId(request.id);
   try {
     const data = findBook(await getJson(`${BOOK_HOST}/info?book_id=${id}`, HEADERS));
-    const item = summary({ ...data, book_id: id });
+    let item = summary({ ...data, book_id: id });
     if (item) {
+      if (!item.coverUrl) {
+        try {
+          const web = parseWebDetail(await getText(`${WEB_HOST}/page/${id}`, WEB_HEADERS), id);
+          if (web?.coverUrl) item = frozen({ ...item, coverUrl: web.coverUrl });
+        } catch {
+          requireContext().log.warn(`detail_cover_unavailable:${id}`);
+        }
+      }
       return frozen({ ...item, description: clean(text(data.abstract || data.intro)) || null, chapterCount: number(data.chapter_number) || null, latestChapter: latestChapter(data, id), aliases: [], catalogUrl: `${WEB_HOST}/api/reader/directory/detail?bookId=${id}` });
     }
   } catch {
@@ -465,7 +473,8 @@ function parseWebDetail(html: string, id: string): Json | null {
   if (!name) return null;
   const authorValue = readJsonLd(html, 'author');
   const author = isObject(authorValue) ? text(authorValue.name) : Array.isArray(authorValue) && isObject(authorValue[0]) ? text(authorValue[0].name) : text(authorValue);
-  const cover = replaceCover(text(readJsonLd(html, 'image') || readMeta(html, 'og:image')));
+  const image = readJsonLd(html, 'image');
+  const cover = (Array.isArray(image) ? image.map(text).find(safeUrl) : text(image)) || readMeta(html, 'og:image');
   return summary({ book_id: id, book_name: name, author, thumb_url: cover, abstract: readMeta(html, 'description') });
 }
 
