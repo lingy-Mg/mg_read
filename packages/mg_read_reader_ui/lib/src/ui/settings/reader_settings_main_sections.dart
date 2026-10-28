@@ -24,8 +24,16 @@ extension _ReaderSettingsMainSections on _ReaderSettingsSheetState {
                 _buildFontSizeRow(palette),
                 const SizedBox(height: 2),
                 _buildThemeRow(palette),
+                _selectedPaperLabel(
+                  '当前：${_themeLabel(_preferences.theme)}',
+                  palette,
+                ),
                 const SizedBox(height: 2),
                 _buildBackgroundRow(palette),
+                _selectedPaperLabel(
+                  '当前：${_backgroundLabel(_preferences.background)}',
+                  palette,
+                ),
                 const SizedBox(height: 4),
                 _buildPagingRow(palette),
                 const SizedBox(height: 4),
@@ -61,6 +69,23 @@ extension _ReaderSettingsMainSections on _ReaderSettingsSheetState {
       ),
     );
   }
+
+  Widget _selectedPaperLabel(String label, ReaderPalette palette) => Padding(
+    padding: const EdgeInsets.only(
+      left: ReaderSettingsTokens.labelWidth,
+      bottom: 4,
+    ),
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: ReaderSettingsTokens.controlTextSize,
+          color: palette.secondaryText,
+        ),
+      ),
+    ),
+  );
 
   Widget _buildBrightnessRow(ReaderPalette palette) {
     return ReaderSettingsSectionRow(

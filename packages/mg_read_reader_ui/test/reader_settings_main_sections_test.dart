@@ -10,6 +10,43 @@ import 'package:novel_reader_ui/src/ui/settings/reader_settings_font_size_contro
 import 'package:novel_reader_ui/src/ui/settings/reader_settings_sheet.dart';
 
 void main() {
+  testWidgets(
+    'layout preview resets typography while retaining reading preferences',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 820));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      TextReaderPreferences? committed;
+      final initial = TextReaderPreferences.defaults.copyWith(
+        fontSize: 28,
+        lineHeight: 2.1,
+        theme: ReaderThemePreset.parchment,
+        brightness: .4,
+        background: ReaderBackgroundPreset.ricePaper,
+      );
+      await tester.pumpWidget(
+        _host(preferences: initial, onCommit: (value) => committed = value),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('纸张颜色'), findsOneWidget);
+      expect(find.text('纸张纹理'), findsOneWidget);
+      await tester.ensureVisible(find.text(ReaderStrings.spacingSettings));
+      await tester.tap(find.text(ReaderStrings.spacingSettings));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('reader-layout-preview')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('reader-reset-layout')));
+      await tester.pumpAndSettle();
+      expect(committed!.fontSize, TextReaderPreferences.defaults.fontSize);
+      expect(committed!.lineHeight, TextReaderPreferences.defaults.lineHeight);
+      expect(committed!.theme, initial.theme);
+      expect(committed!.background, initial.background);
+      expect(committed!.brightness, initial.brightness);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('font controls share one adaptive row with a section label', (
     WidgetTester tester,
   ) async {
@@ -51,10 +88,13 @@ void main() {
   });
 }
 
-Widget _host() {
+Widget _host({
+  TextReaderPreferences preferences = TextReaderPreferences.defaults,
+  ValueChanged<TextReaderPreferences>? onCommit,
+}) {
   return MaterialApp(
     home: ReaderSettingsSheet(
-      preferences: TextReaderPreferences.defaults,
+      preferences: preferences,
       palette: ReaderPalette.fromPreset(ReaderThemePreset.day),
       platformCapabilities: const ReaderPlatformCapabilities(),
       commentsAvailable: false,
@@ -65,7 +105,7 @@ Widget _host() {
       onCustomFontSelected: (ReaderFontDescriptor _, String _) async {},
       onFontError: (_) {},
       onPreferencesPreview: (_) {},
-      onPreferencesCommit: (_) {},
+      onPreferencesCommit: onCommit ?? (_) {},
       onAutoReadingChanged: (_) {},
       onAutoReadingPaceChanged: (_) {},
       onLayoutDebugModeChanged: (_) {},

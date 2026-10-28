@@ -28,6 +28,7 @@ import 'reader_settings_tokens.dart';
 part 'reader_settings_coordinator.dart';
 part 'reader_settings_entry.dart';
 part 'reader_settings_main_sections.dart';
+part 'reader_settings_layout_preview.dart';
 part 'reader_settings_subpage_sections.dart';
 
 const double _fontSizeMin = 16;

@@ -94,6 +94,7 @@ extension _ReaderSettingsSubpageSections on _ReaderSettingsSheetState {
         palette: palette,
       ),
       children: <Widget>[
+        _buildLayoutPreview(palette),
         _labeledChoice<double>(
           ReaderStrings.lineHeight,
           const <double>[1.5, 1.8, 2.1],

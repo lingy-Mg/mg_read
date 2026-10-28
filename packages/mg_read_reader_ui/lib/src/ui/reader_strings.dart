@@ -74,8 +74,8 @@ abstract final class ReaderStrings {
   static const lavenderMist = '薰衣草雾';
   static const roseTea = '玫瑰茶';
   static const seaGlass = '海玻璃';
-  static const color = '颜色';
-  static const background = '背景';
+  static const color = '纸张颜色';
+  static const background = '纸张纹理';
   static const plainBackground = '纯净';
   static const softPaperBackground = '柔纸';
   static const ricePaperBackground = '宣纹';
