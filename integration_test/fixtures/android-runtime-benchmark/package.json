@@ -1,0 +1,17 @@
+{
+  "name": "@mgread-plugin/android-runtime-benchmark",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.mjs",
+  "engines": { "node": ">=24" },
+  "mgread": {
+    "schemaVersion": 1,
+    "id": "org.mgread.android-runtime-benchmark",
+    "displayName": "Android Runtime Benchmark",
+    "sourceUrl": "https://example.test/",
+    "packageMode": "single-file",
+    "pluginApi": 1,
+    "contentKinds": ["novel"]
+  }
+}
