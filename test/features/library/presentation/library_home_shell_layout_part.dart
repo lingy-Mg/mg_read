@@ -309,16 +309,7 @@ void _registerLibraryHomeShellLayout() {
   });
 
   testWidgets('keyboard traversal activates the first top-bar action', (WidgetTester tester) async {
-    int searchCount = 0;
-    await tester.pumpWidget(
-      _host(
-        callbacks: LibraryHomeCallbacks(
-          onSearch: () {
-            searchCount += 1;
-          },
-        ),
-      ),
-    );
+    await tester.pumpWidget(_host());
     await tester.pumpAndSettle();
 
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);
@@ -326,7 +317,8 @@ void _registerLibraryHomeShellLayout() {
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
 
-    expect(searchCount, 1);
+    expect(find.byKey(const Key('library-top-overflow-menu')), findsOneWidget);
+    expect(find.text('刷新书架'), findsOneWidget);
   });
 
   testWidgets('desktop scrollbar shares the attached list controller during mouse hover', (WidgetTester tester) async {

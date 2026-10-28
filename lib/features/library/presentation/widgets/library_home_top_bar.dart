@@ -1,7 +1,7 @@
 /// 首页顶部操作栏。
 ///
 /// 职责：
-/// - 展示首页搜索与更多操作入口。
+/// - 展示首页主题切换与更多操作入口。
 /// - 通过书架私有锚点菜单转发顶层操作。
 ///
 /// 注意：
@@ -19,7 +19,6 @@ import 'package:mg_read/features/library/presentation/widgets/library_anchored_m
 /// 首页的顶层操作。
 class LibraryHomeTopBar extends StatelessWidget {
   const LibraryHomeTopBar({
-    required this.onSearch,
     required this.onRefresh,
     required this.onReadingHistory,
     required this.onManageSources,
@@ -30,7 +29,6 @@ class LibraryHomeTopBar extends StatelessWidget {
     super.key,
   });
 
-  final VoidCallback onSearch;
   final VoidCallback onRefresh;
   final VoidCallback? onToggleTheme;
   final VoidCallback onReadingHistory;
@@ -48,7 +46,6 @@ class LibraryHomeTopBar extends StatelessWidget {
       child: Row(
         children: <Widget>[
           const Spacer(),
-          _LibraryTopBarAction(tooltip: '搜索书籍', onPressed: onSearch, icon: Icons.search_rounded),
           if (AppTheme.darkModeEnabled && toggleTheme != null)
             Padding(
               padding: const EdgeInsets.only(left: AppSpacing.compact),

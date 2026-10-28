@@ -229,7 +229,6 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                         Transform.translate(
                           offset: const Offset(0, -8),
                           child: LibraryHomeTopBar(
-                            onSearch: _handleSearch,
                             onRefresh: () {
                               unawaited(_handleRefresh());
                             },
@@ -416,10 +415,6 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
       LibraryStatusFilter.completed => book.status == LibraryBookStatus.completed,
       LibraryStatusFilter.local => book.status == LibraryBookStatus.local,
     };
-  }
-
-  void _handleSearch() {
-    _invoke(widget.callbacks.onSearch);
   }
 
   Future<void> _handleRefresh() {
