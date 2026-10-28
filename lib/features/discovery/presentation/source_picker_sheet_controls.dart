@@ -12,6 +12,7 @@ class _SourcePickerHeader extends StatelessWidget {
     required this.query,
     required this.searchController,
     required this.onToggleSearch,
+    required this.onDebug,
     required this.onQueryChanged,
     required this.onClearQuery,
     required this.onClose,
@@ -23,6 +24,7 @@ class _SourcePickerHeader extends StatelessWidget {
   final String query;
   final TextEditingController searchController;
   final VoidCallback onToggleSearch;
+  final VoidCallback? onDebug;
   final ValueChanged<String> onQueryChanged;
   final VoidCallback onClearQuery;
   final VoidCallback onClose;
@@ -71,6 +73,12 @@ class _SourcePickerHeader extends StatelessWidget {
                       ),
                     ],
                   ),
+                ),
+                IconButton(
+                  key: const Key('discovery-source-picker-debug'),
+                  tooltip: 'Debug：依次检查所有数据源',
+                  onPressed: onDebug,
+                  icon: const Icon(Icons.bug_report_outlined, size: 22),
                 ),
                 IconButton(
                   key: const Key('discovery-source-picker-search-toggle'),

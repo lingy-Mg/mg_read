@@ -12,6 +12,7 @@
 /// - 入架回调同时交付已加载目录，后台预取不得重复请求同一份详情和目录。
 /// - 封面作用域必须携带真实插件版本，确保发现页与书架详情命中同一持久化缓存键。
 /// - 详情只复用发现页顶部栏，不显示顶级数据源选择。
+/// - 自动巡检可显式展示完整详情/目录快照，避免再次触发相同的源请求。
 /// - 横向推荐列表允许触摸、手写笔、触控板和鼠标直接拖动。
 library;
 
@@ -130,6 +131,7 @@ Future<void> showSourceContentDetailSheet(
   SourceDetailFailureCopy onCopyFailure = _copySourceDetailFailure,
   bool isCoverBlurred = false,
   bool useModalBottomSheet = false,
+  bool refreshInitialContent = true,
 }) {
   final Widget detail = _SourceDetailScreen(
     gateway: gateway,
@@ -157,6 +159,7 @@ Future<void> showSourceContentDetailSheet(
     onCopyFailure: onCopyFailure,
     isCoverBlurred: isCoverBlurred,
     isModalSheet: useModalBottomSheet,
+    refreshInitialContent: refreshInitialContent,
   );
   if (useModalBottomSheet) {
     return showModalBottomSheet<void>(
@@ -267,6 +270,7 @@ class _SourceDetailScreen extends StatefulWidget {
     this.onCopyFailure = _copySourceDetailFailure,
     this.isCoverBlurred = false,
     required this.isModalSheet,
+    this.refreshInitialContent = true,
   }) : sourceVariants = List<SourceSearchHit>.unmodifiable(sourceVariants);
   final SourceContentGateway gateway;
   final String pluginId;
@@ -294,6 +298,7 @@ class _SourceDetailScreen extends StatefulWidget {
   final SourceDetailFailureCopy onCopyFailure;
   final bool isCoverBlurred;
   final bool isModalSheet;
+  final bool refreshInitialContent;
 
   @override
   State<_SourceDetailScreen> createState() => _SourceDetailScreenState();
@@ -334,6 +339,11 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
   }
 
   Future<_SourceDetailBundle> _startDetailLoad() {
+    final initialDetail = _coveredInitialDetail;
+    final initialCatalog = widget.initialCatalog;
+    if (!widget.refreshInitialContent && initialDetail != null && initialCatalog != null) {
+      return Future.value(_SourceDetailBundle(detail: initialDetail, chapters: initialCatalog));
+    }
     final generation = ++_loadGeneration;
     _cancellation?.cancel();
     final cancellation = PluginInvocationCancellation();

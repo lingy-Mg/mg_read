@@ -11,6 +11,8 @@
 ///
 library;
 
+import 'source_debug_page.dart';
+
 import 'dart:async';
 
 import 'source_preview_page.dart';
@@ -491,6 +493,9 @@ class _SearchPageHeader extends ConsumerWidget {
       onPinChanged: (sourceId, pinned) => pinStore.setPinned(sourceId, pinned: pinned),
     );
     switch (selected) {
+      case DiscoverySourceDebugRequested():
+        if (!context.mounted) return;
+        await showSourceDebugPage(context, gateway: ref.read(sourceContentGatewayProvider), sources: state.sources);
       case DiscoverySourceSelected(:final sourceId):
         await controller.selectSource(sourceId);
       case DiscoveryAllSourcesSelected():

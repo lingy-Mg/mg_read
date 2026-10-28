@@ -38,6 +38,11 @@ final class DiscoverySourceManagementRequested extends DiscoverySourcePickerResu
   const DiscoverySourceManagementRequested();
 }
 
+/// Requests one sequential inspection of every available source, ignoring search.
+final class DiscoverySourceDebugRequested extends DiscoverySourcePickerResult {
+  const DiscoverySourceDebugRequested();
+}
+
 enum DiscoverySourceWebViewAction { enterDebug, show }
 
 final class DiscoverySourceWebViewActionRequested extends DiscoverySourcePickerResult {
@@ -208,6 +213,7 @@ class _DiscoverySourcePickerSheetState extends State<_DiscoverySourcePickerSheet
                         query: _query,
                         searchController: _searchController,
                         onToggleSearch: _toggleSearch,
+                        onDebug: widget.sources.isEmpty ? null : () => Navigator.of(context).pop(const DiscoverySourceDebugRequested()),
                         onQueryChanged: (value) => setState(() => _query = value),
                         onClearQuery: _clearQuery,
                         onClose: () => Navigator.of(context).pop(),

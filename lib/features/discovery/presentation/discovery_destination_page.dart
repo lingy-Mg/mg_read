@@ -13,6 +13,7 @@ library;
 import 'dart:async';
 
 import 'source_preview_page.dart';
+import 'source_debug_page.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -348,6 +349,9 @@ Future<void> _selectDiscoverySource(
     onPinChanged: (sourceId, pinned) => pinStore.setPinned(sourceId, pinned: pinned),
   );
   switch (selected) {
+    case DiscoverySourceDebugRequested():
+      if (!context.mounted) return;
+      await showSourceDebugPage(context, gateway: ref.read(sourceContentGatewayProvider), sources: state.sources);
     case DiscoverySourceSelected(:final sourceId):
       await controller.selectSource(sourceId);
     case DiscoveryAllSourcesSelected():
