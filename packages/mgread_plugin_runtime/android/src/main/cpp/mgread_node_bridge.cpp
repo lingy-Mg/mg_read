@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <cstdlib>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -64,9 +65,19 @@ Java_com_mgread_mgread_1plugin_1runtime_AndroidNodeNative_run(
     env->DeleteLocalRef(item);
     if (values.back().empty() || values.back().size() > 8192) return -3;
   }
+  // libuv computes the process-title span from argv[0] to the final argument.
+  // Separate std::string allocations are not a valid node::Start() argv block.
+  size_t argument_bytes = 0;
+  for (const auto& value : values) argument_bytes += value.size() + 1;
+  std::vector<char> argument_storage(argument_bytes);
   std::vector<char*> argv;
   argv.reserve(values.size() + 1);
-  for (std::string& value : values) argv.push_back(value.data());
+  char* position = argument_storage.data();
+  for (const auto& value : values) {
+    std::memcpy(position, value.c_str(), value.size() + 1);
+    argv.push_back(position);
+    position += value.size() + 1;
+  }
   argv.push_back(nullptr);
 
   void* library = dlopen("libnode.so", RTLD_NOW | RTLD_LOCAL);

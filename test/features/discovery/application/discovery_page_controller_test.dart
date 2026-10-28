@@ -361,6 +361,53 @@ void main() {
     expect(gateway.documentRequestCount, requestCount);
   });
 
+  test('catalog failure after cancelling discovery leaves a retryable state', () async {
+    final gateway = _TreeGateway();
+    final container = _container(gateway);
+    addTearDown(container.dispose);
+    final listener = container.listen(discoveryPageControllerProvider, (_, _) {}, fireImmediately: true);
+    addTearDown(listener.close);
+    await _waitUntil(() => _isLoaded(container));
+    gateway.categoryGate = Completer<void>();
+    final controller = container.read(discoveryPageControllerProvider.notifier);
+    final pending = controller.openCategory('category:fantasy');
+    await _waitUntil(() => container.read(discoveryPageControllerProvider).status == DiscoveryPageStatus.loadingContent);
+    gateway.failCatalog = true;
+
+    container.read(pluginRuntimeCatalogChangeProvider.notifier).publish(pluginIds: {_TreeGateway._pluginId});
+    await _waitUntil(() => container.read(discoveryPageControllerProvider).error != null);
+    expect(container.read(discoveryPageControllerProvider).status, DiscoveryPageStatus.failure);
+    gateway.categoryGate!.complete();
+    await pending;
+    expect(container.read(discoveryPageControllerProvider).status, DiscoveryPageStatus.failure);
+
+    gateway.failCatalog = false;
+    await controller.retry();
+    expect(_isLoaded(container), isTrue);
+  });
+
+  test('a second catalog notification cannot lose the selected source reload', () async {
+    final gateway = _TreeGateway();
+    final container = _container(gateway);
+    addTearDown(container.dispose);
+    final listener = container.listen(discoveryPageControllerProvider, (_, _) {}, fireImmediately: true);
+    addTearDown(listener.close);
+    await _waitUntil(() => _isLoaded(container));
+    gateway.categoryGate = Completer<void>();
+    final pending = container.read(discoveryPageControllerProvider.notifier).openCategory('category:fantasy');
+    await _waitUntil(() => container.read(discoveryPageControllerProvider).status == DiscoveryPageStatus.loadingContent);
+    gateway.catalogGate = Completer<void>();
+    container.read(pluginRuntimeCatalogChangeProvider.notifier).publish(pluginIds: {_TreeGateway._pluginId});
+    await Future<void>.delayed(Duration.zero);
+    container.read(pluginRuntimeCatalogChangeProvider.notifier).publish(pluginIds: {_TreeGateway.alternatePluginId});
+    await Future<void>.delayed(Duration.zero);
+    gateway.catalogGate!.complete();
+    gateway.categoryGate!.complete();
+    await pending;
+    await _waitUntil(() => _isLoaded(container));
+    expect(_collection(container.read(discoveryPageControllerProvider).result!).id, 'home-books');
+  });
+
   test('removed current source falls back to an available source', () async {
     final gateway = _TreeGateway();
     final container = ProviderContainer(
@@ -384,6 +431,7 @@ void main() {
 }
 
 ProviderContainer _container(_TreeGateway gateway, {DiagnosticsTestkit? diagnostics}) => ProviderContainer(
+  retry: (_, _) => null,
   overrides: [
     sourceContentGatewayProvider.overrideWithValue(gateway),
     discoverySourceSelectionStoreProvider.overrideWithValue(_MemoryDiscoverySourceSelectionStore(null)),
@@ -413,6 +461,8 @@ final class _TreeGateway implements SourceContentGateway, CancellableSourceConte
   bool failFirstBrokenCategory = false;
   AppError? brokenCategoryError;
   bool includePrimary = true;
+  bool failCatalog = false;
+  Completer<void>? catalogGate;
   final List<PluginInvocationCancellation> cancellations = <PluginInvocationCancellation>[];
 
   @override
@@ -422,15 +472,19 @@ final class _TreeGateway implements SourceContentGateway, CancellableSourceConte
   }
 
   @override
-  Future<List<PluginSourceDescriptor>> listSources() async => <PluginSourceDescriptor>[
-    if (includePrimary)
-      PluginSourceDescriptor(id: _pluginId, displayName: '树测试数据源', contentKinds: const <PluginContentKind>[PluginContentKind.novel]),
-    PluginSourceDescriptor(
-      id: alternatePluginId,
-      displayName: '备用树测试数据源',
-      contentKinds: const <PluginContentKind>[PluginContentKind.novel],
-    ),
-  ];
+  Future<List<PluginSourceDescriptor>> listSources() async {
+    await catalogGate?.future;
+    if (failCatalog) throw const PluginRuntimeException('runtime_start_failed', 'Controlled restart failure.');
+    return <PluginSourceDescriptor>[
+      if (includePrimary)
+        PluginSourceDescriptor(id: _pluginId, displayName: '树测试数据源', contentKinds: const <PluginContentKind>[PluginContentKind.novel]),
+      PluginSourceDescriptor(
+        id: alternatePluginId,
+        displayName: '备用树测试数据源',
+        contentKinds: const <PluginContentKind>[PluginContentKind.novel],
+      ),
+    ];
+  }
 
   @override
   Future<PluginDiscoverResult> discover({

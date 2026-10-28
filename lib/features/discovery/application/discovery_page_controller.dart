@@ -3,6 +3,7 @@
 /// 职责：
 /// - 维护不可变文档栈、请求世代和逐级返回。
 /// - 为一次文档加载记录唯一诊断终态，并丢弃过期结果。
+/// - 目录刷新失败必须结束被更新取消的加载状态，允许用户重试。
 ///
 /// 注意：
 /// - 返回或新请求必须先让旧请求失效，不能让旧结果重开子页。
@@ -40,6 +41,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
   final LinkedHashMap<_DiscoveryDocumentCacheKey, PluginDiscoveryDocumentResult> _documentCache =
       LinkedHashMap<_DiscoveryDocumentCacheKey, PluginDiscoveryDocumentResult>();
   int _latestGeneration = 0;
+  String? _catalogReloadSourceId;
   int? _pendingCategoryGeneration;
   bool _disposed = false;
   _ActiveDiscoveryLoad? _activeLoad;
@@ -64,10 +66,12 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
   }
 
   Future<void> _applyCatalogChange(PluginRuntimeCatalogChange change) async {
+    final stateBeforeCatalog = state;
     final selected = state.selectedSourceId;
-    final affectsSelected = selected != null && change.affects(selected);
+    final affectsSelected = selected != null && (change.affects(selected) || _catalogReloadSourceId == selected);
     final generation = affectsSelected ? ++_latestGeneration : null;
     if (affectsSelected) {
+      _catalogReloadSourceId = selected;
       _invalidateSourceCache(selected);
       _cancelActiveRequest();
       _endActiveLoad(DiagnosticOutcome.cancelled);
@@ -80,6 +84,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
       final sources = await ref.read(availablePluginSourcesProvider.future);
       if (_disposed || (generation != null && !_isCurrent(generation))) return;
       if (sources.isEmpty) {
+        _catalogReloadSourceId = null;
         ++_latestGeneration;
         _stack.clear();
         state = DiscoveryPageState.noSources();
@@ -91,18 +96,34 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
         final fallback = sources.any((source) => source.id == saved) ? saved! : sources.first.id;
         await _saveSelectedSource(fallback);
         _stack.clear();
+        _catalogReloadSourceId = null;
         await _loadDocument(pluginId: fallback, target: null, sources: sources, resetStack: true);
         return;
       }
       if (affectsSelected) {
+        _catalogReloadSourceId = null;
         _stack.clear();
         await _loadDocument(pluginId: selected, target: null, sources: sources, resetStack: true);
         return;
       }
       state = state.withSources(sources);
-    } on Object {
-      // The retained document remains usable. Runtime diagnostics and the
-      // normal source provider surface a later explicit retry failure.
+    } on Object catch (error) {
+      if (_disposed || !identical(state, stateBeforeCatalog) || ref.read(pluginRuntimeCatalogChangeProvider).revision != change.revision) {
+        return;
+      }
+      if (!affectsSelected && selected != null) return;
+      _pendingCategoryGeneration = null;
+      _catalogReloadSourceId = null;
+      state = DiscoveryPageState.failure(
+        sources: state.sources,
+        selectedSourceId: selected,
+        error: AppError.fromUnknown(error),
+        canNavigateBack: state.canNavigateBack,
+        navigationDepth: state.navigationDepth,
+        target: state.target,
+        previousResult: state.result ?? state.previousResult,
+        retainedParents: state.retainedParents,
+      );
     }
   }
 
