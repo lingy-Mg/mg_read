@@ -64,7 +64,7 @@ void main() {
     expect(indicatorDecoration.color, AppThemeTokens.of(tester.element(indicator)).accentSoft);
     expect(initialIndicator.center.dx, closeTo(tester.getCenter(homeItem).dx, 0.1));
     expect(initialIndicator.center.dy, closeTo(tester.getRect(find.byKey(const Key('app-bottom-navigation'))).center.dy, 0.1));
-    expect(_labelOpacity(tester, AppNavigationDestination.home), 0);
+    expect(_labelOpacity(tester, AppNavigationDestination.home), 1);
     expect(_labelOpacity(tester, AppNavigationDestination.search), 1);
     expect(tester.widget<InkResponse>(homeItem).hoverColor, Colors.transparent);
 
@@ -84,7 +84,7 @@ void main() {
 
     await tester.pump(const Duration(milliseconds: 150));
     expect(_labelOpacity(tester, AppNavigationDestination.home), 1);
-    expect(_labelOpacity(tester, AppNavigationDestination.search), 0);
+    expect(_labelOpacity(tester, AppNavigationDestination.search), 1);
     expect(_iconScale(tester, AppNavigationDestination.search), AppMotion.bottomNavigationSelectedIconScale);
 
     await tester.pumpAndSettle();
@@ -97,7 +97,7 @@ void main() {
     await tester.tap(profileItem);
     await tester.pumpAndSettle();
     expect(tester.getRect(indicator).center.dx, closeTo(tester.getCenter(profileItem).dx, 0.1));
-    expect(_labelOpacity(tester, AppNavigationDestination.profile), 0);
+    expect(_labelOpacity(tester, AppNavigationDestination.profile), 1);
   });
 
   testWidgets('retargets rapid taps from the current capsule position', (WidgetTester tester) async {

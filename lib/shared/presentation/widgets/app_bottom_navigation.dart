@@ -1,7 +1,7 @@
 /// MgRead 底部导航的悬浮式外观与短时选中反馈。
 ///
 /// 职责：
-/// - 渲染四个主目的地与共享胶囊。
+/// - 渲染四个主目的地与共享胶囊；选中前后始终保留标签和图标位置。
 /// - 接收页面提供的目的地图标覆盖和显式长按回调。
 /// - 消费 MotionScope 的状态，不拥有跨路由 controller。
 ///
@@ -257,7 +257,7 @@ class _AppNavigationItem extends StatelessWidget {
                   key: ValueKey<String>('app-nav-icon-motion-${destination.name}'),
                   duration: AppMotion.effectiveDuration(context, AppMotion.bottomNavigationIconResponse),
                   curve: visuallySelected ? AppMotion.navigationCurve : AppMotion.navigationReverseCurve,
-                  alignment: visuallySelected ? Alignment.center : const Alignment(0, AppMotion.bottomNavigationUnselectedIconAlignmentY),
+                  alignment: const Alignment(0, AppMotion.bottomNavigationUnselectedIconAlignmentY),
                   child: AnimatedScale(
                     duration: AppMotion.effectiveDuration(context, AppMotion.bottomNavigationIconResponse),
                     curve: visuallySelected ? AppMotion.navigationCurve : AppMotion.navigationReverseCurve,
@@ -286,15 +286,15 @@ class _AppNavigationItem extends StatelessWidget {
                       key: ValueKey<String>('app-nav-label-motion-${destination.name}'),
                       duration: AppMotion.effectiveDuration(context, AppMotion.bottomNavigationLabelResponse),
                       curve: visuallySelected ? AppMotion.navigationCurve : AppMotion.navigationReverseCurve,
-                      offset: visuallySelected ? const Offset(0, 0.28) : Offset.zero,
+                      offset: Offset.zero,
                       child: AnimatedScale(
                         duration: AppMotion.effectiveDuration(context, AppMotion.bottomNavigationLabelResponse),
                         curve: visuallySelected ? AppMotion.navigationCurve : AppMotion.navigationReverseCurve,
-                        scale: visuallySelected ? 0.82 : 1,
+                        scale: 1,
                         child: AnimatedOpacity(
                           duration: AppMotion.effectiveDuration(context, AppMotion.bottomNavigationLabelResponse),
                           curve: AppMotion.navigationCurve,
-                          opacity: visuallySelected ? 0 : 1,
+                          opacity: 1,
                           child: AnimatedDefaultTextStyle(
                             duration: AppMotion.effectiveDuration(context, AppMotion.navigationSelection),
                             curve: AppMotion.navigationCurve,
