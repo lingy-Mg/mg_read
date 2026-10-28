@@ -53,7 +53,7 @@ void _registerComicWidgetTests() {
       findsOneWidget,
     );
     expect(find.text('测试漫画源'), findsOneWidget);
-    expect(find.text('https://source.example/comics/book'), findsOneWidget);
+    expect(find.text('打开原网页'), findsOneWidget);
     expect(
       tester
           .getRect(

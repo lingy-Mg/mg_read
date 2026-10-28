@@ -55,6 +55,16 @@ void main() {
           findsOneWidget,
         );
 
+        expect(
+          find.byKey(const ValueKey('reader-book-progress-label')),
+          findsOneWidget,
+        );
+        expect(
+          tester
+              .widget<Slider>(find.byType(Slider).first)
+              .semanticFormatterCallback!(0.5),
+          contains('全书 50.0%'),
+        );
         await tester.tap(find.byKey(ValueKey<String>(scenario.buttonKey)));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 300));

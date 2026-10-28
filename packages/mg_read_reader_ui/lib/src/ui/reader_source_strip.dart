@@ -1,7 +1,7 @@
 /// 小说与漫画阅读器共用的顶部来源副标题。
 ///
 /// 职责：
-/// - 统一来源名称、来源链接、缺省文案和链接语义的布局。
+/// - 展示来源名称与简短外链动作；完整网址保留在提示及无障碍语义中。
 /// - 由调用方提供阅读器类别对应的视觉样式和外部打开动作。
 ///
 /// 注意：
@@ -90,7 +90,7 @@ class ReaderSourceStrip extends StatelessWidget {
         const SizedBox(width: 5),
         Expanded(
           child: Text(
-            sourceUrl ?? ReaderStrings.sourceUrlUnavailable,
+            sourceUri != null ? '打开原网页' : ReaderStrings.sourceUrlUnavailable,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(

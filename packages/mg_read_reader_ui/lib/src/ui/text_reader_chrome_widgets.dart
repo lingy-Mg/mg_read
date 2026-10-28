@@ -202,6 +202,15 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
     };
   }
 
+  String _bookProgressLabel(double value) {
+    final total = _catalogTotal > 0 ? _catalogTotal : _catalog.length;
+    if (total <= 0) return '全书进度暂不可用';
+    if (value <= 0) return '全书 0% · 书籍信息';
+    final index = (value.clamp(0, 1) * total).floor().clamp(0, total - 1);
+    final chapter = _catalogByIndex[index];
+    return '全书 ${(value * 100).toStringAsFixed(1)}% · ${chapter?.title ?? '第${index + 1}章'}';
+  }
+
   Widget _buildBottomBar() {
     final double progress = _sliderPreview ?? _progress?.bookFraction ?? 0;
     return Material(
@@ -217,6 +226,13 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
+              Text(
+                _bookProgressLabel(progress),
+                key: const ValueKey('reader-book-progress-label'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, color: _palette.secondaryText),
+              ),
               Row(
                 children: <Widget>[
                   TextButton(
@@ -237,6 +253,8 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
                   ),
                   Expanded(
                     child: Slider(
+                      label: _bookProgressLabel(progress),
+                      semanticFormatterCallback: _bookProgressLabel,
                       value: progress.clamp(0, 1),
                       onChanged: (double value) =>
                           setState(() => _sliderPreview = value),
