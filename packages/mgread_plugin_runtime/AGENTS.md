@@ -42,6 +42,8 @@
 
 ## 验证
 
+- Android 正常包的 `preBuild` 必须通过 `verifyNodeRuntimeLibrary`：校验固定 Node arm64 ELF 的长度与 SHA-256，
+  禁止将 Git LFS 指针打入 APK。GitHub Android 构建先精确拉取该 LFS 文件；原生独立包不需要 Node 库。
 - Dart/Facade：运行目标 Flutter 测试；Node 桌面 transport 变化时追加 Node package 的 `test:flutter-desktop`。
 - 发现 `searchInput` 的公开模型和解码属于 `plugin_discovery_input.dart`，输入请求和结果状态由主应用拥有。
   原生 transport 使用 `test/native_supervisor_test.dart` 和真实原生宿主验收；共享类型需覆盖旧 decoder 测试。

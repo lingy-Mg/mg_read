@@ -31,6 +31,17 @@ if (encodedDartDefines instanceof String) {
 }
 def includesNativeRuntime = !isNodeOnlyRuntimeBuild
 
+// Local and CI builds must reject Git LFS pointers before Android packages them.
+if (!isNativeRuntimeBuild) {
+    apply from: 'node-runtime-library.gradle'
+    def verifyNodeRuntimeLibrary = tasks.register('verifyNodeRuntimeLibrary') {
+        def library = file('src/main/jniLibs/arm64-v8a/libnode.so')
+        inputs.file(library)
+        doLast { verifyAndroidNodeRuntimeLibrary(library) }
+    }
+    tasks.named('preBuild').configure { dependsOn(verifyNodeRuntimeLibrary) }
+}
+
 group = 'com.mgread.mgread_plugin_runtime'
 version = '1.0-SNAPSHOT'
 

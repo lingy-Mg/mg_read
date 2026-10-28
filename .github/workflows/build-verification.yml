@@ -44,6 +44,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Fetch Android Node Runtime from Git LFS
+        run: git lfs pull --include="packages/mgread_plugin_runtime/android/src/main/jniLibs/arm64-v8a/libnode.so" --exclude=""
+
       - name: Set up Java 17
         uses: actions/setup-java@v6
         with:

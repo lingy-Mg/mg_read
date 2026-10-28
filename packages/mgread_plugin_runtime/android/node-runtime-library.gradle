@@ -1,0 +1,30 @@
+/**
+ * Validates the pinned Android Node binary before local or CI packaging.
+ * Git LFS pointer files are ordinary text files and AGP will otherwise package
+ * them as .so files. This guard performs read-only verification, never downloads
+ * or replaces libraries. Native-only builds do not require the Node artifact.
+ */
+import java.security.MessageDigest
+
+ext.verifyAndroidNodeRuntimeLibrary = { File library ->
+    def recovery = 'Run git lfs pull --include="packages/mgread_plugin_runtime/android/src/main/jniLibs/arm64-v8a/libnode.so" --exclude="" from the repository root.'
+    if (!library.isFile() || library.length() != 87657320L) {
+        throw new GradleException("Android Node library is missing, truncated, or still a Git LFS pointer. ${recovery}")
+    }
+    def digest = MessageDigest.getInstance('SHA-256')
+    library.withInputStream { stream ->
+        byte[] header = new byte[20]
+        if (stream.read(header) != header.length ||
+            header[0] != 0x7f || header[1] != 0x45 || header[2] != 0x4c || header[3] != 0x46 ||
+            header[4] != 2 || header[5] != 1 || (header[18] & 0xff) != 183 || header[19] != 0) {
+            throw new GradleException("Android Node library must be an arm64 ELF binary. ${recovery}")
+        }
+        digest.update(header)
+        byte[] buffer = new byte[65536]
+        int count
+        while ((count = stream.read(buffer)) != -1) digest.update(buffer, 0, count)
+    }
+    if (digest.digest().encodeHex().toString() != '955b308b1dfdf7662e8fe5ee4eb8c0c7d0a313f2d306387f2307529993c4bc32') {
+        throw new GradleException("Android Node library checksum does not match the pinned 24.21.0 artifact. ${recovery}")
+    }
+}

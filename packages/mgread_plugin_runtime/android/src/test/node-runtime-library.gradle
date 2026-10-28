@@ -1,0 +1,32 @@
+/** Standalone Gradle regression for the production binary packaging guard. */
+apply from: new File(project.property('runtimeAndroidRoot'), 'node-runtime-library.gradle')
+
+tasks.register('testNodeRuntimeLibrary') {
+    doLast {
+        def fixture = new File(layout.buildDirectory.get().asFile, 'node-fixture.so')
+        fixture.parentFile.mkdirs()
+        assert !fixture.exists() || fixture.delete()
+        def rejected = { String expected ->
+            try {
+                verifyAndroidNodeRuntimeLibrary(fixture)
+                throw new AssertionError('Invalid Node library was accepted')
+            } catch (GradleException failure) {
+                assert failure.message.contains(expected): failure.message
+            }
+        }
+        rejected('missing')
+        fixture.text = 'version https://git-lfs.github.com/spec/v1\noid sha256:955b308b1dfdf7662e8fe5ee4eb8c0c7d0a313f2d306387f2307529993c4bc32\nsize 87657320\n'
+        rejected('Git LFS pointer')
+        new RandomAccessFile(fixture, 'rw').withCloseable { it.setLength(87657320L) }
+        rejected('arm64 ELF')
+        new RandomAccessFile(fixture, 'rw').withCloseable {
+            byte[] header = new byte[20]
+            header[0] = 0x7f; header[1] = 0x45; header[2] = 0x4c; header[3] = 0x46
+            header[4] = 2; header[5] = 1; header[18] = (byte) 183
+            it.write(header)
+        }
+        rejected('checksum')
+        verifyAndroidNodeRuntimeLibrary(new File(project.property('runtimeAndroidRoot'), 'src/main/jniLibs/arm64-v8a/libnode.so'))
+        logger.lifecycle('PASS: missing, LFS pointer, invalid ELF and corrupt ELF rejected; pinned Node binary accepted.')
+    }
+}
