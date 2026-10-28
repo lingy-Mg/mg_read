@@ -110,6 +110,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                             onSourcePressed: widget.onSourcePressed ?? _showUnavailableMessage,
                             onSearchPressed: () => _handleDestinationSelected(AppNavigationDestination.search),
                             onToggleTheme: () => _handleToggleTheme(context),
+                            showThemeToggle: false,
                           ),
                           const SizedBox(height: 10),
                           DiscoveryTabs(tabs: _data.tabs, selectedTabId: _data.selectedTabId, onSelected: _handleTabSelected),

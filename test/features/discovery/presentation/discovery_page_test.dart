@@ -72,13 +72,13 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('delegates routes and exposes the shared theme toggle', (WidgetTester tester) async {
+  testWidgets('delegates routes without a discovery theme toggle', (WidgetTester tester) async {
     final List<AppNavigationDestination> requested = <AppNavigationDestination>[];
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(_host(onToggleTheme: () {}, onDestinationRequested: requested.add));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('theme-mode-toggle')), findsOneWidget);
+    expect(find.byKey(const Key('theme-mode-toggle')), findsNothing);
 
     await tester.tap(find.byKey(const Key('discovery-search-action')));
     await tester.pump();

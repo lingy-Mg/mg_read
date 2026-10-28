@@ -29,6 +29,7 @@ void main() {
     expect(find.textContaining('Runtime 启动参数无效或与当前应用版本不兼容。'), findsOneWidget);
     final message = tester.widget<Text>(find.textContaining('Runtime 启动参数无效或与当前应用版本不兼容。'));
     expect(find.byKey(const Key('discovery-failure')), findsOneWidget);
+    expect(find.byKey(const Key('theme-mode-toggle')), findsNothing);
     expect(message.data, contains('稳定错误码：runtime_start_failed'));
     expect(find.textContaining('更新或重新安装应用后重试'), findsOneWidget);
     await tester.tap(find.text('重试'));

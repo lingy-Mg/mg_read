@@ -154,6 +154,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                                   barKey: isNestedPage ? const Key('runtime-discovery-nested-header') : null,
                                   backButtonKey: isNestedPage ? const Key('runtime-discovery-back') : null,
                                   showSourceSelector: !isNestedPage,
+                                  showThemeToggle: false,
                                 ),
                                 if (result == null)
                                   Padding(

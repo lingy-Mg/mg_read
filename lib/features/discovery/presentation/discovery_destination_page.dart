@@ -19,7 +19,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
-import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/discovery_page_controller.dart';
 import 'package:mg_read/features/discovery/application/discovery_page_state.dart';
@@ -125,17 +124,6 @@ class DiscoveryDestinationPage extends ConsumerWidget {
       appBar: AppBar(
         toolbarHeight: AppSpacing.pageHeaderHeight,
         title: const AppPageTitle(title: '发现'),
-        actions: <Widget>[
-          if (AppTheme.darkModeEnabled)
-            IconButton(
-              key: const Key('theme-mode-toggle'),
-              tooltip: Theme.of(context).brightness == Brightness.dark ? '切换至浅色模式' : '切换至深色模式',
-              onPressed: () {
-                AppThemeModeScope.of(context).onToggleTheme(Theme.of(context).brightness);
-              },
-              icon: Icon(Theme.of(context).brightness == Brightness.dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined),
-            ),
-        ],
       ),
       body: SafeArea(
         child: Center(
