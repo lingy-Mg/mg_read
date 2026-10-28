@@ -7,6 +7,7 @@
 /// 注意：
 /// - 书架概览不得等待封面读取完成。
 /// - 本地资源和已提供的封面字节优先于异步请求。
+/// - 首次可见封面向首页就绪边界报告解码状态，图片按显示宽度限制解码尺寸。
 ///
 library;
 
@@ -18,6 +19,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_first_frame.dart';
 import 'package:mg_read/shared/presentation/widgets/default_content_cover_artwork.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
@@ -91,53 +93,53 @@ class LibraryBookCover extends ConsumerWidget {
         : useIntrinsicAspectRatio
         ? BoxFit.fitWidth
         : fit;
+    final ImageProvider? originalImage = bytes != null && bytes.isNotEmpty
+        ? MemoryImage(normalizeBookCoverBytes(bytes))
+        : assetPath == null
+        ? null
+        : AssetImage(assetPath!);
+    final decodeWidth = width.isFinite && width > 0 ? (width * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(1, 1024) : null;
+    final image = originalImage == null ? null : ResizeImage.resizeIfNeeded(decodeWidth, null, originalImage);
 
-    return Semantics(
-      image: true,
-      label: isRefreshing || isLoading
-          ? '$title 的封面刷新中'
-          : isBlurred
-          ? '$title 的模糊封面'
-          : '$title 的封面',
-      child: ExcludeSemantics(
-        child: SizedBox(
-          width: width,
-          height: useIntrinsicAspectRatio && hasImage ? null : height,
-          child: Stack(
-            fit: useIntrinsicAspectRatio && hasImage ? StackFit.loose : StackFit.expand,
-            children: <Widget>[
-              bytes != null && bytes.isNotEmpty
-                  ? _imageFrame(
-                      Image.memory(
-                        normalizeBookCoverBytes(bytes),
-                        width: imageWidth,
-                        height: imageHeight,
-                        fit: imageFit,
-                        alignment: alignment,
-                        gaplessPlayback: true,
-                        excludeFromSemantics: true,
-                        frameBuilder: transparentContainedImage ? _buildTransparentContainedFrame : null,
-                        errorBuilder: (context, error, stackTrace) => _sizedPlaceholder(tokens, start, end),
-                      ),
-                      backgroundColor: useIntrinsicAspectRatio || !showLetterboxBackground ? null : letterboxColor,
-                    )
-                  : assetPath == null
-                  ? _placeholder(tokens, start, end, isLoading: isLoading)
-                  : _imageFrame(
-                      Image.asset(
-                        assetPath!,
-                        width: imageWidth,
-                        height: imageHeight,
-                        fit: imageFit,
-                        alignment: alignment,
-                        excludeFromSemantics: true,
-                        frameBuilder: transparentContainedImage ? _buildTransparentContainedFrame : null,
-                        errorBuilder: (context, error, stackTrace) => _sizedPlaceholder(tokens, start, end),
-                      ),
-                      backgroundColor: useIntrinsicAspectRatio || !showLetterboxBackground ? null : letterboxColor,
-                    ),
-              if (isRefreshing && ((bytes?.isNotEmpty ?? false) || assetPath != null)) _refreshOverlay(),
-            ],
+    return LibraryCoverFirstFrame(
+      loading: isLoading,
+      image: image,
+      child: Semantics(
+        image: true,
+        label: isRefreshing || isLoading
+            ? '$title 的封面刷新中'
+            : isBlurred
+            ? '$title 的模糊封面'
+            : '$title 的封面',
+        child: ExcludeSemantics(
+          child: SizedBox(
+            width: width,
+            height: useIntrinsicAspectRatio && hasImage ? null : height,
+            child: Stack(
+              fit: useIntrinsicAspectRatio && hasImage ? StackFit.loose : StackFit.expand,
+              children: <Widget>[
+                image != null
+                    ? _imageFrame(
+                        Image(
+                          image: image,
+                          width: imageWidth,
+                          height: imageHeight,
+                          fit: imageFit,
+                          alignment: alignment,
+                          gaplessPlayback: true,
+                          excludeFromSemantics: true,
+                          frameBuilder: (context, child, frame, synchronous) {
+                            if (frame == null) return _sizedPlaceholder(tokens, start, end);
+                            return transparentContainedImage ? _buildTransparentContainedFrame(context, child, frame, synchronous) : child;
+                          },
+                          errorBuilder: (context, error, stackTrace) => _sizedPlaceholder(tokens, start, end),
+                        ),
+                        backgroundColor: useIntrinsicAspectRatio || !showLetterboxBackground ? null : letterboxColor,
+                      )
+                    : _placeholder(tokens, start, end, isLoading: isLoading),
+                if (isRefreshing && ((bytes?.isNotEmpty ?? false) || assetPath != null)) _refreshOverlay(),
+              ],
+            ),
           ),
         ),
       ),

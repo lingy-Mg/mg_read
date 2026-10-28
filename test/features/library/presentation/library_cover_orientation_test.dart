@@ -9,6 +9,47 @@ import 'package:mg_read/features/library/presentation/widgets/library_book_grid.
 import 'package:mg_read/features/library/presentation/widgets/library_book_list.dart';
 
 void main() {
+  testWidgets('intrinsic cover reserves its placeholder height before image decode', (tester) async {
+    PaintingBinding.instance.imageCache.clear();
+    await tester.pumpWidget(
+      _host(
+        const Align(
+          alignment: Alignment.topLeft,
+          child: LibraryBookCover(
+            title: '封面',
+            variant: LibraryCoverVariant.dusk,
+            assetPath: 'assets/branding/mg_read_logo.png',
+            width: 100,
+            height: 150,
+            useIntrinsicAspectRatio: true,
+          ),
+        ),
+      ),
+    );
+    expect(tester.getSize(find.byType(LibraryBookCover)).height, 150);
+  });
+
+  testWidgets('cover decode width follows display pixels and caps large backdrops', (tester) async {
+    Future<ResizeImage> providerAt(double width) async {
+      await tester.pumpWidget(
+        _host(
+          LibraryBookCover(
+            title: '封面',
+            variant: LibraryCoverVariant.dusk,
+            assetPath: 'assets/branding/mg_read_logo.png',
+            width: width,
+            height: 150,
+          ),
+        ),
+      );
+      return tester.widget<Image>(find.byType(Image).first).image as ResizeImage;
+    }
+
+    final ratio = tester.view.devicePixelRatio;
+    expect((await providerAt(80)).width, (80 * ratio).ceil());
+    expect((await providerAt(2000)).width, 1024);
+  });
+
   testWidgets('list keeps the primary portrait cover size for every source shape', (tester) async {
     await tester.pumpWidget(_host(LibraryBookList(books: _books, onOpenBook: (_) {})));
     await tester.pumpAndSettle();

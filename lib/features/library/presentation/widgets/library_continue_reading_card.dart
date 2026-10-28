@@ -49,7 +49,6 @@ class LibraryContinueReadingCard extends StatelessWidget {
           final double cardHeight = (showBackdrop ? (compact ? 172 : 196) : (compact ? 224 : 238)) + (textScale - 1) * 48;
           final double coverHeight = showBackdrop ? (compact ? 108 : 132) : (compact ? 216 : 230);
           final double coverWidth = coverHeight * 0.68;
-          final double externalBottomInset = (cardHeight - coverHeight) / 2;
           final Widget content = Stack(
             children: <Widget>[
               if (showBackdrop) ...<Widget>[

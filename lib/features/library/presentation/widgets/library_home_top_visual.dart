@@ -7,6 +7,7 @@
 /// 注意：
 /// - 背景与平面封面复用同一封面请求，不引入第二套缓存。
 /// - 图片按组件约束绘制，不进行越界放大或裁切。
+/// - 可读性背景模糊限制在顶部矩形内，避免对整屏进行背景采样。
 /// - 仅拥有本地效果预览选择，不拥有阅读状态。
 ///
 library;
@@ -35,6 +36,8 @@ class LibraryHomeTopVisual extends StatefulWidget {
 enum _BackdropStyle { gentle, strong, frosted, softFocus, subtle, verySubtle, clear }
 
 class _LibraryHomeTopVisualState extends State<LibraryHomeTopVisual> {
+  bool get _showStylePreview => const bool.fromEnvironment('MGREAD_HOME_BACKDROP_PREVIEW');
+
   // 正式版本默认使用微模糊；其他效果只用于调试预览。
   _BackdropStyle _style = _BackdropStyle.subtle;
 
@@ -103,18 +106,20 @@ class _LibraryHomeTopVisualState extends State<LibraryHomeTopVisual> {
           Positioned.fill(
             child: ExcludeSemantics(
               child: IgnorePointer(
-                child: ShaderMask(
-                  key: const Key('library-home-reading-readability-scrim'),
-                  blendMode: BlendMode.dstIn,
-                  shaderCallback: (Rect bounds) => const RadialGradient(
-                    center: Alignment(0.52, 0.16),
-                    radius: 0.82,
-                    colors: <Color>[Color(0xF2FFFFFF), Color(0xCCFFFFFF), Color(0x00FFFFFF)],
-                    stops: <double>[0, 0.7, 1],
-                  ).createShader(bounds),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30, tileMode: TileMode.clamp),
-                    child: ColoredBox(color: tokens.surface.withValues(alpha: 0.38)),
+                child: ClipRect(
+                  child: ShaderMask(
+                    key: const Key('library-home-reading-readability-scrim'),
+                    blendMode: BlendMode.dstIn,
+                    shaderCallback: (Rect bounds) => const RadialGradient(
+                      center: Alignment(0.52, 0.16),
+                      radius: 0.82,
+                      colors: <Color>[Color(0xF2FFFFFF), Color(0xCCFFFFFF), Color(0x00FFFFFF)],
+                      stops: <double>[0, 0.7, 1],
+                    ).createShader(bounds),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30, tileMode: TileMode.clamp),
+                      child: ColoredBox(color: tokens.surface.withValues(alpha: 0.38)),
+                    ),
                   ),
                 ),
               ),
@@ -150,7 +155,7 @@ class _LibraryHomeTopVisualState extends State<LibraryHomeTopVisual> {
             ),
           ),
           widget.child,
-          if (kDebugMode && false)
+          if (kDebugMode && _showStylePreview)
             Positioned(
               left: 12,
               right: 12,

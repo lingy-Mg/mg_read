@@ -187,13 +187,15 @@ void main() {
           appStartupControllerProvider.overrideWithValue(startup),
           diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
           pluginRuntimeGatewayProvider.overrideWithValue(const TestReadyPluginRuntimeGateway()),
+          pluginRuntimeConnectionProvider.overrideWith(
+            (ref) async => PluginRuntimeConnection(isHealthy: true, nodeVersion: 'test', runtimeVersion: 'test', plugins: const []),
+          ),
         ],
         child: const MgReadApp(),
       ),
     );
-    for (var index = 0; index < 5; index += 1) {
-      await tester.pump(const Duration(milliseconds: 20));
-    }
+    // Background warmup starts only after the now-uncovered route is painted.
+    await tester.pumpAndSettle();
 
     final stages = diagnostics.sink.events
         .where((event) => event.eventName == 'app.startup.stage')

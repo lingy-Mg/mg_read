@@ -9,8 +9,8 @@ void _registerLibraryHomeShellBasics() {
     expect(tester.getRect(find.byKey(const Key('library-home-top-backdrop'))).top, 0);
     final Rect topBar = tester.getRect(find.byType(LibraryHomeTopBar));
     final Rect cover = tester.getRect(find.byKey(const Key('continue-reading-flat-cover')));
-    expect(topBar.top, 24);
-    expect(cover.top, topBar.top);
+    expect(topBar.top, 16);
+    expect(cover.top, topBar.top + 8);
   });
 
   testWidgets('renders the home hierarchy with progress and book semantics', (WidgetTester tester) async {
@@ -53,10 +53,12 @@ void _registerLibraryHomeShellBasics() {
     expect(backdropCover.clipToBounds, isFalse);
     expect(backdrop.left, 0);
     expect(backdrop.right, 390);
-    expect(backdrop.contains(topBar.topLeft), isTrue);
+    final visibleTopBar = topBar.intersect(const Rect.fromLTWH(0, 0, 390, 844));
+    expect(backdrop.intersect(topBar), visibleTopBar);
     expect(backdrop.contains(topBar.bottomRight), isTrue);
     expect(backdrop.contains(readingSurface.topLeft), isTrue);
-    expect(backdrop.contains(readingSurface.bottomRight), isTrue);
+    expect(backdrop.bottom, greaterThanOrEqualTo(readingSurface.bottom));
+    expect(backdrop.right, greaterThanOrEqualTo(readingSurface.right));
   });
 
   testWidgets('shows preparation only on the selected shelf entry', (WidgetTester tester) async {
@@ -274,6 +276,7 @@ void _registerLibraryHomeShellBasics() {
     );
 
     final LibraryBookGridItem completedCard = tester.widget<LibraryBookGridItem>(find.byType(LibraryBookGridItem).first);
+    await tester.ensureVisible(find.byKey(Key('library-grid-book-overflow-menu-${completedCard.data.id}')));
     await tester.tap(find.byKey(Key('library-grid-book-overflow-menu-${completedCard.data.id}')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(Key('library-grid-book-action-${completedCard.data.id}-delete')));

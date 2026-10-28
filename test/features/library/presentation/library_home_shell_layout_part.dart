@@ -78,10 +78,12 @@ void _registerLibraryHomeShellLayout() {
 
     expect(loader.loadCounts.values, everyElement(1));
     expect(loader.loadCounts.length, 3);
-    expect(
-      tester.widgetList<Image>(find.byType(Image)).where((Image image) => image.image is MemoryImage),
-      everyElement(isA<Image>().having((Image image) => image.gaplessPlayback, 'gaplessPlayback', isTrue)),
-    );
+    final coverImages = tester.widgetList<Image>(find.byType(Image)).where((image) {
+      final provider = image.image;
+      return provider is MemoryImage || (provider is ResizeImage && provider.imageProvider is MemoryImage);
+    });
+    expect(coverImages, isNotEmpty);
+    expect(coverImages, everyElement(isA<Image>().having((Image image) => image.gaplessPlayback, 'gaplessPlayback', isTrue)));
 
     await tester.tap(find.byKey(const Key('library-filter-completed')));
     await tester.pump();
@@ -229,12 +231,7 @@ void _registerLibraryHomeShellLayout() {
     final Finder flatCover = find.byKey(const Key('continue-reading-flat-cover'));
     final Rect cover = tester.getRect(flatCover);
     final Widget readingSurface = tester.widget(find.byKey(const Key('continue-reading-surface')));
-    final Text title = tester.widget<Text>(
-      find.byWidgetPredicate(
-        (Widget widget) =>
-            widget is Text && widget.data == longTitle && widget.maxLines == 1 && widget.style?.fontSize == AppTypography.sectionTitle,
-      ),
-    );
+    final Text title = tester.widget<Text>(find.byKey(const Key('continue-reading-title')));
 
     expect(surface.height, greaterThanOrEqualTo(172));
     expect(readingSurface, isA<SizedBox>());
@@ -249,7 +246,8 @@ void _registerLibraryHomeShellLayout() {
     expect(find.text('上次阅读 不应显示'), findsNothing);
     expect(find.byKey(const Key('continue-reading-author')), findsOneWidget);
     expect(find.byKey(const Key('continue-reading-description')), findsOneWidget);
-    expect(title.maxLines, 1);
+    expect(title.data, longTitle);
+    expect(title.maxLines, 2);
     expect(title.overflow, TextOverflow.ellipsis);
     expect(title.style?.fontSize, lessThanOrEqualTo(AppTypography.sectionTitle));
     expect(title.style?.shadows, isNull);

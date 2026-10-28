@@ -7,6 +7,7 @@
 /// 注意：
 /// - 书架持久化只通过 application 窄用例和 Content Library adapter 执行。
 /// - 页面异步回调在路由离开后不得继续导航。
+/// - 首屏等待可见封面解码；目录自动检查与阅读预热在首屏显示后启动。
 ///
 library;
 
@@ -37,6 +38,7 @@ import 'package:mg_read/features/library/presentation/library_home_view_data.dar
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/library_media_entry_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_shell.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_first_frame.dart';
 import 'package:mg_read/features/media/application/source_audio_playback_service.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/source_content_detail_sheet.dart';
@@ -132,9 +134,8 @@ class LibraryPage extends ConsumerWidget {
       return _LibraryLoadingState(showAnimation: !startup.ownsLoadingAnimation);
     }
     if (state.overview == null) {
-      return _LibraryTerminalFrameSignal(
-        startup: startup,
-        resultState: 'failure',
+      return LibraryFirstFrame(
+        onReady: () => startup.signalLibraryTerminalFrame(resultState: 'failure'),
         child: _LibraryFailureState(error: state.error!, onRetry: controller.refresh),
       );
     }
@@ -154,8 +155,11 @@ class LibraryPage extends ConsumerWidget {
     final LibraryCatalogRefreshCoordinator? catalogRefreshCoordinator = ref.read(libraryCatalogRefreshCoordinatorProvider);
     if (catalogRefreshCoordinator != null) {
       final List<String> bookIds = state.overview!.items.map((item) => item.id).toList(growable: false);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!context.mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await startup.waitForSuccessfulLibraryTerminalFrame();
+        if (!context.mounted || startup.isClosed) return;
+        await WidgetsBinding.instance.endOfFrame;
+        if (!context.mounted || startup.isClosed) return;
         unawaited(
           catalogRefreshCoordinator.maybeRefresh(
             bookIds: bookIds,
@@ -509,9 +513,10 @@ class LibraryPage extends ConsumerWidget {
       for (final item in state.overview!.items)
         if (item.id != currentId && (item.contentKind == ContentKind.novel || item.contentKind == ContentKind.manga)) item.id,
     ].take(3).toList(growable: false);
-    return _LibraryTerminalFrameSignal(
-      startup: startup,
+    return LibraryFirstFrame(
+      onReady: () => startup.signalLibraryTerminalFrame(resultState: state.overview!.isEmpty ? 'empty' : 'ready'),
       child: _ShelfReaderLifecycleHost(
+        startup: startup,
         warmBookIds: readerWarmBookIds,
         contentGeneration: state.overview!,
         coordinator: readerCoordinator,
@@ -544,39 +549,17 @@ String _shelfMediaFailureMessage(String fallback, Object error) {
   return <String>[fallback, '错误码：${normalized.code.wireValue}', if (location != null && location.isNotEmpty) '失败位置：$location'].join('\n');
 }
 
-final class _LibraryTerminalFrameSignal extends StatefulWidget {
-  const _LibraryTerminalFrameSignal({required this.startup, required this.child, this.resultState = 'ready'});
-
-  final AppStartupController startup;
-  final Widget child;
-  final String resultState;
-
-  @override
-  State<_LibraryTerminalFrameSignal> createState() => _LibraryTerminalFrameSignalState();
-}
-
-final class _LibraryTerminalFrameSignalState extends State<_LibraryTerminalFrameSignal> {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) widget.startup.signalLibraryTerminalFrame(resultState: widget.resultState);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) => widget.child;
-}
-
 /// Bridges app lifecycle and memory pressure to the process-local warm LRU.
 class _ShelfReaderLifecycleHost extends StatefulWidget {
   const _ShelfReaderLifecycleHost({
+    required this.startup,
     required this.warmBookIds,
     required this.contentGeneration,
     required this.coordinator,
     required this.child,
   });
 
+  final AppStartupController startup;
   final List<String> warmBookIds;
   final Object contentGeneration;
   final ShelfReaderLaunchCoordinator coordinator;
@@ -610,8 +593,11 @@ class _ShelfReaderLifecycleHostState extends State<_ShelfReaderLifecycleHost> wi
     final signature = widget.warmBookIds.join('\u0000');
     if (signature == _warmSignature) return;
     _warmSignature = signature;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(widget.coordinator.warm(widget.warmBookIds));
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await widget.startup.waitForSuccessfulLibraryTerminalFrame();
+      if (!mounted || widget.startup.isClosed) return;
+      await WidgetsBinding.instance.endOfFrame;
+      if (mounted && signature == _warmSignature) unawaited(widget.coordinator.warm(widget.warmBookIds));
     });
   }
 

@@ -156,7 +156,7 @@ void _registerLibraryHomeShellActions() {
 
     final Rect topBar = tester.getRect(find.byType(LibraryHomeTopBar));
     final Rect heading = tester.getRect(find.byKey(const Key('library-list-heading-row')));
-    expect(topBar.top, 24);
+    expect(topBar.top, 16);
     expect(heading.top - topBar.bottom, AppSpacing.comfortable);
   });
 }

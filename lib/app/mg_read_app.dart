@@ -1,3 +1,8 @@
+/// 应用路由、主题和后台服务的组合根。
+/// 首屏遮罩由 AppStartupGate 持有；Runtime、更新和设备同步在首屏绘制后启动。
+/// 异步完成后必须检查 mounted；全局订阅随根组件销毁而取消。
+library;
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -7,6 +12,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_router.dart';
 import 'package:mg_read/app/app_startup.dart';
+import 'package:mg_read/app/app_startup_gate.dart';
 import 'package:mg_read/app/app_fatal_error_dialog_host.dart';
 import 'package:mg_read/app/app_fatal_error_reporter.dart';
 import 'package:mg_read/app/app_runtime_fatal_error_observer.dart';
@@ -20,9 +26,6 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/app_update/application/github_apk_update.dart';
 import 'package:mg_read/features/app_update/presentation/github_apk_update_prompt.dart';
 import 'package:mg_read/features/lan_sync/application/device_sync_controller.dart';
-import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
-import 'package:mg_read/features/library/application/library_page_controller.dart';
-import 'package:mg_read/features/library/presentation/widgets/library_home_shell.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/media/presentation/source_audio_playback_host.dart';
 import 'package:mg_read/features/reader/presentation/chapter_cache_task_bar.dart';
@@ -75,7 +78,6 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       unawaited(_warmAfterLibrary(startup));
-      unawaited(_checkForApkUpdate());
     });
   }
 
@@ -125,6 +127,9 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
   Future<void> _warmAfterLibrary(AppStartupController startup) async {
     await startup.waitForSuccessfulLibraryTerminalFrame();
     if (!mounted || startup.isClosed) return;
+    // Present the uncovered route before scheduling background startup work.
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted || startup.isClosed) return;
     try {
       final runtimeReady = await _warmPluginRuntime();
       startup.recordStage('runtimeReady', resultState: runtimeReady ? 'ready' : 'failure');
@@ -137,6 +142,7 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
       // Retention is maintenance, not startup; it must follow Runtime warmup.
       final maintenanceResult = await startup.runDeferredDiagnosticsMaintenance();
       startup.recordStage('maintenanceComplete', resultState: maintenanceResult);
+      if (mounted) unawaited(_checkForApkUpdate());
     }
   }
 
@@ -203,7 +209,9 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
-        unawaited(ref.read(deviceSyncControllerProvider.notifier).start());
+        if (ref.read(appStartupControllerProvider).isInteractive) {
+          unawaited(ref.read(deviceSyncControllerProvider.notifier).start());
+        }
         if (_pendingApkUpdate != null) unawaited(_installPendingApkUpdate());
         break;
       case AppLifecycleState.hidden || AppLifecycleState.paused || AppLifecycleState.detached:
@@ -260,7 +268,7 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
           child: Stack(
             fit: StackFit.expand,
             children: <Widget>[
-              _AppStartupGate(
+              AppStartupGate(
                 child: DataSourceSystemErrorDialogHost(
                   reporter: ref.watch(dataSourceSystemErrorReporterProvider),
                   child: AppFatalErrorDialogHost(
@@ -284,123 +292,6 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
           ),
         );
       },
-    );
-  }
-}
-
-final class _AppStartupGate extends ConsumerStatefulWidget {
-  const _AppStartupGate({required this.child});
-
-  final Widget child;
-
-  @override
-  ConsumerState<_AppStartupGate> createState() => _AppStartupGateState();
-}
-
-final class _AppStartupGateState extends ConsumerState<_AppStartupGate> {
-  AppStartupStatus? _lastStatus;
-  bool _shellFrameScheduled = false;
-  bool _loadingArmed = false;
-  bool _failureSignalScheduled = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final startup = ref.watch(appStartupControllerProvider);
-    return ValueListenableBuilder<AppStartupState>(
-      valueListenable: startup,
-      builder: (context, state, child) => _buildForState(context, startup, state),
-    );
-  }
-
-  Widget _buildForState(BuildContext context, AppStartupController startup, AppStartupState state) {
-    final previous = _lastStatus;
-    _lastStatus = state.status;
-    if (state.isBooting && previous == AppStartupStatus.retryableFailure) {
-      _loadingArmed = false;
-      _failureSignalScheduled = false;
-      _shellFrameScheduled = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        ref.invalidate(libraryPageControllerProvider);
-        ref.invalidate(privateLibraryPageControllerProvider);
-      });
-    }
-    if (!_shellFrameScheduled) {
-      _shellFrameScheduled = true;
-      final firstFrameState = state.status;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        startup.recordShellFirstFrame(resultState: firstFrameState.name);
-        if (!startup.isInteractive && !_loadingArmed) {
-          setState(() {
-            _loadingArmed = true;
-          });
-        }
-      });
-    }
-    if (startup.isInteractive) {
-      _loadingArmed = false;
-      return widget.child;
-    }
-    if (state.isBooting || state.isReady) {
-      return Stack(
-        fit: StackFit.expand,
-        children: <Widget>[
-          IgnorePointer(
-            child: ExcludeSemantics(child: Offstage(child: widget.child)),
-          ),
-          IgnorePointer(
-            child: ExcludeSemantics(
-              child: Overlay(
-                initialEntries: <OverlayEntry>[
-                  OverlayEntry(
-                    builder: (context) => LibraryHomeShell(
-                      data: LibraryHomeViewData.empty(),
-                      onRefresh: () async {},
-                      isRefreshing: false,
-                      showLoading: _loadingArmed,
-                      callbacks: const LibraryHomeCallbacks(),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-    // Startup failure uses one fixed message at this boundary.
-    if (!_failureSignalScheduled) {
-      _failureSignalScheduled = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          startup.recordStage('libraryFirstUsableFrame', resultState: 'failure');
-        }
-      });
-    }
-    return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            const Text('启动失败'),
-            const SizedBox(height: 8),
-            const Text('startup_failed'),
-            const SizedBox(height: 8),
-            Text('诊断代码：${state.errorCode ?? 'startup_failed'}'),
-            const SizedBox(height: 16),
-            FilledButton(key: const Key('startup-retry'), onPressed: () => startup.retry(), child: const Text('重试')),
-            const SizedBox(height: 8),
-            TextButton(
-              key: const Key('startup-diagnostics'),
-              onPressed: () {
-                const DiagnosticsRoute().go(context);
-              },
-              child: const Text('查看诊断'),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

@@ -190,7 +190,7 @@ void main() {
 
   testWidgets('bootstrap mounts a startup surface before settings initialization completes', (WidgetTester tester) async {
     final store = FakeSettingsStore()..loadGate = Completer<void>();
-    final manager = AppSettingsManager(store: store, registry: settingsTestRegistry);
+    final manager = AppSettingsManager(store: store, registry: AppSettingKeys.registry);
     Widget? mounted;
     final boot = bootstrapMgReadApp(
       settingsManager: manager,
@@ -204,7 +204,7 @@ void main() {
     expect(manager.state, SettingsState.loading);
     expect(mounted, isNotNull);
     await tester.pumpWidget(mounted!);
-    expect(find.byKey(const Key('library-home-content')), findsOneWidget);
+    expect(find.byKey(const Key('app-startup-mask')), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
 
     store.loadGate!.complete();
@@ -220,7 +220,7 @@ void main() {
 
   testWidgets('bootstrap still exposes an explicit failed state', (WidgetTester tester) async {
     final store = FakeSettingsStore()..failLoads = true;
-    final manager = AppSettingsManager(store: store, registry: settingsTestRegistry);
+    final manager = AppSettingsManager(store: store, registry: AppSettingKeys.registry);
     Widget? mounted;
 
     await bootstrapMgReadApp(
