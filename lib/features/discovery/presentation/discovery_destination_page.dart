@@ -60,6 +60,16 @@ class DiscoveryDestinationPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(discoveryPageControllerProvider);
     final controller = ref.read(discoveryPageControllerProvider.notifier);
+    ref.listen(discoveryPageControllerProvider, (previous, next) {
+      if (next.result != null && next.error != null && next.error != previous?.error) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('刷新失败，已保留原有内容。'),
+            action: SnackBarAction(label: '重试', onPressed: () => unawaited(controller.refresh())),
+          ),
+        );
+      }
+    });
 
     final selectedSource = _selectedSource(state);
     if (selectedSource != null &&
@@ -94,11 +104,13 @@ class DiscoveryDestinationPage extends ConsumerWidget {
         message: '插件正在生成分区、榜单和分类。',
         loading: true,
       ),
-      DiscoveryPageStatus.noSources => const _DiscoveryStateContent(
-        key: Key('discovery-no-sources'),
+      DiscoveryPageStatus.noSources => _DiscoveryStateContent(
+        key: const Key('discovery-no-sources'),
         icon: Icons.extension_off_rounded,
         title: '没有可用数据源',
-        message: '请先安装并启用支持小说或漫画内容的插件。',
+        message: '请安装或启用支持小说、漫画、音频或视频的数据源。',
+        actionLabel: '管理数据源',
+        onAction: onSourceManagementRequested,
       ),
       DiscoveryPageStatus.empty => _DiscoveryStateContent(
         key: const Key('discovery-empty'),

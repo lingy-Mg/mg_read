@@ -1,3 +1,7 @@
+/// Search request ownership, catalog revisions and paging flights. Cancellation
+/// fences late results; source changes never recreate the controller lifecycle.
+library;
+
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,6 +18,8 @@ final searchPageControllerProvider = NotifierProvider.autoDispose<SearchPageCont
 class SearchPageController extends Notifier<SearchPageState> {
   late SourceContentGateway _gateway;
   int _latestGeneration = 0;
+  int _catalogGeneration = 0;
+  Future<void>? _pagination;
   int _latestSuggestionGeneration = 0;
   bool _disposed = false;
   PluginInvocationCancellation? _searchCancellation;
@@ -21,7 +27,7 @@ class SearchPageController extends Notifier<SearchPageState> {
 
   @override
   SearchPageState build() {
-    _gateway = ref.watch(sourceContentGatewayProvider);
+    _gateway = ref.read(sourceContentGatewayProvider);
     ref.listen(pluginRuntimeCatalogChangeProvider, (_, next) {
       unawaited(_applyCatalogChange(next));
     });
@@ -36,20 +42,24 @@ class SearchPageController extends Notifier<SearchPageState> {
   }
 
   Future<void> _applyCatalogChange(PluginRuntimeCatalogChange change) async {
+    final catalogGeneration = ++_catalogGeneration;
     final selected = state.selectedSourceId;
     final affectsSelected = selected == null || change.affects(selected);
     if (affectsSelected) {
       ++_latestGeneration;
+      ++_latestSuggestionGeneration;
       _cancelSearch();
       _cancelSuggestions();
     }
+    final requestGeneration = _latestGeneration;
     try {
       // Let providers that watch the same revision dispose their stale future
       // before reading the refreshed catalog. Riverpod does not define sibling
       // listener ordering for one state change.
       await Future<void>.value();
       final sources = await ref.read(availablePluginSourcesProvider.future);
-      if (_disposed) return;
+      if (!_isCurrent(requestGeneration) || catalogGeneration != _catalogGeneration) return;
+      _gateway = ref.read(sourceContentGatewayProvider);
       if (sources.isEmpty) {
         state = SearchPageState.ready(sources: const <PluginSourceDescriptor>[], selectedSourceId: null);
         return;
@@ -75,6 +85,7 @@ class SearchPageController extends Notifier<SearchPageState> {
 
   Future<void> retrySources() {
     _cancelSearch();
+    ref.invalidate(pluginRuntimeConnectionProvider);
     ref.invalidate(availablePluginSourcesProvider);
     final generation = ++_latestGeneration;
     return _loadSources(generation);
@@ -201,6 +212,7 @@ class SearchPageController extends Notifier<SearchPageState> {
     try {
       final sources = await ref.read(availablePluginSourcesProvider.future);
       if (!_isCurrent(generation)) return;
+      _gateway = ref.read(sourceContentGatewayProvider);
       state = SearchPageState.ready(sources: sources, selectedSourceId: null);
       if (sources.isNotEmpty) unawaited(_loadSuggestions(null, ++_latestSuggestionGeneration));
     } on Object catch (error) {
@@ -230,7 +242,18 @@ class SearchPageController extends Notifier<SearchPageState> {
     state = state.withSortOrder(value);
   }
 
-  Future<void> loadMore() async {
+  Future<void> loadMore() {
+    final active = _pagination;
+    if (active != null) return active;
+    if (state.status == SearchPageStatus.searching) return Future<void>.value();
+    final task = _loadMore();
+    _pagination = task;
+    return task.whenComplete(() {
+      if (identical(_pagination, task)) _pagination = null;
+    });
+  }
+
+  Future<void> _loadMore() async {
     final previous = state.result;
     if (previous == null || !previous.hasMore || state.query.isEmpty) return;
     final generation = ++_latestGeneration;
@@ -250,6 +273,18 @@ class SearchPageController extends Notifier<SearchPageState> {
         },
       );
       if (_isCurrent(generation)) state = state.withResult(nextStatus: SearchPageStatus.loaded, nextResult: result);
+    } on Object catch (error) {
+      if (_isCurrent(generation)) {
+        state = SearchPageState.failure(
+          sources: state.sources,
+          selectedSourceId: state.selectedSourceId,
+          query: state.query,
+          error: AppError.fromUnknown(error),
+          retainedResult: state.result ?? previous,
+          hotSearches: state.hotSearches,
+          sortOrder: state.sortOrder,
+        );
+      }
     } finally {
       if (identical(_searchCancellation, cancellation)) _searchCancellation = null;
     }
@@ -291,6 +326,18 @@ class SearchPageController extends Notifier<SearchPageState> {
                 sortOrder: state.sortOrder,
               )
             : state.withResult(nextStatus: SearchPageStatus.loaded, nextResult: result);
+      }
+    } on Object catch (error) {
+      if (_isCurrent(generation)) {
+        state = SearchPageState.failure(
+          sources: state.sources,
+          selectedSourceId: state.selectedSourceId,
+          query: state.query,
+          error: AppError.fromUnknown(error),
+          retainedResult: state.result ?? previous,
+          hotSearches: state.hotSearches,
+          sortOrder: state.sortOrder,
+        );
       }
     } finally {
       if (identical(_searchCancellation, cancellation)) _searchCancellation = null;
@@ -342,6 +389,7 @@ class SearchPageController extends Notifier<SearchPageState> {
   }
 
   void _cancelSearch() {
+    _pagination = null;
     _searchCancellation?.cancel();
     _searchCancellation = null;
   }

@@ -62,6 +62,30 @@ class BookshelfMembershipController extends Notifier<BookshelfMembershipState> {
     return const BookshelfMembershipState.initial();
   }
 
+  final Map<String, Future<void>> _mutations = {};
+
+  /// Serializes add/remove intents for the same source/title across pages.
+  Future<void> mutate(String key, Future<void> Function() operation) {
+    final previous = _mutations[key];
+    late final Future<void> task;
+    task =
+        (() async {
+          if (previous != null) {
+            try {
+              await previous;
+            } on Object {
+              /* Allow retry after rollback. */
+            }
+          }
+          if (_disposed) throw StateError('Bookshelf membership is disposed.');
+          await operation();
+        })().whenComplete(() {
+          if (identical(_mutations[key], task)) _mutations.remove(key);
+        });
+    _mutations[key] = task;
+    return task;
+  }
+
   bool contains({required String pluginId, required String title}) => state.contains(pluginId: pluginId, title: title);
 
   Future<bool> containsWhenReady({required String pluginId, required String title}) async {

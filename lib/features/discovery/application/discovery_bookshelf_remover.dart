@@ -26,7 +26,10 @@ final class CoordinatedDiscoveryBookshelfRemover implements DiscoveryBookshelfRe
   final BookshelfBookRemoval removeBook;
 
   @override
-  Future<void> remove({required String pluginId, required String title}) async {
+  Future<void> remove({required String pluginId, required String title}) =>
+      membership.mutate(bookshelfMembershipKey(pluginId: pluginId, title: title), () => _remove(pluginId: pluginId, title: title));
+
+  Future<void> _remove({required String pluginId, required String title}) async {
     final entry = await membership.entryWhenReady(pluginId: pluginId, title: title);
     if (entry == null) throw StateError('Bookshelf membership is unavailable.');
 

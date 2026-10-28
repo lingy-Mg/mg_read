@@ -145,6 +145,20 @@ final class DiscoveryPageState {
   final PluginDiscoveryDocumentResult? previousResult;
   final List<PluginDiscoveryDocumentResult> retainedParents;
 
+  DiscoveryPageState withRefreshError(AppError value) => DiscoveryPageState._(
+    status: status,
+    sources: sources,
+    selectedSourceId: selectedSourceId,
+    result: result,
+    error: value,
+    canNavigateBack: canNavigateBack,
+    loadingCollectionId: loadingCollectionId,
+    navigationDepth: navigationDepth,
+    target: target,
+    previousResult: previousResult,
+    retainedParents: retainedParents,
+  );
+
   DiscoveryPageState withSources(Iterable<PluginSourceDescriptor> value) => DiscoveryPageState._(
     status: status,
     sources: value,

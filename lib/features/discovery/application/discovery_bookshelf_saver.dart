@@ -44,7 +44,7 @@ final class DiscoveryBookshelfMutation {
 
 /// Main-app adapter that writes only through the public Content Library API.
 final class ContentLibraryDiscoveryBookshelfSaver implements DiscoveryBookshelfSaver {
-  const ContentLibraryDiscoveryBookshelfSaver(
+  ContentLibraryDiscoveryBookshelfSaver(
     this._library, {
     this.onMutationStarted,
     this.onMutationCommitted,
@@ -60,8 +60,28 @@ final class ContentLibraryDiscoveryBookshelfSaver implements DiscoveryBookshelfS
   final ContentLibrarySourcePrefetcher? prefetcher;
   final BookshelfMembershipController? membership;
 
+  final Map<String, Future<void>> _saves = {};
+
   @override
   Future<void> save({
+    required PluginSourceDescriptor source,
+    PluginContentSummary? content,
+    PluginContentDetail? detail,
+    PluginChaptersResult? catalog,
+  }) {
+    final resolved = detail ?? _detailFromSummary(source, content);
+    final key = bookshelfMembershipKey(pluginId: source.id, title: resolved.summary.title);
+    final active = _saves[key];
+    if (active != null) return active;
+    Future<void> work() => _save(source: source, detail: resolved, catalog: catalog);
+    final task = (membership?.mutate(key, work) ?? work()).whenComplete(() {
+      _saves.remove(key);
+    });
+    _saves[key] = task;
+    return task;
+  }
+
+  Future<void> _save({
     required PluginSourceDescriptor source,
     PluginContentSummary? content,
     PluginContentDetail? detail,
@@ -115,7 +135,11 @@ final class ContentLibraryDiscoveryBookshelfSaver implements DiscoveryBookshelfS
     try {
       final item = await _library.addLibraryItem(mutation.request);
       onMutationCommitted?.call(mutation, item);
-      prefetcher?.start(item, initialDetail: resolvedDetail, initialCatalog: catalog);
+      try {
+        prefetcher?.start(item, initialDetail: resolvedDetail, initialCatalog: catalog);
+      } on Object {
+        /* A committed shelf save is independent of speculative warming. */
+      }
     } on Object {
       onMutationFailed?.call(mutation);
       rethrow;

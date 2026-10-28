@@ -42,6 +42,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
       LinkedHashMap<_DiscoveryDocumentCacheKey, PluginDiscoveryDocumentResult>();
   int _latestGeneration = 0;
   String? _catalogReloadSourceId;
+  int _catalogGeneration = 0;
   int? _pendingCategoryGeneration;
   bool _disposed = false;
   _ActiveDiscoveryLoad? _activeLoad;
@@ -49,7 +50,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
 
   @override
   DiscoveryPageState build() {
-    _gateway = ref.watch(sourceContentGatewayProvider);
+    _gateway = ref.read(sourceContentGatewayProvider);
     _sourceSelectionStore = ref.watch(discoverySourceSelectionStoreProvider);
     _diagnostics = ref.watch(diagnosticsManagerProvider);
     ref.listen(pluginRuntimeCatalogChangeProvider, (_, next) {
@@ -67,9 +68,10 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
 
   Future<void> _applyCatalogChange(PluginRuntimeCatalogChange change) async {
     final stateBeforeCatalog = state;
+    final catalogGeneration = ++_catalogGeneration;
     final selected = state.selectedSourceId;
     final affectsSelected = selected != null && (change.affects(selected) || _catalogReloadSourceId == selected);
-    final generation = affectsSelected ? ++_latestGeneration : null;
+    final generation = affectsSelected ? ++_latestGeneration : _latestGeneration;
     if (affectsSelected) {
       _catalogReloadSourceId = selected;
       _invalidateSourceCache(selected);
@@ -82,7 +84,8 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
       // listener ordering for one state change.
       await Future<void>.value();
       final sources = await ref.read(availablePluginSourcesProvider.future);
-      if (_disposed || (generation != null && !_isCurrent(generation))) return;
+      if (!_isCurrent(generation) || catalogGeneration != _catalogGeneration) return;
+      _gateway = ref.read(sourceContentGatewayProvider);
       if (sources.isEmpty) {
         _catalogReloadSourceId = null;
         ++_latestGeneration;
@@ -92,9 +95,10 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
       }
       if (selected == null || !sources.any((source) => source.id == selected)) {
         final saved = await _loadSavedSourceId();
-        if (_disposed || (generation != null && !_isCurrent(generation))) return;
+        if (!_isCurrent(generation) || catalogGeneration != _catalogGeneration) return;
         final fallback = sources.any((source) => source.id == saved) ? saved! : sources.first.id;
         await _saveSelectedSource(fallback);
+        if (!_isCurrent(generation) || catalogGeneration != _catalogGeneration) return;
         _stack.clear();
         _catalogReloadSourceId = null;
         await _loadDocument(pluginId: fallback, target: null, sources: sources, resetStack: true);
@@ -128,7 +132,9 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
   }
 
   Future<void> retry() {
+    if (state.error != null) ref.invalidate(pluginRuntimeConnectionProvider);
     if (state.sources.isEmpty) {
+      ref.invalidate(pluginRuntimeConnectionProvider);
       ref.invalidate(availablePluginSourcesProvider);
       return _initialize(++_latestGeneration);
     }
@@ -149,7 +155,10 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
 
   Future<void> selectSource(String pluginId) async {
     if (!state.sources.any((source) => source.id == pluginId)) return;
+    final generation = ++_latestGeneration;
+    _cancelActiveRequest();
     await _saveSelectedSource(pluginId);
+    if (!_isCurrent(generation)) return;
     _stack.clear();
     await _loadDocument(pluginId: pluginId, target: null, resetStack: true);
   }
@@ -365,6 +374,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
       final current = _stack.lastOrNull;
       if ((hasCachedDocument || !push) && current != null && state.selectedSourceId == pluginId) {
         _publish(current.document);
+        state = state.withRefreshError(appError);
         _endLoad(load, _outcomeFor(appError), error: appError, stackTrace: stackTrace);
         return;
       }

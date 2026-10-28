@@ -8,6 +8,19 @@ import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 
 void main() {
+  test('simultaneous saves commit and prefetch only once', () async {
+    final root = await Directory.systemTemp.createTemp('mgread-save-flight-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    addTearDown(() async {
+      await library.close();
+      await root.delete(recursive: true);
+    });
+    var commits = 0;
+    final saver = ContentLibraryDiscoveryBookshelfSaver(library, onMutationCommitted: (_, _) => commits++);
+    await Future.wait(List.generate(5, (_) => saver.save(source: _source, detail: _detail(_source, _content))));
+    expect(commits, 1);
+  });
+
   test('saves a typed discovery item in the app-owned bookshelf', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-discovery-save-');
     final library = await ContentLibrary.open(dataRoot: root);
