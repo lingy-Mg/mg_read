@@ -101,6 +101,7 @@ Future<void> _openTextChapter(
   // types. The app host pushes a reader/player above this route, so do not
   // dismiss the detail before invoking its callback. Doing so skips the detail
   // on exit and can also desynchronise discovery's retained category routes.
+  if (!context.mounted || ModalRoute.of(context)?.isCurrent == false) return;
   if (detail.summary.contentKind == PluginContentKind.audio) {
     final callback = onAudioChapterRequested;
     if (callback == null) {

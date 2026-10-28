@@ -150,6 +150,9 @@ final sourceAudioPlaybackServiceProvider = NotifierProvider<SourceAudioPlaybackS
 final class SourceAudioPlaybackService extends Notifier<SourceAudioPlaybackState> with WidgetsBindingObserver {
   int _nextSessionId = 0;
   int _operationGeneration = 0;
+  int _openGeneration = 0;
+  String? _openingKey;
+  Future<void>? _opening;
   AudioPlayerEngine? _engine;
   AudioPlayerController? _controller;
   SourceAudioPlaylistDataSource? _dataSource;
@@ -185,10 +188,26 @@ final class SourceAudioPlaybackService extends Notifier<SourceAudioPlaybackState
   }
 
   /// Replaces any existing playback and expands the new global session.
-  Future<void> open(SourceAudioPlaybackRequest request) async {
+  Future<void> open(SourceAudioPlaybackRequest request) {
+    final key = '${request.detail.pluginId}:${request.detail.summary.id}:${request.chapter.id}';
+    if (_openingKey == key && _opening != null) return _opening!;
+    final generation = ++_openGeneration;
+    _openingKey = key;
+    final task = _open(request, generation);
+    _opening = task;
+    return task.whenComplete(() {
+      if (identical(_opening, task)) {
+        _opening = null;
+        _openingKey = null;
+      }
+    });
+  }
+
+  Future<void> _open(SourceAudioPlaybackRequest request, int generation) async {
     await (_stopFuture ?? Future<void>.value());
-    await stop();
-    if (_disposed) return;
+    if (_disposed || generation != _openGeneration) return;
+    await _stopCurrent();
+    if (_disposed || generation != _openGeneration) return;
     final settings = ref.read(appSettingsProvider);
     final keepScreenOn = settings.supports(AppSettingKeys.audioKeepScreenOn) ? settings.get(AppSettingKeys.audioKeepScreenOn) : true;
     final sessionId = ++_nextSessionId;
@@ -366,6 +385,15 @@ final class SourceAudioPlaybackService extends Notifier<SourceAudioPlaybackState
 
   /// Pauses, cancels and releases the matching session before returning.
   Future<void> stop({int? sessionId}) {
+    if (sessionId == null || state.sessionId == sessionId) {
+      _openGeneration++;
+      _openingKey = null;
+      _opening = null;
+    }
+    return _stopCurrent(sessionId: sessionId);
+  }
+
+  Future<void> _stopCurrent({int? sessionId}) {
     final activeSessionId = state.sessionId;
     if (activeSessionId == null || (sessionId != null && activeSessionId != sessionId)) {
       return _stopFuture ?? Future<void>.value();

@@ -13,9 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
-import 'package:mg_read/features/discovery/application/source_content_cover_handoff.dart';
 import 'package:mg_read/features/media/application/source_audio_playback_service.dart';
-import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
 /// Opens an audio chapter in the app-root player and completes when it stops.
 Future<void> openTransientSourceAudioPlayer(
@@ -27,43 +25,17 @@ Future<void> openTransientSourceAudioPlayer(
   required String pluginVersion,
   String? libraryItemId,
 }) async {
-  if (!navigator.mounted) return Future<void>.value();
+  if (!context.mounted || !navigator.mounted) return;
   final container = ProviderScope.containerOf(context, listen: false);
-  final preparedDetail = await _prepareAudioDetailCover(container, detail: detail, pluginVersion: pluginVersion);
-  if (!navigator.mounted) return;
   await container
       .read(sourceAudioPlaybackServiceProvider.notifier)
       .open(
         SourceAudioPlaybackRequest(
-          detail: preparedDetail,
+          detail: detail,
           firstCatalogPage: firstCatalogPage,
           chapter: chapter,
           libraryItemId: libraryItemId,
           pluginVersion: pluginVersion,
         ),
       );
-}
-
-Future<PluginContentDetail> _prepareAudioDetailCover(
-  ProviderContainer container, {
-  required PluginContentDetail detail,
-  required String pluginVersion,
-}) async {
-  final summary = detail.summary;
-  if (summary.coverBytes?.isNotEmpty == true || summary.coverUrl == null) {
-    return detail;
-  }
-  final request = BookCoverRequest(
-    pluginId: detail.pluginId,
-    pluginVersion: pluginVersion,
-    remoteContentId: summary.id,
-    coverUrl: summary.coverUrl!,
-  );
-  try {
-    final bytes = await container.read(bookCoverBytesProvider(request).future);
-    if (bytes == null || bytes.isEmpty) return detail;
-    return preserveSourceContentCover(detail: detail, resolvedCoverBytes: bytes);
-  } on Object {
-    return detail;
-  }
 }

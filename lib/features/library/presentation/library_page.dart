@@ -12,6 +12,7 @@
 library;
 
 import 'dart:async';
+import 'package:mg_read/app/app_navigation_activity.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -179,8 +180,13 @@ class LibraryPage extends ConsumerWidget {
     Future<void> refreshShelf() async {
       final operation = bookRefreshOperation;
       if (operation != null && state.overview!.items.isNotEmpty) {
-        await operation.refreshAll(state.overview!.items.map((item) => item.id));
-        catalogRefreshCoordinator?.markCheckedNow();
+        final report = await operation.refreshBatch(state.overview!.items.map((item) => item.id));
+        if (report.failed == 0 && report.skipped == 0) catalogRefreshCoordinator?.markCheckedNow();
+        if (context.mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('刷新完成：成功 ${report.succeeded}，失败 ${report.failed}，跳过 ${report.skipped}')));
+        }
       }
       await controller.refresh();
     }
@@ -189,13 +195,17 @@ class LibraryPage extends ConsumerWidget {
     void prepareAndOpen(String bookId) {
       final callback = readerRequested;
       if (callback == null) return;
+      final intent = readerCoordinator.beginIntent(bookId);
+      final navigation = ref.read(appNavigationActivityProvider);
+      final revision = navigation.revision;
       unawaited(() async {
         final prepared = await readerCoordinator.prepare(bookId);
-        if (!context.mounted) {
+        if (!context.mounted || navigation.revision != revision || !readerCoordinator.isIntentCurrent(intent)) {
           readerCoordinator.cancel(bookId, resultState: 'shelfDisposed');
           return;
         }
         if (!prepared) {
+          if (ref.read(shelfReaderLaunchCoordinatorProvider).bookId != bookId) return;
           if (context.mounted) {
             final failure = ref.read(shelfReaderLaunchCoordinatorProvider).failure;
             showLibraryReaderLaunchError(
@@ -325,6 +335,12 @@ class LibraryPage extends ConsumerWidget {
     }
 
     Future<void> openShelfAudio(LibraryBookListItemViewData book) async {
+      if (!context.mounted || ModalRoute.of(context)?.isCurrent == false) return;
+      final intent = readerCoordinator.beginIntent(book.id);
+      final navigation = ref.read(appNavigationActivityProvider);
+      final revision = navigation.revision;
+      bool current() => navigation.revision == revision && readerCoordinator.isIntentCurrent(intent);
+
       final item = state.overview!.items.cast<LibraryItemSummary?>().firstWhere(
         (candidate) => candidate?.id == book.id,
         orElse: () => null,
@@ -350,6 +366,7 @@ class LibraryPage extends ConsumerWidget {
           return;
         }
         final seed = await detailLauncher.load(book.id);
+        if (!current()) return;
         final entry = persistedLibraryMediaEntry(detail: seed.initialDetail, catalog: seed.initialCatalog, book: book);
         await callback(
           detail: entry.detail,
@@ -359,13 +376,19 @@ class LibraryPage extends ConsumerWidget {
           libraryItemId: book.id,
         );
       } on Object catch (error) {
-        if (context.mounted) {
+        if (context.mounted && current()) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_shelfMediaFailureMessage('无法打开上次的听书进度，请检查网络后重试。', error))));
         }
       }
     }
 
     Future<void> openShelfVideo(LibraryBookListItemViewData book) async {
+      if (!context.mounted || ModalRoute.of(context)?.isCurrent == false) return;
+      final intent = readerCoordinator.beginIntent(book.id);
+      final navigation = ref.read(appNavigationActivityProvider);
+      final revision = navigation.revision;
+      bool current() => navigation.revision == revision && readerCoordinator.isIntentCurrent(intent);
+
       final callback = onVideoEpisodeRequested;
       if (callback == null || detailLauncher == null) {
         await openBookDetail(book);
@@ -387,10 +410,11 @@ class LibraryPage extends ConsumerWidget {
           return;
         }
         final seed = await detailLauncher.load(book.id);
+        if (!current()) return;
         final entry = persistedLibraryMediaEntry(detail: seed.initialDetail, catalog: seed.initialCatalog, book: book);
         await callback(detail: entry.detail, firstCatalogPage: entry.catalog, chapter: entry.chapter, libraryItemId: book.id);
       } on Object catch (error) {
-        if (context.mounted) {
+        if (context.mounted && current()) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_shelfMediaFailureMessage('无法打开上次的视频进度，请检查网络后重试。', error))));
         }
       }

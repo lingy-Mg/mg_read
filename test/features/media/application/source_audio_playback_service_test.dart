@@ -146,6 +146,42 @@ void main() {
     expect(container.read(sourceAudioPlaybackServiceProvider).isActive, isFalse);
   });
 
+  test('rapid opens keep only the latest audio request and coalesce repeated taps', () async {
+    final settings = AppSettingsManager(store: FakeSettingsStore(), registry: AppSettingKeys.registry);
+    await settings.initialize();
+    addTearDown(settings.close);
+    final request = _request();
+    final backends = <_RecordingBackend>[];
+    final container = ProviderContainer(
+      overrides: [
+        appSettingsProvider.overrideWithValue(settings),
+        sourceContentGatewayProvider.overrideWithValue(_AudioGateway(request)),
+        sourceAudioPlaybackBackendFactoryProvider.overrideWithValue(() {
+          final backend = _RecordingBackend();
+          backends.add(backend);
+          return backend;
+        }),
+      ],
+    );
+    addTearDown(container.dispose);
+    final service = container.read(sourceAudioPlaybackServiceProvider.notifier);
+    final a = service.open(request);
+    final latest = SourceAudioPlaybackRequest(
+      detail: request.detail,
+      firstCatalogPage: request.firstCatalogPage,
+      chapter: request.firstCatalogPage.items[1],
+      libraryItemId: null,
+    );
+    final b = service.open(latest);
+    final duplicate = service.open(latest);
+    await a;
+    await _waitUntil(() => service.controller?.isAttached ?? false);
+    expect(backends, hasLength(1));
+    expect(container.read(sourceAudioPlaybackServiceProvider).request?.chapter.id, latest.chapter.id);
+    await service.stop();
+    await Future.wait([b, duplicate]);
+  });
+
   test('stops the old engine before replacing the playback request', () async {
     final settings = AppSettingsManager(store: FakeSettingsStore(), registry: AppSettingKeys.registry);
     await settings.initialize();

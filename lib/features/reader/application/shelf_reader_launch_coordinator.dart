@@ -75,6 +75,10 @@ final class ShelfReaderLaunchCoordinator extends Notifier<ShelfReaderLaunchState
   final Map<String, _LaunchAttempt> _attempts = <String, _LaunchAttempt>{};
   int _warmBytes = 0;
   bool _disposed = false;
+  String? _intentBookId;
+  int _intentGeneration = 0;
+  int _warmGeneration = 0;
+  final Set<String> _warming = {};
   ShelfReaderLaunchSample? _lastCompletedSample;
 
   ShelfReaderLaunchSample? get lastCompletedSample => _lastCompletedSample;
@@ -90,8 +94,23 @@ final class ShelfReaderLaunchCoordinator extends Notifier<ShelfReaderLaunchState
     return const ShelfReaderLaunchState.idle();
   }
 
+  /// Shared latest-user-intent fence for readers and shelf media preparation.
+  int beginIntent(String bookId) {
+    if (_intentBookId != bookId) {
+      _intentBookId = bookId;
+      _intentGeneration++;
+    }
+    for (final id in _attempts.keys.where((id) => id != bookId && !_attempts[id]!.navigationClaimed).toList()) {
+      cancel(id, resultState: 'superseded');
+    }
+    return _intentGeneration;
+  }
+
+  bool isIntentCurrent(int generation) => !_disposed && generation == _intentGeneration;
+
   /// Deduplicates repeated taps and prepares the target body before routing.
   Future<bool> prepare(String bookId) {
+    beginIntent(bookId);
     final existing = _inFlight[bookId];
     if (existing != null) return existing;
     final ready = _attempts[bookId];
@@ -99,7 +118,9 @@ final class ShelfReaderLaunchCoordinator extends Notifier<ShelfReaderLaunchState
 
     final task = _prepare(bookId);
     _inFlight[bookId] = task;
-    return task.whenComplete(() => _inFlight.remove(bookId));
+    return task.whenComplete(() {
+      if (identical(_inFlight[bookId], task)) _inFlight.remove(bookId);
+    });
   }
 
   Future<bool> _prepare(String bookId) async {
@@ -155,6 +176,7 @@ final class ShelfReaderLaunchCoordinator extends Notifier<ShelfReaderLaunchState
       }
       final failure = ReaderLaunchFailure.fromError(error);
       attempt.fail(failure.error.code.wireValue);
+      if (_disposed || _attempts[bookId] != attempt) return false;
       _attempts.remove(bookId);
       if (!_disposed) state = ShelfReaderLaunchState.failed(bookId, failure);
       return false;
@@ -239,6 +261,7 @@ final class ShelfReaderLaunchCoordinator extends Notifier<ShelfReaderLaunchState
   }
 
   void cancel(String bookId, {String resultState = 'cancelled'}) {
+    _inFlight.remove(bookId);
     final attempt = _attempts.remove(bookId);
     attempt?.cancel(resultState);
     if (!_disposed && state.bookId == bookId) {
@@ -250,17 +273,21 @@ final class ShelfReaderLaunchCoordinator extends Notifier<ShelfReaderLaunchState
   Future<void> warm(Iterable<String> bookIds) async {
     final launcher = _launcher;
     if (_disposed || launcher is! LocalShelfReaderPrewarmer) return;
+    final generation = _warmGeneration;
     final prewarmer = launcher as LocalShelfReaderPrewarmer;
     for (final bookId in bookIds.take(_maximumWarmBooks)) {
       if (_disposed || _warm.containsKey(bookId) || _attempts.containsKey(bookId)) {
         continue;
       }
+      if (!_warming.add(bookId)) continue;
       try {
         final request = await prewarmer.warmLocal(bookId);
-        if (request == null || _disposed) continue;
+        if (request == null || _disposed || generation != _warmGeneration) continue;
         _putWarm(bookId, request);
       } on Object {
         // Prewarming is best effort and never changes shelf behavior.
+      } finally {
+        _warming.remove(bookId);
       }
     }
   }
@@ -272,6 +299,7 @@ final class ShelfReaderLaunchCoordinator extends Notifier<ShelfReaderLaunchState
   }
 
   void clear() {
+    _inFlight.clear();
     clearWarmCache();
     for (final attempt in _attempts.values) {
       attempt.cancel('cacheCleared');
@@ -281,6 +309,7 @@ final class ShelfReaderLaunchCoordinator extends Notifier<ShelfReaderLaunchState
 
   /// Drops only speculative requests; an active launch keeps its owner span.
   void clearWarmCache() {
+    _warmGeneration++;
     _warm.clear();
     _warmBytes = 0;
   }

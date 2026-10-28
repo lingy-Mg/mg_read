@@ -64,6 +64,7 @@ final class AppSourceLaunchCallbacks {
     required String pluginVersion,
     String? libraryItemId,
   }) {
+    if (!context.mounted) return Future<void>.value();
     final navigator = navigatorKey.currentState;
     if (navigator == null) return Future<void>.error(StateError('The application navigator is not ready.'));
     return openTransientSourceAudioPlayer(
@@ -83,6 +84,7 @@ final class AppSourceLaunchCallbacks {
     required PluginChapterSummary chapter,
     String? libraryItemId,
   }) {
+    if (!context.mounted) return Future<void>.value();
     final navigator = navigatorKey.currentState;
     if (navigator == null) return Future<void>.error(StateError('The application navigator is not ready.'));
     return openTransientSourceVideoPlayer(
@@ -105,6 +107,7 @@ Future<void> _openTransientSourceTextReader(
   required PluginChapterSummary chapter,
   required List<int>? entryCoverBytes,
 }) async {
+  if (!context.mounted) return Future<void>.value();
   final navigator = navigatorKey.currentState;
   if (navigator == null) {
     throw StateError('The application navigator is not ready.');
@@ -139,6 +142,7 @@ Future<void> _openTransientSourceComicReader(
   required PluginChapterSummary chapter,
   required List<int>? entryCoverBytes,
 }) async {
+  if (!context.mounted) return Future<void>.value();
   final NavigatorState? navigator = navigatorKey.currentState;
   if (navigator == null) throw StateError('The application navigator is not ready.');
   final container = ProviderScope.containerOf(context);

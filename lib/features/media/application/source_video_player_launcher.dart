@@ -37,6 +37,7 @@ Future<void> openTransientSourceVideoPlayer(
   required PluginChapterSummary chapter,
   String? libraryItemId,
 }) async {
+  if (!context.mounted || !navigator.mounted) return;
   final group = firstCatalogPage.groups.cast<PluginMediaGroup?>().firstWhere(
     (candidate) => candidate?.episodes.any((episode) => episode.id == chapter.id) ?? false,
     orElse: () => null,

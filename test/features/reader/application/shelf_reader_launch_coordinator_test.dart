@@ -12,6 +12,22 @@ import 'package:mg_read/features/reader/application/shelf_reader_launch_coordina
 import '../../../core/diagnostics/diagnostics_testkit.dart';
 
 void main() {
+  test('latest book wins even when the older request fails late', () async {
+    final launcher = _PerBookLauncher();
+    final container = ProviderContainer(overrides: [libraryReaderLauncherProvider.overrideWithValue(launcher)]);
+    addTearDown(container.dispose);
+    final coordinator = container.read(shelfReaderLaunchCoordinatorProvider.notifier);
+    final a = coordinator.prepare('a');
+    final b = coordinator.prepare('b');
+    launcher.pending['b']!.complete(_request('b'));
+    expect(await b, isTrue);
+    launcher.pending['a']!.completeError(StateError('old failure'));
+    expect(await a, isFalse);
+    expect(container.read(shelfReaderLaunchCoordinatorProvider).bookId, 'b');
+    expect(coordinator.claimNavigation('a'), isFalse);
+    expect(coordinator.claimNavigation('b'), isTrue);
+  });
+
   test('deduplicates repeated taps and permits one navigation', () async {
     final launcher = _ControlledLauncher();
     final container = ProviderContainer(overrides: [libraryReaderLauncherProvider.overrideWithValue(launcher)]);
@@ -85,7 +101,7 @@ void main() {
   });
 
   test('launch diagnostics have one terminal', () async {
-      const bookId = 'BOOK_CANARY_READER_LAUNCH';
+    const bookId = 'BOOK_CANARY_READER_LAUNCH';
     final kit = DiagnosticsTestkit();
     final launcher = _ControlledLauncher();
     final container = ProviderContainer(
@@ -185,4 +201,10 @@ final class _UnusedComicDataSource implements ComicReaderDataSource {
 final class _UnusedComicStateStore implements ComicReaderStateStore {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+final class _PerBookLauncher implements LibraryReaderLauncher {
+  final pending = <String, Completer<ReaderLaunchRequest>>{};
+  @override
+  Future<ReaderLaunchRequest> launch(String libraryItemId) => (pending[libraryItemId] = Completer<ReaderLaunchRequest>()).future;
 }
