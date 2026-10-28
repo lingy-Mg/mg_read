@@ -157,13 +157,16 @@ class _DeferredSourceDetailScreen extends StatelessWidget {
             body: SafeArea(
               child: Column(
                 children: <Widget>[
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.only(top: 10, bottom: 2),
                     child: SizedBox(
                       width: 42,
                       height: 5,
                       child: DecoratedBox(
-                        decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.all(Radius.circular(99))),
+                        decoration: BoxDecoration(
+                          color: AppThemeTokens.of(context).mutedText.withValues(alpha: 0.4),
+                          borderRadius: AppRadii.pill,
+                        ),
                       ),
                     ),
                   ),

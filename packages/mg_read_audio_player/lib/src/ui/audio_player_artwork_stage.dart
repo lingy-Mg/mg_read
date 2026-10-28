@@ -8,6 +8,7 @@
 /// Notes:
 /// - The host artwork builder may be invoked for both foreground and backdrop.
 /// - Reduced-motion preferences collapse every decorative transition to zero.
+/// - The shared tint bounds background luminance; foreground artwork stays intact.
 library;
 
 import 'dart:ui' show ImageFilter;
@@ -106,7 +107,7 @@ final class AudioPlayerArtworkBackdrop extends StatelessWidget {
           ),
           const ColoredBox(
             key: Key('audio-artwork-backdrop-tint'),
-            color: Color(0x24000000),
+            color: AudioPlayerColors.artworkBackdropTint,
           ),
           const DecoratedBox(
             decoration: BoxDecoration(

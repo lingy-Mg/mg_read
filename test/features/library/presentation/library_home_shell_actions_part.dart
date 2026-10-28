@@ -108,15 +108,15 @@ void _registerLibraryHomeShellActions() {
     expect(selectedDestination, AppNavigationDestination.search);
   });
 
-  testWidgets('hides the temporary theme toggle beside search', (WidgetTester tester) async {
+  testWidgets('exposes the shared theme toggle beside search', (WidgetTester tester) async {
     final SemanticsHandle semantics = tester.ensureSemantics();
     await _setViewport(tester, const Size(390, 900));
-    await tester.pumpWidget(_host());
+    await tester.pumpWidget(_host(onToggleTheme: () {}));
     await tester.pumpAndSettle();
 
     final Finder search = find.byTooltip('搜索书籍');
     expect(search, findsOneWidget);
-    expect(find.byKey(const Key('theme-mode-toggle')), findsNothing);
+    expect(find.byKey(const Key('theme-mode-toggle')), findsOneWidget);
     semantics.dispose();
   });
 

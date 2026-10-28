@@ -20,6 +20,7 @@ import 'package:mg_read/features/profile/presentation/feedback_page.dart';
 import 'package:mg_read/features/profile/presentation/open_source_licenses_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_setting_placeholder_page.dart';
+import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 
 import '../../../app/mg_read_app_test_support.dart';
 
@@ -27,7 +28,13 @@ void main() {
   testWidgets('single cache setting opens the unified cache management route', (WidgetTester tester) async {
     final settings = await createTestAppSettings();
     addTearDown(settings.close);
-    await tester.pumpWidget(testMgReadApp(settings));
+    await tester.pumpWidget(
+      testMgReadApp(
+        settings,
+        runtimeConnectionLoader: (_) async =>
+            const PluginRuntimeConnection(isHealthy: true, nodeVersion: 'test', runtimeVersion: 'test', plugins: []),
+      ),
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('app-nav-profile')));
@@ -83,7 +90,7 @@ void main() {
     expect(find.byType(ProfilePage), findsOneWidget);
   });
 
-  testWidgets('about page excludes update and opens every completed detail route', (WidgetTester tester) async {
+  testWidgets('about page includes update and opens every completed detail route', (WidgetTester tester) async {
     final settings = await createTestAppSettings();
     addTearDown(settings.close);
     await tester.pumpWidget(testMgReadApp(settings));
@@ -97,7 +104,7 @@ void main() {
     await tester.tap(find.text('关于我们'));
     await tester.pumpAndSettle();
     expect(find.byType(AboutPage), findsOneWidget);
-    expect(find.byKey(const Key('about-action-update')), findsNothing);
+    expect(find.byKey(const Key('about-action-update')), findsOneWidget);
     expect(find.byKey(const Key('about-action-agreement')), findsOneWidget);
     expect(find.byKey(const Key('about-action-privacy')), findsOneWidget);
     expect(find.byKey(const Key('about-action-licenses')), findsOneWidget);
@@ -130,11 +137,15 @@ void main() {
 
     await tester.tap(find.byKey(const Key('profile-detail-back')));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('about-action-contact')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('about-action-contact')));
     await tester.pumpAndSettle();
     expect(find.byType(ContactPage), findsOneWidget);
     expect(find.byKey(const Key('contact-open-feedback')), findsOneWidget);
 
+    await tester.ensureVisible(find.byKey(const Key('contact-open-feedback')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('contact-open-feedback')));
     await tester.pumpAndSettle();
     expect(find.byType(FeedbackPage), findsOneWidget);

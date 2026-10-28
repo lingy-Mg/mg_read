@@ -190,7 +190,7 @@ void main() {
     await tester.pumpAndSettle();
 
     _expectBrightnessForCurrentPage(tester, Brightness.light);
-    expect(find.byKey(const Key('theme-mode-toggle')), findsNothing);
+    expect(find.byKey(const Key('theme-mode-toggle')), findsOneWidget);
     expect(settings.get(AppSettingKeys.themeMode), 'light');
   });
 

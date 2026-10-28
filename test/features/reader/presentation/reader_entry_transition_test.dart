@@ -10,6 +10,7 @@
 library;
 
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,6 +27,9 @@ import 'package:mg_read/features/reader/presentation/reader_entry_transition.dar
 import 'package:mg_read/features/reader/presentation/reader_host_page.dart';
 
 import '../../../core/diagnostics/diagnostics_testkit.dart';
+import '../../../support/visual_evidence.dart';
+
+part 'reader_visual_evidence_part.dart';
 
 void main() {
   testWidgets('route preparation uses immersive black fallback system bars', (WidgetTester tester) async {
@@ -73,7 +77,7 @@ void main() {
 
     final BuildContext entryContext = tester.element(find.byKey(const Key('reader-entry-back')));
     expect(Theme.of(entryContext).brightness, Brightness.light);
-    expect(Theme.of(entryContext).colorScheme.primary, AppThemeColor.warm.accent);
+    expect(Theme.of(entryContext).colorScheme.primary, const Color(0xFFCC8836));
     dataSource.complete();
   });
 
@@ -321,6 +325,7 @@ void main() {
     expect(find.byKey(const Key('open-comic-reader')), findsOneWidget);
     expect(observer.exitRequests, 1);
   });
+  _registerReaderVisualEvidence();
 }
 
 List<Map<Object?, Object?>> _recordReaderSystemUi() {
@@ -341,6 +346,7 @@ List<Map<Object?, Object?>> _recordReaderSystemUi() {
 }
 
 Widget _readerApp(ReaderLaunchRequest request, {bool reduceMotion = false, ThemeData? appTheme}) => MaterialApp(
+  debugShowCheckedModeBanner: false,
   theme: appTheme ?? AppTheme.light(),
   builder: (BuildContext context, Widget? child) => MediaQuery(
     data: MediaQuery.of(context).copyWith(disableAnimations: reduceMotion),

@@ -55,12 +55,42 @@ void main() {
 
   test('keeps the reader-owned theme outside host palette mapping', () {
     final ThemeData theme = AppTheme.novelReader();
-    final ColorScheme seeded = ColorScheme.fromSeed(seedColor: AppThemeColor.warm.accent, brightness: Brightness.light);
+    final ColorScheme seeded = ColorScheme.fromSeed(seedColor: const Color(0xFFCC8836), brightness: Brightness.light);
 
     expect(theme.brightness, Brightness.light);
-    expect(theme.colorScheme.primary, AppThemeColor.warm.accent);
+    expect(theme.colorScheme.primary, const Color(0xFFCC8836));
     expect(theme.colorScheme.surfaceContainerLow, seeded.surfaceContainerLow);
     expect(theme.colorScheme.surfaceContainerLow, isNot(AppTheme.light().colorScheme.surfaceContainerLow));
+  });
+
+  test('keeps text and filled actions legible in every host palette', () {
+    for (final theme in <ThemeData>[
+      for (final color in AppThemeColor.values) AppTheme.light(color: color),
+      for (final color in AppDarkThemeColor.values) AppTheme.dark(color: color),
+    ]) {
+      final tokens = theme.extension<AppThemeTokens>()!;
+      final colors = theme.colorScheme;
+      expect(_contrast(colors.onSurface, tokens.pageBackground), greaterThanOrEqualTo(4.5));
+      expect(_contrast(tokens.mutedText, tokens.surface), greaterThanOrEqualTo(4.5));
+      expect(_contrast(tokens.accent, tokens.pageBackground), greaterThanOrEqualTo(4.5));
+      expect(_contrast(tokens.accent, tokens.accentSoft), greaterThanOrEqualTo(4.5));
+      for (final foreground in [
+        tokens.accent,
+        tokens.dataSourceAccent,
+        tokens.mutedText,
+        tokens.notification,
+        tokens.success,
+        tokens.warning,
+      ]) {
+        expect(_contrast(foreground, tokens.mutedSurface), greaterThanOrEqualTo(4.5));
+      }
+      expect(_contrast(colors.onPrimary, tokens.accent), greaterThanOrEqualTo(4.5));
+      for (final artwork in [Colors.black, Colors.white]) {
+        final backdrop = Color.alphaBlend(tokens.coverBackdropScrim, artwork);
+        expect(_contrast(colors.onSurface, backdrop), greaterThanOrEqualTo(4.5));
+        expect(_contrast(tokens.mutedText, backdrop), greaterThanOrEqualTo(4.5));
+      }
+    }
   });
 
   test('exposes the compact semantic typography scale globally', () {
@@ -74,4 +104,10 @@ void main() {
     expect(textTheme.bodySmall?.fontSize, AppTypography.caption);
     expect(textTheme.labelLarge?.fontSize, AppTypography.action);
   });
+}
+
+double _contrast(Color first, Color second) {
+  final a = first.computeLuminance();
+  final b = second.computeLuminance();
+  return a > b ? (a + 0.05) / (b + 0.05) : (b + 0.05) / (a + 0.05);
 }

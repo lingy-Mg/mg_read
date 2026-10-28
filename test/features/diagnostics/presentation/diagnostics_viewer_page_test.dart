@@ -27,6 +27,7 @@ void main() {
       await tester.pumpWidget(_host(_FakeDiagnosticsViewerGateway(), _FakeDiagnosticsCapturePreferenceStore(), dark: dark));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('app-bottom-navigation')), findsNothing);
       await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/diagnostics_compact_${dark ? 'dark' : 'light'}.png'));
     });
   }

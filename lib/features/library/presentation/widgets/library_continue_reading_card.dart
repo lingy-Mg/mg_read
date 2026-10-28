@@ -8,6 +8,7 @@
 /// - 封面状态不得阻塞卡片正文或继续阅读操作。
 /// - 不访问持久化、Runtime 或路由实现。
 /// - 首页沉浸模式下封面居左并与顶部操作栏同高起始，书名、作者、简介与按钮居右。
+/// - 进度只叠加明暗，不以透明底色承载按钮文字，保证低进度时仍可读。
 ///
 library;
 
@@ -303,7 +304,7 @@ class _ContinueReadingAction extends StatelessWidget {
       child: ExcludeSemantics(
         child: SizedBox(
           width: 136,
-          height: 42,
+          height: AppSpacing.minimumTouchTarget,
           child: DecoratedBox(
             decoration: BoxDecoration(
               borderRadius: AppRadii.continueReadingAction,
@@ -314,7 +315,7 @@ class _ContinueReadingAction extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: <Widget>[
-                  ColoredBox(color: tokens.accent.withValues(alpha: 0.38)),
+                  ColoredBox(key: const Key('continue-reading-cta-track'), color: tokens.accent),
                   if (progress != null)
                     Align(
                       alignment: Alignment.centerLeft,
@@ -322,7 +323,10 @@ class _ContinueReadingAction extends StatelessWidget {
                         key: const Key('continue-reading-cta-progress'),
                         widthFactor: progress,
                         heightFactor: 1,
-                        child: ColoredBox(color: tokens.accent),
+                        child: ColoredBox(
+                          key: const Key('continue-reading-cta-progress-fill'),
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.12),
+                        ),
                       ),
                     ),
                   Material(
@@ -342,7 +346,7 @@ class _ContinueReadingAction extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.labelLarge?.copyWith(
                                   color: theme.colorScheme.onPrimary,
-                                  fontSize: 16,
+                                  fontSize: AppTypography.action,
                                   fontWeight: FontWeight.w600,
                                   height: 1.2,
                                 ),

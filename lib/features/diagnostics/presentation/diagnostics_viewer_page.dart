@@ -9,6 +9,7 @@
 /// 注意：
 /// - 文件列表不得加载事件；单文件损坏不能影响其他文件。
 /// - 页面仅释放订阅；网关拥有捕获生命周期，不能在 build() 中发起 IO。
+/// - 本页是二级目的地，只保留返回入口，不显示主导航。
 ///
 library;
 
@@ -121,7 +122,7 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
                           AppSpacing.comfortable,
                           AppSpacing.regular,
                           AppSpacing.comfortable,
-                          AppDetailMetrics.bottomNavigationContentBottomPadding + MediaQuery.viewPaddingOf(context).bottom,
+                          AppSpacing.section + MediaQuery.viewPaddingOf(context).bottom,
                         ),
                         sliver: SliverList.list(
                           children: <Widget>[
@@ -188,7 +189,6 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
           ),
         ),
       ),
-      bottomNavigationBar: ProfileDetailBottomBar(onSelected: widget.onDestinationRequested),
     );
   }
 

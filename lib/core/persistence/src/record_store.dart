@@ -3,6 +3,7 @@
 /// 职责：公开 CRUD/CAS/批处理、空间维护契约并持有唯一 Drift 数据库生命周期。
 /// 注意：metadata SQLite 固定使用 WAL/NORMAL；压缩只由显式维护操作触发。
 /// 注意：事务队列、文档编解码和维护 SQL 仅拆到同 library 的职责 part，数据语义不变。
+/// 注意：初始化失败必须关闭后台 executor，原样重抛原因，避免重试遗留文件锁。
 library;
 
 import 'dart:async';
@@ -67,11 +68,12 @@ final class PersistenceRecordStore {
       await dataRoot.create(recursive: true);
       final path = '${dataRoot.path}${Platform.pathSeparator}app_metadata.sqlite';
       final database = _PersistenceDatabase(NativeDatabase.createInBackground(File(path)));
-      await database.customStatement('PRAGMA journal_mode=WAL');
-      await database.customStatement('PRAGMA synchronous=NORMAL');
-      await database.customStatement('PRAGMA foreign_keys=ON');
-      await database.customStatement('PRAGMA busy_timeout=2000');
-      await database.customStatement('''
+      try {
+        await database.customStatement('PRAGMA journal_mode=WAL');
+        await database.customStatement('PRAGMA synchronous=NORMAL');
+        await database.customStatement('PRAGMA foreign_keys=ON');
+        await database.customStatement('PRAGMA busy_timeout=2000');
+        await database.customStatement('''
       CREATE TABLE IF NOT EXISTS metadata_records (
         record_id TEXT PRIMARY KEY NOT NULL,
         record_kind TEXT NOT NULL,
@@ -88,24 +90,32 @@ final class PersistenceRecordStore {
         updated_at_utc INTEGER NOT NULL
       )
     ''');
-      await database.customStatement('CREATE INDEX IF NOT EXISTS metadata_records_scope ON metadata_records(scope_kind, scope_id)');
-      await database.customStatement(
-        'CREATE INDEX IF NOT EXISTS metadata_records_kind_scope ON metadata_records(record_kind, scope_kind, scope_id)',
-      );
-      await database.customStatement(
-        'CREATE INDEX IF NOT EXISTS metadata_records_parent_order ON metadata_records(record_kind, scope_kind, scope_id, parent_id, order_key, record_id)',
-      );
-      await database.customStatement(
-        'CREATE INDEX IF NOT EXISTS metadata_records_identity ON metadata_records(record_kind, scope_kind, scope_id, identity_key)',
-      );
-      await database.customStatement(
-        'CREATE INDEX IF NOT EXISTS metadata_records_state_order ON metadata_records(record_kind, scope_kind, scope_id, state_key, order_key, record_id)',
-      );
-      await database.customStatement(
-        'CREATE INDEX IF NOT EXISTS metadata_records_parent_state_order ON metadata_records(record_kind, scope_kind, scope_id, parent_id, state_key, order_key, record_id)',
-      );
-      await _createContentLibrarySchema(database);
-      return PersistenceRecordStore._(database, registry, clock, path, diagnostics);
+        await database.customStatement('CREATE INDEX IF NOT EXISTS metadata_records_scope ON metadata_records(scope_kind, scope_id)');
+        await database.customStatement(
+          'CREATE INDEX IF NOT EXISTS metadata_records_kind_scope ON metadata_records(record_kind, scope_kind, scope_id)',
+        );
+        await database.customStatement(
+          'CREATE INDEX IF NOT EXISTS metadata_records_parent_order ON metadata_records(record_kind, scope_kind, scope_id, parent_id, order_key, record_id)',
+        );
+        await database.customStatement(
+          'CREATE INDEX IF NOT EXISTS metadata_records_identity ON metadata_records(record_kind, scope_kind, scope_id, identity_key)',
+        );
+        await database.customStatement(
+          'CREATE INDEX IF NOT EXISTS metadata_records_state_order ON metadata_records(record_kind, scope_kind, scope_id, state_key, order_key, record_id)',
+        );
+        await database.customStatement(
+          'CREATE INDEX IF NOT EXISTS metadata_records_parent_state_order ON metadata_records(record_kind, scope_kind, scope_id, parent_id, state_key, order_key, record_id)',
+        );
+        await _createContentLibrarySchema(database);
+        return PersistenceRecordStore._(database, registry, clock, path, diagnostics);
+      } catch (error, stackTrace) {
+        try {
+          await database.close();
+        } catch (_) {
+          // A cleanup error must not replace the actual initialization cause.
+        }
+        Error.throwWithStackTrace(error, stackTrace);
+      }
     }
 
     if (diagnostics == null) return openStore();

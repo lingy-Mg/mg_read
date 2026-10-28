@@ -15,6 +15,32 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 
 void main() {
+  testWidgets('keeps a long scaled title between back and trailing actions', (tester) async {
+    await _setViewport(tester, const Size(320, 640));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(1.8)),
+          child: Scaffold(
+            body: AppSecondaryPageTopBar(
+              title: '很长的数据源与阅读偏好设置标题',
+              onBack: () {},
+              backButtonKey: const Key('long-title-back'),
+              actions: [
+                AppSecondaryPageIconButton(key: const Key('long-title-action'), label: '更多', icon: Icons.more_horiz, onPressed: () {}),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    final title = find.text('很长的数据源与阅读偏好设置标题');
+    expect(tester.getRect(title).left, greaterThanOrEqualTo(tester.getRect(find.byKey(const Key('long-title-back'))).right));
+    expect(tester.getRect(title).right, lessThanOrEqualTo(tester.getRect(find.byKey(const Key('long-title-action'))).left));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('uses compact and wide secondary-page content widths', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(_host());

@@ -114,6 +114,13 @@ void main() {
       testMgReadApp(
         settings,
         runtimeGateway: const TestReadyPluginRuntimeGateway(startupRecovery: PluginRuntimeStartupRecovery(quarantinedCount: 1)),
+        runtimeConnection: const PluginRuntimeConnection(
+          isHealthy: true,
+          nodeVersion: 'test',
+          runtimeVersion: 'test',
+          plugins: [],
+          startupRecovery: PluginRuntimeStartupRecovery(quarantinedCount: 1),
+        ),
       ),
     );
     await tester.pumpAndSettle();

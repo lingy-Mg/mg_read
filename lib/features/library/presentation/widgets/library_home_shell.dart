@@ -10,7 +10,7 @@
 /// - 当前滚动控制器只由本壳持有并在销毁时释放。
 /// - 分区筛选局部更新；顶部封面背景覆盖状态栏，交互内容仍按安全区下沿布局。
 /// - 首次空书架没有继续阅读卡片，顶部只保留操作栏和分区前的标准间距。
-/// - 首页内容跟随可用窗口全宽伸展，不参与其他主入口的最大内容宽度约束。
+/// - 桌面将封面、简介和书架约束在居中的可读宽度内，窄屏仍跟随可用宽度。
 ///
 library;
 
@@ -138,39 +138,45 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true,
-      body: AppPageBackdrop(
-        style: AppPageBackdropStyle.home,
-        child: FocusTraversalGroup(
-          policy: OrderedTraversalPolicy(),
-          child: LayoutBuilder(
-            builder: (BuildContext context, BoxConstraints constraints) {
-              final bool useWidePagePadding = constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint;
-              final double pagePadding = useWidePagePadding ? AppSpacing.widePagePadding : AppSpacing.compactPagePadding;
-              return RefreshIndicator(
-                onRefresh: _handleRefresh,
-                child: Scrollbar(
-                  controller: _scrollController,
-                  child: CustomScrollView(
-                    key: const Key('library-home-content'),
-                    controller: _scrollController,
-                    primary: false,
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    slivers: <Widget>[
-                      _buildTopSliver(context, pagePadding),
-                      SliverPadding(
-                        padding: EdgeInsets.fromLTRB(
-                          pagePadding,
-                          AppSpacing.compact,
-                          pagePadding,
-                          AppSpacing.bottomNavigationContentBottomPadding + MediaQuery.viewPaddingOf(context).bottom,
-                        ),
-                        sliver: _buildBodySlivers(context),
+      body: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: AppSpacing.readableContentMaxWidth),
+          child: AppPageBackdrop(
+            style: AppPageBackdropStyle.home,
+            child: FocusTraversalGroup(
+              policy: OrderedTraversalPolicy(),
+              child: LayoutBuilder(
+                builder: (BuildContext context, BoxConstraints constraints) {
+                  final bool useWidePagePadding = constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint;
+                  final double pagePadding = useWidePagePadding ? AppSpacing.widePagePadding : AppSpacing.compactPagePadding;
+                  return RefreshIndicator(
+                    onRefresh: _handleRefresh,
+                    child: Scrollbar(
+                      controller: _scrollController,
+                      child: CustomScrollView(
+                        key: const Key('library-home-content'),
+                        controller: _scrollController,
+                        primary: false,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        slivers: <Widget>[
+                          _buildTopSliver(context, pagePadding),
+                          SliverPadding(
+                            padding: EdgeInsets.fromLTRB(
+                              pagePadding,
+                              AppSpacing.compact,
+                              pagePadding,
+                              AppSpacing.bottomNavigationContentBottomPadding + MediaQuery.viewPaddingOf(context).bottom,
+                            ),
+                            sliver: _buildBodySlivers(context),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-              );
-            },
+                    ),
+                  );
+                },
+              ),
+            ),
           ),
         ),
       ),

@@ -34,6 +34,8 @@ abstract final class AudioPlayerColors {
   static const shadow = Color(0x12000000);
   static const blueGlow = Color(0x00000000);
   static const scrim = Color(0x8A000000);
+  // Keeps ink and secondary text legible even on a white or saturated cover.
+  static const artworkBackdropTint = Color(0xD6000000);
 
   static const glass = Color(0x0FFFFFFF);
   static const glassHighlight = Color(0x21FFFFFF);

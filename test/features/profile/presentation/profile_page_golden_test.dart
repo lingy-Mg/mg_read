@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
 
+import 'profile_golden_assets.dart';
+
 void main() {
   setUpAll(() async {
     final FontLoader miSans = FontLoader('packages/novel_reader_ui/MiSans')
@@ -15,7 +17,7 @@ void main() {
   testWidgets('matches the compact light profile visual baseline', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(_host(themeMode: ThemeMode.light));
-    await tester.pumpAndSettle();
+    await settleProfileGoldenAssets(tester);
 
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/profile_compact_light.png'));
   });
@@ -23,7 +25,7 @@ void main() {
   testWidgets('matches the compact OLED dark profile visual baseline', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(_host(themeMode: ThemeMode.dark));
-    await tester.pumpAndSettle();
+    await settleProfileGoldenAssets(tester);
 
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/profile_compact_dark.png'));
   });
@@ -31,7 +33,7 @@ void main() {
   testWidgets('keeps the phone-first profile surface centered when wide', (WidgetTester tester) async {
     await _setViewport(tester, const Size(1280, 900));
     await tester.pumpWidget(_host(themeMode: ThemeMode.light));
-    await tester.pumpAndSettle();
+    await settleProfileGoldenAssets(tester);
 
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/profile_wide_light.png'));
   });

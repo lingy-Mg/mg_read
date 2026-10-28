@@ -47,17 +47,23 @@ class AppSecondaryPageTopBar extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: <Widget>[
-          Center(
-            child: Semantics(
-              header: true,
-              child: Text(
-                title,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.titleLarge?.copyWith(
-                  color: theme.colorScheme.onSurface,
-                  fontWeight: FontWeight.w600,
-                  height: 1.2,
-                  letterSpacing: 0,
+          Positioned.fill(
+            left: AppDetailMetrics.backButtonExtent * (actions.isEmpty ? 1 : actions.length) + AppDetailMetrics.backButtonLeft,
+            right: AppDetailMetrics.backButtonExtent * (actions.isEmpty ? 1 : actions.length) + AppDetailMetrics.backButtonLeft,
+            child: Center(
+              child: Semantics(
+                header: true,
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    color: theme.colorScheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                    height: 1.2,
+                    letterSpacing: 0,
+                  ),
                 ),
               ),
             ),

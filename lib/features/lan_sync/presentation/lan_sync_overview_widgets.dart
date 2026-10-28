@@ -22,7 +22,7 @@ class LanSyncOverviewCard extends StatelessWidget {
       key: const Key('lan-sync-overview'),
       decoration: BoxDecoration(
         color: tokens.featureSurface,
-        borderRadius: const BorderRadius.all(Radius.circular(18)),
+        borderRadius: AppRadii.card,
         border: Border.all(color: tokens.accent.withValues(alpha: 0.18)),
       ),
       child: Padding(
@@ -173,7 +173,7 @@ class _RoleCard extends StatelessWidget {
     return Material(
       color: background,
       shape: RoundedRectangleBorder(
-        borderRadius: const BorderRadius.all(Radius.circular(18)),
+        borderRadius: AppRadii.card,
         side: BorderSide(color: tint.withValues(alpha: 0.22)),
       ),
       clipBehavior: Clip.antiAlias,

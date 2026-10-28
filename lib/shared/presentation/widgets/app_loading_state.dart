@@ -4,12 +4,7 @@ import 'package:mg_read/app/app_theme.dart';
 
 /// Shared centered loading presentation used by feature pages.
 class AppLoadingState extends StatelessWidget {
-  const AppLoadingState({
-    required this.label,
-    required this.message,
-    this.progressKey,
-    super.key,
-  });
+  const AppLoadingState({required this.label, required this.message, this.progressKey, super.key});
 
   final String label;
   final String message;
@@ -23,18 +18,20 @@ class AppLoadingState extends StatelessWidget {
         label: label,
         liveRegion: true,
         child: ExcludeSemantics(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              CircularProgressIndicator(key: progressKey, color: tokens.accent),
-              const SizedBox(height: AppSpacing.regular),
-              Text(
-                message,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
-              ),
-            ],
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.section),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                CircularProgressIndicator(key: progressKey, color: tokens.accent),
+                const SizedBox(height: AppSpacing.regular),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -36,6 +36,22 @@ void main() {
     expect(find.byType(LibraryBookSliverGrid), findsOneWidget);
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/library_home_compact_card_light.png'));
   });
+
+  for (final (mode, size, name) in [
+    (ThemeMode.dark, const Size(390, 900), 'library_home_compact_dark.png'),
+    (ThemeMode.dark, const Size(1280, 900), 'library_home_wide_dark.png'),
+    (ThemeMode.light, const Size(1280, 900), 'library_home_wide_light.png'),
+  ]) {
+    testWidgets('home contrast and layout $name', (tester) async {
+      await _setViewport(tester, size);
+      await tester.pumpWidget(_host(themeMode: mode));
+      await tester.pumpAndSettle();
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/$name'));
+    });
+  }
 }
 
 Widget _host({required ThemeMode themeMode, LibraryHomeLayoutMode initialLayoutMode = LibraryHomeLayoutMode.list}) {

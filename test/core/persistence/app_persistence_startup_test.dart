@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:drift/drift.dart' show GeneratedDatabase, TableInfo, Table;
+import 'package:drift/native.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/core/persistence/persistence.dart';
 
@@ -15,6 +18,24 @@ void main() {
 
   tearDown(() async {
     if (await root.exists()) await root.delete(recursive: true);
+  });
+
+  test('failed metadata schema initialization releases its file handle', () async {
+    // This deliberately incomplete schema lives only in a newly created test
+    // directory. It is not a migration or an inspection of user data.
+    final path = '${root.path}${Platform.pathSeparator}app_metadata.sqlite';
+    final seed = _IncompleteSchemaDatabase(NativeDatabase(File(path)));
+    await seed.customStatement('CREATE TABLE library_items (item_pk INTEGER PRIMARY KEY, item_id TEXT NOT NULL)');
+    await seed.close();
+
+    await expectLater(
+      AppPersistence.open(dataRoot: root, registry: defaultRegistry),
+      throwsA(predicate<Object>((error) => error.toString().contains('no such column: visibility'))),
+    );
+    // Windows rejects this rename if the failed background executor still
+    // holds SQLite's file handle. The original SQL exception remains intact.
+    final renamed = await File(path).rename('$path.closed');
+    expect(await renamed.exists(), isTrue);
   });
 
   test('returns after metadata while content and file prewarm remain blocked', () async {
@@ -265,4 +286,14 @@ void main() {
     expect(await store.readGlobalCoverBytes(key), bytes);
     await Future<void>.delayed(Duration.zero);
   });
+}
+
+final class _IncompleteSchemaDatabase extends GeneratedDatabase {
+  _IncompleteSchemaDatabase(super.executor);
+
+  @override
+  int get schemaVersion => 1;
+
+  @override
+  Iterable<TableInfo<Table, dynamic>> get allTables => const [];
 }

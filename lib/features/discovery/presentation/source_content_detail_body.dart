@@ -165,7 +165,7 @@ class _SourceDetailBody extends StatelessWidget {
                     minimumSize: const Size.fromHeight(54),
                     foregroundColor: canChangeShelf ? tokens.accent : tokens.mutedText,
                     side: BorderSide(color: canChangeShelf ? tokens.accent : tokens.divider),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    shape: const RoundedRectangleBorder(borderRadius: AppRadii.control),
                   ),
                 ),
               ),
@@ -193,7 +193,7 @@ class _SourceDetailBody extends StatelessWidget {
                     backgroundColor: canStartReading ? tokens.accent : tokens.mutedSurface,
                     disabledBackgroundColor: tokens.mutedSurface,
                     disabledForegroundColor: tokens.mutedText,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    shape: const RoundedRectangleBorder(borderRadius: AppRadii.control),
                   ),
                   child: isRefreshing
                       ? const _DetailLoadingButtonLabel()

@@ -12,6 +12,10 @@ import 'package:mg_read/features/lan_sync/domain/app_update_models.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 import 'package:mg_read/features/lan_sync/presentation/lan_sync_page.dart';
 
+import '../../../support/visual_evidence.dart';
+
+part 'lan_sync_visual_golden_part.dart';
+
 void main() {
   testWidgets('main page keeps receiving in the unified scan flow and sends in sheets', (WidgetTester tester) async {
     final container = ProviderContainer(
@@ -58,6 +62,7 @@ void main() {
     expect(find.byKey(const Key('lan-sync-sheet-scroll')), findsOneWidget);
     expect(find.byKey(const Key('lan-sync-generate-transfer-code')), findsNothing);
   });
+  _registerLanSyncVisualGoldens();
 }
 
 final class _Gateway implements LanSyncGateway {

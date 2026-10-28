@@ -22,7 +22,7 @@ void _registerLibraryHomeShellLayout() {
     expect(selectedSection.style?.fontWeight, FontWeight.w600);
     expect(unselectedSection.style?.fontSize, AppTypography.secondary);
     expect(unselectedSection.style?.fontWeight, FontWeight.w400);
-    expect(continueAction.style?.fontSize, 16);
+    expect(continueAction.style?.fontSize, AppTypography.action);
     expect(continueAction.style?.fontWeight, FontWeight.w600);
   });
 
@@ -157,7 +157,7 @@ void _registerLibraryHomeShellLayout() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('library-mobile-layout')), findsOneWidget);
     final Rect wideLayout = tester.getRect(find.byKey(const Key('library-mobile-layout')));
-    expect(wideLayout.width, 1600 - AppSpacing.widePagePadding * 2);
+    expect(wideLayout.width, AppSpacing.readableContentMaxWidth - AppSpacing.widePagePadding * 2);
     expect(wideLayout.center.dx, closeTo(800, 0.1));
   });
 
@@ -299,7 +299,7 @@ void _registerLibraryHomeShellLayout() {
     expect(updatedLabel.center.dy, closeTo(unreadDot.center.dy, 2));
   });
 
-  testWidgets('renders the hierarchy in the temporary light-only mode', (WidgetTester tester) async {
+  testWidgets('renders the hierarchy with the shared light theme', (WidgetTester tester) async {
     await tester.pumpWidget(_host(themeMode: ThemeMode.light));
     await tester.pumpAndSettle();
     BuildContext context = tester.element(find.byType(LibraryHomeShell));

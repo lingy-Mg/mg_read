@@ -59,7 +59,7 @@ void main() {
 
     final BuildContext detailContext = tester.element(find.byKey(const Key('source-content-detail-sheet')));
     expect(Theme.of(detailContext).brightness, Brightness.light);
-    expect(Theme.of(detailContext).colorScheme.primary, AppThemeColor.warm.accent);
+    expect(Theme.of(detailContext).colorScheme.primary, const Color(0xFFCC8836));
   });
 
   testWidgets('uses the complete catalog length as the chapter count', (WidgetTester tester) async {

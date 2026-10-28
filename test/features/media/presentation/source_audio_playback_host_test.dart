@@ -20,6 +20,9 @@ import 'package:mg_read/features/media/application/source_audio_playback_service
 import 'package:mg_read/features/media/presentation/source_audio_playback_host.dart';
 
 import '../../../core/settings/settings_testkit.dart';
+import '../../../support/visual_evidence.dart';
+
+part 'source_audio_visual_evidence_part.dart';
 
 void main() {
   testWidgets('remembers continue choice and restores from the mini player', (tester) async {
@@ -314,6 +317,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 350));
     });
   }
+  _registerSourceAudioVisualEvidence();
 }
 
 void _expectMiniControlsSeparate(WidgetTester tester) {

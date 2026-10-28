@@ -22,6 +22,10 @@ import 'package:mg_read/features/plugins/application/plugin_cache_manager.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 
+import '../../../support/visual_evidence.dart';
+
+part 'cache_visual_golden_part.dart';
+
 void main() {
   testWidgets('separates source, cover, and manga-image caches', (tester) async {
     final coverGateway = _CoverCacheGateway();
@@ -235,6 +239,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('未发现可清理的无引用正文对象。'), findsOneWidget);
   });
+  _registerCacheVisualGoldens();
 }
 
 final class _DatabaseCacheGateway implements DatabaseCacheGateway {

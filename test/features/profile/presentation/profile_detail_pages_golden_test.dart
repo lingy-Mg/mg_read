@@ -9,6 +9,7 @@ import 'package:mg_read/features/profile/presentation/feedback_page.dart';
 import 'package:mg_read/features/profile/presentation/network_proxy_settings_page.dart';
 
 import '../../../core/settings/settings_testkit.dart';
+import 'profile_golden_assets.dart';
 
 void main() {
   setUpAll(() async {
@@ -21,7 +22,7 @@ void main() {
   testWidgets('matches the compact light about reference baseline', (WidgetTester tester) async {
     await _setViewport(tester);
     await tester.pumpWidget(_host(themeMode: ThemeMode.light, child: _aboutPage()));
-    await tester.pumpAndSettle();
+    await settleProfileGoldenAssets(tester);
 
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/about_compact_light.png'));
   });

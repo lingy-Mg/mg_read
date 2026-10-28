@@ -27,7 +27,7 @@ class _DeviceSyncCard extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: tokens.surface,
-        borderRadius: const BorderRadius.all(Radius.circular(18)),
+        borderRadius: AppRadii.card,
         border: Border.all(color: tokens.divider),
       ),
       child: Padding(
@@ -244,7 +244,7 @@ class _CapabilityCard extends StatelessWidget {
     return Material(
       color: tokens.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: const BorderRadius.all(Radius.circular(18)),
+        borderRadius: AppRadii.card,
         side: BorderSide(color: tokens.divider),
       ),
       clipBehavior: Clip.antiAlias,

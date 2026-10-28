@@ -7,6 +7,7 @@
 /// 注意：
 /// - 紧凑封面只显示类型，避免与卡片外的作品标题重复。
 /// - 宽度至少 144 且高度至少 180 时，才在封面底部显示最多两行标题。
+/// - 文字使用高对比底板，避免浅色渐变吞没类型或标题；图形沿用传入前景色。
 library;
 
 import 'dart:math' as math;
@@ -96,15 +97,18 @@ class DefaultContentCoverArtwork extends StatelessWidget {
               Positioned(
                 left: inset,
                 top: inset,
-                child: Text(
-                  kind.label,
-                  key: ValueKey<String>('default-cover-label-${kind.name}'),
-                  maxLines: 1,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: foregroundColor.withValues(alpha: 0.82),
-                    fontSize: (shortestSide * 0.09).clamp(9.0, 13.0).toDouble(),
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.2,
+                child: _CoverTextPlate(
+                  key: ValueKey<String>('default-cover-label-plate-${kind.name}'),
+                  child: Text(
+                    kind.label,
+                    key: ValueKey<String>('default-cover-label-${kind.name}'),
+                    maxLines: 1,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Colors.white,
+                      fontSize: (shortestSide * 0.09).clamp(9.0, 13.0).toDouble(),
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.2,
+                    ),
                   ),
                 ),
               ),
@@ -113,18 +117,21 @@ class DefaultContentCoverArtwork extends StatelessWidget {
                 left: inset,
                 right: inset,
                 bottom: inset,
-                child: Text(
-                  title.trim(),
-                  key: const Key('default-cover-title'),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.left,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: foregroundColor,
-                    fontSize: (width * 0.105).clamp(15.0, 24.0).toDouble(),
-                    fontWeight: FontWeight.w700,
-                    height: 1.12,
-                    letterSpacing: 0.1,
+                child: _CoverTextPlate(
+                  key: const Key('default-cover-title-plate'),
+                  child: Text(
+                    title.trim(),
+                    key: const Key('default-cover-title'),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.left,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: Colors.white,
+                      fontSize: (width * 0.105).clamp(15.0, 24.0).toDouble(),
+                      fontWeight: FontWeight.w700,
+                      height: 1.12,
+                      letterSpacing: 0.1,
+                    ),
                   ),
                 ),
               ),
@@ -133,4 +140,16 @@ class DefaultContentCoverArtwork extends StatelessWidget {
       ),
     );
   }
+}
+
+class _CoverTextPlate extends StatelessWidget {
+  const _CoverTextPlate({required this.child, super.key});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: const BoxDecoration(color: Color(0xA8000000), borderRadius: BorderRadius.all(Radius.circular(4))),
+    child: Padding(padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2), child: child),
+  );
 }

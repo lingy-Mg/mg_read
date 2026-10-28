@@ -13,17 +13,19 @@ library;
 
 import 'package:flutter/material.dart';
 
+part 'app_component_theme.dart';
+
 /// Preset accent palettes for host application surfaces.
 ///
 /// These values intentionally do not flow into the novel, comic, audio, or
 /// video readers. Those packages own their own appearance and reading
 /// controls.
 enum AppThemeColor {
-  warm('warm', '暖光橙', Color(0xFFCC8836)),
-  blue('blue', '海盐蓝', Color(0xFF4F7CAC)),
-  green('green', '竹青绿', Color(0xFF4F8A65)),
-  purple('purple', '雾紫', Color(0xFF7C6DB0)),
-  rose('rose', '樱桃红', Color(0xFFB85C78));
+  warm('warm', '暖光橙', Color(0xFF9C5B16)),
+  blue('blue', '海盐蓝', Color(0xFF416890)),
+  green('green', '竹青绿', Color(0xFF386D4A)),
+  purple('purple', '雾紫', Color(0xFF6D5E9E)),
+  rose('rose', '樱桃红', Color(0xFFA54D68));
 
   const AppThemeColor(this.id, this.label, this.accent);
 
@@ -140,8 +142,8 @@ enum AppDarkThemeColor {
 
 /// Defines the application-wide visual defaults and semantic UI tokens.
 abstract final class AppTheme {
-  /// Temporary product switch while the source-picker visual baseline is light-only.
-  static const bool darkModeEnabled = false;
+  /// All host destinations share the same day/night component contract.
+  static const bool darkModeEnabled = true;
   static final ThemeData _novelReaderTheme = _light(color: AppThemeColor.warm, connectMaterialSurfaces: false);
 
   /// Stable host baseline for novel and comic reading surfaces.
@@ -168,16 +170,16 @@ abstract final class AppTheme {
       surface: surface,
       featureSurface: featureSurface,
       mutedSurface: const Color(0xFFF7F4EF),
-      divider: const Color(0xFFF1ECE5),
-      mutedText: const Color(0xFF827D77),
-      accent: color.accent,
-      dataSourceAccent: const Color(0xFFE96A0A),
+      divider: connectMaterialSurfaces ? const Color(0xFFE5E0D9) : const Color(0xFFF1ECE5),
+      mutedText: connectMaterialSurfaces ? const Color(0xFF6D6862) : const Color(0xFF827D77),
+      accent: connectMaterialSurfaces ? color.accent : const Color(0xFFCC8836),
+      dataSourceAccent: const Color(0xFFAA4D00),
       dataSourceCat: const Color(0xFFFFC300),
       dataSourceCommunity: const Color(0xFF509B30),
       accentSoft: accentSoft,
-      notification: const Color(0xFFE34835),
-      success: const Color(0xFF3D8A63),
-      warning: const Color(0xFFB56D24),
+      notification: connectMaterialSurfaces ? const Color(0xFFB63D30) : const Color(0xFFE34835),
+      success: connectMaterialSurfaces ? const Color(0xFF2F7853) : const Color(0xFF3D8A63),
+      warning: connectMaterialSurfaces ? const Color(0xFF996021) : const Color(0xFFB56D24),
       focusRing: focusRing,
       shadow: const Color(0x33261C12),
       coverDuskStart: Color(0xFF293746),
@@ -194,7 +196,7 @@ abstract final class AppTheme {
     final ColorScheme seededScheme = ColorScheme.fromSeed(seedColor: tokens.accent, brightness: Brightness.light);
     final ColorScheme baseColorScheme = seededScheme.copyWith(
       primary: tokens.accent,
-      onPrimary: Colors.white,
+      onPrimary: connectMaterialSurfaces ? _foregroundOn(color.accent) : Colors.white,
       primaryContainer: tokens.accentSoft,
       onPrimaryContainer: color == AppThemeColor.warm ? const Color(0xFF472706) : seededScheme.onPrimaryContainer,
       surface: tokens.surface,
@@ -202,7 +204,7 @@ abstract final class AppTheme {
       outlineVariant: tokens.divider,
     );
     final ColorScheme colorScheme = connectMaterialSurfaces ? _connectMaterialSurfaces(baseColorScheme, tokens) : baseColorScheme;
-    return _theme(colorScheme, tokens);
+    return _theme(colorScheme, tokens, connectComponents: connectMaterialSurfaces);
   }
 
   static ThemeData dark({AppDarkThemeColor color = AppDarkThemeColor.seaSaltBlue}) {
@@ -278,7 +280,9 @@ abstract final class AppTheme {
     );
   }
 
-  static ThemeData _theme(ColorScheme colorScheme, AppThemeTokens tokens) {
+  static Color _foregroundOn(Color color) => color.computeLuminance() > 0.179 ? Colors.black : Colors.white;
+
+  static ThemeData _theme(ColorScheme colorScheme, AppThemeTokens tokens, {bool connectComponents = true}) {
     final ThemeData base = ThemeData(colorScheme: colorScheme, fontFamily: 'packages/novel_reader_ui/MiSans', useMaterial3: true);
     final TextTheme textTheme = base.textTheme.copyWith(
       displaySmall: base.textTheme.displaySmall?.copyWith(
@@ -295,7 +299,7 @@ abstract final class AppTheme {
       labelLarge: base.textTheme.labelLarge?.copyWith(fontSize: AppTypography.action, fontWeight: FontWeight.w600),
     );
 
-    return base.copyWith(
+    final ThemeData theme = base.copyWith(
       scaffoldBackgroundColor: tokens.pageBackground,
       focusColor: tokens.focusRing.withValues(alpha: 0.24),
       hoverColor: tokens.accentSoft.withValues(alpha: 0.42),
@@ -316,6 +320,7 @@ abstract final class AppTheme {
       ),
       extensions: <ThemeExtension<dynamic>>[tokens],
     );
+    return connectComponents ? _appComponentTheme(theme, tokens) : theme;
   }
 }
 
@@ -391,6 +396,9 @@ class AppThemeTokens extends ThemeExtension<AppThemeTokens> {
   final Color warning;
   final Color focusRing;
   final Color shadow;
+
+  /// Bounds contrast even when the artwork is pure black or pure white.
+  Color get coverBackdropScrim => pageBackground.withValues(alpha: pageBackground.computeLuminance() < 0.1 ? 0.80 : 0.94);
   final Color coverDuskStart;
   final Color coverDuskEnd;
   final Color coverDawnStart;
@@ -528,9 +536,11 @@ abstract final class AppSpacing {
 
   /// Shared maximum width for constrained destinations and secondary pages.
   ///
-  /// The library home intentionally stays full-width so its shelf can use all
-  /// available space on large displays.
+  /// Dense management surfaces can use this wider boundary; reading-led
+  /// surfaces use [readableContentMaxWidth] to keep related content together.
   static const double contentMaxWidth = 1184;
+  static const double readableContentMaxWidth = 760;
+  static const double detailContentMaxWidth = readableContentMaxWidth;
   static const double compactLayoutBreakpoint = 720;
   static const double continueReadingCoverWidth = unit * 28;
   static const double continueReadingCoverHeight = unit * 40;
@@ -665,7 +675,7 @@ abstract final class AppDetailMetrics {
   static const double aboutIconExtent = 106;
   // Preserves the measured about-page card baseline after compact typography.
   static const double aboutCardTopGap = 49;
-  static const double aboutCardHeight = 256;
+  static const double aboutCardHeight = aboutRowHeight * 5;
   static const double aboutRowHeight = 64;
 
   static const double feedbackBannerHeight = 108;
@@ -674,19 +684,19 @@ abstract final class AppDetailMetrics {
 
 /// Shared semantic corner radii for MgRead surfaces.
 abstract final class AppRadii {
-  static const BorderRadius card = BorderRadius.all(Radius.circular(20));
+  static const BorderRadius card = BorderRadius.all(Radius.circular(16));
   static const BorderRadius surface = BorderRadius.all(Radius.circular(12));
   static const BorderRadius control = BorderRadius.all(Radius.circular(12));
   static const BorderRadius continueReadingAction = BorderRadius.all(Radius.circular(10));
   static const BorderRadius bookCover = BorderRadius.all(Radius.circular(6));
   static const BorderRadius profileList = BorderRadius.all(Radius.circular(16));
   static const BorderRadius discoveryHero = BorderRadius.all(Radius.circular(16));
-  static const BorderRadius discoveryPanel = BorderRadius.all(Radius.circular(12));
+  static const BorderRadius discoveryPanel = card;
   static const BorderRadius discoveryCover = BorderRadius.all(Radius.circular(6));
   static const BorderRadius discoveryTile = BorderRadius.all(Radius.circular(8));
   static const BorderRadius discoveryButton = BorderRadius.all(Radius.circular(9));
-  static const BorderRadius detailCard = BorderRadius.all(Radius.circular(14));
-  static const BorderRadius detailControl = BorderRadius.all(Radius.circular(10));
+  static const BorderRadius detailCard = card;
+  static const BorderRadius detailControl = control;
   static const BorderRadius detailAppIcon = BorderRadius.all(Radius.circular(22));
   static const BorderRadius pill = BorderRadius.all(Radius.circular(999));
 }

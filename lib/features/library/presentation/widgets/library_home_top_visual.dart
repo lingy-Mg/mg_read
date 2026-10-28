@@ -8,6 +8,7 @@
 /// - 背景与平面封面复用同一封面请求，不引入第二套缓存。
 /// - 图片按组件约束绘制，不进行越界放大或裁切。
 /// - 可读性背景模糊限制在顶部矩形内，避免对整屏进行背景采样。
+/// - 全幅主题色遮罩保证深浅色文字对比，底部渐变继续覆盖接缝。
 /// - 仅拥有本地效果预览选择，不拥有阅读状态。
 ///
 library;
@@ -96,6 +97,7 @@ class _LibraryHomeTopVisualState extends State<LibraryHomeTopVisual> {
                           ),
                         ),
                       ),
+                      ColoredBox(key: const Key('library-home-cover-contrast-scrim'), color: tokens.coverBackdropScrim),
                       if (tintAlpha != null) ColoredBox(color: tokens.surface.withValues(alpha: tintAlpha)),
                     ],
                   ),

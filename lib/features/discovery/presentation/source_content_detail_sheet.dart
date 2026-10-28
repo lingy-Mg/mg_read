@@ -382,48 +382,157 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
       pluginVersion: widget.pluginVersion,
       child: Scaffold(
         body: SafeArea(
-          child: Column(
-            children: <Widget>[
-              if (widget.isModalSheet)
-                const Padding(
-                  padding: EdgeInsets.only(top: 10, bottom: 2),
-                  child: SizedBox(
-                    width: 42,
-                    height: 5,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.all(Radius.circular(99))),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: AppSpacing.detailContentMaxWidth),
+              child: Column(
+                children: <Widget>[
+                  if (widget.isModalSheet)
+                    Padding(
+                      padding: EdgeInsets.only(top: 10, bottom: 2),
+                      child: SizedBox(
+                        width: 42,
+                        height: 5,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: AppThemeTokens.of(context).mutedText.withValues(alpha: 0.4),
+                            borderRadius: AppRadii.pill,
+                          ),
+                        ),
+                      ),
                     ),
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      AppSpacing.discoveryPagePadding,
+                      AppSpacing.pageHeaderTopPaddingFor(context),
+                      AppSpacing.discoveryPagePadding,
+                      AppSpacing.pageHeaderTopPadding,
+                    ),
+                    child: _DetailHeader(isModalSheet: widget.isModalSheet, readerOwnedTheme: readerOwnedTheme),
                   ),
-                ),
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  AppSpacing.discoveryPagePadding,
-                  AppSpacing.pageHeaderTopPaddingFor(context),
-                  AppSpacing.discoveryPagePadding,
-                  AppSpacing.pageHeaderTopPadding,
-                ),
-                child: _DetailHeader(isModalSheet: widget.isModalSheet, readerOwnedTheme: readerOwnedTheme),
-              ),
-              Expanded(
-                child: FutureBuilder<_SourceDetailBundle>(
-                  future: _detailFuture,
-                  initialData: previewBundle,
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState != ConnectionState.done) {
-                      final loadingBundle = previewBundle;
-                      if (loadingBundle != null) {
+                  Expanded(
+                    child: FutureBuilder<_SourceDetailBundle>(
+                      future: _detailFuture,
+                      initialData: previewBundle,
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState != ConnectionState.done) {
+                          final loadingBundle = previewBundle;
+                          if (loadingBundle != null) {
+                            return AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 260),
+                              switchInCurve: Curves.easeOutCubic,
+                              switchOutCurve: Curves.easeInCubic,
+                              child: _SourceDetailView(
+                                key: const ValueKey<String>('source-detail-preview'),
+                                bundle: loadingBundle,
+                                gateway: widget.gateway,
+                                relatedContents: widget.relatedContents,
+                                sourceVariants: widget.sourceVariants,
+                                onSourceVariantRequested: widget.onSourceVariantRequested,
+                                isRefreshing: true,
+                                hasLoadFailure: false,
+                                onTextChapterRequested: widget.onTextChapterRequested,
+                                onComicChapterRequested: widget.onComicChapterRequested,
+                                onAudioChapterRequested: widget.onAudioChapterRequested,
+                                onVideoEpisodeRequested: widget.onVideoEpisodeRequested,
+                                onAddToShelf: widget.onAddToShelf,
+                                onRemoveFromShelf: widget.onRemoveFromShelf,
+                                shelfState: widget.shelfState,
+                                onShelfAction: widget.onShelfAction == null ? null : _handleShelfAction,
+                                onStartReading: widget.onStartReading,
+                                isCoverBlurred: widget.isCoverBlurred,
+                                onRecommendationRequested: widget.onRecommendationRequested,
+                                onExternalUrlRequested: widget.onExternalUrlRequested,
+                              ),
+                            );
+                          }
+                          return _SourceDetailLoadingView(
+                            initialContent: widget.initialContent,
+                            shelfState: widget.shelfState,
+                            onShelfAction: widget.onShelfAction == null ? null : _handleShelfAction,
+                            onStartReading: widget.onStartReading,
+                            isCoverBlurred: widget.isCoverBlurred,
+                          );
+                        }
+                        if (snapshot.hasError) {
+                          final failure = snapshot.error is _SourceDetailLoadFailure
+                              ? snapshot.error! as _SourceDetailLoadFailure
+                              : _SourceDetailLoadFailure(
+                                  capability: 'source.getDetail.v1 / source.getChapters.v1',
+                                  error: AppError.fromUnknown(snapshot.error!),
+                                );
+                          if (previewBundle != null) {
+                            return Column(
+                              key: const ValueKey<String>('source-detail-preview-error'),
+                              children: <Widget>[
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    AppSpacing.discoveryPagePadding,
+                                    0,
+                                    AppSpacing.discoveryPagePadding,
+                                    AppSpacing.regular,
+                                  ),
+                                  child: _DetailFailure(
+                                    error: failure.error,
+                                    capability: failure.capability,
+                                    hasRetainedData: true,
+                                    sourceName: previewBundle.detail.sourceName,
+                                    pluginId: widget.pluginId,
+                                    pluginVersion: widget.pluginVersion,
+                                    contentId: widget.id,
+                                    onCopy: widget.onCopyFailure,
+                                    onRetry: _retryDetail,
+                                  ),
+                                ),
+                                Expanded(
+                                  child: _SourceDetailView(
+                                    bundle: previewBundle,
+                                    gateway: widget.gateway,
+                                    relatedContents: widget.relatedContents,
+                                    sourceVariants: widget.sourceVariants,
+                                    onSourceVariantRequested: widget.onSourceVariantRequested,
+                                    isRefreshing: false,
+                                    hasLoadFailure: true,
+                                    onTextChapterRequested: widget.onTextChapterRequested,
+                                    onComicChapterRequested: widget.onComicChapterRequested,
+                                    onAudioChapterRequested: widget.onAudioChapterRequested,
+                                    onVideoEpisodeRequested: widget.onVideoEpisodeRequested,
+                                    onAddToShelf: widget.onAddToShelf,
+                                    onRemoveFromShelf: widget.onRemoveFromShelf,
+                                    shelfState: widget.shelfState,
+                                    onShelfAction: widget.onShelfAction == null ? null : _handleShelfAction,
+                                    onStartReading: widget.onStartReading,
+                                    isCoverBlurred: widget.isCoverBlurred,
+                                    onRecommendationRequested: widget.onRecommendationRequested,
+                                    onExternalUrlRequested: widget.onExternalUrlRequested,
+                                  ),
+                                ),
+                              ],
+                            );
+                          }
+                          return _DetailFailure(
+                            error: failure.error,
+                            capability: failure.capability,
+                            sourceName: previewBundle?.detail.sourceName ?? widget.initialSourceName,
+                            pluginId: widget.pluginId,
+                            pluginVersion: widget.pluginVersion,
+                            contentId: widget.id,
+                            onCopy: widget.onCopyFailure,
+                            onRetry: _retryDetail,
+                          );
+                        }
                         return AnimatedSwitcher(
                           duration: const Duration(milliseconds: 260),
                           switchInCurve: Curves.easeOutCubic,
                           switchOutCurve: Curves.easeInCubic,
                           child: _SourceDetailView(
-                            key: const ValueKey<String>('source-detail-preview'),
-                            bundle: loadingBundle,
+                            key: const ValueKey<String>('source-detail-loaded'),
+                            bundle: snapshot.requireData,
                             gateway: widget.gateway,
                             relatedContents: widget.relatedContents,
                             sourceVariants: widget.sourceVariants,
                             onSourceVariantRequested: widget.onSourceVariantRequested,
-                            isRefreshing: true,
+                            isRefreshing: false,
                             hasLoadFailure: false,
                             onTextChapterRequested: widget.onTextChapterRequested,
                             onComicChapterRequested: widget.onComicChapterRequested,
@@ -439,113 +548,12 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                             onExternalUrlRequested: widget.onExternalUrlRequested,
                           ),
                         );
-                      }
-                      return _SourceDetailLoadingView(
-                        initialContent: widget.initialContent,
-                        shelfState: widget.shelfState,
-                        onShelfAction: widget.onShelfAction == null ? null : _handleShelfAction,
-                        onStartReading: widget.onStartReading,
-                        isCoverBlurred: widget.isCoverBlurred,
-                      );
-                    }
-                    if (snapshot.hasError) {
-                      final failure = snapshot.error is _SourceDetailLoadFailure
-                          ? snapshot.error! as _SourceDetailLoadFailure
-                          : _SourceDetailLoadFailure(
-                              capability: 'source.getDetail.v1 / source.getChapters.v1',
-                              error: AppError.fromUnknown(snapshot.error!),
-                            );
-                      if (previewBundle != null) {
-                        return Column(
-                          key: const ValueKey<String>('source-detail-preview-error'),
-                          children: <Widget>[
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(
-                                AppSpacing.discoveryPagePadding,
-                                0,
-                                AppSpacing.discoveryPagePadding,
-                                AppSpacing.regular,
-                              ),
-                              child: _DetailFailure(
-                                error: failure.error,
-                                capability: failure.capability,
-                                hasRetainedData: true,
-                                sourceName: previewBundle.detail.sourceName,
-                                pluginId: widget.pluginId,
-                                pluginVersion: widget.pluginVersion,
-                                contentId: widget.id,
-                                onCopy: widget.onCopyFailure,
-                                onRetry: _retryDetail,
-                              ),
-                            ),
-                            Expanded(
-                              child: _SourceDetailView(
-                                bundle: previewBundle,
-                                gateway: widget.gateway,
-                                relatedContents: widget.relatedContents,
-                                sourceVariants: widget.sourceVariants,
-                                onSourceVariantRequested: widget.onSourceVariantRequested,
-                                isRefreshing: false,
-                                hasLoadFailure: true,
-                                onTextChapterRequested: widget.onTextChapterRequested,
-                                onComicChapterRequested: widget.onComicChapterRequested,
-                                onAudioChapterRequested: widget.onAudioChapterRequested,
-                                onVideoEpisodeRequested: widget.onVideoEpisodeRequested,
-                                onAddToShelf: widget.onAddToShelf,
-                                onRemoveFromShelf: widget.onRemoveFromShelf,
-                                shelfState: widget.shelfState,
-                                onShelfAction: widget.onShelfAction == null ? null : _handleShelfAction,
-                                onStartReading: widget.onStartReading,
-                                isCoverBlurred: widget.isCoverBlurred,
-                                onRecommendationRequested: widget.onRecommendationRequested,
-                                onExternalUrlRequested: widget.onExternalUrlRequested,
-                              ),
-                            ),
-                          ],
-                        );
-                      }
-                      return _DetailFailure(
-                        error: failure.error,
-                        capability: failure.capability,
-                        sourceName: previewBundle?.detail.sourceName ?? widget.initialSourceName,
-                        pluginId: widget.pluginId,
-                        pluginVersion: widget.pluginVersion,
-                        contentId: widget.id,
-                        onCopy: widget.onCopyFailure,
-                        onRetry: _retryDetail,
-                      );
-                    }
-                    return AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 260),
-                      switchInCurve: Curves.easeOutCubic,
-                      switchOutCurve: Curves.easeInCubic,
-                      child: _SourceDetailView(
-                        key: const ValueKey<String>('source-detail-loaded'),
-                        bundle: snapshot.requireData,
-                        gateway: widget.gateway,
-                        relatedContents: widget.relatedContents,
-                        sourceVariants: widget.sourceVariants,
-                        onSourceVariantRequested: widget.onSourceVariantRequested,
-                        isRefreshing: false,
-                        hasLoadFailure: false,
-                        onTextChapterRequested: widget.onTextChapterRequested,
-                        onComicChapterRequested: widget.onComicChapterRequested,
-                        onAudioChapterRequested: widget.onAudioChapterRequested,
-                        onVideoEpisodeRequested: widget.onVideoEpisodeRequested,
-                        onAddToShelf: widget.onAddToShelf,
-                        onRemoveFromShelf: widget.onRemoveFromShelf,
-                        shelfState: widget.shelfState,
-                        onShelfAction: widget.onShelfAction == null ? null : _handleShelfAction,
-                        onStartReading: widget.onStartReading,
-                        isCoverBlurred: widget.isCoverBlurred,
-                        onRecommendationRequested: widget.onRecommendationRequested,
-                        onExternalUrlRequested: widget.onExternalUrlRequested,
-                      ),
-                    );
-                  },
-                ),
+                      },
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),

@@ -1,3 +1,6 @@
+/// Paragraph spacing belongs between blocks on one page. Omitting the final
+/// spacer keeps a fitted last line from overflowing without repaginating text
+/// or changing any saved semantic anchor or reader preference.
 part of 'text_reader_view.dart';
 
 // ignore_for_file: invalid_use_of_protected_member
@@ -524,7 +527,8 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
                         ),
                         textScaler: _textScaler,
                       ),
-                    if (block.isParagraphEnd)
+                    if (block.isParagraphEnd &&
+                        !identical(block, page.blocks.last))
                       SizedBox(height: _preferences.paragraphSpacing),
                   ],
                   if (page.showsChapterTrailing)
