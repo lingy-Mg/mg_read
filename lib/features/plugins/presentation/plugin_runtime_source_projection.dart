@@ -23,7 +23,7 @@ List<DataSourceManagementRowData> pluginManagementSourcesFromConnection(PluginRu
         (PluginRuntimePlugin plugin) => DataSourceManagementRowData(
           id: plugin.id,
           name: plugin.displayName,
-          description: SourceBranding.description(sourceId: plugin.id, displayName: plugin.displayName, value: plugin.description),
+          description: _websiteDescription(plugin),
           kindLabel: _sourceMetadataLabel(plugin),
           enabled: plugin.enabled,
           brand: dataSourceBrandFor(plugin.displayName),
@@ -36,6 +36,12 @@ List<DataSourceManagementRowData> pluginManagementSourcesFromConnection(PluginRu
         ),
       )
       .toList(growable: false);
+}
+
+String _websiteDescription(PluginRuntimePlugin plugin) {
+  final description = plugin.description?.trim();
+  if (description != null && description.isNotEmpty) return description;
+  return SourceBranding.fallbackDescription(plugin.id, displayName: plugin.displayName) ?? '暂无网站简介';
 }
 
 String _sourceMetadataLabel(PluginRuntimePlugin plugin) {

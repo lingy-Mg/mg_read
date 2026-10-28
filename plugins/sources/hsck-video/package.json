@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/hsck-video",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
   "description": "MgRead video source for the user-provided HSCK rule.",
   "type": "module",
@@ -22,7 +22,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.hsck-video",
     "displayName": "黄色仓库",
-    "description": "黄色仓库成人视频数据源，支持麻豆、中字、国产、欧美、日韩分类、搜索、分组选集与视频播放。",
+    "description": "黄色仓库是成人向视频网站，包含麻豆、中字、国产、欧美和日韩等内容分类。作品页面提供介绍及选集，可按分类浏览或搜索视频。",
     "pluginApi": 1,
     "packageMode": "single-file","icon":"assets/icon.png",
     "contentKinds": ["video"],

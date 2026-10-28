@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/aisishuwu",
-  "version": "0.2.15",
+  "version": "0.2.16",
   "private": true,
   "description": "MgRead standard Node content-source plugin for the user-provided Alice Book House rules.",
   "type": "module",
@@ -37,7 +37,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.aisishuwu",
     "displayName": "\u7231\u4e3d\u4e1d\u4e66\u5c4b",
-    "description": "爱丽丝书屋小说数据源，支持分类、排行、搜索、详情、目录与正文阅读。",
+    "description": "爱丽丝书屋是网络小说阅读网站，按分类和排行整理小说作品。提供作品介绍、章节目录和正文，可浏览榜单或搜索书名寻找小说。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

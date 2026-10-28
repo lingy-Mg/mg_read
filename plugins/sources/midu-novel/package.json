@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/midu-novel",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "description": "Native MgRead source for Midu novels.",
   "type": "module",
@@ -29,7 +29,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.midu-novel",
     "displayName": "米读小说",
-    "description": "米读小说数据源，支持发现、分类、搜索、详情、目录与正文阅读。",
+    "description": "米读小说是网络小说阅读平台，提供小说发现与分类书目。可搜索作品、查看介绍和章节目录，并按章节阅读小说正文。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

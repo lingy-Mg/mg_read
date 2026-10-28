@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/jmcomic",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "description": "MgRead source for JMComic mobile API and decoded manga pages.",
   "type": "module",
@@ -30,7 +30,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.jmcomic",
     "displayName": "禁漫天堂",
-    "description": "JMComic 漫画数据源，支持搜索、分类、详情、目录和图片解码阅读。",
+    "description": "禁漫天堂是漫画阅读网站，也称 JMComic，按分类组织漫画作品。提供作品介绍、章节目录和漫画图片，可搜索作品并逐章阅读。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

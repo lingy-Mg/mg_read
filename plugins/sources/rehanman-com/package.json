@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/rehanman-com",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "private": true,
   "description": "MgRead source for public Rehanman webtoons.",
   "type": "module",
@@ -26,7 +26,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.rehanman",
     "displayName": "Rehanman",
-    "description": "Rehanman webtoon 数据源，支持最新列表、搜索、详情、章节与图片阅读。",
+    "description": "Rehanman 是网络漫画阅读网站，最新列表展示漫画作品。可搜索漫画名称、查看作品介绍与章节目录，并按章节阅读图片。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

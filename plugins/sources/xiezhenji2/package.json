@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/xiezhenji2",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": true,
   "description": "MgRead conversion of the user-provided 写真集2 source.",
   "type": "module",
@@ -33,7 +33,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.xiezhenji2",
     "displayName": "写真集2",
-    "description": "写真集 2 图集数据源，支持主题分类、搜索、详情、分页目录与图片阅读。",
+    "description": "写真集2 是写真图集网站，通过不同主题分类整理相册。可搜索感兴趣的图集，查看相册介绍并浏览其中的图片。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

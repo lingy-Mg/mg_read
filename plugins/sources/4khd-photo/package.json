@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/4khd-photo",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
   "description": "MgRead native manga source for 4KHD photo albums.",
   "type": "module",
@@ -32,7 +32,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.4khd-photo",
     "displayName": "4KHD",
-    "description": "4KHD 写真图集数据源，支持分类、搜索、图集详情、分页目录与图片阅读。",
+    "description": "4KHD 是以写真图片为主的图集网站，内容以一套套相册呈现。可按分类浏览、搜索图集，查看相册介绍及其中的图片。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/wooyun-video",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "description": "MgRead native source for Wooyun video.",
   "type": "module",
@@ -32,7 +32,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.wooyun-video",
     "displayName": "乌云影视",
-    "description": "乌云影视视频数据源，支持站点分类、搜索、详情、分集目录与 HLS 播放。",
+    "description": "乌云影视是影视观看网站，按站点分类整理影视作品。提供作品介绍和分集目录，可搜索片名并选择剧集观看。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

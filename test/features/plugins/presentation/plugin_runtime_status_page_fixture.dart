@@ -1,5 +1,7 @@
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 
+const qidianWebsiteDescription = '阅文集团旗下原创文学平台，收录网络小说作品。可浏览作品介绍和章节目录，按章节阅读小说内容。';
+
 /// Static Runtime projection for deterministic data-source presentation tests.
 const PluginRuntimeConnection dataSourceManagementFixture = PluginRuntimeConnection(
   isHealthy: true,
@@ -10,6 +12,7 @@ const PluginRuntimeConnection dataSourceManagementFixture = PluginRuntimeConnect
       activeVersion: '1.0.0',
       contentKinds: <String>['novel'],
       displayName: '起点中文网',
+      description: qidianWebsiteDescription,
       enabled: true,
       id: 'org.mgread.qidian',
       name: 'qidian',

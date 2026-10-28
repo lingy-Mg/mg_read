@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/sebo-live",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "MgRead native live-video source for Sebo platforms.",
   "type": "module",
@@ -22,7 +22,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.sebo-live",
     "displayName": "Sebo Live",
-    "description": "Sebo Live 直播数据源，支持频道索引、直播列表、详情与直播流播放。",
+    "description": "Sebo Live 是直播网站，按频道整理正在展示的直播内容。可浏览频道索引和直播列表，查看直播介绍并打开直播观看。",
     "pluginApi": 1,
     "packageMode": "single-file","icon":"assets/icon.png",
     "contentKinds": ["video"],

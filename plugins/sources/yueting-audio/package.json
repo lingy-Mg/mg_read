@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/yueting-audio",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": true,
   "description": "MgRead native source for Yueting audiobooks.",
   "type": "module",
@@ -32,7 +32,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.yueting-audio",
     "displayName": "悦听听书",
-    "description": "悦听听书音频数据源，支持加密请求、专辑搜索、详情、目录与音频播放。",
+    "description": "悦听听书是有声内容收听网站，作品按专辑和章节组织。可搜索专辑、查看作品介绍与章节目录，选择章节收听音频。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

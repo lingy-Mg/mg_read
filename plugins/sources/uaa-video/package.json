@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/uaa-video",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "MgRead video source converted from the user-provided UAA rule.",
   "type": "module",
@@ -27,7 +27,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.uaa-video",
     "displayName": "UAA 视频",
-    "description": "UAA 成人视频数据源，支持最新、排行、国产、日本AV、H动漫等频道、搜索、详情与单集播放。",
+    "description": "UAA 视频是成人向视频频道，包含国产、日本AV、H动漫等内容。提供最新作品和排行榜，可按分类浏览、搜索作品并打开视频。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "contentKinds": ["video"],

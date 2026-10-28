@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/yinghuadongman",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "private": true,
   "description": "MgRead video source for Yinghua Dongman.",
   "type": "module",
@@ -32,7 +32,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.yinghuadongman",
     "displayName": "樱花动漫",
-    "description": "樱花动漫视频数据源，支持搜索、发现、详情、多线路目录与视频播放。",
+    "description": "樱花动漫是以动漫为主的视频网站，提供动漫作品列表与作品介绍。可搜索动漫、查看分集目录，并选择播放线路观看剧集。",
     "pluginApi": 1,
     "packageMode": "single-file","icon":"assets/icon.png",
     "contentKinds": [

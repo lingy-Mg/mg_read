@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/shukuge-365",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "private": true,
   "description": "MgRead conversion of the user-provided 365小说网 source.",
   "type": "module",
@@ -32,7 +32,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.shukuge-365",
     "displayName": "365小说网",
-    "description": "365小说网数据源，支持分类、搜索、详情、目录与正文阅读。",
+    "description": "365小说网是网络小说阅读网站，按分类汇集小说作品。可查找书名、浏览作品介绍与章节目录，并阅读小说正文。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

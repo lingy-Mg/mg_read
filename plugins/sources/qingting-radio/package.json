@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/qingting-radio",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "description": "MgRead native audio source for Qingting live radio.",
   "type": "module",
@@ -22,7 +22,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.qingting-radio",
     "displayName": "蜻蜓电台",
-    "description": "蜻蜓电台音频数据源，支持公开电台、频道搜索、详情、节目目录与音频播放。",
+    "description": "蜻蜓电台是音频收听平台，本来源提供公开电台与频道节目。可搜索频道、查看节目介绍和目录，选择节目收听音频。",
     "pluginApi": 1,
     "packageMode": "single-file","icon":"assets/icon.png",
     "contentKinds": ["audio"],

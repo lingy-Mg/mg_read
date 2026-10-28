@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/wanou-wangpan",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
   "description": "MgRead source for Wogg multi-cloud video listings.",
   "type": "module",
@@ -32,7 +32,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.wanou-wangpan",
     "displayName": "玩偶网盘",
-    "description": "玩偶影视网盘索引数据源，支持影视搜索、详情、分集与百度/夸克/优汐网盘链接解析。",
+    "description": "玩偶网盘是影视网盘资源索引网站，整理影视作品及其分集链接。可搜索片名、查看作品介绍，获取百度、夸克或优汐网盘中的相关资源。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

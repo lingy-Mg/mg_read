@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/shudugu",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "private": true,
   "description": "MgRead standard Node content-source plugin for 速读谷.",
   "type": "module",
@@ -31,7 +31,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.shudugu",
     "displayName": "速读谷",
-    "description": "速读谷小说数据源，支持分类发现、搜索、详情、目录与正文阅读。",
+    "description": "速读谷是网络小说阅读网站，分类页面整理小说作品。可搜索书名、查看作品介绍与章节目录，按章节阅读小说正文。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

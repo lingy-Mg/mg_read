@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/diyibanzhu-me",
-  "version": "2.0.8",
+  "version": "2.0.9",
   "private": true,
   "description": "MgRead conversion of the user-provided 第一版主 source.",
   "type": "module",
@@ -33,7 +33,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.diyibanzhu-me",
     "displayName": "第一版主",
-    "description": "第一版主小说数据源，支持分类、搜索、详情、目录与正文；需要验证时使用宿主浏览器。",
+    "description": "第一版主是网络小说阅读网站，按分类整理小说作品。可查看作品介绍、浏览章节目录，并按章节阅读小说正文。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

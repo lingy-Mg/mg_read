@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/fanshu-anime",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "private": true,
   "description": "Native MgRead source for Fanshu Anime's current Yoapp API.",
   "type": "module",
@@ -29,7 +29,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.fanshu-anime",
     "displayName": "番薯动漫",
-    "description": "番薯动漫视频数据源，支持分类、搜索、详情、分组目录与视频播放。",
+    "description": "番薯动漫是以动漫为主的视频网站，按分类整理动漫作品。提供作品介绍和分集列表，可搜索想看的动漫并按集观看。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

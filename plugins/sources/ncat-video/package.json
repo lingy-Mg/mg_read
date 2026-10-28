@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/ncat-video",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "description": "Native MgRead WebView source for Ncat video.",
   "type": "module",
@@ -26,7 +26,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.ncat-video",
     "displayName": "网飞猫",
-    "description": "网飞猫视频数据源，支持分类、搜索、详情、分组目录与 HLS 播放。",
+    "description": "网飞猫是影视视频网站，按分类展示影视作品。作品页面包含介绍与分集列表，可按片名寻找内容并选择剧集观看。",
     "pluginApi": 1,
     "packageMode": "single-file","icon":"assets/icon.png",
     "contentKinds": ["video"],

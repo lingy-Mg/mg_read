@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/35ge-info",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
   "description": "MgRead conversion of the user-provided 35小说 source.",
   "type": "module",
@@ -27,7 +27,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.35ge-info",
     "displayName": "35小说",
-    "description": "35小说网小说数据源，支持分类发现、关键词搜索、详情、目录与正文阅读。",
+    "description": "35小说是网络小说阅读网站，按分类整理小说作品。可以查看作品介绍、章节目录和正文，按书名或关键词查找想读的小说。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

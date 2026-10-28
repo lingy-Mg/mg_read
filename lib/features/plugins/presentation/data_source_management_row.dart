@@ -1,7 +1,7 @@
 /// 数据源管理列表行与品牌标记。
 ///
 /// 职责：
-/// - 展示用途、内容类型和临时发现／搜索入口；管理操作收纳到菜单。
+/// - 卡片底部展示最多三行网站简介；发现／搜索图标和管理菜单位于右侧。
 /// - 将开发数据源插件与已安装数据源插件的视觉状态保持一致且可访问。
 ///
 /// 注意：
@@ -113,7 +113,12 @@ class DataSourceManagementRow extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
-                            Text(source.name, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                            Text(
+                              source.name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                            ),
                             const SizedBox(height: AppSpacing.unit),
                             Text(
                               '${source.kindLabel} · ${source.enabled ? '已启用' : '已停用'}',
@@ -123,25 +128,43 @@ class DataSourceManagementRow extends StatelessWidget {
                         ),
                       ),
                     ),
-                    PopupMenuButton<String>(
-                      key: ValueKey<String>('data-source-menu-${source.id}'),
-                      tooltip: '${source.name}管理',
-                      enabled: !isPending,
-                      onSelected: (value) {
-                        if (value == 'detail') onPressed();
-                        if (value == 'toggle') onChanged(!source.enabled);
-                      },
-                      itemBuilder: (_) => <PopupMenuEntry<String>>[
-                        const PopupMenuItem(value: 'detail', child: Text('详情与管理')),
-                        if (!source.isDevelopment) PopupMenuItem(value: 'toggle', child: Text(source.enabled ? '停用数据源' : '启用数据源')),
-                      ],
-                      icon: const Icon(Icons.more_horiz_rounded),
+                    SizedBox(
+                      width: AppSpacing.minimumTouchTarget * 3,
+                      child: Wrap(
+                        alignment: WrapAlignment.end,
+                        children: <Widget>[
+                          IconButton(
+                            key: ValueKey<String>('data-source-discover-${source.id}'),
+                            tooltip: '浏览发现 · ${source.name}',
+                            onPressed: available ? onDiscover : null,
+                            icon: const Icon(Icons.explore_outlined),
+                          ),
+                          IconButton(
+                            key: ValueKey<String>('data-source-search-${source.id}'),
+                            tooltip: '在此搜索 · ${source.name}',
+                            onPressed: available ? onSearch : null,
+                            icon: const Icon(Icons.search_rounded),
+                          ),
+                          PopupMenuButton<String>(
+                            key: ValueKey<String>('data-source-menu-${source.id}'),
+                            tooltip: '${source.name}管理',
+                            enabled: !isPending,
+                            onSelected: (value) {
+                              if (value == 'detail') onPressed();
+                              if (value == 'toggle') onChanged(!source.enabled);
+                            },
+                            itemBuilder: (_) => <PopupMenuEntry<String>>[
+                              const PopupMenuItem(value: 'detail', child: Text('详情与管理')),
+                              if (!source.isDevelopment) PopupMenuItem(value: 'toggle', child: Text(source.enabled ? '停用数据源' : '启用数据源')),
+                            ],
+                            icon: const Icon(Icons.more_horiz_rounded),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
                 if (!compact) ...<Widget>[
-                  const SizedBox(height: AppSpacing.regular),
-                  Text(source.description, style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText, height: 1.5)),
                   const SizedBox(height: AppSpacing.compact),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -183,24 +206,13 @@ class DataSourceManagementRow extends StatelessWidget {
                     style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
                   ),
                 ],
-                const SizedBox(height: AppSpacing.compact),
-                Wrap(
-                  spacing: AppSpacing.compact,
-                  runSpacing: AppSpacing.unit,
-                  children: <Widget>[
-                    FilledButton.tonalIcon(
-                      key: ValueKey<String>('data-source-discover-${source.id}'),
-                      onPressed: available ? onDiscover : null,
-                      icon: const Icon(Icons.explore_outlined, size: 18),
-                      label: const Text('浏览发现'),
-                    ),
-                    OutlinedButton.icon(
-                      key: ValueKey<String>('data-source-search-${source.id}'),
-                      onPressed: available ? onSearch : null,
-                      icon: const Icon(Icons.search_rounded, size: 18),
-                      label: const Text('在此搜索'),
-                    ),
-                  ],
+                const SizedBox(height: AppSpacing.regular),
+                Text(
+                  source.description,
+                  key: ValueKey<String>('data-source-description-${source.id}'),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText, height: 1.5),
                 ),
               ],
             ),

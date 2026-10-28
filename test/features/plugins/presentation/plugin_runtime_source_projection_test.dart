@@ -26,6 +26,7 @@ void main() {
           activeVersion: '1.0.0',
           contentKinds: <String>['audio'],
           displayName: '音频源',
+          description: '  收录有声书专辑与电台节目，按专辑和章节组织音频内容。  ',
           enabled: true,
           id: 'org.example.audio',
           name: '@example/audio',
@@ -59,6 +60,9 @@ void main() {
 
     expect(sources.map((source) => source.id), <String>['org.example.audio', 'org.example.video', 'org.example.all']);
     expect(sources.map((source) => source.kindLabel), <String>['音频', '视频', '小说 · 漫画 · 音频 · 视频']);
+    expect(sources.first.description, '收录有声书专辑与电台节目，按专辑和章节组织音频内容。');
+    expect(sources[1].description, '暂无网站简介');
+    expect(sources[2].description, '暂无网站简介');
   });
 
   test('projects the r18 marker into metadata labels', () {

@@ -66,10 +66,19 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('6 个数据源'), findsOneWidget);
-    expect(find.text('阅文集团旗下原创文学平台'), findsNothing);
+    expect(find.text(qidianWebsiteDescription), findsOneWidget);
+    final description = find.byKey(const Key('data-source-description-org.mgread.qidian'));
+    final discover = find.byKey(const Key('data-source-discover-org.mgread.qidian'));
+    final search = find.byKey(const Key('data-source-search-org.mgread.qidian'));
+    expect(tester.widget<Text>(description).maxLines, 3);
+    expect(tester.getRect(description).top, greaterThan(tester.getRect(discover).bottom));
+    expect(tester.getRect(discover).left, greaterThan(tester.getRect(find.text('起点中文网')).right));
+    expect(tester.getRect(search).left, greaterThanOrEqualTo(tester.getRect(discover).right));
+    expect(find.text('浏览发现'), findsNothing);
+    expect(find.text('在此搜索'), findsNothing);
     await tester.tap(find.byKey(const Key('data-source-density')));
     await tester.pumpAndSettle();
-    expect(find.text('阅文集团旗下原创文学平台'), findsOneWidget);
+    expect(find.text(qidianWebsiteDescription), findsOneWidget);
     expect(find.text('https://www.qidian.com/'), findsOneWidget);
     expect(find.byType(Switch), findsNothing);
     await tester.tap(find.byKey(const Key('data-source-discover-org.mgread.qidian')));
@@ -134,8 +143,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(tester.widget<FilledButton>(find.byKey(const Key('data-source-discover-disabled'))).onPressed, isNull);
-    expect(tester.widget<OutlinedButton>(find.byKey(const Key('data-source-search-disabled'))).onPressed, isNull);
+    expect(tester.widget<IconButton>(find.byKey(const Key('data-source-discover-disabled'))).onPressed, isNull);
+    expect(tester.widget<IconButton>(find.byKey(const Key('data-source-search-disabled'))).onPressed, isNull);
     await tester.tap(find.byKey(const Key('data-source-menu-disabled')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('启用数据源'));

@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/hsck-video-3",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "description": "MgRead video source for the user-provided HSCK mirror 3.",
   "type": "module",
@@ -22,7 +22,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.hsck-video-3",
     "displayName": "黄色仓库 3",
-    "description": "黄色仓库 3 镜像成人视频数据源，支持分类、搜索、详情、单集目录与 HLS 播放。",
+    "description": "黄色仓库 3 是黄色仓库的成人向视频镜像站点。提供分类视频列表及作品页面，可按关键词寻找内容并打开视频。",
     "pluginApi": 1,
     "packageMode": "single-file","icon":"assets/icon.png",
     "contentKinds": ["video"],

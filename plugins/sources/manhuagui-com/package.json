@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/manhuagui-com",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "MgRead Node 24 source for public Manhuagui manga pages.",
   "type": "module",
@@ -28,7 +28,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.manhuagui-com",
     "displayName": "漫画柜",
-    "description": "漫画柜公开网页数据源，支持分类、搜索、漫画详情、章节与图片阅读。",
+    "description": "漫画柜是在线漫画阅读网站，按分类整理漫画作品。可查看漫画介绍和章节列表，通过作品名称搜索漫画并逐章阅读。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",

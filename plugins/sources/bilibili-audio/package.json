@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/bilibili-audio",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "description": "MgRead native search and playback source for Bilibili videos.",
   "type": "module",
@@ -27,7 +27,7 @@
     "schemaVersion": 1,
     "id": "org.mgread.bilibili-audio",
     "displayName": "哔哩哔哩",
-    "description": "B站听书搜索、分P音频目录与发现页链接输入。",
+    "description": "哔哩哔哩是视频内容平台，本来源主要用于收听站内有声书内容。可搜索听书作品、查看分集列表，也可输入作品链接打开音频。",
     "pluginApi": 1,
     "packageMode": "single-file",
     "icon": "assets/icon.png",
