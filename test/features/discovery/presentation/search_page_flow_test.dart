@@ -133,6 +133,7 @@ void main() {
     expect(find.text('热门搜索'), findsOneWidget);
     final historyScroll = tester.widget<SingleChildScrollView>(find.byKey(const Key('search-history-scroll')));
     expect(historyScroll.scrollDirection, Axis.horizontal);
+    expect(find.descendant(of: find.byType(SearchSuggestionSections), matching: find.byType(Scrollbar)), findsNothing);
 
     await tester.tap(find.text('诡秘之主').first);
     await tester.pumpAndSettle();

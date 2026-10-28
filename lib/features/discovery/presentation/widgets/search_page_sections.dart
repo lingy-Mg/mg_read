@@ -1,5 +1,6 @@
 /// 搜索建议、状态与结果展示；来源和请求生命周期由页面控制器持有。
 /// 搜索过程中保持已展示结果顺序，完成或用户改排序后再统一排序。
+/// 历史关键词由本组件持有横向滚动控制器，保留滑动但不显示滚动条。
 library;
 
 import 'package:flutter/material.dart';
@@ -109,9 +110,8 @@ class _SearchHistoryRowState extends State<_SearchHistoryRow> {
           Text('历史', style: textTheme.titleSmall),
           const SizedBox(width: AppSpacing.compact),
           Expanded(
-            child: Scrollbar(
-              controller: _scrollController,
-              thumbVisibility: true,
+            child: ScrollConfiguration(
+              behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
               child: SingleChildScrollView(
                 key: const Key('search-history-scroll'),
                 controller: _scrollController,
