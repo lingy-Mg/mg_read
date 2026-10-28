@@ -47,8 +47,8 @@ class LibraryContinueReadingCard extends StatelessWidget {
         builder: (BuildContext context, BoxConstraints constraints) {
           final bool compact = constraints.maxWidth < AppSpacing.compactCardStackBreakpoint;
           final double textScale = MediaQuery.textScalerOf(context).scale(1).clamp(1, 1.5);
-          final double cardHeight = (showBackdrop ? (compact ? 172 : 196) : (compact ? 224 : 238)) + (textScale - 1) * 48;
-          final double coverHeight = showBackdrop ? (compact ? 108 : 132) : (compact ? 216 : 230);
+          final double cardHeight = (showBackdrop ? (compact ? 172 : 196) : (compact ? 208 : 220)) + (textScale - 1) * 140;
+          final double coverHeight = showBackdrop ? (compact ? 108 : 132) : (compact ? 194 : 206);
           final double coverWidth = coverHeight * 0.68;
           final Widget content = Stack(
             children: <Widget>[
@@ -184,7 +184,6 @@ class _ContinueReadingDetails extends StatelessWidget {
     final String? description = _nonBlank(data.description);
 
     if (!showEyebrow) {
-      final double textScale = MediaQuery.textScalerOf(context).scale(1);
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -213,7 +212,7 @@ class _ContinueReadingDetails extends StatelessWidget {
                 child: Text(
                   key: const Key('continue-reading-description'),
                   description,
-                  maxLines: textScale > 1.25 ? 2 : 3,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface, height: 1.35),
                 ),
@@ -221,6 +220,13 @@ class _ContinueReadingDetails extends StatelessWidget {
             ),
           ] else
             const Spacer(),
+          Text(
+            data.hasDeterminateProgress ? '${data.chapter} · ${(data.progress * 100).round()}%' : data.chapter,
+            key: const Key('continue-reading-position'),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(color: tokens.accent, fontWeight: FontWeight.w600),
+          ),
           const SizedBox(height: AppSpacing.compact),
           Align(
             alignment: Alignment.center,
@@ -254,7 +260,15 @@ class _ContinueReadingDetails extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600, height: 1.18, letterSpacing: -0.2),
         ),
-        if (showEyebrow) const Spacer() else const SizedBox(height: AppSpacing.comfortable),
+        const Spacer(),
+        Text(
+          data.hasDeterminateProgress ? '${data.chapter} · ${(data.progress * 100).round()}%' : data.chapter,
+          key: const Key('continue-reading-position'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface),
+        ),
+        const SizedBox(height: AppSpacing.compact),
         Align(
           alignment: Alignment.center,
           child: _ContinueReadingAction(

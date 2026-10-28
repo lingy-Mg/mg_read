@@ -214,6 +214,7 @@ class LibraryBookGridItem extends StatelessWidget {
                 ),
                 if (metadataMode == LibraryHomeCoverMetadataMode.belowCover) ...<Widget>[
                   const SizedBox(height: AppSpacing.compact),
+                  _BookReadingLabel(data: data),
                   Text(
                     data.title,
                     maxLines: 2,
@@ -241,6 +242,32 @@ class LibraryBookGridItem extends StatelessWidget {
   String get _semanticLabel {
     final String? subtitle = data.subtitle;
     return subtitle == null || subtitle.isEmpty ? data.title : '${data.title}，$subtitle';
+  }
+}
+
+/// 内容类型和真实阅读进度共享一行，不占用封面角上的更新与菜单位置。
+class _BookReadingLabel extends StatelessWidget {
+  const _BookReadingLabel({required this.data, this.onCover = false});
+  final LibraryBookListItemViewData data;
+  final bool onCover;
+  @override
+  Widget build(BuildContext context) {
+    final kind = switch (data.contentKind) {
+      ContentKind.novel => '小说',
+      ContentKind.manga => '漫画',
+      ContentKind.audio => '音频',
+      ContentKind.video => '视频',
+    };
+    final progress = data.readingProgress;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.unit),
+      child: Text(
+        progress == null ? kind : '$kind · ${(progress.clamp(0, 1) * 100).round()}%',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: onCover ? Colors.white : AppThemeTokens.of(context).accent),
+      ),
+    );
   }
 }
 
@@ -285,6 +312,7 @@ class _CoverMetadataOverlay extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
+                  _BookReadingLabel(data: data, onCover: true),
                   Text(
                     data.title,
                     key: Key('library-grid-book-overlay-title-${data.id}'),

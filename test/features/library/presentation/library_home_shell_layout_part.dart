@@ -235,7 +235,7 @@ void _registerLibraryHomeShellLayout() {
 
     expect(surface.height, greaterThanOrEqualTo(172));
     expect(readingSurface, isA<SizedBox>());
-    expect(cover.height, greaterThan(210));
+    expect(cover.height, inInclusiveRange(180, 210));
     expect(surface.contains(cover.topLeft), isTrue);
     expect(cover.bottom, lessThanOrEqualTo(surface.bottom));
     expect(cover.left, closeTo(surface.left, 0.1));

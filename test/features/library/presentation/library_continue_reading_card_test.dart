@@ -96,7 +96,8 @@ void main() {
     expect(description.bottom, lessThanOrEqualTo(action.top));
     expect(authorText.style?.color, onSurface);
     expect(descriptionText.style?.color, onSurface);
-    expect(descriptionText.maxLines, 3);
+    expect(descriptionText.maxLines, 1);
+    expect(find.byKey(const Key('continue-reading-position')), findsOneWidget);
     expect(descriptionText.overflow, TextOverflow.ellipsis);
     expect(tester.takeException(), isNull);
   });
@@ -166,7 +167,7 @@ void main() {
     final SemanticsNode semantics = tester.getSemantics(find.byKey(const Key('continue-reading-cta')));
 
     expect(tester.takeException(), isNull);
-    expect(action.size, const Size(136, 42));
+    expect(action.size, const Size(136, AppSpacing.minimumTouchTarget));
     expect(actionText.maxLines, 1);
     expect(actionText.overflow, TextOverflow.ellipsis);
     expect(semantics.label, contains(data.actionLabel));

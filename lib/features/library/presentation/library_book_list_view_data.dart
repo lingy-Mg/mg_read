@@ -32,6 +32,7 @@ final class LibraryBookListItemViewData {
     this.coverAssetPath,
     this.subtitle,
     this.activityLabel,
+    this.readingProgress,
     this.hasAttentionIndicator = false,
     this.unreadChapterCount = 0,
     this.isCoverBlurred = false,
@@ -67,6 +68,9 @@ final class LibraryBookListItemViewData {
   /// Update, shelf, and history adapters can respectively map an update time,
   /// a shelf timestamp, or a last-read time here without changing the layout.
   final String? activityLabel;
+
+  /// 已保存的真实进度；未知时不显示百分比。
+  final double? readingProgress;
 
   final LibraryCoverVariant coverVariant;
   final LibraryBookStatus status;
