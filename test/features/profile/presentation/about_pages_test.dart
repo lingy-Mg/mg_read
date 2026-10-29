@@ -2,6 +2,7 @@
 ///
 /// 职责：
 /// - 验证关于页包含手动更新入口和四个已接入条目。
+/// - 验证仓库地址交给外部浏览器，调用失败时给出提示。
 /// - 验证协议、隐私、开源许可与联系页面具备真实内容和交互。
 ///
 /// 注意：
@@ -11,6 +12,7 @@ library;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -44,6 +46,8 @@ void main() {
     expect(find.byKey(const Key('about-action-licenses')), findsOneWidget);
     expect(find.byKey(const Key('about-action-contact')), findsOneWidget);
     expect(find.text('版本 9.8.7'), findsOneWidget);
+    expect(find.text('GitHub 仓库'), findsOneWidget);
+    expect(find.text(githubRepositoryUrl), findsOneWidget);
     expect(tester.getSize(find.byKey(const Key('about-settings-card'))).height, 320);
 
     await tester.tap(find.byKey(const Key('about-action-update')));
@@ -53,6 +57,35 @@ void main() {
     await tester.tap(find.byKey(const Key('about-action-agreement')));
     expect(requestedItems, <String>['agreement']);
   });
+
+  for (final outcome in <String>['success', 'unavailable', 'error']) {
+    testWidgets('about repository browser launch: $outcome', (WidgetTester tester) async {
+      const launcherChannel = MethodChannel('plugins.flutter.io/url_launcher');
+      final calls = <MethodCall>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(launcherChannel, (call) async {
+        calls.add(call);
+        if (outcome == 'error') throw PlatformException(code: 'unavailable');
+        return outcome == 'success';
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(launcherChannel, null));
+      await _setViewport(tester);
+      await tester.pumpWidget(_host(AboutPage(appVersion: '9.8.7', onBackRequested: _noop, onDestinationRequested: (_) {})));
+      await tester.pumpAndSettle();
+      final link = find.byKey(const Key('about-github-repository'));
+      await tester.ensureVisible(link);
+      await tester.tap(link);
+      await tester.pumpAndSettle();
+
+      expect(calls, hasLength(1));
+      expect(calls.single.method, 'launch');
+      final arguments = calls.single.arguments as Map<Object?, Object?>;
+      expect(arguments['url'], 'https://github.com/lingy-Mg/mg_read');
+      expect(arguments['useWebView'], isFalse);
+      expect(arguments['useSafariVC'], isFalse);
+      expect(find.text('无法调用系统浏览器打开 GitHub 仓库地址。'), outcome == 'success' ? findsNothing : findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('agreement and privacy pages expose complete local sections', (WidgetTester tester) async {
     await _setViewport(tester);

@@ -2,15 +2,17 @@
 ///
 /// 职责：
 /// - 展示应用信息和可继续进入的关于条目。
+/// - 展示 GitHub 仓库地址，点击后交给系统外部浏览器打开。
 /// - 复用设置子页面的固定标题栏与内容宽度。
 ///
 /// 注意：
 /// - 标题栏位于滚动区域之外，不能随内容离开顶部。
-/// - 不直接打开网络、外部页面或未定义的 Runtime 能力。
+/// - 浏览器调用不持有页面状态；异步返回后先确认页面仍挂载。
 ///
 library;
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
@@ -18,6 +20,8 @@ import 'package:mg_read/features/profile/presentation/widgets/profile_detail_chr
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/features/app_update/application/github_apk_update.dart';
 import 'package:mg_read/features/app_update/presentation/github_apk_update_prompt.dart';
+
+const String githubRepositoryUrl = 'https://github.com/lingy-Mg/mg_read';
 
 class AboutPage extends StatelessWidget {
   const AboutPage({
@@ -104,7 +108,27 @@ class AboutPage extends StatelessWidget {
                         },
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppDetailMetrics.horizontalPadding),
+                      child: TextButton.icon(
+                        key: const Key('about-github-repository'),
+                        onPressed: () => _openRepository(context),
+                        icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                        label: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            const Text('GitHub 仓库'),
+                            Text(
+                              githubRepositoryUrl,
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.bodySmall?.copyWith(color: tokens.accent),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     Text(
                       '© 2018–2024 统一阅读',
                       textAlign: TextAlign.center,
@@ -142,6 +166,18 @@ class AboutPage extends StatelessWidget {
     messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(const SnackBar(content: Text('相关内容尚未接入，当前不会打开网络或外部页面。')));
+  }
+
+  Future<void> _openRepository(BuildContext context) async {
+    try {
+      if (await launchUrl(Uri.parse(githubRepositoryUrl), mode: LaunchMode.externalApplication)) return;
+    } on Object {
+      // 系统未提供浏览器或平台调用失败时，统一提示用户。
+    }
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text('无法调用系统浏览器打开 GitHub 仓库地址。')));
   }
 }
 
