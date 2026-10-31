@@ -89,14 +89,16 @@ android {
                 ?.split(',')
                 ?.map { target ->
                     when (target) {
+                        "android-arm" -> "armeabi-v7a"
                         "android-arm64" -> "arm64-v8a"
                         "android-x64" -> "x86_64"
                         else -> error("Android Runtime does not support target: $target")
                     }
                 }
+                ?.filter { it in runtimeAbis }
                 ?.toSet() ?: runtimeAbis
-            check(runtimeAbis.containsAll(targetAbis)) {
-                "Selected Android Runtime does not support ABIs: $targetAbis"
+            check(targetAbis.isNotEmpty()) {
+                "Selected Flutter targets have no ABIs supported by this Android Runtime."
             }
             abiFilters.clear()
             abiFilters.addAll(targetAbis)
