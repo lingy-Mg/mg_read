@@ -34,6 +34,7 @@ import 'package:mg_read/features/discovery/presentation/widgets/discovery_landsc
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_profile_card.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_search_input.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
@@ -112,7 +113,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
               if (!allowsRoutePop && !didPop) onBackRequested();
             },
             child: Scaffold(
-              extendBody: true,
+              extendBody: !TvModeScope.isEnabled(context),
               body: SafeArea(
                 bottom: false,
                 child: LayoutBuilder(
@@ -324,7 +325,9 @@ class _TabsComponent extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SizedBox(
     key: const Key('runtime-discovery-tabs'),
-    height: AppSpacing.minimumTouchTarget,
+    height: TvModeScope.isEnabled(context)
+        ? MediaQuery.textScalerOf(context).scale(Theme.of(context).textTheme.bodyMedium?.fontSize ?? 16) * 1.5 + 32
+        : AppSpacing.minimumTouchTarget,
     child: ListView.separated(
       scrollDirection: Axis.horizontal,
       itemCount: component.tabs.length,

@@ -16,6 +16,7 @@ import 'source_preview_page.dart';
 import 'source_debug_page.dart';
 
 import 'package:flutter/material.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
@@ -133,7 +134,7 @@ class DiscoveryDestinationPage extends ConsumerWidget {
     };
 
     return Scaffold(
-      extendBody: true,
+      extendBody: !TvModeScope.isEnabled(context),
       appBar: AppBar(
         toolbarHeight: AppSpacing.pageHeaderHeight,
         title: const AppPageTitle(title: '发现'),
@@ -142,7 +143,7 @@ class DiscoveryDestinationPage extends ConsumerWidget {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 560),
-            child: Padding(padding: const EdgeInsets.all(AppSpacing.section), child: content),
+            child: SingleChildScrollView(padding: const EdgeInsets.all(AppSpacing.section), child: content),
           ),
         ),
       ),

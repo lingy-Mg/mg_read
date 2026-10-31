@@ -14,6 +14,7 @@ import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
 import 'discovery_content_list_item.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_text_input_navigation.dart';
 
 class DiscoverySearchInput extends ConsumerStatefulWidget {
   const DiscoverySearchInput({
@@ -125,18 +126,20 @@ class _DiscoverySearchInputState extends ConsumerState<DiscoverySearchInput> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(
-          key: ValueKey('discovery-input-${component.id}'),
-          controller: _input,
-          textInputAction: TextInputAction.search,
-          maxLength: 2000,
-          onChanged: (_) => setState(_clear),
-          onSubmitted: (_) => _submit(),
-          decoration: InputDecoration(
-            labelText: component.label,
-            hintText: component.placeholder,
-            counterText: '',
-            border: const OutlineInputBorder(),
+        TvTextInputNavigation(
+          child: TextField(
+            key: ValueKey('discovery-input-${component.id}'),
+            controller: _input,
+            textInputAction: TextInputAction.search,
+            maxLength: 2000,
+            onChanged: (_) => setState(_clear),
+            onSubmitted: (_) => _submit(),
+            decoration: InputDecoration(
+              labelText: component.label,
+              hintText: component.placeholder,
+              counterText: '',
+              border: const OutlineInputBorder(),
+            ),
           ),
         ),
         const SizedBox(height: AppSpacing.compact),

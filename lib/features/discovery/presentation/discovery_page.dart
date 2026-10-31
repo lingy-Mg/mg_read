@@ -26,6 +26,8 @@ import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_backdrop.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 
 export 'widgets/discovery_top_action.dart';
 
@@ -257,6 +259,35 @@ class DiscoveryTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    if (TvModeScope.isEnabled(context)) {
+      return Wrap(
+        key: barKey,
+        spacing: AppSpacing.regular,
+        runSpacing: AppSpacing.compact,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          if (onBackPressed != null)
+            DiscoveryTopAction(key: backButtonKey, tooltip: '返回上一级', icon: Icons.arrow_back_rounded, onPressed: onBackPressed!),
+          AppPageTitle(key: titleKey, title: title),
+          if (showSourceSelector) DiscoverySourceSelector(sourceName: sourceName, onPressed: onSourcePressed),
+          ...trailingActions,
+          if (onRefreshPressed != null)
+            DiscoveryTopAction(
+              key: const Key('discovery-refresh-action'),
+              tooltip: '刷新发现内容',
+              icon: Icons.refresh_rounded,
+              onPressed: onRefreshPressed!,
+            ),
+          if (showSearchAction)
+            DiscoveryTopAction(
+              key: const Key('discovery-search-action'),
+              tooltip: '搜索影视',
+              icon: Icons.search_rounded,
+              onPressed: onSearchPressed,
+            ),
+        ],
+      );
+    }
     return SizedBox(
       key: barKey,
       height: AppSpacing.discoveryHeaderHeight,
@@ -337,6 +368,26 @@ class DiscoverySourceSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final AppThemeTokens tokens = AppThemeTokens.of(context);
+    if (TvModeScope.isEnabled(context)) {
+      return ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 320),
+        child: TvFocusable(
+          key: selectorKey ?? const Key('discovery-source-selector'),
+          label: label,
+          onPressed: onPressed,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(sourceName, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleMedium),
+              ),
+              const SizedBox(width: AppSpacing.unit),
+              const Icon(Icons.arrow_drop_down_rounded),
+            ],
+          ),
+        ),
+      );
+    }
     return Semantics(
       button: true,
       label: label,

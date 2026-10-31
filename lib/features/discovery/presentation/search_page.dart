@@ -41,6 +41,8 @@ import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_backdrop.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_text_input_navigation.dart';
 
 /// Search destination. Runtime data remains outside this presentation shell.
 class SearchPage extends ConsumerStatefulWidget {
@@ -154,7 +156,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     }
 
     return Scaffold(
-      extendBody: true,
+      extendBody: !TvModeScope.isEnabled(context),
       body: AppPageBackdrop(
         style: AppPageBackdropStyle.search,
         child: SafeArea(
@@ -173,7 +175,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                 ),
                 children: <Widget>[
                   SizedBox(
-                    height: AppSpacing.pageHeaderHeight,
+                    height: TvModeScope.isEnabled(context) ? null : AppSpacing.pageHeaderHeight,
                     child: _SearchPageHeader(onSourceManagementRequested: widget.onSourceManagementRequested),
                   ),
                   const SizedBox(height: AppSpacing.compact),
@@ -373,53 +375,55 @@ class _SearchTopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return SizedBox(
-      height: AppSpacing.searchTopBarHeight,
+      height: TvModeScope.isEnabled(context) ? null : AppSpacing.searchTopBarHeight,
       child: Row(
         children: <Widget>[
           Expanded(
             child: SizedBox(
-              height: AppSpacing.searchQueryHeight,
-              child: TextField(
-                key: const Key('source-search-query'),
-                controller: queryController,
-                focusNode: queryFocusNode,
-                readOnly: isSearching,
-                textInputAction: TextInputAction.search,
-                onSubmitted: (_) {
-                  if (!isSearching) onSearch();
-                },
-                decoration: InputDecoration(
-                  hintText: '书名、作者或关键词',
-                  prefixIcon: const Icon(Icons.search_rounded),
-                  suffixIcon: AnimatedSwitcher(
-                    duration: AppMotion.navigationSelection,
-                    switchInCurve: AppMotion.navigationCurve,
-                    switchOutCurve: AppMotion.navigationReverseCurve,
-                    child: isSearching
-                        ? const _SearchFieldProgress()
-                        : queryController.text.isEmpty
-                        ? const SizedBox.shrink(key: ValueKey<String>('empty'))
-                        : IconButton(
-                            key: const ValueKey<String>('clear'),
-                            tooltip: '清空搜索',
-                            onPressed: onClear,
-                            icon: const Icon(Icons.cancel_rounded),
-                          ),
-                  ),
-                  filled: true,
-                  fillColor: tokens.mutedSurface,
-                  contentPadding: const EdgeInsets.symmetric(vertical: AppSpacing.compact),
-                  border: OutlineInputBorder(
-                    borderRadius: AppRadii.pill,
-                    borderSide: BorderSide(color: tokens.divider),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: AppRadii.pill,
-                    borderSide: BorderSide(color: tokens.divider),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: AppRadii.pill,
-                    borderSide: BorderSide(color: tokens.focusRing),
+              height: TvModeScope.isEnabled(context) ? null : AppSpacing.searchQueryHeight,
+              child: TvTextInputNavigation(
+                child: TextField(
+                  key: const Key('source-search-query'),
+                  controller: queryController,
+                  focusNode: queryFocusNode,
+                  readOnly: isSearching,
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (_) {
+                    if (!isSearching) onSearch();
+                  },
+                  decoration: InputDecoration(
+                    hintText: TvModeScope.isEnabled(context) ? '影片、演员或关键词' : '书名、作者或关键词',
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: AnimatedSwitcher(
+                      duration: AppMotion.navigationSelection,
+                      switchInCurve: AppMotion.navigationCurve,
+                      switchOutCurve: AppMotion.navigationReverseCurve,
+                      child: isSearching
+                          ? const _SearchFieldProgress()
+                          : queryController.text.isEmpty
+                          ? const SizedBox.shrink(key: ValueKey<String>('empty'))
+                          : IconButton(
+                              key: const ValueKey<String>('clear'),
+                              tooltip: '清空搜索',
+                              onPressed: onClear,
+                              icon: const Icon(Icons.cancel_rounded),
+                            ),
+                    ),
+                    filled: true,
+                    fillColor: tokens.mutedSurface,
+                    contentPadding: const EdgeInsets.symmetric(vertical: AppSpacing.compact),
+                    border: OutlineInputBorder(
+                      borderRadius: AppRadii.pill,
+                      borderSide: BorderSide(color: tokens.divider),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: AppRadii.pill,
+                      borderSide: BorderSide(color: tokens.divider),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: AppRadii.pill,
+                      borderSide: BorderSide(color: tokens.focusRing),
+                    ),
                   ),
                 ),
               ),
@@ -466,6 +470,24 @@ class _SearchPageHeader extends ConsumerWidget {
     final selectedSource = state.selectedSourceId == null
         ? null
         : state.sources.cast<PluginSourceDescriptor?>().firstWhere((source) => source?.id == state.selectedSourceId, orElse: () => null);
+    final selector = DiscoverySourceSelector(
+      key: const Key('search-source-selector-widget'),
+      selectorKey: const Key('search-source-selector'),
+      sourceName: selectedSource?.displayName ?? '全部数据源',
+      onPressed: state.sources.isEmpty ? () {} : () => _showPicker(context, ref, state, controller),
+      label: '选择搜索数据源',
+    );
+    if (TvModeScope.isEnabled(context)) {
+      return Wrap(
+        spacing: AppSpacing.regular,
+        runSpacing: AppSpacing.compact,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          const AppPageTitle(title: '搜索'),
+          selector,
+        ],
+      );
+    }
     return Stack(
       alignment: Alignment.center,
       children: <Widget>[
@@ -475,16 +497,7 @@ class _SearchPageHeader extends ConsumerWidget {
           bottom: 0,
           child: Center(child: AppPageTitle(title: '搜索')),
         ),
-        Align(
-          alignment: Alignment.center,
-          child: DiscoverySourceSelector(
-            key: const Key('search-source-selector-widget'),
-            selectorKey: const Key('search-source-selector'),
-            sourceName: selectedSource?.displayName ?? '全部数据源',
-            onPressed: state.sources.isEmpty ? () {} : () => _showPicker(context, ref, state, controller),
-            label: '选择搜索数据源',
-          ),
-        ),
+        Align(alignment: Alignment.center, child: selector),
       ],
     );
   }

@@ -3,6 +3,8 @@
 /// Owns source search, pinning, selection, and the management
 /// hand-off. Runtime installation details remain outside this presentation
 /// boundary; visual controls and list rows live in focused part files.
+/// TV header, list and footer share a lazy scroll viewport that respects keyboard
+/// insets; normal mode keeps its fixed header/footer and independent source list.
 library;
 
 import 'dart:async';
@@ -12,6 +14,8 @@ import 'package:flutter/material.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/shared/presentation/source_branding.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_text_input_navigation.dart';
 
 part 'source_picker_sheet_controls.dart';
 part 'source_picker_sheet_list.dart';
@@ -65,7 +69,8 @@ Future<DiscoverySourcePickerResult?> showDiscoverySourcePicker(
     context: context,
     isScrollControlled: true,
     isDismissible: true,
-    enableDrag: true,
+    enableDrag: !TvModeScope.isEnabled(context),
+    constraints: TvModeScope.isEnabled(context) ? const BoxConstraints(maxWidth: 1000) : null,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.38),
     elevation: 0,
@@ -183,77 +188,93 @@ class _DiscoverySourcePickerSheetState extends State<_DiscoverySourcePickerSheet
   Widget build(BuildContext context) {
     final visibleSources = _visibleSources.toList(growable: false);
     final tokens = AppThemeTokens.of(context);
-    return SafeArea(
-      top: false,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final width = constraints.maxWidth > 560 ? 520.0 : constraints.maxWidth;
-          return Align(
-            alignment: Alignment.bottomCenter,
-            child: SizedBox(
-              key: const Key('discovery-source-picker-panel'),
-              width: width,
-              height: constraints.maxHeight * 0.86,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                  boxShadow: <BoxShadow>[
-                    BoxShadow(color: tokens.shadow.withValues(alpha: 0.18), blurRadius: 24, offset: const Offset(0, -6)),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                  child: Column(
-                    children: <Widget>[
-                      _SourcePickerHeader(
-                        sourceCount: widget.sources.length,
-                        selectedSourceLabel: _selectedSourceLabel,
-                        searchExpanded: _searchExpanded,
-                        query: _query,
-                        searchController: _searchController,
-                        onToggleSearch: _toggleSearch,
-                        onDebug: widget.sources.isEmpty ? null : () => Navigator.of(context).pop(const DiscoverySourceDebugRequested()),
-                        onQueryChanged: (value) => setState(() => _query = value),
-                        onClearQuery: _clearQuery,
-                        onClose: () => Navigator.of(context).pop(),
-                      ),
-                      Expanded(
-                        child: Column(
-                          children: <Widget>[
-                            if (widget.allowAllSources)
-                              _AllSourcesPickerRow(
-                                selected: widget.selectedSourceId == null,
-                                onPressed: () => Navigator.of(context).pop(const DiscoveryAllSourcesSelected()),
-                              ),
-                            Expanded(
-                              child: _SourcePickerList(
-                                sources: visibleSources,
-                                selectedSourceId: widget.selectedSourceId,
-                                pinnedSourceIds: _pinnedSourceIds,
-                                query: _query,
-                                hasAnySources: widget.sources.isNotEmpty,
-                                onClearQuery: _clearQuery,
-                                onSourcePressed: (sourceId) => Navigator.of(context).pop(DiscoverySourceSelected(sourceId)),
-                                onPinPressed: _togglePinned,
-                                onWebViewAction: (sourceId, action) =>
-                                    Navigator.of(context).pop(DiscoverySourceWebViewActionRequested(sourceId: sourceId, action: action)),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      _SourcePickerFooter(
-                        onManagePressed: () => Navigator.of(context).pop(const DiscoverySourceManagementRequested()),
-                        onAddPressed: () => Navigator.of(context).pop(const DiscoverySourceManagementRequested()),
-                      ),
+    final tv = TvModeScope.isEnabled(context);
+    final header = _SourcePickerHeader(
+      sourceCount: widget.sources.length,
+      selectedSourceLabel: _selectedSourceLabel,
+      searchExpanded: _searchExpanded,
+      query: _query,
+      searchController: _searchController,
+      onToggleSearch: _toggleSearch,
+      onDebug: widget.sources.isEmpty ? null : () => Navigator.of(context).pop(const DiscoverySourceDebugRequested()),
+      onQueryChanged: (value) => setState(() => _query = value),
+      onClearQuery: _clearQuery,
+      onClose: () => Navigator.of(context).pop(),
+    );
+    final allSources = _AllSourcesPickerRow(
+      selected: widget.selectedSourceId == null,
+      onPressed: () => Navigator.of(context).pop(const DiscoveryAllSourcesSelected()),
+    );
+    final sourceList = _SourcePickerList(
+      asSliver: tv,
+      sources: visibleSources,
+      selectedSourceId: widget.selectedSourceId,
+      pinnedSourceIds: _pinnedSourceIds,
+      query: _query,
+      hasAnySources: widget.sources.isNotEmpty,
+      onClearQuery: _clearQuery,
+      onSourcePressed: (sourceId) => Navigator.of(context).pop(DiscoverySourceSelected(sourceId)),
+      onPinPressed: _togglePinned,
+      onWebViewAction: (sourceId, action) =>
+          Navigator.of(context).pop(DiscoverySourceWebViewActionRequested(sourceId: sourceId, action: action)),
+    );
+    final footer = _SourcePickerFooter(
+      onManagePressed: () => Navigator.of(context).pop(const DiscoverySourceManagementRequested()),
+      onAddPressed: () => Navigator.of(context).pop(const DiscoverySourceManagementRequested()),
+    );
+    return Padding(
+      padding: EdgeInsets.only(bottom: tv ? MediaQuery.viewInsetsOf(context).bottom : 0),
+      child: SafeArea(
+        top: false,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final width = tv ? constraints.maxWidth.clamp(0.0, 1000.0) : (constraints.maxWidth > 560 ? 520.0 : constraints.maxWidth);
+            return Align(
+              alignment: Alignment.bottomCenter,
+              child: SizedBox(
+                key: const Key('discovery-source-picker-panel'),
+                width: width,
+                height: constraints.maxHeight * 0.86,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                    boxShadow: <BoxShadow>[
+                      BoxShadow(color: tokens.shadow.withValues(alpha: 0.18), blurRadius: 24, offset: const Offset(0, -6)),
                     ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                    child: tv
+                        ? CustomScrollView(
+                            key: const Key('tv-source-picker-scroll'),
+                            slivers: [
+                              SliverToBoxAdapter(child: header),
+                              if (widget.allowAllSources) SliverToBoxAdapter(child: allSources),
+                              sourceList,
+                              SliverToBoxAdapter(child: footer),
+                            ],
+                          )
+                        : Column(
+                            children: [
+                              header,
+                              Expanded(
+                                child: Column(
+                                  children: [
+                                    if (widget.allowAllSources) allSources,
+                                    Expanded(child: sourceList),
+                                  ],
+                                ),
+                              ),
+                              footer,
+                            ],
+                          ),
                   ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

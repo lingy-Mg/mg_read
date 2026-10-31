@@ -15,6 +15,7 @@ class _SourcePickerList extends StatelessWidget {
     required this.onSourcePressed,
     required this.onPinPressed,
     required this.onWebViewAction,
+    this.asSliver = false,
   });
 
   final List<PluginSourceDescriptor> sources;
@@ -26,11 +27,13 @@ class _SourcePickerList extends StatelessWidget {
   final ValueChanged<String> onSourcePressed;
   final Future<void> Function(String sourceId) onPinPressed;
   final void Function(String sourceId, DiscoverySourceWebViewAction action) onWebViewAction;
+  final bool asSliver;
 
   @override
   Widget build(BuildContext context) {
     if (sources.isEmpty) {
-      return _SourcePickerEmptyState(query: query, hasAnySources: hasAnySources, onClearQuery: onClearQuery);
+      final empty = _SourcePickerEmptyState(query: query, hasAnySources: hasAnySources, onClearQuery: onClearQuery);
+      return asSliver ? SliverToBoxAdapter(child: empty) : empty;
     }
     final pinned = sources.where((source) => pinnedSourceIds.contains(source.id)).toList(growable: false);
     final others = sources.where((source) => !pinnedSourceIds.contains(source.id)).toList(growable: false);
@@ -42,27 +45,36 @@ class _SourcePickerList extends StatelessWidget {
     }
     entries.addAll(others.map(_SourceItemEntry.new));
 
+    Widget buildEntry(BuildContext context, int index) {
+      final entry = entries[index];
+      return switch (entry) {
+        _SourceSectionEntry(:final label, :final count) => _SourcePickerSectionLabel(label: label, count: count),
+        _SourceItemEntry(:final source) => Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.compact),
+          child: _SourcePickerRow(
+            source: source,
+            selected: source.id == selectedSourceId,
+            pinned: pinnedSourceIds.contains(source.id),
+            onPressed: () => onSourcePressed(source.id),
+            onPinPressed: () => onPinPressed(source.id),
+            onWebViewAction: (action) => onWebViewAction(source.id, action),
+          ),
+        ),
+      };
+    }
+
+    const padding = EdgeInsets.fromLTRB(AppSpacing.comfortable, AppSpacing.compact, AppSpacing.comfortable, AppSpacing.regular);
+    if (asSliver) {
+      return SliverPadding(
+        padding: padding,
+        sliver: SliverList.builder(key: const Key('discovery-source-picker-list'), itemCount: entries.length, itemBuilder: buildEntry),
+      );
+    }
     return ListView.builder(
       key: const Key('discovery-source-picker-list'),
-      padding: const EdgeInsets.fromLTRB(AppSpacing.comfortable, AppSpacing.compact, AppSpacing.comfortable, AppSpacing.regular),
+      padding: padding,
       itemCount: entries.length,
-      itemBuilder: (context, index) {
-        final entry = entries[index];
-        return switch (entry) {
-          _SourceSectionEntry(:final label, :final count) => _SourcePickerSectionLabel(label: label, count: count),
-          _SourceItemEntry(:final source) => Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.compact),
-            child: _SourcePickerRow(
-              source: source,
-              selected: source.id == selectedSourceId,
-              pinned: pinnedSourceIds.contains(source.id),
-              onPressed: () => onSourcePressed(source.id),
-              onPinPressed: () => onPinPressed(source.id),
-              onWebViewAction: (action) => onWebViewAction(source.id, action),
-            ),
-          ),
-        };
-      },
+      itemBuilder: buildEntry,
     );
   }
 }

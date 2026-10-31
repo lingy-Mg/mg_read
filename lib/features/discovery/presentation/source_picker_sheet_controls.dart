@@ -97,41 +97,43 @@ class _SourcePickerHeader extends StatelessWidget {
             if (searchExpanded) ...<Widget>[
               const SizedBox(height: AppSpacing.regular),
               SizedBox(
-                height: 46,
-                child: TextField(
-                  key: const Key('discovery-source-picker-search'),
-                  controller: searchController,
-                  onChanged: onQueryChanged,
-                  textInputAction: TextInputAction.search,
-                  style: theme.textTheme.bodyMedium,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(vertical: AppSpacing.regular),
-                    hintText: '搜索数据源名称或功能',
-                    hintStyle: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
-                    prefixIcon: Icon(Icons.search_rounded, color: tokens.mutedText, size: 20),
-                    prefixIconConstraints: const BoxConstraints(minWidth: 44),
-                    suffixIcon: query.isEmpty
-                        ? null
-                        : IconButton(
-                            key: const Key('discovery-source-picker-search-clear'),
-                            tooltip: '清除搜索',
-                            onPressed: onClearQuery,
-                            icon: Icon(Icons.cancel_rounded, size: 18, color: tokens.mutedText),
-                          ),
-                    filled: true,
-                    fillColor: controlSurface,
-                    border: OutlineInputBorder(
-                      borderRadius: AppRadii.control,
-                      borderSide: BorderSide(color: tokens.divider),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: AppRadii.control,
-                      borderSide: BorderSide(color: tokens.divider),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: AppRadii.control,
-                      borderSide: BorderSide(color: tokens.focusRing, width: 1.5),
+                height: TvModeScope.isEnabled(context) ? null : 46,
+                child: TvTextInputNavigation(
+                  child: TextField(
+                    key: const Key('discovery-source-picker-search'),
+                    controller: searchController,
+                    onChanged: onQueryChanged,
+                    textInputAction: TextInputAction.search,
+                    style: theme.textTheme.bodyMedium,
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(vertical: AppSpacing.regular),
+                      hintText: '搜索数据源名称或功能',
+                      hintStyle: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
+                      prefixIcon: Icon(Icons.search_rounded, color: tokens.mutedText, size: 20),
+                      prefixIconConstraints: const BoxConstraints(minWidth: 44),
+                      suffixIcon: query.isEmpty
+                          ? null
+                          : IconButton(
+                              key: const Key('discovery-source-picker-search-clear'),
+                              tooltip: '清除搜索',
+                              onPressed: onClearQuery,
+                              icon: Icon(Icons.cancel_rounded, size: 18, color: tokens.mutedText),
+                            ),
+                      filled: true,
+                      fillColor: controlSurface,
+                      border: OutlineInputBorder(
+                        borderRadius: AppRadii.control,
+                        borderSide: BorderSide(color: tokens.divider),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: AppRadii.control,
+                        borderSide: BorderSide(color: tokens.divider),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: AppRadii.control,
+                        borderSide: BorderSide(color: tokens.focusRing, width: 1.5),
+                      ),
                     ),
                   ),
                 ),

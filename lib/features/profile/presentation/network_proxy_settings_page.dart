@@ -8,6 +8,8 @@ library;
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_text_input_navigation.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -306,6 +308,7 @@ class _ProxyEndpointCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
+    final tv = TvModeScope.isEnabled(context);
     return DecoratedBox(
       key: const Key('network-proxy-endpoint-card'),
       decoration: _cardDecoration(tokens),
@@ -327,32 +330,39 @@ class _ProxyEndpointCard extends StatelessWidget {
               onChanged: enabled ? (NetworkProxyProtocol? value) => onProtocolChanged(value!) : null,
             ),
             const SizedBox(height: AppSpacing.regular),
-            Row(
+            Flex(
+              direction: tv ? Axis.vertical : Axis.horizontal,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Expanded(
-                  flex: 3,
-                  child: TextField(
-                    key: const Key('network-proxy-host'),
-                    controller: hostController,
-                    enabled: enabled,
-                    autocorrect: false,
-                    textInputAction: TextInputAction.next,
-                    onChanged: (_) => onEndpointChanged(),
-                    decoration: _fieldDecoration(context, label: '服务器地址', hint: '127.0.0.1', icon: Icons.dns_outlined),
+                Flexible(
+                  flex: tv ? 0 : 3,
+                  fit: tv ? FlexFit.loose : FlexFit.tight,
+                  child: TvTextInputNavigation(
+                    child: TextField(
+                      key: const Key('network-proxy-host'),
+                      controller: hostController,
+                      enabled: enabled,
+                      autocorrect: false,
+                      textInputAction: TextInputAction.next,
+                      onChanged: (_) => onEndpointChanged(),
+                      decoration: _fieldDecoration(context, label: '服务器地址', hint: '127.0.0.1', icon: Icons.dns_outlined),
+                    ),
                   ),
                 ),
-                const SizedBox(width: AppSpacing.regular),
-                Expanded(
-                  flex: 2,
-                  child: TextField(
-                    key: const Key('network-proxy-port'),
-                    controller: portController,
-                    enabled: enabled,
-                    keyboardType: TextInputType.number,
-                    textInputAction: TextInputAction.done,
-                    onChanged: (_) => onEndpointChanged(),
-                    decoration: _fieldDecoration(context, label: '端口', hint: '9000'),
+                SizedBox(width: tv ? 0 : AppSpacing.regular, height: tv ? AppSpacing.regular : 0),
+                Flexible(
+                  flex: tv ? 0 : 2,
+                  fit: tv ? FlexFit.loose : FlexFit.tight,
+                  child: TvTextInputNavigation(
+                    child: TextField(
+                      key: const Key('network-proxy-port'),
+                      controller: portController,
+                      enabled: enabled,
+                      keyboardType: TextInputType.number,
+                      textInputAction: TextInputAction.done,
+                      onChanged: (_) => onEndpointChanged(),
+                      decoration: _fieldDecoration(context, label: '端口', hint: '9000'),
+                    ),
                   ),
                 ),
               ],

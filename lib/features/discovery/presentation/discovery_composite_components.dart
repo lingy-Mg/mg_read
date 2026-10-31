@@ -16,6 +16,8 @@ import 'package:flutter/material.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_semantic_icons.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
@@ -319,6 +321,22 @@ class DiscoveryComponentChip extends StatelessWidget {
       color: selected ? theme.colorScheme.onPrimaryContainer : theme.colorScheme.onSurface,
       fontWeight: FontWeight.w600,
     );
+    if (TvModeScope.isEnabled(context)) {
+      return TvFocusable(
+        selected: selected,
+        onPressed: onPressed,
+        child: Row(
+          mainAxisSize: expanded ? MainAxisSize.max : MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (icon != null) ...[Icon(icon, size: 22, color: tokens.accent), const SizedBox(width: AppSpacing.unit)],
+            Flexible(
+              child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: labelStyle),
+            ),
+          ],
+        ),
+      );
+    }
     return SizedBox(
       height: AppSpacing.minimumTouchTarget,
       child: expanded

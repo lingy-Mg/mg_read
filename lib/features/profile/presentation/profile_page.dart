@@ -13,6 +13,7 @@ library;
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/profile/presentation/profile_view_data.dart';
@@ -88,7 +89,7 @@ class _ProfilePageState extends State<ProfilePage> {
       data = data.withReadingStats(stats);
     }
     return Scaffold(
-      extendBody: true,
+      extendBody: !TvModeScope.isEnabled(context),
       body: AppPageBackdrop(
         style: AppPageBackdropStyle.profile,
         child: SafeArea(

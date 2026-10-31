@@ -10,6 +10,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_text_input_navigation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -192,48 +193,52 @@ class _ProfileFieldsCard extends StatelessWidget {
         padding: const EdgeInsets.all(AppSpacing.comfortable),
         child: Column(
           children: <Widget>[
-            TextFormField(
-              key: const Key('edit-profile-display-name'),
-              controller: displayNameController,
-              enabled: enabled,
-              maxLength: ProfileIdentity.displayNameMaxLength,
-              textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(labelText: '昵称', hintText: '请输入昵称', prefixIcon: Icon(Icons.person_outline_rounded)),
-              validator: (String? value) {
-                final text = value?.trim() ?? '';
-                if (text.isEmpty) return '昵称不能为空';
-                if (text.length > ProfileIdentity.displayNameMaxLength) {
-                  return '昵称不能超过 ${ProfileIdentity.displayNameMaxLength} 个字符';
-                }
-                return null;
-              },
+            TvTextInputNavigation(
+              child: TextFormField(
+                key: const Key('edit-profile-display-name'),
+                controller: displayNameController,
+                enabled: enabled,
+                maxLength: ProfileIdentity.displayNameMaxLength,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(labelText: '昵称', hintText: '请输入昵称', prefixIcon: Icon(Icons.person_outline_rounded)),
+                validator: (String? value) {
+                  final text = value?.trim() ?? '';
+                  if (text.isEmpty) return '昵称不能为空';
+                  if (text.length > ProfileIdentity.displayNameMaxLength) {
+                    return '昵称不能超过 ${ProfileIdentity.displayNameMaxLength} 个字符';
+                  }
+                  return null;
+                },
+              ),
             ),
             const SizedBox(height: AppSpacing.compact),
-            TextFormField(
-              key: const Key('edit-profile-motto'),
-              controller: mottoController,
-              enabled: enabled,
-              maxLength: ProfileIdentity.mottoMaxLength,
-              minLines: 2,
-              maxLines: 3,
-              textInputAction: TextInputAction.done,
-              decoration: const InputDecoration(
-                labelText: '个性签名',
-                hintText: '写下一句喜欢的话',
-                alignLabelWithHint: true,
-                prefixIcon: Icon(Icons.edit_note_rounded),
+            TvTextInputNavigation(
+              child: TextFormField(
+                key: const Key('edit-profile-motto'),
+                controller: mottoController,
+                enabled: enabled,
+                maxLength: ProfileIdentity.mottoMaxLength,
+                minLines: 2,
+                maxLines: 3,
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration(
+                  labelText: '个性签名',
+                  hintText: '写下一句喜欢的话',
+                  alignLabelWithHint: true,
+                  prefixIcon: Icon(Icons.edit_note_rounded),
+                ),
+                validator: (String? value) {
+                  final text = value?.trim() ?? '';
+                  if (text.isEmpty) return '个性签名不能为空';
+                  if (text.length > ProfileIdentity.mottoMaxLength) {
+                    return '个性签名不能超过 ${ProfileIdentity.mottoMaxLength} 个字符';
+                  }
+                  return null;
+                },
+                onFieldSubmitted: (_) {
+                  if (enabled) FocusScope.of(context).unfocus();
+                },
               ),
-              validator: (String? value) {
-                final text = value?.trim() ?? '';
-                if (text.isEmpty) return '个性签名不能为空';
-                if (text.length > ProfileIdentity.mottoMaxLength) {
-                  return '个性签名不能超过 ${ProfileIdentity.mottoMaxLength} 个字符';
-                }
-                return null;
-              },
-              onFieldSubmitted: (_) {
-                if (enabled) FocusScope.of(context).unfocus();
-              },
             ),
           ],
         ),
