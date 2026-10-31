@@ -50,7 +50,20 @@ class TvLibraryEntry {
     _ => '影视',
   };
 
-  String get progressLabel => hasHistory ? (isVideo ? '上次观看' : '上次阅读') : (isVideo ? '尚未观看' : '尚未阅读');
+  String get actionLabel => switch (book.contentKind) {
+    ContentKind.video => '播放',
+    ContentKind.audio => '收听',
+    _ => '阅读',
+  };
+
+  String get progressLabel {
+    final activity = switch (book.contentKind) {
+      ContentKind.video => '观看',
+      ContentKind.audio => '收听',
+      _ => '阅读',
+    };
+    return '${hasHistory ? '上次' : '尚未'}$activity';
+  }
 }
 
 class TvLibraryData {

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mg_read/app/app_router.dart';
@@ -10,6 +12,32 @@ import '../core/settings/settings_testkit.dart';
 import 'mg_read_app_test_support.dart';
 
 void main() {
+  testWidgets('TV activation repeats never retrigger standard controls', (tester) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TvRemoteShortcuts(
+          child: Scaffold(
+            body: FilledButton(autofocus: true, onPressed: () => calls++, child: const Text('确认')),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    for (final key in [LogicalKeyboardKey.select, LogicalKeyboardKey.enter, LogicalKeyboardKey.space, LogicalKeyboardKey.gameButtonA]) {
+      final before = calls;
+      await tester.sendKeyDownEvent(key);
+      await tester.pump();
+      for (var i = 0; i < 3; i++) {
+        await tester.sendKeyRepeatEvent(key);
+        await tester.pump();
+      }
+      await tester.sendKeyUpEvent(key);
+      await tester.pumpAndSettle();
+      expect(calls - before, 1, reason: key.debugName);
+    }
+  });
+
   testWidgets('switching TV from appearance retains the current settings route', (tester) async {
     final settings = await createTestAppSettings();
     addTearDown(settings.close);

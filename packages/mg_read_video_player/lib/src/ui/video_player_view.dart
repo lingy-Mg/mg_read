@@ -208,7 +208,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
       _content = null;
       _group = null;
       _episode = null;
-      _controlsVisible = true;
+      _controlsVisible = !widget.tvMode;
       _exitAuthorized = false;
       _exitRequested = false;
       _controlsLocked = false;

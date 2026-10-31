@@ -10,10 +10,46 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/app/app_tv_theme.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/source_content_detail_sheet.dart';
 
 void main() {
+  testWidgets('TV detail allows remote episode activation with enlarged text', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(960, 540));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    PluginChapterSummary? selected;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTvTheme(AppTheme.dark()),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.5)),
+          child: TvModeScope(
+            enabled: true,
+            onChanged: (_) {},
+            child: TvRemoteShortcuts(child: child!),
+          ),
+        ),
+        home: _GroupedVideoDetailHost(
+          onVideoEpisodeRequested: ({required detail, required firstCatalogPage, required chapter}) async {
+            selected = chapter;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // Enter from the route's first focusable control, then traverse vertically.
+    for (var i = 0; i < 16; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+    }
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(selected, isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
   setUpAll(() async {
     final miSans = FontLoader('packages/novel_reader_ui/MiSans')
       ..addFont(rootBundle.load('packages/novel_reader_ui/assets/fonts/MiSansVF.ttf'));

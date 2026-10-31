@@ -12,8 +12,81 @@ import 'package:mg_read/features/library/presentation/library_home_view_data.dar
 import 'package:mg_read/features/library/presentation/tv_library_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/tv_library_shell.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 
 void main() {
+  test('secondary media uses reading and listening labels', () {
+    for (final kind in [ContentKind.novel, ContentKind.manga, ContentKind.audio]) {
+      final book = LibraryBookListItemViewData(
+        id: 'item',
+        title: '内容',
+        contentKind: kind,
+        coverVariant: LibraryCoverVariant.ocean,
+        status: LibraryBookStatus.local,
+      );
+      final verb = kind == ContentKind.audio ? '收听' : '阅读';
+      expect(TvLibraryEntry(book, null).actionLabel, verb);
+      expect(TvLibraryEntry(book, null).progressLabel, '尚未$verb');
+      expect(TvLibraryEntry(book, LibraryItemSummary(id: 'item', title: '内容', lastReadAtUtc: DateTime.utc(2026))).progressLabel, '上次$verb');
+    }
+  });
+
+  testWidgets('remote directions traverse a long TV shelf without jumping back to the hero', (tester) async {
+    final books = List.generate(
+      100,
+      (i) => LibraryBookListItemViewData(
+        id: 'remote-$i',
+        title: '影片 $i',
+        contentKind: ContentKind.video,
+        coverVariant: LibraryCoverVariant.ocean,
+        status: LibraryBookStatus.local,
+      ),
+    );
+    await _mount(
+      tester,
+      data: TvLibraryData(LibraryHomeViewData(isPresentationFixture: true, continueReading: null, books: books), const []),
+    );
+    final focus = tester.widget<Focus>(find.descendant(of: find.byKey(const Key('tv-card-remote-0')), matching: find.byType(Focus)).first);
+    focus.focusNode!.requestFocus();
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 30; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+    }
+    final key = FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvFocusable>()?.key;
+    expect(key, isA<ValueKey<String>>());
+    expect(int.tryParse((key! as ValueKey<String>).value.split('-').last) ?? -1, greaterThanOrEqualTo(30));
+  });
+
+  testWidgets('TV more menu fits a short display with large text', (tester) async {
+    await _mount(
+      tester,
+      size: const Size(640, 360),
+      textScale: 1.6,
+      callbacks: LibraryHomeCallbacks(onRefreshBook: (_) async {}, onDeleteBook: (_) async {}),
+    );
+    await tester.tap(find.byKey(const Key('tv-nav-movies')));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byKey(const Key('tv-card-movie')), 180, scrollable: find.byType(Scrollable).first);
+    final focus = tester.widget<Focus>(find.descendant(of: find.byKey(const Key('tv-card-movie')), matching: find.byType(Focus)).first);
+    focus.focusNode!.requestFocus();
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.contextMenu);
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/tv_library_menu_large_text.png'));
+    // Reach Cancel by remote; the dialog must scroll with focus.
+    for (var i = 0; i < 4; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+    }
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(focus.focusNode!.hasFocus, isTrue);
+  });
+
   setUpAll(() async {
     final font = FontLoader('packages/novel_reader_ui/MiSans')
       ..addFont(rootBundle.load('packages/novel_reader_ui/assets/fonts/MiSansVF.ttf'));
@@ -139,6 +212,7 @@ Future<void> _mount(
   TvLibraryData? data,
   LibraryHomeCallbacks callbacks = const LibraryHomeCallbacks(),
   Future<void> Function(LibraryBookListItemViewData)? onPlay,
+  double textScale = 1,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -149,6 +223,10 @@ Future<void> _mount(
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: appTvTheme(AppTheme.dark()),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
         home: TvModeScope(
           enabled: true,
           onChanged: (_) {},

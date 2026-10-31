@@ -25,13 +25,29 @@ class TvRemoteShortcuts extends StatelessWidget {
   final bool enabled;
 
   @override
-  Widget build(BuildContext context) => Shortcuts(
-    shortcuts: !enabled
-        ? const <ShortcutActivator, Intent>{}
-        : const <ShortcutActivator, Intent>{
-            SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
-            SingleActivator(LogicalKeyboardKey.gameButtonA): ActivateIntent(),
-          },
-    child: child,
+  Widget build(BuildContext context) => Focus(
+    canRequestFocus: false,
+    skipTraversal: true,
+    onKeyEvent: (_, event) =>
+        enabled &&
+            event is KeyRepeatEvent &&
+            const [
+              LogicalKeyboardKey.select,
+              LogicalKeyboardKey.enter,
+              LogicalKeyboardKey.numpadEnter,
+              LogicalKeyboardKey.space,
+              LogicalKeyboardKey.gameButtonA,
+            ].contains(event.logicalKey)
+        ? KeyEventResult.handled
+        : KeyEventResult.ignored,
+    child: Shortcuts(
+      shortcuts: !enabled
+          ? const <ShortcutActivator, Intent>{}
+          : const <ShortcutActivator, Intent>{
+              SingleActivator(LogicalKeyboardKey.select, includeRepeats: false): ActivateIntent(),
+              SingleActivator(LogicalKeyboardKey.gameButtonA, includeRepeats: false): ActivateIntent(),
+            },
+      child: child,
+    ),
   );
 }

@@ -28,6 +28,7 @@ import 'video_player_gestures.dart';
 import 'video_player_status_layer.dart';
 import 'video_player_visuals.dart';
 import 'video_player_tv_chrome.dart';
+import 'video_tv_shortcuts.dart';
 
 const _videoPlayerSystemUiStyle = SystemUiOverlayStyle(
   statusBarColor: Colors.transparent,
@@ -115,14 +116,8 @@ final class VideoPlayerStage extends StatelessWidget {
       value: _videoPlayerSystemUiStyle,
       child: Theme(
         data: videoPlayerTheme(),
-        child: Shortcuts(
-          shortcuts: tvMode
-              ? const {
-                  SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
-                  SingleActivator(LogicalKeyboardKey.gameButtonA):
-                      ActivateIntent(),
-                }
-              : const {},
+        child: VideoTvShortcuts(
+          enabled: tvMode,
           child: PopScope<void>(
             canPop: exitAuthorized,
             onPopInvokedWithResult: (bool didPop, void result) {
@@ -131,6 +126,7 @@ final class VideoPlayerStage extends StatelessWidget {
             child: Focus(
               focusNode: focusNode,
               autofocus: true,
+              skipTraversal: tvMode,
               onKeyEvent: onKeyEvent,
               child: Listener(
                 onPointerHover: (_) {

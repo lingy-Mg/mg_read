@@ -14,7 +14,7 @@ library;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'video_tv_shortcuts.dart';
 
 import '../api/models.dart';
 import 'video_player_visuals.dart';
@@ -38,11 +38,8 @@ Future<VideoEpisodeChoice?> showVideoEpisodeSheet({
   showDragHandle: false,
   isScrollControlled: true,
   constraints: const BoxConstraints(maxWidth: double.infinity),
-  builder: (_) => Shortcuts(
-    shortcuts: const {
-      SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
-      SingleActivator(LogicalKeyboardKey.gameButtonA): ActivateIntent(),
-    },
+  builder: (_) => VideoTvShortcuts(
+    enabled: tvMode,
     child: Theme(
       data: tvMode
           ? videoPlayerTheme().copyWith(

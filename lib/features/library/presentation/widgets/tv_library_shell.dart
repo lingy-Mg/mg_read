@@ -72,6 +72,7 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
       final action = await showDialog<String>(
         context: context,
         builder: (context) => AlertDialog(
+          scrollable: true,
           title: Text(book.title),
           content: SizedBox(
             width: 440,
@@ -79,7 +80,7 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _dialogAction(context, '播放', 'play', autofocus: true),
+                _dialogAction(context, entry.actionLabel, 'play', autofocus: true),
                 _dialogAction(context, '查看详情', 'detail'),
                 if (widget.callbacks.onRefreshBook != null) _dialogAction(context, '刷新内容', 'refresh'),
                 if (widget.callbacks.onDeleteBook != null) _dialogAction(context, '移除收藏', 'remove'),
@@ -101,6 +102,7 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
           final confirmed = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
+              scrollable: true,
               title: const Text('移除收藏？'),
               content: Text('将《${book.title}》从收藏中移除。'),
               actions: [

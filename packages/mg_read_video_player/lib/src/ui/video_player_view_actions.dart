@@ -91,8 +91,9 @@ extension _VideoPlayerViewActions on _VideoPlayerViewState {
     _update(() {
       _status = VideoPlayerStatus.loading;
       _failure = null;
-      _controlsVisible = true;
+      _controlsVisible = !widget.tvMode;
     });
+    if (widget.tvMode) _focusNode.requestFocus();
     return generation;
   }
 

@@ -7,8 +7,8 @@ library;
 
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../api/models.dart';
+import 'video_tv_shortcuts.dart';
 
 class VideoPlayerTvChrome extends StatelessWidget {
   const VideoPlayerTvChrome({
@@ -38,11 +38,7 @@ class VideoPlayerTvChrome extends StatelessWidget {
   final Future<void> Function() onReveal;
 
   @override
-  Widget build(BuildContext context) => Shortcuts(
-    shortcuts: const {
-      SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
-      SingleActivator(LogicalKeyboardKey.gameButtonA): ActivateIntent(),
-    },
+  Widget build(BuildContext context) => VideoTvShortcuts(
     child: Stack(
       children: [
         Positioned.fill(
@@ -55,81 +51,90 @@ class VideoPlayerTvChrome extends StatelessWidget {
           Align(
             alignment: Alignment.bottomCenter,
             child: Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(context).height * .8,
+              ),
               color: const Color(0xE6101620),
               padding: const EdgeInsets.all(24),
               child: SafeArea(
                 top: false,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      snapshot.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 26, color: Colors.white),
-                    ),
-                    const SizedBox(height: 12),
-                    LinearProgressIndicator(
-                      value: snapshot.duration.inMilliseconds > 0
-                          ? (snapshot.position.inMilliseconds /
-                                    snapshot.duration.inMilliseconds)
-                                .clamp(0, 1)
-                          : 0,
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      '${_time(snapshot.position)} / ${_time(snapshot.duration)}',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        color: Colors.white70,
+                child: SingleChildScrollView(
+                  key: const Key('tv-video-controls-scroll'),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        snapshot.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 26,
+                          color: Colors.white,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        _button(
-                          'tv-video-play',
-                          snapshot.playing ? '暂停' : '播放',
-                          onPlay,
-                          focus: playFocus,
+                      const SizedBox(height: 12),
+                      LinearProgressIndicator(
+                        value: snapshot.duration.inMilliseconds > 0
+                            ? (snapshot.position.inMilliseconds /
+                                      snapshot.duration.inMilliseconds)
+                                  .clamp(0, 1)
+                            : 0,
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        '${_time(snapshot.position)} / ${_time(snapshot.duration)}',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          color: Colors.white70,
                         ),
-                        _button(
-                          'tv-video-backward',
-                          '后退 10 秒',
-                          () => onSeek(
-                            snapshot.position - const Duration(seconds: 10),
+                      ),
+                      const SizedBox(height: 16),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          _button(
+                            'tv-video-play',
+                            snapshot.playing ? '暂停' : '播放',
+                            onPlay,
+                            focus: playFocus,
                           ),
-                        ),
-                        _button(
-                          'tv-video-forward',
-                          '前进 10 秒',
-                          () => onSeek(
-                            snapshot.position + const Duration(seconds: 10),
+                          _button(
+                            'tv-video-backward',
+                            '后退 10 秒',
+                            () => onSeek(
+                              snapshot.position - const Duration(seconds: 10),
+                            ),
                           ),
-                        ),
-                        _button('tv-video-episodes', '选集 / 线路', onEpisodes),
-                        if (snapshot.hasPreviousEpisode)
-                          _button('tv-video-previous', '上一集', onPrevious),
-                        if (snapshot.hasNextEpisode)
-                          _button('tv-video-next', '下一集', onNext),
-                        _button(
-                          'tv-video-rate',
-                          '${snapshot.rate}× 倍速',
-                          () => _chooseRate(context),
-                        ),
-                        _button('tv-video-fit', '画面比例', onFit),
-                        _button('tv-video-exit', '退出播放', onExit),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      '方向键 选择操作    OK 确认    返回 隐藏控制栏',
-                      style: TextStyle(fontSize: 18, color: Colors.white70),
-                    ),
-                  ],
+                          _button(
+                            'tv-video-forward',
+                            '前进 10 秒',
+                            () => onSeek(
+                              snapshot.position + const Duration(seconds: 10),
+                            ),
+                          ),
+                          _button('tv-video-episodes', '选集 / 线路', onEpisodes),
+                          if (snapshot.hasPreviousEpisode)
+                            _button('tv-video-previous', '上一集', onPrevious),
+                          if (snapshot.hasNextEpisode)
+                            _button('tv-video-next', '下一集', onNext),
+                          _button(
+                            'tv-video-rate',
+                            '${snapshot.rate}× 倍速',
+                            () => _chooseRate(context),
+                          ),
+                          _button('tv-video-fit', '画面比例', onFit),
+                          _button('tv-video-exit', '退出播放', onExit),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        '方向键 选择操作    OK 确认    返回 隐藏控制栏',
+                        style: TextStyle(fontSize: 18, color: Colors.white70),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -171,12 +176,9 @@ class VideoPlayerTvChrome extends StatelessWidget {
   Future<void> _chooseRate(BuildContext context) async {
     final rate = await showDialog<double>(
       context: context,
-      builder: (context) => Shortcuts(
-        shortcuts: const {
-          SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
-          SingleActivator(LogicalKeyboardKey.gameButtonA): ActivateIntent(),
-        },
+      builder: (context) => VideoTvShortcuts(
         child: AlertDialog(
+          scrollable: true,
           title: const Text('播放速度'),
           content: Wrap(
             spacing: 12,
