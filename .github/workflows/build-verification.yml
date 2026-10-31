@@ -1,3 +1,5 @@
+# Owns signed platform builds and versioned release assets. Android publishes
+# ARM64 and a universal ARM64/x86_64 APK; Javet Node 6 does not ship ARMv7.
 name: Build verification
 
 on:
@@ -131,13 +133,45 @@ jobs:
           fi
 
       - name: Build Android APK
-        run: flutter build apk --release --target-platform android-arm64 --no-pub
+        run: |
+          flutter build apk --release --target-platform android-arm64 --no-pub
+          mkdir -p build/android-release
+          cp build/app/outputs/flutter-apk/app-release.apk build/android-release/app-arm64.apk
+
+      - name: Build universal Android APK
+        run: |
+          flutter build apk --release --target-platform android-arm64,android-x64 --no-pub
+          cp build/app/outputs/flutter-apk/app-release.apk build/android-release/app-universal.apk
+
+      - name: Verify packaged Android runtimes
+        shell: python
+        run: |
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          for name, abis in {
+              'arm64': {'arm64-v8a'},
+              'universal': {'arm64-v8a', 'x86_64'},
+          }.items():
+              with ZipFile(Path('build/android-release') / f'app-{name}.apk') as apk:
+                  libraries = {p for p in apk.namelist() if p.startswith('lib/') and p.endswith('.so')}
+                  actual_abis = {p.split('/')[1] for p in libraries}
+                  if actual_abis != abis:
+                      raise RuntimeError(f'{name}: expected {abis}, found {actual_abis}')
+                  for abi in abis:
+                      for library in ('libflutter.so', 'libapp.so', 'libmgread_native_runtime.so'):
+                          if f'lib/{abi}/{library}' not in libraries:
+                              raise RuntimeError(f'{name}: missing {abi}/{library}')
+                      if not any(p.startswith(f'lib/{abi}/libjavet') for p in libraries):
+                          raise RuntimeError(f'{name}: missing Javet for {abi}')
+                  if 'lib/arm64-v8a/libnode.so' not in libraries:
+                      raise RuntimeError(f'{name}: missing ARM64 Node process runtime')
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v7
         with:
           name: mgread-android-${{ github.sha }}
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/android-release/*.apk
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
@@ -378,7 +412,8 @@ jobs:
           set -euo pipefail
           mkdir -p release/final
 
-          mv release/android/app-release.apk             "release/final/MgRead-${VERSION}-android-arm64.apk"
+          mv release/android/app-arm64.apk             "release/final/MgRead-${VERSION}-android-arm64.apk"
+          mv release/android/app-universal.apk             "release/final/MgRead-${VERSION}-android-universal.apk"
           mv release/windows/mgread-windows-x64.zip             "release/final/MgRead-${VERSION}-windows-x64.zip"
           mv release/macos/mgread-macos-arm64.zip             "release/final/MgRead-${VERSION}-macos-arm64.zip"
 
@@ -405,7 +440,7 @@ jobs:
           VERSION_NUMBER="${BASH_REMATCH[1]}"
           BUILD_NUMBER="${BASH_REMATCH[2]}"
 
-          APK_NAME="MgRead-${VERSION}-android-arm64.apk"
+          APK_NAME="MgRead-${VERSION}-android-universal.apk"
           APK_PATH="release/final/$APK_NAME"
           APK_SHA256="$(sha256sum "$APK_PATH" | cut -d ' ' -f 1)"
           APK_SIZE="$(stat -c '%s' "$APK_PATH")"
@@ -480,4 +515,5 @@ jobs:
             --notes-file release/release-notes.txt \
             --prerelease \
             --latest=false
+
 

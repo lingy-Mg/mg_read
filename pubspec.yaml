@@ -1,7 +1,7 @@
 name: mg_read
 description: "Main Flutter application for MgRead."
 publish_to: 'none'
-version: 0.12.2+467
+version: 0.12.3+468
 
 environment:
   sdk: ^3.12.2
@@ -65,3 +65,4 @@ flutter:
     - assets/illustrations/home/
     - assets/illustrations/page_backdrops/
     - assets/fixtures/home_covers/
+
