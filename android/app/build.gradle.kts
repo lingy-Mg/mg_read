@@ -1,3 +1,5 @@
+// Owns app ABI selection and packaging. Explicit Flutter release targets must
+// filter dependency JNI libraries too, so single-ABI APKs remain installable.
 import java.util.Base64
 
 plugins {
@@ -76,11 +78,27 @@ android {
             if (isNativeRuntimeBuild) "nativeRuntime" else if (isNodeOnlyRuntimeBuild) "javet" else "hybrid",
         )
 
-        // The combined production runtime ships both Android ABIs so Javet and
-        // Rust sources can run together on x86_64 emulators and arm64 devices.
+        // Respect Flutter's target selection for dependency JNI libraries as well
+        // as libflutter/libapp. The default combined build retains both ABIs.
         ndk {
-            abiFilters.add("arm64-v8a")
-            if (isNativeRuntimeBuild || !isNodeOnlyRuntimeBuild) abiFilters.add("x86_64")
+            val runtimeAbis = buildSet {
+                add("arm64-v8a")
+                if (isNativeRuntimeBuild || !isNodeOnlyRuntimeBuild) add("x86_64")
+            }
+            val targetAbis = (findProperty("target-platform") as? String)
+                ?.split(',')
+                ?.map { target ->
+                    when (target) {
+                        "android-arm64" -> "arm64-v8a"
+                        "android-x64" -> "x86_64"
+                        else -> error("Android Runtime does not support target: $target")
+                    }
+                }
+                ?.toSet() ?: runtimeAbis
+            check(runtimeAbis.containsAll(targetAbis)) {
+                "Selected Android Runtime does not support ABIs: $targetAbis"
+            }
+            abiFilters.addAll(targetAbis)
         }
     }
 
@@ -185,3 +203,4 @@ tasks.matching { it.name == "compileReleaseJavaWithJavac" }.configureEach {
         logger.lifecycle("Removed dev-only integration_test from the release plugin registrant.")
     }
 }
+
