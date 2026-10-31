@@ -440,7 +440,7 @@ jobs:
           VERSION_NUMBER="${BASH_REMATCH[1]}"
           BUILD_NUMBER="${BASH_REMATCH[2]}"
 
-          APK_NAME="MgRead-${VERSION}-android-universal.apk"
+          APK_NAME="MgRead-${VERSION}-android-arm64.apk"
           APK_PATH="release/final/$APK_NAME"
           APK_SHA256="$(sha256sum "$APK_PATH" | cut -d ' ' -f 1)"
           APK_SIZE="$(stat -c '%s' "$APK_PATH")"
@@ -515,5 +515,6 @@ jobs:
             --notes-file release/release-notes.txt \
             --prerelease \
             --latest=false
+
 
 
