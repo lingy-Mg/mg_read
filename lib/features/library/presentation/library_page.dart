@@ -39,6 +39,8 @@ import 'package:mg_read/features/library/presentation/library_home_view_data.dar
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/library_media_entry_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_shell.dart';
+import 'package:mg_read/features/library/presentation/tv_library_data.dart';
+import 'package:mg_read/features/library/presentation/widgets/tv_library_shell.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_first_frame.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_reader_launch_error.dart';
 import 'package:mg_read/features/media/application/source_audio_playback_service.dart';
@@ -118,6 +120,7 @@ class LibraryPage extends ConsumerWidget {
     ref.watch(appSettingsStatusProvider);
     final AppThemeModeScope themeModeScope = AppThemeModeScope.of(context);
     final AppSettingsManager settings = ref.read(appSettingsProvider);
+    final bool tvMode = settings.get(AppSettingKeys.tvMode);
     final LibraryHomeLayoutMode initialLayoutMode = LibraryHomeLayoutMode.fromSetting(settings.snapshot.get(AppSettingKeys.homeLayoutMode));
     final LibraryHomeCoverMetadataMode initialCoverMetadataMode = LibraryHomeCoverMetadataMode.fromSetting(
       settings.snapshot.get(AppSettingKeys.homeCoverMetadataMode),
@@ -539,23 +542,40 @@ class LibraryPage extends ConsumerWidget {
       onReady: () => startup.signalLibraryTerminalFrame(resultState: state.overview!.isEmpty ? 'empty' : 'ready'),
       child: _ShelfReaderLifecycleHost(
         startup: startup,
-        warmBookIds: readerWarmBookIds,
+        warmBookIds: tvMode ? const [] : readerWarmBookIds,
         contentGeneration: state.overview!,
         coordinator: readerCoordinator,
-        child: LibraryHomeShell(
-          data: data,
-          initialLayoutMode: initialLayoutMode,
-          onLayoutModeChanged: (LibraryHomeLayoutMode mode) => settings.set(AppSettingKeys.homeLayoutMode, mode.settingValue),
-          initialCoverMetadataMode: initialCoverMetadataMode,
-          callbacks: resolvedCallbacks,
-          preparingBookId: readerLaunch.status == ShelfReaderPreparationStatus.preparing ? readerLaunch.bookId : null,
-          isRefreshing: state.status == LibraryPageStatus.refreshing,
-          onRefresh: refreshShelf,
-          onToggleTheme: () {
-            themeModeScope.onToggleTheme(Theme.of(context).brightness);
-          },
-          errorNotice: state.hasFailure ? _LibraryErrorCard(error: state.error!, onRetry: refreshShelf, hasRetainedData: true) : null,
-        ),
+        child: tvMode
+            ? TvLibraryShell(
+                data: TvLibraryData(data, state.overview!.items),
+                callbacks: resolvedCallbacks,
+                onDetail: openBookDetail,
+                onPlay: (book) async {
+                  if (book.contentKind == ContentKind.video) {
+                    await openShelfVideo(book);
+                  } else if (book.contentKind == ContentKind.audio) {
+                    await openShelfAudio(book);
+                  } else {
+                    openShelfEntry(book);
+                  }
+                },
+                onRefresh: refreshShelf,
+                errorNotice: state.hasFailure ? _LibraryErrorCard(error: state.error!, onRetry: refreshShelf, hasRetainedData: true) : null,
+              )
+            : LibraryHomeShell(
+                data: data,
+                initialLayoutMode: initialLayoutMode,
+                onLayoutModeChanged: (LibraryHomeLayoutMode mode) => settings.set(AppSettingKeys.homeLayoutMode, mode.settingValue),
+                initialCoverMetadataMode: initialCoverMetadataMode,
+                callbacks: resolvedCallbacks,
+                preparingBookId: readerLaunch.status == ShelfReaderPreparationStatus.preparing ? readerLaunch.bookId : null,
+                isRefreshing: state.status == LibraryPageStatus.refreshing,
+                onRefresh: refreshShelf,
+                onToggleTheme: () {
+                  themeModeScope.onToggleTheme(Theme.of(context).brightness);
+                },
+                errorNotice: state.hasFailure ? _LibraryErrorCard(error: state.error!, onRetry: refreshShelf, hasRetainedData: true) : null,
+              ),
       ),
     );
   }

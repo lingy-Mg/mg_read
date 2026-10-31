@@ -123,6 +123,13 @@ class ProfileGeneralSettingPage extends ConsumerWidget {
     final AppThemeColor lightThemeColor = AppThemeColor.fromId(settings.get(AppSettingKeys.themeColor));
     final AppDarkThemeColor darkThemeColor = AppDarkThemeColor.fromId(settings.get(AppSettingKeys.darkThemeColor));
     return <Widget>[
+      SwitchListTile(
+        key: const Key('appearance-tv-mode'),
+        title: const Text('TV 模式'),
+        subtitle: const Text('影视首页与遥控器操作；收藏、观看进度与普通模式共用'),
+        value: settings.get(AppSettingKeys.tvMode),
+        onChanged: (value) => settings.set(AppSettingKeys.tvMode, value),
+      ),
       const _SectionHeading(title: '界面模式', description: '选择应用界面使用日间、夜间，或跟随系统设置'),
       const SizedBox(height: AppSpacing.regular),
       _ThemeModeCard(

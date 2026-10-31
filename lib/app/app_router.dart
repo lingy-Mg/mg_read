@@ -56,6 +56,7 @@ import 'package:mg_read/features/profile/presentation/profile_setting_placeholde
 import 'package:mg_read/features/reader/presentation/reader_destination_page.dart';
 
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 
 part 'app_router.g.dart';
 
@@ -248,6 +249,7 @@ class SearchRoute extends GoRouteData with $SearchRoute {
     final AppSourceLaunchCallbacks callbacks = _sourceLaunchCallbacks(context);
     return SearchPage(
       initialSourceId: sourceId,
+      preferVideoSources: TvModeScope.isEnabled(context),
       onDestinationRequested: (AppNavigationDestination destination) {
         _goToDestination(context, destination);
       },

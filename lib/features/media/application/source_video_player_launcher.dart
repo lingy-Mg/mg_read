@@ -17,6 +17,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read/app/app_startup.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
+import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/media/application/source_audio_playback_service.dart';
 import 'package:mg_read/features/media/application/source_video_data_source.dart';
@@ -201,6 +202,7 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
       presented: _firstFramePresented,
       onExit: _exit,
       child: VideoPlayerView(
+        tvMode: widget.container.read(appSettingsProvider).get(AppSettingKeys.tvMode),
         key: const Key('source-video-player'),
         contentId: widget.detail.summary.id,
         dataSource: setup.dataSource,

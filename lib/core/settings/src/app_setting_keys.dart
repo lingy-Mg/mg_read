@@ -8,6 +8,15 @@ import 'settings_registry.dart';
 final class AppSettingKeys {
   static const appearanceDocument = SettingsDocumentDefinition(id: 'app-settings:settings.appearance', kind: 'settings.appearance');
 
+  /// Local presentation preference; library and playback records stay shared.
+  static const tvMode = SettingKey<bool>(
+    id: 'appearance.tvMode',
+    documentKind: 'settings.appearance',
+    defaultValue: false,
+    codec: SettingCodec<bool>(_boolEncode, _boolDecode),
+    validator: _validateBool,
+  );
+
   static const themeMode = SettingKey<String>(
     id: 'appearance.themeMode',
     documentKind: 'settings.appearance',
@@ -282,6 +291,7 @@ final class AppSettingKeys {
   );
 
   static const all = <SettingKey<dynamic>>[
+    tvMode,
     sourceAutoUpdateCheckEnabled,
     sourceUpdateCheckState,
     bookshelfCatalogCheckState,

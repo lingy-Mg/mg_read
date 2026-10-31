@@ -10,11 +10,7 @@ import 'package:flutter/services.dart';
 /// scope adds the equivalent Escape and mouse side-back actions, while
 /// [BackButtonListener] covers platform back dispatchers such as Android.
 class AppBackNavigationScope extends StatefulWidget {
-  const AppBackNavigationScope({
-    required this.onBackRequested,
-    required this.child,
-    super.key,
-  });
+  const AppBackNavigationScope({required this.onBackRequested, required this.child, super.key});
 
   /// Returns true when a page was popped and false when the app is at its root.
   final Future<bool> Function() onBackRequested;
@@ -47,8 +43,8 @@ class _AppBackNavigationScopeState extends State<AppBackNavigationScope> {
   Widget build(BuildContext context) {
     final Widget shortcutAwareChild = Shortcuts(
       shortcuts: <ShortcutActivator, Intent>{
-        const SingleActivator(LogicalKeyboardKey.escape):
-            const _AppBackIntent(),
+        const SingleActivator(LogicalKeyboardKey.escape): const _AppBackIntent(),
+        const SingleActivator(LogicalKeyboardKey.goBack): const _AppBackIntent(),
       },
       child: Actions(
         actions: <Type, Action<Intent>>{
@@ -59,11 +55,7 @@ class _AppBackNavigationScopeState extends State<AppBackNavigationScope> {
             },
           ),
         },
-        child: Listener(
-          behavior: HitTestBehavior.translucent,
-          onPointerDown: _handlePointerDown,
-          child: widget.child,
-        ),
+        child: Listener(behavior: HitTestBehavior.translucent, onPointerDown: _handlePointerDown, child: widget.child),
       ),
     );
     // MaterialApp.router's builder is above Router, so BackButtonListener
@@ -71,10 +63,7 @@ class _AppBackNavigationScopeState extends State<AppBackNavigationScope> {
     // In that position go_router/Navigator handles platform back by default;
     // keep the explicit listener only when a Router is actually available.
     if (Router.maybeOf(context) == null) return shortcutAwareChild;
-    return BackButtonListener(
-      onBackButtonPressed: _requestBack,
-      child: shortcutAwareChild,
-    );
+    return BackButtonListener(onBackButtonPressed: _requestBack, child: shortcutAwareChild);
   }
 }
 

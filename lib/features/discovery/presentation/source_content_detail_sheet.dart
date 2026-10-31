@@ -26,6 +26,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/errors/app_error.dart';
@@ -165,6 +166,8 @@ Future<void> showSourceContentDetailSheet(
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      enableDrag: !TvModeScope.isEnabled(context),
+      constraints: TvModeScope.isEnabled(context) ? const BoxConstraints(maxWidth: 1200) : null,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => FractionallySizedBox(
@@ -398,7 +401,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
         body: SafeArea(
           child: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: AppSpacing.detailContentMaxWidth),
+              constraints: BoxConstraints(maxWidth: TvModeScope.isEnabled(context) ? 1200 : AppSpacing.detailContentMaxWidth),
               child: Column(
                 children: <Widget>[
                   if (widget.isModalSheet)

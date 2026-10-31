@@ -17,6 +17,7 @@ import 'package:mg_read/app/app_fatal_error_dialog_host.dart';
 import 'package:mg_read/app/app_fatal_error_reporter.dart';
 import 'package:mg_read/app/app_runtime_fatal_error_observer.dart';
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/app/app_tv_theme.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/app/data_source_system_error_dialog_host.dart';
 import 'package:mg_read/app/data_source_system_error_reporter.dart';
@@ -30,6 +31,7 @@ import 'package:mg_read/features/media/presentation/source_audio_playback_host.d
 import 'package:mg_read/features/reader/presentation/chapter_cache_task_bar.dart';
 import 'package:mg_read/shared/presentation/widgets/app_back_navigation_scope.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 
 /// The root widget for the MgRead host application.
 class MgReadApp extends ConsumerStatefulWidget {
@@ -188,6 +190,7 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
     // rebuild the root when an appearance setting changes.
     ref.watch(appSettingsStatusProvider);
     final AppSettingsManager settings = ref.watch(appSettingsProvider);
+    final bool tvMode = settings.get(AppSettingKeys.tvMode);
     final AppThemeColor themeColor = AppThemeColor.fromId(settings.get(AppSettingKeys.themeColor));
     final AppDarkThemeColor darkThemeColor = AppDarkThemeColor.fromId(settings.get(AppSettingKeys.darkThemeColor));
     final ThemeMode themeMode = switch (settings.get(AppSettingKeys.themeMode)) {
@@ -203,8 +206,8 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
       title: 'MgRead',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(color: themeColor),
-      darkTheme: AppTheme.dark(color: darkThemeColor),
-      themeMode: themeMode,
+      darkTheme: tvMode ? appTvTheme(AppTheme.dark(color: darkThemeColor)) : AppTheme.dark(color: darkThemeColor),
+      themeMode: tvMode ? ThemeMode.dark : themeMode,
       routerConfig: router,
       builder: (BuildContext context, Widget? child) {
         final pageBackground = AppThemeTokens.of(context).pageBackground;
@@ -231,7 +234,11 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
                         child: AppThemeModeScope(
                           themeMode: themeMode,
                           onToggleTheme: _toggleTheme,
-                          child: child ?? const SizedBox.shrink(),
+                          child: TvModeScope(
+                            enabled: tvMode,
+                            onChanged: (value) => unawaited(settings.set(AppSettingKeys.tvMode, value)),
+                            child: TvRemoteShortcuts(enabled: tvMode, child: child ?? const SizedBox.shrink()),
+                          ),
                         ),
                       ),
                     ),

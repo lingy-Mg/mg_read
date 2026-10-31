@@ -19,6 +19,8 @@ import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 import 'package:mg_read/shared/presentation/motion/app_bottom_navigation_motion_scope.dart';
 
 /// Optional icon appearance supplied by a destination page.
@@ -50,6 +52,39 @@ class AppBottomNavigation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (TvModeScope.isEnabled(context)) {
+      return SafeArea(
+        top: false,
+        child: SizedBox(
+          height: height,
+          child: Center(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final destination in AppNavigationDestination.values)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: TvFocusable(
+                        key: Key('app-nav-${destination.name}'),
+                        selected: destination == selected,
+                        onPressed: () => onSelected(destination),
+                        child: Text(switch (destination) {
+                          AppNavigationDestination.home => '影视首页',
+                          AppNavigationDestination.search => '搜索',
+                          AppNavigationDestination.discover => '发现',
+                          AppNavigationDestination.profile => '设置',
+                        }, style: Theme.of(context).textTheme.titleLarge),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     final AppBottomNavigationMotion? motion = AppBottomNavigationMotionScope.maybeOf(context);
     if (motion == null) {
       return AppBottomNavigationMotionScope(

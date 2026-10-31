@@ -47,6 +47,7 @@ class SearchPage extends ConsumerStatefulWidget {
   const SearchPage({
     required this.onDestinationRequested,
     this.initialSourceId,
+    this.preferVideoSources = false,
     this.onSourceManagementRequested,
     this.onTextChapterRequested,
     this.onComicChapterRequested,
@@ -57,6 +58,9 @@ class SearchPage extends ConsumerStatefulWidget {
 
   final ValueChanged<AppNavigationDestination> onDestinationRequested;
   final String? initialSourceId;
+
+  /// TV entry prefers a video-capable source once; manual selection stays free.
+  final bool preferVideoSources;
   final VoidCallback? onSourceManagementRequested;
   final SourceTextChapterRequested? onTextChapterRequested;
   final SourceComicChapterRequested? onComicChapterRequested;
@@ -244,7 +248,12 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     if (state.status != SearchPageStatus.ready) return;
     if (!_initialSourceApplied) {
       _initialSourceApplied = true;
-      final preferredSourceId = widget.initialSourceId;
+      final currentSource = state.sources.where((source) => source.id == state.selectedSourceId).firstOrNull;
+      final preferredSourceId =
+          widget.initialSourceId ??
+          (widget.preferVideoSources && !(currentSource?.contentKinds.contains(PluginContentKind.video) ?? false)
+              ? state.sources.where((source) => source.contentKinds.contains(PluginContentKind.video)).firstOrNull?.id
+              : null);
       if (preferredSourceId != null &&
           state.sources.any((source) => source.id == preferredSourceId) &&
           state.selectedSourceId != preferredSourceId) {

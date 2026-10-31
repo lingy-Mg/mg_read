@@ -11,6 +11,8 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
@@ -38,6 +40,17 @@ class DiscoveryContentListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final itemWidget = _buildItem(context);
+    if (!TvModeScope.isEnabled(context)) return itemWidget;
+    return TvFocusable(
+      onPressed: onPressed,
+      label: item.content.title,
+      padding: EdgeInsets.zero,
+      child: ExcludeFocus(child: IgnorePointer(child: itemWidget)),
+    );
+  }
+
+  Widget _buildItem(BuildContext context) {
     if (item.content.coverOrientation == PluginCoverOrientation.landscape) {
       return DiscoveryLandscapeContentListItem(
         item: item,

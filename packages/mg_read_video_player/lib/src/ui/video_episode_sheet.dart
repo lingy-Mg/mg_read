@@ -14,6 +14,7 @@ library;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../api/models.dart';
 import 'video_player_visuals.dart';
@@ -27,6 +28,7 @@ Future<VideoEpisodeChoice?> showVideoEpisodeSheet({
   required String? activeEpisodeId,
   required ValueListenable<VideoPlaybackBackendState> playbackState,
   Future<VideoEpisodeGroup> Function(String groupId)? loadGroup,
+  bool tvMode = false,
 }) => showModalBottomSheet<VideoEpisodeChoice>(
   context: context,
   backgroundColor: Colors.transparent,
@@ -36,14 +38,25 @@ Future<VideoEpisodeChoice?> showVideoEpisodeSheet({
   showDragHandle: false,
   isScrollControlled: true,
   constraints: const BoxConstraints(maxWidth: double.infinity),
-  builder: (_) => Theme(
-    data: videoPlayerTheme(),
-    child: _VideoEpisodeSheet(
-      groups: groups,
-      activeGroupId: activeGroupId,
-      activeEpisodeId: activeEpisodeId,
-      playbackState: playbackState,
-      loadGroup: loadGroup,
+  builder: (_) => Shortcuts(
+    shortcuts: const {
+      SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
+      SingleActivator(LogicalKeyboardKey.gameButtonA): ActivateIntent(),
+    },
+    child: Theme(
+      data: tvMode
+          ? videoPlayerTheme().copyWith(
+              focusColor: videoPlayerAccent.withValues(alpha: .5),
+            )
+          : videoPlayerTheme(),
+      child: _VideoEpisodeSheet(
+        tvMode: tvMode,
+        groups: groups,
+        activeGroupId: activeGroupId,
+        activeEpisodeId: activeEpisodeId,
+        playbackState: playbackState,
+        loadGroup: loadGroup,
+      ),
     ),
   ),
 );
@@ -54,6 +67,7 @@ final class _VideoEpisodeSheet extends StatefulWidget {
     required this.activeGroupId,
     required this.activeEpisodeId,
     required this.playbackState,
+    this.tvMode = false,
     this.loadGroup,
   });
 
@@ -61,6 +75,7 @@ final class _VideoEpisodeSheet extends StatefulWidget {
   final String? activeGroupId;
   final String? activeEpisodeId;
   final ValueListenable<VideoPlaybackBackendState> playbackState;
+  final bool tvMode;
   final Future<VideoEpisodeGroup> Function(String groupId)? loadGroup;
 
   @override
@@ -155,6 +170,12 @@ final class _VideoEpisodeSheetState extends State<_VideoEpisodeSheet> {
                     ),
                   ),
                   const Spacer(),
+                  if (widget.tvMode)
+                    TextButton(
+                      autofocus: true,
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('返回播放'),
+                    ),
                   Text(
                     group?.deferred == true
                         ? '待加载'
@@ -217,6 +238,7 @@ final class _VideoEpisodeSheetState extends State<_VideoEpisodeSheet> {
                             separatorBuilder: (_, _) =>
                                 const Divider(height: 1, indent: 46),
                             itemBuilder: (context, index) => _EpisodeTile(
+                              tvMode: widget.tvMode,
                               group: group,
                               episode: group.episodes[index],
                               selected:
@@ -234,7 +256,7 @@ final class _VideoEpisodeSheetState extends State<_VideoEpisodeSheet> {
                           gridDelegate:
                               SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: columns,
-                                mainAxisExtent: 48,
+                                mainAxisExtent: widget.tvMode ? 72 : 48,
                               ),
                           itemCount: group.episodes.length,
                           itemBuilder: (context, index) => DecoratedBox(
@@ -245,6 +267,7 @@ final class _VideoEpisodeSheetState extends State<_VideoEpisodeSheet> {
                               ),
                             ),
                             child: _EpisodeTile(
+                              tvMode: widget.tvMode,
                               group: group,
                               episode: group.episodes[index],
                               selected:
@@ -271,20 +294,23 @@ final class _EpisodeTile extends StatelessWidget {
     required this.episode,
     required this.selected,
     required this.playbackState,
+    this.tvMode = false,
   });
 
   final VideoEpisodeGroup group;
   final VideoEpisode episode;
   final bool selected;
   final ValueListenable<VideoPlaybackBackendState> playbackState;
+  final bool tvMode;
 
   @override
   Widget build(BuildContext context) => Material(
     color: Colors.transparent,
     child: ListTile(
       key: Key('video-player-episode-${group.id}-${episode.id}'),
-      dense: true,
-      visualDensity: VisualDensity.compact,
+      dense: !tvMode,
+      visualDensity: tvMode ? VisualDensity.standard : VisualDensity.compact,
+      focusColor: tvMode ? videoPlayerAccent.withValues(alpha: .5) : null,
       minLeadingWidth: 24,
       minVerticalPadding: 0,
       tileColor: Colors.transparent,
@@ -304,7 +330,7 @@ final class _EpisodeTile extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
           color: selected ? videoPlayerForeground : videoPlayerSecondary,
-          fontSize: 14,
+          fontSize: tvMode ? 22 : 14,
           fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
         ),
       ),

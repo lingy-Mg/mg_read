@@ -27,6 +27,7 @@ import 'video_player_completion_layer.dart';
 import 'video_player_gestures.dart';
 import 'video_player_status_layer.dart';
 import 'video_player_visuals.dart';
+import 'video_player_tv_chrome.dart';
 
 const _videoPlayerSystemUiStyle = SystemUiOverlayStyle(
   statusBarColor: Colors.transparent,
@@ -46,6 +47,8 @@ final class VideoPlayerStage extends StatelessWidget {
     required this.snapshot,
     required this.activeEpisode,
     required this.focusNode,
+    this.tvMode = false,
+    this.tvPlayFocus,
     required this.exitAuthorized,
     required this.onPopAttempt,
     required this.onKeyEvent,
@@ -78,6 +81,8 @@ final class VideoPlayerStage extends StatelessWidget {
   final VideoPlayerSnapshot snapshot;
   final VideoEpisode? activeEpisode;
   final FocusNode focusNode;
+  final bool tvMode;
+  final FocusNode? tvPlayFocus;
   final bool exitAuthorized;
   final VoidCallback onPopAttempt;
   final KeyEventResult Function(FocusNode, KeyEvent) onKeyEvent;
@@ -110,106 +115,132 @@ final class VideoPlayerStage extends StatelessWidget {
       value: _videoPlayerSystemUiStyle,
       child: Theme(
         data: videoPlayerTheme(),
-        child: PopScope<void>(
-          canPop: exitAuthorized,
-          onPopInvokedWithResult: (bool didPop, void result) {
-            if (!didPop) onPopAttempt();
-          },
-          child: Focus(
-            focusNode: focusNode,
-            autofocus: true,
-            onKeyEvent: onKeyEvent,
-            child: Listener(
-              onPointerHover: (_) {
-                onInteractionStart();
-                onInteractionEnd();
-              },
-              child: Scaffold(
-                backgroundColor: const Color(0xFF050607),
-                body: Stack(
-                  fit: StackFit.expand,
-                  children: <Widget>[
-                    Stack(
-                      key: const Key('video-player-surface'),
-                      fit: StackFit.expand,
-                      children: <Widget>[
-                        backend.buildSurface(
-                          key: const Key('video-player-engine-surface'),
-                          fit: videoBoxFit(snapshot.fitMode),
+        child: Shortcuts(
+          shortcuts: tvMode
+              ? const {
+                  SingleActivator(LogicalKeyboardKey.select): ActivateIntent(),
+                  SingleActivator(LogicalKeyboardKey.gameButtonA):
+                      ActivateIntent(),
+                }
+              : const {},
+          child: PopScope<void>(
+            canPop: exitAuthorized,
+            onPopInvokedWithResult: (bool didPop, void result) {
+              if (!didPop) onPopAttempt();
+            },
+            child: Focus(
+              focusNode: focusNode,
+              autofocus: true,
+              onKeyEvent: onKeyEvent,
+              child: Listener(
+                onPointerHover: (_) {
+                  onInteractionStart();
+                  onInteractionEnd();
+                },
+                child: Scaffold(
+                  backgroundColor: const Color(0xFF050607),
+                  body: Stack(
+                    fit: StackFit.expand,
+                    children: <Widget>[
+                      Stack(
+                        key: const Key('video-player-surface'),
+                        fit: StackFit.expand,
+                        children: <Widget>[
+                          backend.buildSurface(
+                            key: const Key('video-player-engine-surface'),
+                            fit: videoBoxFit(snapshot.fitMode),
+                          ),
+                        ],
+                      ),
+                      if (!snapshot.firstFrameReady ||
+                          snapshot.status != VideoPlayerStatus.ready)
+                        VideoSessionStatusLayer(
+                          snapshot: snapshot,
+                          onRetry: onRetry,
+                          onExit: onExit,
+                          onEpisodes: onEpisodes,
                         ),
-                      ],
-                    ),
-                    if (!snapshot.firstFrameReady ||
-                        snapshot.status != VideoPlayerStatus.ready)
-                      VideoSessionStatusLayer(
-                        snapshot: snapshot,
-                        onRetry: onRetry,
-                        onExit: onExit,
-                        onEpisodes: onEpisodes,
-                      ),
-                    if (snapshot.status == VideoPlayerStatus.ready)
-                      _VideoPlayerInteractionLayer(
-                        controller: controller,
-                        snapshot: snapshot,
-                        activeEpisode: activeEpisode,
-                        reduceMotion: reduceMotion,
-                        onToggleControls: onToggleControls,
-                        onExit: onExit,
-                        onPlayOrPause: onPlayOrPause,
-                        onSeek: onSeek,
-                        onRate: onRate,
-                        onEnhancementMode: onEnhancementMode,
-                        onReadSystemVolume: onReadSystemVolume,
-                        onSystemVolume: onSystemVolume,
-                        onPreviousEpisode: onPreviousEpisode,
-                        onNextEpisode: onNextEpisode,
-                        onAutoAdvance: onAutoAdvance,
-                        onInteractionStart: onInteractionStart,
-                        onInteractionEnd: onInteractionEnd,
-                        onFit: onFit,
-                        onEpisodes: onEpisodes,
-                        onFullscreen: onFullscreen,
-                        onReadBrightness: onReadBrightness,
-                        onBrightness: onBrightness,
-                      ),
-                    if (snapshot.status == VideoPlayerStatus.ready)
-                      VideoPlayerBufferingIndicator(
-                        buffering: snapshot.buffering && !snapshot.completed,
-                      ),
-                    if (snapshot.status == VideoPlayerStatus.ready &&
-                        snapshot.completed &&
-                        (!snapshot.autoAdvance || !snapshot.hasNextEpisode))
-                      VideoPlayerCompletionLayer(
-                        snapshot: snapshot,
-                        onReplay: () => unawaited(onReplay()),
-                        onNextEpisode: () => unawaited(onNextEpisode()),
-                      ),
-                    if (snapshot.fullscreenRequested &&
-                        snapshot.controlsVisible)
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: SafeArea(
-                          minimum: const EdgeInsets.only(left: 8),
-                          child: IconButton.filledTonal(
-                            key: const Key('video-player-controls-lock'),
-                            tooltip: snapshot.controlsLocked ? '解锁手势' : '锁定手势',
-                            onPressed: () => unawaited(
-                              onControlsLocked(!snapshot.controlsLocked),
-                            ),
-                            style: IconButton.styleFrom(
-                              backgroundColor: const Color(0xA305070A),
-                              foregroundColor: videoPlayerForeground,
-                            ),
-                            icon: Icon(
-                              snapshot.controlsLocked
-                                  ? Icons.lock_rounded
-                                  : Icons.lock_open_rounded,
-                              size: 20,
+                      if (snapshot.status == VideoPlayerStatus.ready && tvMode)
+                        VideoPlayerTvChrome(
+                          snapshot: snapshot,
+                          playFocus: tvPlayFocus!,
+                          onPlay: onPlayOrPause,
+                          onSeek: onSeek,
+                          onEpisodes: onEpisodes,
+                          onNext: onNextEpisode,
+                          onPrevious: onPreviousEpisode,
+                          onRate: onRate,
+                          onFit: onFit,
+                          onExit: onExit,
+                          onReveal: onToggleControls,
+                        ),
+                      if (snapshot.status == VideoPlayerStatus.ready && !tvMode)
+                        _VideoPlayerInteractionLayer(
+                          controller: controller,
+                          snapshot: snapshot,
+                          activeEpisode: activeEpisode,
+                          reduceMotion: reduceMotion,
+                          onToggleControls: onToggleControls,
+                          onExit: onExit,
+                          onPlayOrPause: onPlayOrPause,
+                          onSeek: onSeek,
+                          onRate: onRate,
+                          onEnhancementMode: onEnhancementMode,
+                          onReadSystemVolume: onReadSystemVolume,
+                          onSystemVolume: onSystemVolume,
+                          onPreviousEpisode: onPreviousEpisode,
+                          onNextEpisode: onNextEpisode,
+                          onAutoAdvance: onAutoAdvance,
+                          onInteractionStart: onInteractionStart,
+                          onInteractionEnd: onInteractionEnd,
+                          onFit: onFit,
+                          onEpisodes: onEpisodes,
+                          onFullscreen: onFullscreen,
+                          onReadBrightness: onReadBrightness,
+                          onBrightness: onBrightness,
+                        ),
+                      if (snapshot.status == VideoPlayerStatus.ready)
+                        VideoPlayerBufferingIndicator(
+                          buffering: snapshot.buffering && !snapshot.completed,
+                        ),
+                      if (snapshot.status == VideoPlayerStatus.ready &&
+                          snapshot.completed &&
+                          (!snapshot.autoAdvance || !snapshot.hasNextEpisode))
+                        VideoPlayerCompletionLayer(
+                          snapshot: snapshot,
+                          onReplay: () => unawaited(onReplay()),
+                          onNextEpisode: () => unawaited(onNextEpisode()),
+                        ),
+                      if (!tvMode &&
+                          snapshot.fullscreenRequested &&
+                          snapshot.controlsVisible)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: SafeArea(
+                            minimum: const EdgeInsets.only(left: 8),
+                            child: IconButton.filledTonal(
+                              key: const Key('video-player-controls-lock'),
+                              tooltip: snapshot.controlsLocked
+                                  ? '解锁手势'
+                                  : '锁定手势',
+                              onPressed: () => unawaited(
+                                onControlsLocked(!snapshot.controlsLocked),
+                              ),
+                              style: IconButton.styleFrom(
+                                backgroundColor: const Color(0xA305070A),
+                                foregroundColor: videoPlayerForeground,
+                              ),
+                              icon: Icon(
+                                snapshot.controlsLocked
+                                    ? Icons.lock_rounded
+                                    : Icons.lock_open_rounded,
+                                size: 20,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

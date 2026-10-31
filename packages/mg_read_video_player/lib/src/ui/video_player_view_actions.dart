@@ -451,6 +451,7 @@ extension _VideoPlayerViewActions on _VideoPlayerViewState {
   void _actionScheduleControlsHide() {
     _controlsTimer?.cancel();
     _controlsTimer = null;
+    if (widget.tvMode) return;
     if (!_backendState.playing || !_controlsVisible || _disposed) return;
     _controlsTimer = Timer(widget.controlsAutoHideDelay, () {
       if (_disposed || !_backendState.playing) return;
@@ -466,6 +467,7 @@ extension _VideoPlayerViewActions on _VideoPlayerViewState {
     }
     _controlsTimer?.cancel();
     final selected = await showVideoEpisodeSheet(
+      tvMode: widget.tvMode,
       context: context,
       groups: content.groups,
       activeGroupId: _group?.id,

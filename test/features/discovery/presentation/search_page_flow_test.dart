@@ -15,9 +15,37 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/discovery/presentation/search_page.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/search_page_sections.dart';
 import 'package:mg_read/features/discovery/application/search_page_state.dart';
+import 'package:mg_read/features/discovery/application/search_page_controller.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 
 void main() {
+  testWidgets('TV search prefers video once and respects subsequent manual source selection', (tester) async {
+    final gateway = _SearchGateway(
+      sources: [
+        _source('novel', '小说来源'),
+        PluginSourceDescriptor(id: 'video', displayName: '影视来源', contentKinds: const [PluginContentKind.video]),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sourceContentGatewayProvider.overrideWithValue(gateway),
+          searchHistoryStoreProvider.overrideWithValue(_MemorySearchHistoryStore(const [])),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.dark(),
+          home: SearchPage(preferVideoSources: true, onDestinationRequested: (_) {}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final container = ProviderScope.containerOf(tester.element(find.byType(SearchPage)));
+    expect(container.read(searchPageControllerProvider).selectedSourceId, 'video');
+    await container.read(searchPageControllerProvider.notifier).selectSource('novel');
+    await tester.pumpAndSettle();
+    expect(container.read(searchPageControllerProvider).selectedSourceId, 'novel');
+  });
+
   testWidgets('streaming results keep visible order until completion', (tester) async {
     AggregatedSearchItem item(String id, int score) {
       final hit = SourceSearchHit(source: _source('test', '测试'), content: _content(id), sourceIndex: 0, sourceRank: 0);

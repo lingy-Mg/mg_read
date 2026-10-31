@@ -47,6 +47,8 @@ Future<void> showDeferredSourceContentDetailSheet(
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
+    enableDrag: !TvModeScope.isEnabled(context),
+    constraints: TvModeScope.isEnabled(context) ? const BoxConstraints(maxWidth: 1200) : null,
     useSafeArea: true,
     backgroundColor: Colors.transparent,
     builder: (_) => FractionallySizedBox(

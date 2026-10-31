@@ -70,11 +70,12 @@ void main() {
     await tester.pumpWidget(_host(settings, settingId: 'theme-appearance'));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('appearance-settings-preview')), findsOneWidget);
     final Finder scrollable = find.descendant(
       of: find.byKey(const Key('profile-general-setting-theme-appearance')),
       matching: find.byType(Scrollable),
     );
+    await tester.scrollUntilVisible(find.byKey(const Key('appearance-settings-preview')), 160, scrollable: scrollable);
+    expect(find.byKey(const Key('appearance-settings-preview')), findsOneWidget);
     await tester.scrollUntilVisible(find.text('卡片'), 200, scrollable: scrollable);
     await tester.tap(find.text('卡片'));
     await tester.pumpAndSettle();
@@ -105,6 +106,13 @@ void main() {
     await tester.pumpWidget(_host(settings, settingId: 'theme-appearance'));
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('appearance-dark-theme-color-coolBlack')),
+      160,
+      scrollable: find.descendant(of: find.byKey(const Key('profile-general-setting-theme-appearance')), matching: find.byType(Scrollable)),
+    );
+    await Scrollable.ensureVisible(tester.element(find.byKey(const Key('appearance-dark-theme-color-coolBlack'))), alignment: .5);
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('appearance-dark-theme-color-coolBlack')));
     await tester.pumpAndSettle();
 

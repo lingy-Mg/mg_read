@@ -7,6 +7,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../api/contracts.dart';
 import '../api/controller.dart';
@@ -22,6 +23,7 @@ import 'video_player_keyboard.dart';
 import 'video_player_stage.dart';
 
 part 'video_player_view_actions.dart';
+part 'video_player_tv_actions.dart';
 
 /// A complete video player backed by host content and persistence ports.
 final class VideoPlayerView extends StatefulWidget {
@@ -35,6 +37,7 @@ final class VideoPlayerView extends StatefulWidget {
     this.controller,
     this.backendFactory = createMediaKitVideoPlaybackBackend,
     this.autoPlay = true,
+    this.tvMode = false,
     this.autoAdvance = true,
     this.progressSaveThrottle = const Duration(seconds: 2),
     this.controlsAutoHideDelay = const Duration(seconds: 3),
@@ -71,6 +74,9 @@ final class VideoPlayerView extends StatefulWidget {
   /// Whether the restored episode should start automatically.
   final bool autoPlay;
 
+  /// Enables remote-first controls without changing content or persistence.
+  final bool tvMode;
+
   /// Whether natural completion should continue with the next ordered episode.
   final bool autoAdvance;
 
@@ -97,6 +103,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   late VideoStartupSession _startupSession;
   late VideoPlayerHostBridge _hostBridge;
   final FocusNode _focusNode = FocusNode(debugLabel: 'mg-read-video-player');
+  final FocusNode _tvPlayFocus = FocusNode(debugLabel: 'video-tv-play');
 
   VideoContent? _content;
   VideoEpisodeGroup? _group;
@@ -590,8 +597,9 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
 
   Future<void> _showEpisodes() => _actionShowEpisodes();
 
-  KeyEventResult _handleKey(FocusNode _, KeyEvent event) =>
-      handleVideoPlayerKeyEvent(event, this, _snapshot);
+  KeyEventResult _handleKey(FocusNode _, KeyEvent event) => widget.tvMode
+      ? _handleTvKey(event)
+      : handleVideoPlayerKeyEvent(event, this, _snapshot);
 
   Future<void> _retry() async {
     _reportedBackendError = null;
@@ -695,9 +703,11 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     backend: _backend,
     snapshot: _snapshot,
     activeEpisode: _episode,
+    tvMode: widget.tvMode,
+    tvPlayFocus: _tvPlayFocus,
     focusNode: _focusNode,
     exitAuthorized: _exitAuthorized,
-    onPopAttempt: () => unawaited(requestExit()),
+    onPopAttempt: () => widget.tvMode ? _tvBack() : unawaited(requestExit()),
     onKeyEvent: _handleKey,
     onToggleControls: toggleControls,
     onRetry: _retry,
@@ -733,6 +743,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     _firstFrameTimer?.cancel();
     _lifecycleListener.dispose();
     _focusNode.dispose();
+    _tvPlayFocus.dispose();
     _controller.detach(this);
     if (_ownsController) _controller.dispose();
     _backend.state.removeListener(_handleBackendState);

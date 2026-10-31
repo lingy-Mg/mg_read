@@ -13,6 +13,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_anchored_menu.dart';
 
@@ -61,6 +62,8 @@ class LibraryHomeTopBar extends StatelessWidget {
             tooltip: '更多操作',
             menuKey: const Key('library-top-overflow-menu'),
             actions: <LibraryAnchoredMenuAction>[
+              if (TvModeScope.maybeOf(context) case final mode?)
+                LibraryAnchoredMenuAction(label: '切换到 TV 模式', onSelected: () => mode.onChanged(true)),
               LibraryAnchoredMenuAction(label: '刷新书架', onSelected: onRefresh),
               LibraryAnchoredMenuAction(
                 label: layoutMode == LibraryHomeLayoutMode.list ? '切换为卡片模式' : '切换为列表模式',
