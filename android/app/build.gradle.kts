@@ -98,6 +98,7 @@ android {
             check(runtimeAbis.containsAll(targetAbis)) {
                 "Selected Android Runtime does not support ABIs: $targetAbis"
             }
+            abiFilters.clear()
             abiFilters.addAll(targetAbis)
         }
     }
