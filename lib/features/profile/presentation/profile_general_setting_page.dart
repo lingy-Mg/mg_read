@@ -2,7 +2,8 @@
 ///
 /// 职责：
 /// - 以真实能力提供阅读和外观设置，不展示“功能建设中”占位。
-/// - 直接持久化小说预加载、音频续播/退出和书架布局设置。
+/// - 提供小说预加载、音频行为、视频解码/输出和书架布局设置。
+/// - Android 界面渲染由视频设置面板交给原生启动偏好保存，重启后生效。
 /// - 将阅读器内设置与应用级设置边界解释清楚。
 library;
 
@@ -11,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/settings/settings.dart';
+import 'package:mg_read/features/profile/presentation/profile_video_settings.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 
 part 'profile_appearance_theme_controls.dart';
@@ -112,6 +114,10 @@ class ProfileGeneralSettingPage extends ConsumerWidget {
       value: settings.get(AppSettingKeys.audioRememberPosition),
       onChanged: (bool value) => settings.set(AppSettingKeys.audioRememberPosition, value),
     ),
+    const SizedBox(height: AppSpacing.section),
+    const _SectionHeading(title: '视频播放器', description: '选择解码和输出方式；自动模式保留设备兼容策略'),
+    const SizedBox(height: AppSpacing.regular),
+    const ProfileVideoSettings(),
     const SizedBox(height: AppSpacing.regular),
     const _InlineNotice(icon: Icons.tune_rounded, message: '字体、主题、排版、翻页和评论入口，请打开书籍后在阅读器工具栏的“设置”中调整。它们不会在这里重复显示。'),
   ];

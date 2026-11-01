@@ -2,34 +2,23 @@ package com.mgread.mg_read
 
 import android.app.ActivityManager
 import android.app.Application
-import android.app.UiModeManager
 import android.content.Context
-import android.content.res.Configuration
 import android.os.Build
 import android.os.Process
-import android.util.Log
-import io.flutter.FlutterInjector
 
 /**
  * Selects the TV renderer before audio_service can create its cached engine.
  * Manifest metadata resolves resource references when the package is parsed;
  * a values-television boolean therefore cannot select the runtime renderer.
- * Only the main TV process initializes Flutter here. Runtime service processes
- * keep their own startup and non-TV devices retain Flutter's default renderer.
+ * Only the main application process may initialize Flutter here. Runtime service processes
+ * keep their own startup. Renderer launch preferences are owned by
+ * MgReadRenderingSettings; automatic retains Flutter defaults on non-TV devices.
  */
 class MgReadApplication : Application() {
     override fun onCreate() {
         super.onCreate()
-        val uiMode = getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
-        if (uiMode.currentModeType != Configuration.UI_MODE_TYPE_TELEVISION ||
-            currentProcessName() != packageName
-        ) {
-            return
-        }
-        val loader = FlutterInjector.instance().flutterLoader()
-        loader.startInitialization(this)
-        loader.ensureInitializationComplete(this, arrayOf("--enable-impeller=false"))
-        Log.i("MgReadRendering", "TV renderer initialized: OpenGL (Impeller disabled)")
+        if (currentProcessName() != packageName) return
+        MgReadRenderingSettings.initialize(this)
     }
 
     private fun currentProcessName(): String? {

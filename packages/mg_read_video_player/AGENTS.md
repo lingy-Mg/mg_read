@@ -17,6 +17,8 @@
   首帧超时仍必须可见。原生解码和自动播放验收使用根目录的 `integration_test/tv_native_video_playback_test.dart`。
 - 宿主可通过后端工厂的 `preferAndroidSurface` 为确认兼容的 Android 硬件选择直连解码 Surface；
   `VideoPlayerView.tvMode` 不推断硬件，也不切换解码策略。
+- 后端工厂的 `decoderMode` 与 `androidOutputMode` 只在创建时采样；显式选择覆盖设备自动策略，
+  软件解码必须使用 GPU 输出，不能创建仅支持硬解的 Surface 直连组合。界面渲染由宿主独立管理。
 
 验证仅在本 package 内执行：
 

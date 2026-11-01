@@ -41,7 +41,7 @@ void main() {
 
     final Finder continueBehavior = find.byKey(const Key('audio-exit-behavior-continue'));
     await tester.scrollUntilVisible(continueBehavior, 300, scrollable: scrollable);
-    await tester.drag(scrollable, const Offset(0, -140));
+    await tester.ensureVisible(continueBehavior);
     await tester.pumpAndSettle();
     await tester.tap(continueBehavior);
     await tester.pumpAndSettle();

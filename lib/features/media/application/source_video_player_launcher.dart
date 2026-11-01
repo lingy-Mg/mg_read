@@ -7,6 +7,8 @@
 /// Playback failures also dismiss the entry cover so retry remains reachable.
 /// Native hardware policy, sampled once per setup, selects compatible Android
 /// video output independently of the TV layout setting.
+/// User decoder/output overrides are also sampled once; rebuilds never replace
+/// the live player's native configuration.
 library;
 
 import 'dart:async';
@@ -27,6 +29,7 @@ import 'package:mg_read/features/media/application/source_video_data_source.dart
 import 'package:mg_read/features/media/application/source_video_audio_session_controller.dart';
 import 'package:mg_read/features/media/application/source_video_fullscreen_controller.dart';
 import 'package:mg_read/features/media/application/source_video_playback_platform_controller.dart';
+import 'package:mg_read/features/media/application/source_video_preferences.dart';
 import 'package:mg_read/features/media/application/transient_source_video_playback_state_store.dart';
 import 'package:mg_read/features/media/presentation/media_entry_cover.dart';
 import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
@@ -140,6 +143,7 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
       final itemId = widget.libraryItemId == null ? null : LibraryItemId(widget.libraryItemId!);
       final proxyUri = widget.container.read(configuredFlutterNetworkProxyManagerProvider).playerProxyUriFor(NetworkProxyTraffic.video);
       final preferAndroidSurface = await readSourceVideoDirectSurfacePreference();
+      final videoPreferences = SourceVideoPreferences.fromSettings(widget.container.read(appSettingsProvider));
       if (!mounted || generation != _generation) return;
       setState(
         () => _setup = _VideoPlayerSetup(
@@ -161,6 +165,7 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
           ),
           proxyUri: proxyUri,
           preferAndroidSurface: preferAndroidSurface,
+          preferences: videoPreferences,
         ),
       );
     } on Object catch (error) {
@@ -225,8 +230,12 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
           diagnostics: widget.diagnostics,
         ),
         startupSession: widget.startupSession,
-        backendFactory: () =>
-            createMediaKitVideoPlaybackBackend(proxyUri: setup.proxyUri, preferAndroidSurface: setup.preferAndroidSurface),
+        backendFactory: () => createMediaKitVideoPlaybackBackend(
+          proxyUri: setup.proxyUri,
+          preferAndroidSurface: setup.preferAndroidSurface,
+          decoderMode: setup.preferences.decoderMode,
+          androidOutputMode: setup.preferences.androidOutputMode,
+        ),
       ),
     );
   }
@@ -243,12 +252,19 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
 }
 
 final class _VideoPlayerSetup {
-  const _VideoPlayerSetup({required this.dataSource, required this.stateStore, required this.proxyUri, required this.preferAndroidSurface});
+  const _VideoPlayerSetup({
+    required this.dataSource,
+    required this.stateStore,
+    required this.proxyUri,
+    required this.preferAndroidSurface,
+    required this.preferences,
+  });
 
   final SourceVideoDataSource dataSource;
   final TransientSourceVideoPlaybackStateStore stateStore;
   final Uri? proxyUri;
   final bool preferAndroidSurface;
+  final SourceVideoPreferences preferences;
 }
 
 final class _VideoEntryObserver extends VideoPlayerObserver {

@@ -27,15 +27,21 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../api/contracts.dart';
 import '../api/models.dart';
+import '../api/playback_options.dart';
 import 'anime4k_shader_store.dart';
+import 'media_kit_video_configuration.dart';
 
 /// Creates the package default backend without exposing MediaKit publicly.
 VideoPlaybackBackend createMediaKitVideoPlaybackBackend({
   Uri? proxyUri,
   bool preferAndroidSurface = false,
+  VideoDecoderMode decoderMode = VideoDecoderMode.automatic,
+  VideoAndroidOutputMode androidOutputMode = VideoAndroidOutputMode.automatic,
 }) => MediaKitVideoPlaybackBackend(
   proxyUri: proxyUri,
   preferAndroidSurface: preferAndroidSurface,
+  decoderMode: decoderMode,
+  androidOutputMode: androidOutputMode,
 );
 
 /// MediaKit-backed implementation used by default in production hosts.
@@ -44,9 +50,11 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
   MediaKitVideoPlaybackBackend({
     this.proxyUri,
     this.preferAndroidSurface = false,
+    this.decoderMode = VideoDecoderMode.automatic,
+    this.androidOutputMode = VideoAndroidOutputMode.automatic,
   }) {
     MediaKit.ensureInitialized();
-    _preparedSession = _MediaKitEpisodeSession(proxyUri, preferAndroidSurface);
+    _preparedSession = _newSession();
   }
 
   /// Optional HTTP proxy sampled for this backend session.
@@ -55,6 +63,19 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
   /// Uses Android's direct codec surface on host-selected compatible hardware.
   /// Other platforms retain their default output.
   final bool preferAndroidSurface;
+
+  /// Decoder policy sampled for every episode in this backend.
+  final VideoDecoderMode decoderMode;
+
+  /// Android output override; automatic retains the host hardware preference.
+  final VideoAndroidOutputMode androidOutputMode;
+
+  _MediaKitEpisodeSession _newSession() => _MediaKitEpisodeSession(
+    proxyUri,
+    preferAndroidSurface: preferAndroidSurface,
+    decoderMode: decoderMode,
+    androidOutputMode: androidOutputMode,
+  );
 
   final ValueNotifier<VideoPlaybackBackendState> _state =
       ValueNotifier<VideoPlaybackBackendState>(
@@ -144,8 +165,7 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
     }
 
     final prepared = _preparedSession;
-    final session =
-        prepared ?? _MediaKitEpisodeSession(proxyUri, preferAndroidSurface);
+    final session = prepared ?? _newSession();
     _preparedSession = null;
     _bind(session, generation, episode);
     if (!_isRequestedGeneration(generation)) {
@@ -504,16 +524,21 @@ final class _BackendStreamFailure {
 }
 
 final class _MediaKitEpisodeSession {
-  _MediaKitEpisodeSession(this.proxyUri, bool preferAndroidSurface) {
+  _MediaKitEpisodeSession(
+    this.proxyUri, {
+    required bool preferAndroidSurface,
+    required VideoDecoderMode decoderMode,
+    required VideoAndroidOutputMode androidOutputMode,
+  }) {
     player = Player();
     controller = VideoController(
       player,
-      configuration: Platform.isAndroid && preferAndroidSurface
-          ? const VideoControllerConfiguration(
-              vo: 'mediacodec_embed',
-              hwdec: 'mediacodec',
-            )
-          : const VideoControllerConfiguration(),
+      configuration: mediaKitVideoConfiguration(
+        platform: defaultTargetPlatform,
+        preferAndroidSurface: preferAndroidSurface,
+        decoderMode: decoderMode,
+        androidOutputMode: androidOutputMode,
+      ),
     );
     controllerReady = WidgetsBinding.instance.endOfFrame;
   }

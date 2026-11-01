@@ -27,6 +27,8 @@ import java.io.File
  * silent install: Android owns the confirmation and the update-signature validation.
  * Device-profile queries also identify the verified MT5893 TV direct-video-surface
  * quirk; presentation mode alone must not change the decoder on other hardware.
+ * The rendering-settings channel delegates to native pre-engine launch storage;
+ * saving a mode never reconfigures the engine already attached to this Activity.
  */
 class MainActivity : AudioServiceActivity() {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -43,6 +45,22 @@ class MainActivity : AudioServiceActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mgread/rendering_settings")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "get" -> result.success(MgReadRenderingSettings.snapshot(applicationContext))
+                    "select" -> {
+                        try {
+                            result.success(MgReadRenderingSettings.select(applicationContext, call.argument<String>("mode") ?: ""))
+                        } catch (error: IllegalArgumentException) {
+                            result.error("invalid_rendering_mode", error.message, null)
+                        } catch (error: Exception) {
+                            result.error("rendering_preference_save_failed", error.javaClass.simpleName, null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mgread/app_lifecycle")
             .setMethodCallHandler { call, result ->
                 if (call.method != "restart") {

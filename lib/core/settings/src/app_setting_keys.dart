@@ -1,5 +1,7 @@
 /// Typed application preferences; storage and change notifications are owned by
 /// AppSettingsManager. Audio resume is enabled by default for existing installs.
+/// Video decoder/output choices default to automatic device compatibility;
+/// Android's pre-engine renderer launch preference remains native-owned.
 library;
 
 import 'setting_key.dart';
@@ -237,6 +239,24 @@ final class AppSettingKeys {
     validator: _validateAudioExitBehavior,
   );
 
+  /// Decoder preference sampled when a video route is opened.
+  static const videoDecoderMode = SettingKey<String>(
+    id: 'mediaPlayback.videoDecoderMode',
+    documentKind: 'settings.mediaPlayback',
+    defaultValue: 'auto',
+    codec: SettingCodec<String>(_stringEncode, _stringDecode),
+    validator: _validateVideoDecoderMode,
+  );
+
+  /// Android video output override; automatic preserves device compatibility.
+  static const videoAndroidOutputMode = SettingKey<String>(
+    id: 'mediaPlayback.videoAndroidOutputMode',
+    documentKind: 'settings.mediaPlayback',
+    defaultValue: 'auto',
+    codec: SettingCodec<String>(_stringEncode, _stringDecode),
+    validator: _validateVideoAndroidOutputMode,
+  );
+
   static const audioKeepScreenOn = SettingKey<bool>(
     id: 'mediaPlayback.audioKeepScreenOn',
     documentKind: 'settings.mediaPlayback',
@@ -319,6 +339,8 @@ final class AppSettingKeys {
     audioKeepScreenOn,
     audioRememberPosition,
     audioMiniPlayerStyle,
+    videoDecoderMode,
+    videoAndroidOutputMode,
   ];
 
   static final registry = SettingsRegistry(
@@ -339,6 +361,14 @@ final class AppSettingKeys {
 }
 
 Object? _stringEncode(String value) => value;
+void _validateVideoDecoderMode(String value) {
+  if (!const {'auto', 'hardware', 'software'}.contains(value)) throw ArgumentError.value(value);
+}
+
+void _validateVideoAndroidOutputMode(String value) {
+  if (!const {'auto', 'gpu', 'surface'}.contains(value)) throw ArgumentError.value(value);
+}
+
 String _stringDecode(Object? value) {
   if (value is! String) throw FormatException('Expected a string setting.');
   return value;

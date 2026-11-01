@@ -3,17 +3,28 @@
 /// app's temporary directory and checks autoplay across fresh episode sessions.
 /// Reports native state without pressing play or changing production app data.
 /// MGREAD_TV_CAPTURE_HOLD_SECONDS optionally holds a paused frame for ADB capture.
+/// MGREAD_TV_VERIFY_SETTINGS exercises native renderer saves and playback choices
+/// before opening the same real backend; the test package's launch choice stays
+/// OpenGL so a second process launch can verify native persistence safely.
 library;
 
 import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/app/app_tv_theme.dart';
 import 'package:mg_read/features/media/application/source_video_audio_session_controller.dart';
 import 'package:mg_read/features/media/application/source_video_playback_platform_controller.dart';
+import 'package:mg_read/features/media/application/android_rendering_settings.dart';
+import 'package:mg_read/features/media/application/source_video_preferences.dart';
+import 'package:mg_read/features/profile/presentation/profile_video_settings.dart';
+import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read_video_player/mg_read_video_player.dart';
+import '../test/core/settings/settings_testkit.dart';
 
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -22,6 +33,10 @@ void main() {
     final preferAndroidSurface = await readSourceVideoDirectSurfacePreference();
     if (const bool.fromEnvironment('MGREAD_TV_NATIVE_SURFACE')) expect(preferAndroidSurface, isTrue);
     debugPrint('TV_NATIVE_OUTPUT directSurface=$preferAndroidSurface');
+    SourceVideoPreferences? preferences;
+    if (const bool.fromEnvironment('MGREAD_TV_VERIFY_SETTINGS')) {
+      preferences = await _verifySettings(tester);
+    }
     final sampleUri = Uri.parse(
       const String.fromEnvironment(
         'MGREAD_TV_SAMPLE_URL',
@@ -54,7 +69,11 @@ void main() {
           stateStore: _NativeStore(),
           controller: controller,
           observer: observer,
-          backendFactory: () => createMediaKitVideoPlaybackBackend(preferAndroidSurface: preferAndroidSurface),
+          backendFactory: () => createMediaKitVideoPlaybackBackend(
+            preferAndroidSurface: preferAndroidSurface,
+            decoderMode: preferences?.decoderMode ?? VideoDecoderMode.automatic,
+            androidOutputMode: preferences?.androidOutputMode ?? VideoAndroidOutputMode.automatic,
+          ),
         ),
       ),
     );
@@ -108,6 +127,61 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
     }
   }, timeout: const Timeout(Duration(minutes: 2)));
+}
+
+Future<SourceVideoPreferences> _verifySettings(WidgetTester tester) async {
+  final renderer = const AndroidRenderingSettings();
+  final before = await renderer.load();
+  debugPrint('TV_SETTINGS_START selected=${before.selected.id} active=${before.activeRenderer}');
+  expect(before.activeRenderer, 'opengl');
+  final settings = AppSettingsManager(store: FakeSettingsStore(), registry: AppSettingKeys.registry);
+  await settings.initialize();
+  addTearDown(settings.close);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [appSettingsProvider.overrideWithValue(settings)],
+      child: MaterialApp(
+        theme: appTvTheme(AppTheme.dark()),
+        home: const Scaffold(body: SingleChildScrollView(child: ProfileVideoSettings())),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  Future<void> choose(String key) async {
+    final target = find.byKey(Key(key));
+    await tester.ensureVisible(target);
+    await tester.pumpAndSettle();
+    await tester.tap(target);
+    await tester.pumpAndSettle();
+    for (var tick = 0; tick < 30; tick++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (tester.widget<ChoiceChip>(find.byKey(const Key('video-decoder-auto'))).onSelected != null) break;
+    }
+  }
+
+  await choose('video-output-surface');
+  await choose('video-decoder-software');
+  expect(settings.get(AppSettingKeys.videoAndroidOutputMode), 'gpu');
+  await choose('video-output-surface');
+  expect(settings.get(AppSettingKeys.videoDecoderMode), 'hardware');
+  await choose('android-renderer-vulkan');
+  final pending = await renderer.load();
+  expect(pending.selected, AndroidRendererMode.vulkan);
+  expect(pending.activeRenderer, 'opengl');
+  expect(pending.restartRequired, isTrue);
+  expect(find.byKey(const Key('android-renderer-restart')), findsOneWidget);
+  await choose('android-renderer-opengl');
+  final saved = await renderer.load();
+  expect(saved.selected, AndroidRendererMode.openGl);
+  expect(saved.restartRequired, isFalse);
+  debugPrint('TV_SETTINGS_SAVED selected=${saved.selected.id} active=${saved.activeRenderer} decoder=hardware output=surface');
+  await tester.ensureVisible(find.byKey(const Key('video-decoder-auto')));
+  await tester.pumpAndSettle();
+  debugPrint('TV_SETTINGS_CAPTURE_READY');
+  for (var tick = 0; tick < 50; tick++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+  return SourceVideoPreferences.fromSettings(settings);
 }
 
 Future<void> _wait(WidgetTester tester, bool Function() ready) async {
