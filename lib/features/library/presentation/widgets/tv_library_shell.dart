@@ -2,6 +2,7 @@
 /// Data, playback and mutation are owned by the caller.
 /// Refresh keeps the mounted shelf; destructive actions require confirmation.
 /// Slivers decode covers only near the viewport and retain keyed focus on refresh.
+/// Top tabs select on remote focus; content actions still require activation.
 library;
 
 import 'package:flutter/material.dart';
@@ -59,6 +60,7 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
   }
 
   void _select(TvLibraryFilter filter) {
+    if (_filter == filter) return;
     setState(() => _filter = filter);
     if (_scroll.hasClients) _scroll.jumpTo(0);
   }
@@ -166,12 +168,40 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
                           () => _select(TvLibraryFilter.all),
                           selected: _filter == TvLibraryFilter.all,
                           autofocus: hero == null,
+                          activateOnFocus: true,
                         ),
-                        _nav('电影', 'movies', () => _select(TvLibraryFilter.movies), selected: _filter == TvLibraryFilter.movies),
-                        _nav('剧集', 'series', () => _select(TvLibraryFilter.series), selected: _filter == TvLibraryFilter.series),
-                        _nav('搜索', 'search', () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.search)),
-                        _nav('发现', 'discover', () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.discover)),
-                        _nav('设置', 'settings', () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.profile)),
+                        _nav(
+                          '电影',
+                          'movies',
+                          () => _select(TvLibraryFilter.movies),
+                          selected: _filter == TvLibraryFilter.movies,
+                          activateOnFocus: true,
+                        ),
+                        _nav(
+                          '剧集',
+                          'series',
+                          () => _select(TvLibraryFilter.series),
+                          selected: _filter == TvLibraryFilter.series,
+                          activateOnFocus: true,
+                        ),
+                        _nav(
+                          '搜索',
+                          'search',
+                          () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.search),
+                          activateOnFocus: true,
+                        ),
+                        _nav(
+                          '发现',
+                          'discover',
+                          () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.discover),
+                          activateOnFocus: true,
+                        ),
+                        _nav(
+                          '设置',
+                          'settings',
+                          () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.profile),
+                          activateOnFocus: true,
+                        ),
                       ],
                     ),
                   ),
@@ -313,11 +343,13 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
     );
   }
 
-  Widget _nav(String text, String id, VoidCallback action, {bool selected = false, bool autofocus = false}) => TvFocusable(
-    key: Key('tv-nav-$id'),
-    selected: selected,
-    autofocus: autofocus,
-    onPressed: action,
-    child: Text(text, style: Theme.of(context).textTheme.titleMedium),
-  );
+  Widget _nav(String text, String id, VoidCallback action, {bool selected = false, bool autofocus = false, bool activateOnFocus = false}) =>
+      TvFocusable(
+        key: Key('tv-nav-$id'),
+        selected: selected,
+        autofocus: autofocus,
+        activateOnFocus: activateOnFocus,
+        onPressed: action,
+        child: Text(text, style: Theme.of(context).textTheme.titleMedium),
+      );
 }

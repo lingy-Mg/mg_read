@@ -12,6 +12,27 @@ import '../core/settings/settings_testkit.dart';
 import 'mg_read_app_test_support.dart';
 
 void main() {
+  testWidgets('TV top tabs open search with only remote directions', (tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final settings = await createTestAppSettings();
+    addTearDown(settings.close);
+    await tester.pumpWidget(testMgReadApp(settings));
+    await tester.pumpAndSettle();
+    await settings.set(AppSettingKeys.tvMode, true);
+    await tester.pumpAndSettle();
+    final router = ProviderScope.containerOf(tester.element(find.byType(TvLibraryShell))).read(appRouterProvider);
+    for (var i = 0; i < 3; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+    }
+    expect(router.routeInformationProvider.value.uri.path, '/search');
+    expect(find.byKey(const Key('source-search-query')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('TV activation repeats never retrigger standard controls', (tester) async {
     var calls = 0;
     await tester.pumpWidget(

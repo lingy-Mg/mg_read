@@ -1,5 +1,6 @@
 /// Remote-operable TV action with a persistent focus node and visible ring.
 /// Owns focus/scroll visibility only; commands and data remain caller-owned.
+/// Tabs opt into activation on focus; ordinary actions require confirmation.
 library;
 
 import 'package:flutter/material.dart';
@@ -13,6 +14,7 @@ class TvFocusable extends StatefulWidget {
     this.onMore,
     this.autofocus = false,
     this.selected = false,
+    this.activateOnFocus = false,
     this.label,
     this.padding = const EdgeInsets.all(12),
     super.key,
@@ -22,6 +24,7 @@ class TvFocusable extends StatefulWidget {
   final VoidCallback? onMore;
   final bool autofocus;
   final bool selected;
+  final bool activateOnFocus;
   final String? label;
   final EdgeInsetsGeometry padding;
 
@@ -58,6 +61,7 @@ class _TvFocusableState extends State<TvFocusable> {
         onFocusChange: (value) {
           setState(() => _focused = value);
           if (value) {
+            if (widget.activateOnFocus) _activate();
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted && _node.hasFocus) {
                 Scrollable.ensureVisible(
@@ -81,7 +85,7 @@ class _TvFocusableState extends State<TvFocusable> {
           if (event is KeyDownEvent) {
             if (more) {
               widget.onMore?.call();
-            } else {
+            } else if (!widget.activateOnFocus) {
               _activate();
             }
           }
@@ -92,7 +96,7 @@ class _TvFocusableState extends State<TvFocusable> {
               ? null
               : () {
                   _node.requestFocus();
-                  _activate();
+                  if (!widget.activateOnFocus) _activate();
                 },
           onLongPress: widget.onMore,
           child: AnimatedContainer(

@@ -11,10 +11,74 @@ import 'package:mg_read/features/library/presentation/library_book_list_view_dat
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/tv_library_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/tv_library_shell.dart';
+import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 
 void main() {
+  testWidgets('remote focus switches top filters and stays on the tab', (tester) async {
+    final played = <String>[];
+    await _mount(tester, onPlay: (book) async => played.add(book.id));
+    expect(played, isEmpty);
+    _navFocus(tester, 'home').requestFocus();
+    await tester.pumpAndSettle();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pumpAndSettle();
+    expect(find.text('电影收藏'), findsOneWidget);
+    expect(find.byKey(const Key('tv-card-movie')), findsOneWidget);
+    expect(find.byKey(const Key('tv-card-series')), findsNothing);
+    expect(FocusManager.instance.primaryFocus, _navFocus(tester, 'movies'));
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pumpAndSettle();
+    expect(find.text('剧集收藏'), findsOneWidget);
+    expect(find.byKey(const Key('tv-card-series')), findsOneWidget);
+    expect(find.byKey(const Key('tv-card-movie')), findsNothing);
+    expect(FocusManager.instance.primaryFocus, _navFocus(tester, 'series'));
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pumpAndSettle();
+    expect(find.text('电影收藏'), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pumpAndSettle();
+    expect(find.text('我的影视'), findsOneWidget);
+    expect(FocusManager.instance.primaryFocus, _navFocus(tester, 'home'));
+    expect(played, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('top destination tabs navigate once on focus without confirmation', (tester) async {
+    final requested = <AppNavigationDestination>[];
+    await _mount(tester, callbacks: LibraryHomeCallbacks(onNavigationSelected: requested.add));
+    _navFocus(tester, 'series').requestFocus();
+    await tester.pumpAndSettle();
+    final destinations = [AppNavigationDestination.search, AppNavigationDestination.discover, AppNavigationDestination.profile];
+    for (var i = 0; i < destinations.length; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(requested, destinations.take(i + 1));
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.tap(find.byKey(Key('tv-nav-${i == 2 ? 'settings' : destinations[i].name}')));
+      await tester.pumpAndSettle();
+      expect(requested, destinations.take(i + 1));
+    }
+    await tester.tap(find.byKey(const Key('tv-nav-search')));
+    await tester.pumpAndSettle();
+    expect(requested, [...destinations, AppNavigationDestination.search]);
+  });
+
+  testWidgets('focusing refresh still requires remote confirmation', (tester) async {
+    var refreshed = 0;
+    await _mount(tester, onRefresh: () async => refreshed++);
+    _navFocus(tester, 'refresh').requestFocus();
+    await tester.pumpAndSettle();
+    expect(refreshed, 0);
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(refreshed, 1);
+  });
+
   test('secondary media uses reading and listening labels', () {
     for (final kind in [ContentKind.novel, ContentKind.manga, ContentKind.audio]) {
       final book = LibraryBookListItemViewData(
@@ -212,6 +276,7 @@ Future<void> _mount(
   TvLibraryData? data,
   LibraryHomeCallbacks callbacks = const LibraryHomeCallbacks(),
   Future<void> Function(LibraryBookListItemViewData)? onPlay,
+  Future<void> Function()? onRefresh,
   double textScale = 1,
 }) async {
   tester.view.physicalSize = size;
@@ -236,7 +301,7 @@ Future<void> _mount(
               callbacks: callbacks,
               onPlay: onPlay ?? (_) async {},
               onDetail: (_) async {},
-              onRefresh: () async {},
+              onRefresh: onRefresh ?? () async {},
             ),
           ),
         ),
@@ -245,6 +310,9 @@ Future<void> _mount(
   );
   await tester.pumpAndSettle();
 }
+
+FocusNode _navFocus(WidgetTester tester, String id) =>
+    tester.widget<Focus>(find.descendant(of: find.byKey(Key('tv-nav-$id')), matching: find.byType(Focus)).first).focusNode!;
 
 TvLibraryData _data() {
   final items = [
