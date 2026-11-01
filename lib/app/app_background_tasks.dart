@@ -1,6 +1,7 @@
 /// Foreground-triggered maintenance after the first usable local frame. Checks
-/// are independently deduplicated by their owners; prompts wait for an idle
-/// top-level route and never interrupt a reader, player, or another dialog.
+/// are independently deduplicated by their owners. App updates bypass persisted
+/// timing once per launch, then run every 30 minutes while idle. Due checks and
+/// prompts wait for an idle top-level route, including minimized audio stopping.
 library;
 
 import 'dart:async';
@@ -30,12 +31,22 @@ class _AppBackgroundTasksState extends ConsumerState<AppBackgroundTasks> with Wi
   bool _ready = false;
   bool _promptOpen = false;
   bool _installing = false;
+  bool _startupApkCheckPending = true;
+  bool _checkingApk = false;
+  Timer? _apkCheckTimer;
   GitHubApkRelease? _apk;
   GitHubApkRelease? _acceptedApk;
   List<SourceCollectionCandidate>? _sources;
   final Set<String> _shown = {};
   bool get _foreground =>
       WidgetsBinding.instance.lifecycleState == null || WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+
+  bool get _idle {
+    final navigator = appRootNavigatorKey.currentState;
+    if (navigator == null || navigator.canPop() || ref.read(sourceAudioPlaybackServiceProvider).isActive) return false;
+    final path = ref.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path;
+    return {'/', '/discover', '/profile'}.contains(path);
+  }
 
   @override
   void initState() {
@@ -65,10 +76,25 @@ class _AppBackgroundTasksState extends ConsumerState<AppBackgroundTasks> with Wi
   }
 
   Future<void> _checkApk() async {
-    final result = await ref.read(githubApkUpdateCoordinatorProvider).checkForUpdate();
-    if (!mounted) return;
-    if (result.value != null) _apk = result.value;
-    await _flushPrompts();
+    if (!mounted || !_ready || !_foreground || _checkingApk || _promptOpen || _installing || !_idle) return;
+    _checkingApk = true;
+    final force = _startupApkCheckPending;
+    _startupApkCheckPending = false;
+    try {
+      final result = await ref.read(githubApkUpdateCoordinatorProvider).checkForUpdate(force: force);
+      if (!mounted) return;
+      if (result.status != UpdateCheckStatus.unsupported && (result.status != UpdateCheckStatus.skipped || _apkCheckTimer == null)) {
+        _apkCheckTimer?.cancel();
+        _apkCheckTimer = Timer(githubApkUpdateCheckInterval, () {
+          _apkCheckTimer = null;
+          _trigger();
+        });
+      }
+      if (result.value != null) _apk = result.value;
+      await _flushPrompts();
+    } finally {
+      _checkingApk = false;
+    }
   }
 
   Future<void> _checkSources() async {
@@ -99,13 +125,7 @@ class _AppBackgroundTasksState extends ConsumerState<AppBackgroundTasks> with Wi
   Future<void> _flushPrompts() async {
     if (!mounted || !_ready || !_foreground || _promptOpen || _installing) return;
     final navigator = appRootNavigatorKey.currentState;
-    final path = ref.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path;
-    if (navigator == null ||
-        navigator.canPop() ||
-        !{'/', '/discover', '/profile'}.contains(path) ||
-        ref.read(sourceAudioPlaybackServiceProvider).isActive) {
-      return;
-    }
+    if (navigator == null || !_idle) return;
     final dialogContext = navigator.context;
     _promptOpen = true;
     try {
@@ -170,6 +190,7 @@ class _AppBackgroundTasksState extends ConsumerState<AppBackgroundTasks> with Wi
 
   @override
   void dispose() {
+    _apkCheckTimer?.cancel();
     _navigation.changes.removeListener(_onNavigation);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -178,7 +199,7 @@ class _AppBackgroundTasksState extends ConsumerState<AppBackgroundTasks> with Wi
   @override
   Widget build(BuildContext context) {
     ref.listen(sourceAudioPlaybackServiceProvider, (_, next) {
-      if (!next.isActive) unawaited(_flushPrompts());
+      if (!next.isActive) _trigger();
     });
     return const SizedBox.shrink();
   }

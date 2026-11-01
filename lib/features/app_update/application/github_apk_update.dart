@@ -1,7 +1,7 @@
 /// Android-only GitHub Release update discovery and install orchestration.
 ///
 /// Checks are initiated by the app shell after its first frame. A small marker
-/// in application support storage limits checks across cold starts. Manifest
+/// in application support storage limits periodic checks; launch checks bypass it. Manifest
 /// requests include a cache-busting query because GitHub's `latest/download`
 /// redirect can otherwise serve stale release metadata. Release assets are
 /// bounded, SHA-256 verified, and passed to Android's Package Installer; the
