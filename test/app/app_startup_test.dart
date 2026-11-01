@@ -194,10 +194,11 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
+      final app = testMgReadApp(settings, startupController: startup) as ProviderScope;
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [libraryOverviewLoaderProvider.overrideWithValue(DeferredLibraryOverviewLoader(startup))],
-          child: testMgReadApp(settings, startupController: startup),
+          overrides: [...app.overrides, libraryOverviewLoaderProvider.overrideWithValue(DeferredLibraryOverviewLoader(startup))],
+          child: app.child,
         ),
       );
       for (var turn = 0; turn < 100 && !startup.isInteractive; turn++) {

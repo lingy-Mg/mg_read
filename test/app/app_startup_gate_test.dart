@@ -91,6 +91,7 @@ void main() {
       ProviderScope(
         overrides: [appStartupControllerProvider.overrideWithValue(startup)],
         child: MaterialApp(
+          theme: AppTheme.light(),
           home: AppStartupGate(
             child: _StartupAnimationProbe(onComplete: () => completed = true, onPressed: () => activated++),
           ),
@@ -136,8 +137,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [appStartupControllerProvider.overrideWithValue(startup)],
-        child: const MaterialApp(
-          home: AppStartupGate(
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: const AppStartupGate(
             waitWarningDelay: Duration(seconds: 1),
             child: Scaffold(body: Text('书架')),
           ),
