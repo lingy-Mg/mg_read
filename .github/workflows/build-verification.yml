@@ -127,10 +127,6 @@ jobs:
           ./tools/run_flutter_checks.ps1 -Mode Fast -DartPath $owned -TestPath $tests
           ./tools/run_flutter_checks.ps1 -Mode Final -DartPath $owned -TestPath $tests
 
-      - name: Check Android backend ABI policy
-        working-directory: android
-        run: ./gradlew :mgread_plugin_runtime:testHybridDebugUnitTest --tests '*AndroidNodeBackendPolicyTest'
-
       - name: Install local Android signing key
         env:
           ANDROID_DEBUG_KEYSTORE_BASE64: ${{ secrets.MGREAD_ANDROID_DEBUG_KEYSTORE_BASE64 }}
@@ -165,6 +161,10 @@ jobs:
         run: |
           flutter build apk --release --target-platform android-arm,android-arm64 --no-pub
           cp build/app/outputs/flutter-apk/app-release.apk build/android-release/app-universal.apk
+
+      - name: Check Android backend ABI policy
+        working-directory: android
+        run: ./gradlew :mgread_plugin_runtime:testHybridDebugUnitTest --tests '*AndroidNodeBackendPolicyTest'
 
       - name: Verify packaged Android runtimes
         run: python3 tools/verify_android_release.py
