@@ -27,7 +27,7 @@ void main() {
     addTearDown(() async {
       if (!resources.isCompleted) resources.complete(const AppStartupResources());
       await startup.close();
-    }, timeout: const Timeout(Duration(minutes: 1)));
+    });
     final boot = startup.start();
     var taps = 0;
     var paints = 0;
@@ -83,7 +83,7 @@ void main() {
     addTearDown(() async {
       if (!resources.isCompleted) resources.complete(const AppStartupResources());
       await startup.close();
-    }, timeout: const Timeout(Duration(minutes: 1)));
+    });
     final boot = startup.start();
     var completed = false;
     var activated = 0;
@@ -131,7 +131,7 @@ void main() {
     addTearDown(() async {
       if (!resources.isCompleted) resources.complete(const AppStartupResources());
       await startup.close();
-    }, timeout: const Timeout(Duration(minutes: 1)));
+    });
     final boot = startup.start();
     await tester.pumpWidget(
       ProviderScope(
