@@ -1,5 +1,5 @@
 /// TV library surface: local filters, stable focus, remote actions and dialogs.
-/// Data, playback, mutation and mode persistence are owned by the caller.
+/// Data, playback and mutation are owned by the caller.
 /// Refresh keeps the mounted shelf; destructive actions require confirmation.
 /// Slivers decode covers only near the viewport and retain keyed focus on refresh.
 library;
@@ -10,7 +10,6 @@ import 'package:mg_read/features/library/presentation/library_book_list_view_dat
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 import 'package:mg_read/features/library/presentation/tv_library_data.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
-import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 import 'tv_library_cards.dart';
 
@@ -173,7 +172,6 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
                         _nav('搜索', 'search', () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.search)),
                         _nav('发现', 'discover', () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.discover)),
                         _nav('设置', 'settings', () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.profile)),
-                        _nav('普通 / TV', 'mode', () => TvModeScope.maybeOf(context)?.onChanged(false)),
                       ],
                     ),
                   ),

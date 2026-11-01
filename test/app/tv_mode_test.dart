@@ -92,7 +92,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(TvLibraryShell), findsOneWidget);
     expect(Theme.of(tester.element(find.byType(TvLibraryShell))).brightness, Brightness.dark);
-    await tester.tap(find.byKey(const Key('tv-nav-mode')));
+    await settings.set(AppSettingKeys.tvMode, false);
     await tester.pumpAndSettle();
     expect(settings.get(AppSettingKeys.tvMode), isFalse);
     expect(find.byType(LibraryHomeShell), findsOneWidget);

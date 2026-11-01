@@ -164,7 +164,7 @@ void main() {
     await _mount(tester, data: TvLibraryData(LibraryHomeViewData.empty(), const []));
     expect(find.text('暂无对应的影视收藏'), findsOneWidget);
     expect(find.byKey(const Key('tv-continue')), findsNothing);
-    expect(find.byKey(const Key('tv-nav-mode')), findsOneWidget);
+    expect(find.byKey(const Key('tv-nav-mode')), findsNothing);
   });
 
   testWidgets('large TV shelves build visible cards lazily and reach later videos', (tester) async {
