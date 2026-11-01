@@ -3,6 +3,7 @@
 /// Mobile playback uses route-scoped orientation and system bars. Windows
 /// playback instead makes the current native window fullscreen on its current
 /// display, without imposing a mobile orientation.
+/// TV routes enter landscape immediately and never fall back to portrait.
 library;
 
 import 'dart:io';
@@ -49,24 +50,27 @@ final class SystemSourceVideoFullscreenPlatform implements SourceVideoFullscreen
 
 /// Owns one video route's serialized fullscreen platform state.
 final class SourceVideoFullscreenController {
-  SourceVideoFullscreenController() : _platform = const SystemSourceVideoFullscreenPlatform(), _lease = SourceMediaSystemUiLease();
+  SourceVideoFullscreenController({this.tvMode = false})
+    : _platform = const SystemSourceVideoFullscreenPlatform(),
+      _lease = SourceMediaSystemUiLease();
 
   @visibleForTesting
-  SourceVideoFullscreenController.withPlatform(SourceVideoFullscreenPlatform platform)
+  SourceVideoFullscreenController.withPlatform(SourceVideoFullscreenPlatform platform, {this.tvMode = false})
     : _platform = platform,
       _lease = SourceMediaSystemUiLease.withCoordinator(SourceMediaSystemUiCoordinator.withPlatform(platform));
 
   final SourceVideoFullscreenPlatform _platform;
+  final bool tvMode;
   final SourceMediaSystemUiLease _lease;
   Future<void> _desktopTail = Future<void>.value();
   bool _desktopRestoreNeeded = false;
   bool _closed = false;
 
-  /// Enters the route-scoped portrait immersive player mode.
+  /// Enters the route-scoped immersive mode, landscape for TV.
   Future<void> activate() {
     if (_closed) return Future<void>.value();
-    if (_platform.usesDesktopWindowFullscreen) return Future<void>.value();
-    return _lease.setMode(SourceMediaSystemUiMode.portraitImmersive);
+    if (_platform.usesDesktopWindowFullscreen) return tvMode ? setFullscreen(true) : Future<void>.value();
+    return _lease.setMode(tvMode ? SourceMediaSystemUiMode.landscapeImmersive : SourceMediaSystemUiMode.portraitImmersive);
   }
 
   /// Applies the latest player fullscreen intent in request order.
@@ -79,7 +83,7 @@ final class SourceVideoFullscreenController {
         _desktopRestoreNeeded = fullscreen;
       });
     }
-    return _lease.setMode(fullscreen ? SourceMediaSystemUiMode.landscapeImmersive : SourceMediaSystemUiMode.portraitImmersive);
+    return _lease.setMode((fullscreen || tvMode) ? SourceMediaSystemUiMode.landscapeImmersive : SourceMediaSystemUiMode.portraitImmersive);
   }
 
   /// Rejects later intents and restores normal app chrome after pending work.

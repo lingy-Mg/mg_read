@@ -87,8 +87,15 @@ class _DetailCatalogSection extends StatelessWidget {
               onEpisodeSelected: onChapterSelected,
             )
           else ...<Widget>[
-            for (final chapter in catalog.items.take(visibleChapterCount))
-              _ChapterRow(chapter: chapter, onRead: () => onChapterSelected(chapter, catalog), onOpenUrl: onOpenUrl),
+            if (isVideo && TvModeScope.isEnabled(context))
+              _TvDetailEpisodes(
+                episodes: catalog.items.take(visibleChapterCount),
+                groupId: 'default',
+                onSelected: (chapter) => onChapterSelected(chapter, catalog),
+              )
+            else
+              for (final chapter in catalog.items.take(visibleChapterCount))
+                _ChapterRow(chapter: chapter, onRead: () => onChapterSelected(chapter, catalog), onOpenUrl: onOpenUrl),
             if (onLoadMore != null)
               Padding(
                 padding: const EdgeInsets.only(top: AppSpacing.regular),
@@ -248,6 +255,12 @@ class _GroupedDetailCatalogState extends State<_GroupedDetailCatalog> {
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppThemeTokens.of(context).mutedText),
             ),
           )
+        else if (TvModeScope.isEnabled(context))
+          _TvDetailEpisodes(
+            episodes: visibleEpisodes,
+            groupId: group.id,
+            onSelected: (episode) => widget.onEpisodeSelected(episode, _catalog),
+          )
         else
           ListView.separated(
             key: ValueKey<String>('source-detail-episode-list-${group.id}'),
@@ -300,6 +313,14 @@ class _DetailGroupTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = AppThemeTokens.of(context);
     final theme = Theme.of(context);
+    if (TvModeScope.isEnabled(context)) {
+      return TvFocusable(
+        key: ValueKey('source-detail-group-${group.id}'),
+        selected: selected,
+        onPressed: onTap,
+        child: Text('${group.title} · ${group.deferred ? '待加载' : group.episodes.length}', style: theme.textTheme.titleSmall),
+      );
+    }
     return Semantics(
       button: true,
       selected: selected,

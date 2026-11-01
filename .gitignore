@@ -48,6 +48,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+# ARMv7 Node is downloaded and hash-verified by tools/stage_android_node_runtime.py.
+/packages/mgread_plugin_runtime/android/src/main/jniLibs/armeabi-v7a/libnode.so
 packages/mg_read_runtime/packages/mgread_plugin_runtime/android/.gradle/9.2.0/fileHashes/fileHashes.lock
 # Widget Preview related
 .widget_preview/

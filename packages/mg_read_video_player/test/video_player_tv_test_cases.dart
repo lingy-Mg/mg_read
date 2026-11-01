@@ -73,6 +73,9 @@ void _registerTvTests() {
         await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
         await tester.pumpAndSettle();
       }
+      // At large text the bottom row has fit and exit side by side.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
       final exitButton = find.byKey(const Key('tv-video-exit'));
       expect(
         FocusManager.instance.primaryFocus?.context
@@ -81,8 +84,24 @@ void _registerTvTests() {
         const Key('tv-video-exit'),
       );
       expect(tester.getRect(exitButton).bottom, lessThanOrEqualTo(360));
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
       await tester.pumpAndSettle();
+      for (var i = 0; i < 6; i++) {
+        if (FocusManager.instance.primaryFocus?.context
+                ?.findAncestorWidgetOfExactType<FilledButton>()
+                ?.key ==
+            const Key('tv-video-rate')) {
+          break;
+        }
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pumpAndSettle();
+      }
+      expect(
+        FocusManager.instance.primaryFocus?.context
+            ?.findAncestorWidgetOfExactType<FilledButton>()
+            ?.key,
+        const Key('tv-video-rate'),
+      );
       await tester.sendKeyEvent(LogicalKeyboardKey.select);
       await tester.pumpAndSettle();
       expect(find.text('播放速度'), findsOneWidget);

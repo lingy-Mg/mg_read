@@ -10,6 +10,7 @@
 /// - 本文件负责竖向与方形封面；横向封面由独立通用组件负责。
 /// - 分类 chips 按可用宽度等分可见按钮，最后一行保持同一列宽而不按内容收缩。
 /// - 横向书架在组件内允许触摸、手写笔、触控板和鼠标直接拖动。
+/// - TV 封面网格使用约 156 逻辑像素的海报列宽和固定展示比例，避免普通断点撑满电视首屏。
 library;
 
 import 'package:flutter/material.dart';
@@ -36,18 +37,21 @@ class DiscoveryCoverGrid extends StatelessWidget {
     if (items.isEmpty) return const SizedBox.shrink();
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = switch (constraints.maxWidth) {
-          < 600 => 3,
-          < 1040 => 4,
-          < 1440 => 5,
-          _ => 6,
-        };
-        const gap = AppSpacing.discoveryComponentGap;
+        final tvMode = TvModeScope.isEnabled(context);
+        final columns = tvMode
+            ? ((constraints.maxWidth + 12) / 168).ceil().clamp(3, 8)
+            : switch (constraints.maxWidth) {
+                < 600 => 3,
+                < 1040 => 4,
+                < 1440 => 5,
+                _ => 6,
+              };
+        final gap = tvMode ? 12.0 : AppSpacing.discoveryComponentGap;
         final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
         return Wrap(
           key: const Key('runtime-discovery-cover-grid'),
           spacing: gap,
-          runSpacing: AppSpacing.discoverySectionContentGap,
+          runSpacing: tvMode ? 16 : AppSpacing.discoverySectionContentGap,
           children: items
               .map(
                 (item) => SizedBox(
@@ -55,7 +59,10 @@ class DiscoveryCoverGrid extends StatelessWidget {
                   child: _CoverTile(
                     item: item,
                     width: width,
-                    coverHeight: null,
+                    coverHeight: tvMode
+                        ? width *
+                              (item.content.coverOrientation == PluginCoverOrientation.square ? 1 : AppSpacing.discoveryCoverAspectRatio)
+                        : null,
                     inBookshelf: isInBookshelf(item.content),
                     onPressed: () => onPressed(item.content),
                   ),

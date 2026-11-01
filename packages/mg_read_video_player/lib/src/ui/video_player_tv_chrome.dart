@@ -1,5 +1,6 @@
 /// Remote-first video controls; receives callbacks and owns no playback state.
-/// Large buttons keep a visible focus ring; select maps to normal activation.
+/// Compact bottom controls keep a visible focus ring and leave the picture
+/// visible; enlarged text can wrap and scroll without losing remote focus.
 library;
 
 // Internal package composition, not part of the public import surface.
@@ -55,7 +56,7 @@ class VideoPlayerTvChrome extends StatelessWidget {
                 maxHeight: MediaQuery.sizeOf(context).height * .8,
               ),
               color: const Color(0xE6101620),
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(20),
               child: SafeArea(
                 top: false,
                 child: SingleChildScrollView(
@@ -64,14 +65,28 @@ class VideoPlayerTvChrome extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        snapshot.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 26,
-                          color: Colors.white,
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              snapshot.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Text(
+                            '${_time(snapshot.position)} / ${_time(snapshot.duration)}',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 12),
                       LinearProgressIndicator(
@@ -81,18 +96,10 @@ class VideoPlayerTvChrome extends StatelessWidget {
                                   .clamp(0, 1)
                             : 0,
                       ),
-                      const SizedBox(height: 10),
-                      Text(
-                        '${_time(snapshot.position)} / ${_time(snapshot.duration)}',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          color: Colors.white70,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
                       Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
+                        spacing: 8,
+                        runSpacing: 8,
                         children: [
                           _button(
                             'tv-video-play',
@@ -128,10 +135,10 @@ class VideoPlayerTvChrome extends StatelessWidget {
                           _button('tv-video-exit', '退出播放', onExit),
                         ],
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
                       const Text(
                         '方向键 选择操作    OK 确认    返回 隐藏控制栏',
-                        style: TextStyle(fontSize: 18, color: Colors.white70),
+                        style: TextStyle(fontSize: 14, color: Colors.white70),
                       ),
                     ],
                   ),
@@ -153,8 +160,11 @@ class VideoPlayerTvChrome extends StatelessWidget {
     focusNode: focus,
     onPressed: () => unawaited(action()),
     style: ButtonStyle(
-      minimumSize: const WidgetStatePropertyAll(Size(90, 56)),
-      textStyle: const WidgetStatePropertyAll(TextStyle(fontSize: 20)),
+      minimumSize: const WidgetStatePropertyAll(Size(72, 48)),
+      padding: const WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      ),
+      textStyle: const WidgetStatePropertyAll(TextStyle(fontSize: 16)),
       side: WidgetStateProperty.resolveWith(
         (states) => BorderSide(
           color: states.contains(WidgetState.focused)

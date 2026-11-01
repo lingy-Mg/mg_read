@@ -112,7 +112,7 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
   @override
   void initState() {
     super.initState();
-    _fullscreenController = SourceVideoFullscreenController();
+    _fullscreenController = SourceVideoFullscreenController(tvMode: widget.container.read(appSettingsProvider).get(AppSettingKeys.tvMode));
     _playbackPlatformController = SourceVideoPlaybackPlatformController();
     _playerController = VideoPlayerController();
     _audioSessionController = SourceVideoAudioSessionController(onPauseRequested: _pauseForSystemInterruption);

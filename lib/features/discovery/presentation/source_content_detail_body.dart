@@ -90,6 +90,9 @@ class _SourceDetailBody extends StatelessWidget {
     final attributes = _displayAttributes(content.attributes).toList(growable: false);
     final chapterTotal = _chapterTotal(detailTotal: content.chapterCount, loadedCount: bundle.chapters.items.length);
     final recommendationCandidates = _recommendationCandidates(relatedContents, excludedId: content.id);
+    if (TvModeScope.isEnabled(context) && content.contentKind == PluginContentKind.video) {
+      return _TvVideoDetail(body: this, canPlay: canStartReading, canChangeShelf: canChangeShelf);
+    }
     return ListView(
       key: const Key('source-content-detail-sheet'),
       padding: const EdgeInsets.fromLTRB(

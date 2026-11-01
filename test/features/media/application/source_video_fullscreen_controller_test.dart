@@ -10,6 +10,30 @@ import 'package:mg_read/features/media/application/source_video_fullscreen_contr
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('TV enters landscape before playback and never requests portrait when fullscreen is cleared', () async {
+    final platform = _FakeFullscreenPlatform();
+    final controller = SourceVideoFullscreenController.withPlatform(platform, tvMode: true);
+    await controller.activate();
+    await controller.setFullscreen(false);
+    await controller.setFullscreen(true);
+    await controller.restoreAndClose();
+    await controller.activate();
+    expect(platform.calls, ['landscape', 'restore']);
+  });
+
+  test('TV cleanup waits for the initial landscape request', () async {
+    final gate = Completer<void>();
+    final platform = _FakeFullscreenPlatform(landscapeGate: gate);
+    final controller = SourceVideoFullscreenController.withPlatform(platform, tvMode: true);
+    final entering = controller.activate();
+    await Future<void>.delayed(Duration.zero);
+    final closing = controller.restoreAndClose();
+    expect(platform.calls, ['landscape']);
+    gate.complete();
+    await Future.wait([entering, closing]);
+    expect(platform.calls, ['landscape', 'restore']);
+  });
+
   test('system platform uses portrait, landscape, then restores app UI', () async {
     final calls = <MethodCall>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {

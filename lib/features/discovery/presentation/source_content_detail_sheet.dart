@@ -27,6 +27,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/errors/app_error.dart';
@@ -35,6 +36,7 @@ import 'package:mg_read/features/discovery/application/source_content_cover_hand
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
+import 'package:mg_read/features/discovery/presentation/discovery_composite_components.dart';
 import 'package:mg_read/features/discovery/presentation/source_content_detail_variant_picker.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
 import 'package:mg_read/features/library/presentation/widgets/bookshelf_removal_confirmation.dart';
@@ -51,6 +53,7 @@ part 'source_content_detail_loading.dart';
 part 'source_content_detail_primitives.dart';
 part 'source_content_detail_body.dart';
 part 'source_content_detail_deferred.dart';
+part 'source_content_detail_tv.dart';
 
 typedef SourceTextChapterRequested =
     Future<void> Function({
@@ -627,6 +630,7 @@ class _SourceDetailView extends StatefulWidget {
 }
 
 class _SourceDetailViewState extends State<_SourceDetailView> {
+  bool get _tvVideo => TvModeScope.isEnabled(context) && widget.bundle.detail.summary.contentKind == PluginContentKind.video;
   late final List<PluginChapterSummary> _chapters;
   late SourceDetailShelfState _shelfState;
   var _visibleChapterCount = 20;
@@ -664,11 +668,13 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
         _isSavingToShelf = false;
         _shelfState = SourceDetailShelfState.alreadyAdded;
       });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已加入书架。')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_tvVideo ? '已加入收藏。' : '已加入书架。')));
     } on Object catch (error) {
       if (!mounted) return;
       setState(() => _isSavingToShelf = false);
-      final message = error is BookshelfCapacityExceededException ? '书架已满，请先清理书籍。' : '暂时无法加入书架，请稍后重试。';
+      final message = error is BookshelfCapacityExceededException
+          ? (_tvVideo ? '收藏已满，请先清理。' : '书架已满，请先清理书籍。')
+          : (_tvVideo ? '暂时无法加入收藏，请稍后重试。' : '暂时无法加入书架，请稍后重试。');
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     }
   }
@@ -676,7 +682,9 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
   Future<void> _removeFromShelf(PluginContentSummary content) async {
     final remove = widget.onRemoveFromShelf;
     if (remove == null || _isSavingToShelf || _isRemovingFromShelf || _shelfState == SourceDetailShelfState.canAdd) return;
-    final confirmed = await showBookshelfRemovalConfirmation(context, title: content.title);
+    final confirmed = _tvVideo
+        ? await _confirmTvFavoriteRemoval(context, content.title)
+        : await showBookshelfRemovalConfirmation(context, title: content.title);
     if (!mounted || !confirmed) return;
     setState(() => _isRemovingFromShelf = true);
     try {
@@ -686,11 +694,11 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
         _isRemovingFromShelf = false;
         _shelfState = SourceDetailShelfState.canAdd;
       });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已从书架移出《${content.title}》')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已从${_tvVideo ? '收藏' : '书架'}移出《${content.title}》')));
     } on Object {
       if (!mounted) return;
       setState(() => _isRemovingFromShelf = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('移出书架失败，请稍后重试。')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_tvVideo ? '移出收藏失败，请稍后重试。' : '移出书架失败，请稍后重试。')));
     }
   }
 
