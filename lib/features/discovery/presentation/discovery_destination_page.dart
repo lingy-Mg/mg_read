@@ -7,6 +7,7 @@
 /// 注意：
 /// - 页面不在 build 中进行 IO；内部层级由 controller 栈而非 GoRouter 管理。
 /// - 子页面只接收其层级状态，数据源选择仅显示在顶级发现页。
+/// - TV 同层分类加载时保留当前快照，使分类焦点和遥控移动持续有效。
 ///
 library;
 
@@ -201,11 +202,12 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
     if (selectedSource == null) return const SizedBox.shrink();
 
     final bool isCoveredByChild = visualDepth < state.navigationDepth;
+    final retained = visualDepth < state.retainedParents.length ? state.retainedParents[visualDepth] : null;
     final PluginDiscoveryDocumentResult? displayedResult = isCoveredByChild
         ? visualDepth < state.retainedParents.length
               ? state.retainedParents[visualDepth]
               : state.previousResult
-        : state.result;
+        : state.result ?? (TvModeScope.isEnabled(context) && retained?.pluginId == state.selectedSourceId ? retained : null);
     final bool isActiveLayer = !isCoveredByChild;
     final bool canNavigateBack = visualDepth > 0;
 

@@ -26,6 +26,10 @@ void main() {
   setUp(() {
     exitCount = 0;
     frameworkBack.clear();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('mgread/rendering_settings'),
+      (_) async => {'selected': 'auto', 'activeRenderer': 'opengl', 'restartRequired': false},
+    );
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
       if (call.method == 'SystemNavigator.pop') exitCount++;
       if (call.method == 'SystemNavigator.setFrameworkHandlesBack') frameworkBack.add(call.arguments as bool);
@@ -33,6 +37,10 @@ void main() {
     });
   });
   tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('mgread/rendering_settings'),
+      null,
+    );
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null);
   });
 

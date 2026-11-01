@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mg_read/app/app_router.dart';
@@ -12,22 +13,32 @@ import '../core/settings/settings_testkit.dart';
 import 'mg_read_app_test_support.dart';
 
 void main() {
-  testWidgets('TV top tabs open search with only remote directions', (tester) async {
+  testWidgets('TV top destinations remain traversable and open only on OK', (tester) async {
     tester.view.physicalSize = const Size(1280, 720);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final settings = await createTestAppSettings();
     addTearDown(settings.close);
+    await settings.set(AppSettingKeys.tvMode, true);
     await tester.pumpWidget(testMgReadApp(settings));
     await tester.pumpAndSettle();
-    await settings.set(AppSettingKeys.tvMode, true);
-    await tester.pumpAndSettle();
     final router = ProviderScope.containerOf(tester.element(find.byType(TvLibraryShell))).read(appRouterProvider);
-    for (var i = 0; i < 3; i++) {
+    final home = find.byKey(const Key('tv-nav-home'));
+    tester.widget<Focus>(find.descendant(of: home, matching: find.byType(Focus)).first).focusNode!.requestFocus();
+    await tester.pumpAndSettle();
+    for (final id in ['movies', 'series', 'search', 'discover', 'settings']) {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.pumpAndSettle();
+      expect(router.routeInformationProvider.value.uri.path, '/');
+      expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvFocusable>()?.key, Key('tv-nav-$id'));
     }
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
     expect(router.routeInformationProvider.value.uri.path, '/search');
     expect(find.byKey(const Key('source-search-query')), findsOneWidget);
     expect(tester.takeException(), isNull);

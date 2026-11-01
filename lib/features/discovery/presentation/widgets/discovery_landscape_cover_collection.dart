@@ -11,6 +11,8 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'discovery_remote_action.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -50,7 +52,9 @@ class DiscoveryLandscapeCoverGrid extends StatelessWidget {
             crossAxisCount: columns,
             crossAxisSpacing: gap,
             mainAxisSpacing: AppSpacing.discoverySectionContentGap,
-            mainAxisExtent: coverHeight + AppSpacing.discoveryCoverMetadataExtent,
+            mainAxisExtent:
+                coverHeight +
+                (TvModeScope.isEnabled(context) ? discoveryRemoteMetadataExtent(context) : AppSpacing.discoveryCoverMetadataExtent),
           ),
           itemBuilder: (context, index) {
             final item = items[index];
@@ -82,29 +86,54 @@ class DiscoveryLandscapeCoverShelf extends StatelessWidget {
     const coverHeight = itemWidth * AppSpacing.discoveryLandscapeCoverAspectRatio;
     return SizedBox(
       key: const Key('runtime-discovery-landscape-cover-shelf'),
-      height: coverHeight + AppSpacing.discoveryCoverMetadataExtent,
+      height:
+          coverHeight + (TvModeScope.isEnabled(context) ? discoveryRemoteMetadataExtent(context) : AppSpacing.discoveryCoverMetadataExtent),
       child: ScrollConfiguration(
         behavior: discoveryDragScrollBehavior(context),
-        child: ListView.separated(
-          primary: false,
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.only(right: AppSpacing.discoveryComponentGap),
-          itemCount: items.length,
-          separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.discoveryComponentGap),
-          itemBuilder: (context, index) {
-            final item = items[index];
-            return SizedBox(
-              width: itemWidth,
-              child: _LandscapeCoverTile(
-                item: item,
-                width: itemWidth,
-                coverHeight: coverHeight,
-                inBookshelf: isInBookshelf(item.content),
-                onPressed: () => onPressed(item.content),
+        child: TvModeScope.isEnabled(context)
+            ? SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final item in items)
+                      Padding(
+                        key: ValueKey(item.content.id),
+                        padding: const EdgeInsets.only(right: AppSpacing.discoveryComponentGap),
+                        child: SizedBox(
+                          width: itemWidth,
+                          child: _LandscapeCoverTile(
+                            item: item,
+                            width: itemWidth,
+                            coverHeight: coverHeight,
+                            inBookshelf: isInBookshelf(item.content),
+                            onPressed: () => onPressed(item.content),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              )
+            : ListView.separated(
+                primary: false,
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.only(right: AppSpacing.discoveryComponentGap),
+                itemCount: items.length,
+                separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.discoveryComponentGap),
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  return SizedBox(
+                    width: itemWidth,
+                    child: _LandscapeCoverTile(
+                      item: item,
+                      width: itemWidth,
+                      coverHeight: coverHeight,
+                      inBookshelf: isInBookshelf(item.content),
+                      onPressed: () => onPressed(item.content),
+                    ),
+                  );
+                },
               ),
-            );
-          },
-        ),
       ),
     );
   }
@@ -131,69 +160,73 @@ class _LandscapeCoverTile extends StatelessWidget {
     final theme = Theme.of(context);
     final tokens = AppThemeTokens.of(context);
     final metadata = _metadata(content);
-    return Semantics(
-      button: true,
-      label: '查看 ${content.title}${inBookshelf ? '，已在书架' : ''}',
-      child: InkWell(
-        key: ValueKey<String>('runtime-discovery-landscape-cover-${content.id}'),
-        onTap: onPressed,
-        borderRadius: AppRadii.discoveryTile,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            SizedBox(
-              width: width,
-              height: coverHeight,
-              child: Stack(
-                fit: StackFit.expand,
-                children: <Widget>[
-                  DiscoveryBookCover(
-                    title: content.title,
-                    contentKind: content.contentKind,
-                    coverBytes: content.coverBytes,
-                    remoteContentId: content.id,
-                    coverUrl: content.coverUrl,
-                    variant: _coverVariant(content.id),
-                    presentation: DiscoveryCoverPresentation.landscape,
-                    width: width,
-                    height: coverHeight,
-                  ),
-                  if (inBookshelf) const Positioned(top: 6, right: 6, child: DiscoveryBookshelfBadge()),
-                  if (item.metric != null)
-                    Positioned(
-                      left: 6,
-                      bottom: 6,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.66), borderRadius: AppRadii.pill),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                          child: Text(
-                            item.metric!.value,
-                            style: theme.textTheme.labelSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w600),
+    return DiscoveryRemoteAction(
+      onPressed: onPressed,
+      label: content.title,
+      child: Semantics(
+        button: true,
+        label: '查看 ${content.title}${inBookshelf ? '，已在书架' : ''}',
+        child: InkWell(
+          key: ValueKey<String>('runtime-discovery-landscape-cover-${content.id}'),
+          onTap: onPressed,
+          borderRadius: AppRadii.discoveryTile,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              SizedBox(
+                width: width,
+                height: coverHeight,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    DiscoveryBookCover(
+                      title: content.title,
+                      contentKind: content.contentKind,
+                      coverBytes: content.coverBytes,
+                      remoteContentId: content.id,
+                      coverUrl: content.coverUrl,
+                      variant: _coverVariant(content.id),
+                      presentation: DiscoveryCoverPresentation.landscape,
+                      width: width,
+                      height: coverHeight,
+                    ),
+                    if (inBookshelf) const Positioned(top: 6, right: 6, child: DiscoveryBookshelfBadge()),
+                    if (item.metric != null)
+                      Positioned(
+                        left: 6,
+                        bottom: 6,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.66), borderRadius: AppRadii.pill),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            child: Text(
+                              item.metric!.value,
+                              style: theme.textTheme.labelSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w600),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 7),
-            Text(
-              content.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-            ),
-            if (metadata != null) ...<Widget>[
-              const SizedBox(height: 2),
+              const SizedBox(height: 7),
               Text(
-                metadata,
+                content.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
+                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
               ),
+              if (metadata != null) ...<Widget>[
+                const SizedBox(height: 2),
+                Text(
+                  metadata,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

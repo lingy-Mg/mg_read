@@ -1,6 +1,9 @@
 /// Remote-operable TV action with a persistent focus node and visible ring.
-/// Owns focus/scroll visibility only; commands and data remain caller-owned.
-/// Tabs opt into activation on focus; ordinary actions require confirmation.
+/// Owns focus, keep-alive and feedback; traversal owns scrolling.
+/// Commands and data remain caller-owned.
+/// Local tabs may activate on focus; route changes require confirmation.
+/// Focused lazy children stay alive until focus moves to another control.
+/// Caller-supplied focus nodes remain caller-owned.
 library;
 
 import 'package:flutter/material.dart';
@@ -12,6 +15,7 @@ class TvFocusable extends StatefulWidget {
     required this.child,
     required this.onPressed,
     this.onMore,
+    this.focusNode,
     this.autofocus = false,
     this.selected = false,
     this.activateOnFocus = false,
@@ -22,6 +26,7 @@ class TvFocusable extends StatefulWidget {
   final Widget child;
   final VoidCallback? onPressed;
   final VoidCallback? onMore;
+  final FocusNode? focusNode;
   final bool autofocus;
   final bool selected;
   final bool activateOnFocus;
@@ -32,13 +37,26 @@ class TvFocusable extends StatefulWidget {
   State<TvFocusable> createState() => _TvFocusableState();
 }
 
-class _TvFocusableState extends State<TvFocusable> {
-  final FocusNode _node = FocusNode();
+class _TvFocusableState extends State<TvFocusable> with AutomaticKeepAliveClientMixin {
+  late FocusNode _node = widget.focusNode ?? FocusNode();
   bool _focused = false;
 
   @override
+  bool get wantKeepAlive => _focused;
+
+  @override
+  void didUpdateWidget(covariant TvFocusable oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusNode == widget.focusNode) return;
+    if (oldWidget.focusNode == null) _node.dispose();
+    _node = widget.focusNode ?? FocusNode();
+    _focused = _node.hasFocus;
+    updateKeepAlive();
+  }
+
+  @override
   void dispose() {
-    _node.dispose();
+    if (widget.focusNode == null) _node.dispose();
     super.dispose();
   }
 
@@ -48,7 +66,9 @@ class _TvFocusableState extends State<TvFocusable> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final tokens = AppThemeTokens.of(context);
+    final duration = MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 180);
     return Semantics(
       button: true,
       label: widget.label,
@@ -60,17 +80,9 @@ class _TvFocusableState extends State<TvFocusable> {
         canRequestFocus: widget.onPressed != null,
         onFocusChange: (value) {
           setState(() => _focused = value);
+          updateKeepAlive();
           if (value) {
             if (widget.activateOnFocus) _activate();
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted && _node.hasFocus) {
-                Scrollable.ensureVisible(
-                  context,
-                  alignment: .5,
-                  duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 120),
-                );
-              }
-            });
           }
         },
         onKeyEvent: (_, event) {
@@ -78,6 +90,7 @@ class _TvFocusableState extends State<TvFocusable> {
           final activate =
               key == LogicalKeyboardKey.select ||
               key == LogicalKeyboardKey.enter ||
+              key == LogicalKeyboardKey.numpadEnter ||
               key == LogicalKeyboardKey.space ||
               key == LogicalKeyboardKey.gameButtonA;
           final more = key == LogicalKeyboardKey.contextMenu;
@@ -99,17 +112,26 @@ class _TvFocusableState extends State<TvFocusable> {
                   if (!widget.activateOnFocus) _activate();
                 },
           onLongPress: widget.onMore,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 100),
-            padding: widget.padding,
-            constraints: const BoxConstraints(minHeight: 52),
-            decoration: BoxDecoration(
-              color: widget.selected ? tokens.accentSoft : tokens.surface,
-              borderRadius: AppRadii.detailControl,
-              border: Border.all(color: _focused ? tokens.accent : Colors.transparent, width: 3),
-              boxShadow: _focused ? [BoxShadow(color: tokens.accent.withValues(alpha: .25), blurRadius: 12)] : null,
+          child: AnimatedScale(
+            scale: _focused ? 1 : .98,
+            duration: duration,
+            curve: Curves.easeOutCubic,
+            child: AnimatedContainer(
+              duration: duration,
+              curve: Curves.easeOutCubic,
+              padding: widget.padding,
+              constraints: const BoxConstraints(minHeight: 52),
+              decoration: BoxDecoration(
+                color: widget.selected ? tokens.accentSoft : tokens.surface,
+                borderRadius: AppRadii.detailControl,
+                boxShadow: _focused ? [BoxShadow(color: tokens.accent.withValues(alpha: .25), blurRadius: 12)] : null,
+              ),
+              foregroundDecoration: BoxDecoration(
+                borderRadius: AppRadii.detailControl,
+                border: Border.all(color: _focused ? tokens.accent : Colors.transparent, width: 3),
+              ),
+              child: widget.child,
             ),
-            child: widget.child,
           ),
         ),
       ),

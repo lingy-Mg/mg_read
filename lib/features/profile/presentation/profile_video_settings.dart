@@ -15,6 +15,8 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/media/application/android_rendering_settings.dart';
 import 'package:mg_read/features/media/application/source_video_preferences.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 
 class ProfileVideoSettings extends ConsumerStatefulWidget {
   const ProfileVideoSettings({super.key});
@@ -222,12 +224,24 @@ class _ProfileVideoSettingsState extends ConsumerState<ProfileVideoSettings> {
             runSpacing: AppSpacing.compact,
             children: [
               for (final option in options)
-                ChoiceChip(
-                  key: Key('$id-${option.$1}'),
-                  label: Text(option.$2),
-                  selected: selected == option.$1,
-                  onSelected: _busy || onSelect == null ? null : (_) => unawaited(onSelect(option.$1)),
-                ),
+                if (TvModeScope.isEnabled(context))
+                  TvFocusable(
+                    key: Key('$id-${option.$1}'),
+                    selected: selected == option.$1,
+                    onPressed: onSelect == null
+                        ? null
+                        : () {
+                            if (!_busy) unawaited(onSelect(option.$1));
+                          },
+                    child: Text(option.$2),
+                  )
+                else
+                  ChoiceChip(
+                    key: Key('$id-${option.$1}'),
+                    label: Text(option.$2),
+                    selected: selected == option.$1,
+                    onSelected: _busy || onSelect == null ? null : (_) => unawaited(onSelect(option.$1)),
+                  ),
             ],
           ),
         ],

@@ -13,6 +13,7 @@
 /// - 页面只渲染已由 application 层准备好的数据，不在 build() 中执行 IO。
 /// - 分类列表标签需与复用的发现内容列表项保持一致的视觉规格。
 /// - 根发现页的返回交给应用；只有本地层级拦截 Escape。
+/// - TV 页面使用独立焦点域；内容过渡中的旧页面不参与遥控遍历。
 ///
 library;
 
@@ -38,6 +39,7 @@ import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focus_region.dart';
 
 /// Host-controlled, lossless renderer for a validated source discovery tree.
 class RuntimeDiscoveryPage extends StatelessWidget {
@@ -101,71 +103,82 @@ class RuntimeDiscoveryPage extends StatelessWidget {
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return BookCoverSourceScope(
       pluginId: result?.pluginId ?? 'unavailable',
-      child: CallbackShortcuts(
-        // Discovery owns an in-page navigation stack. Keep Escape on the same
-        // callback as the visible back button and PopScope; do not pop the
-        // outer GoRouter destination while a category stack still exists.
-        bindings: <ShortcutActivator, VoidCallback>{
-          if (canNavigateBack || allowsRoutePop) const SingleActivator(LogicalKeyboardKey.escape, includeRepeats: false): onBackRequested,
-        },
-        child: Focus(
-          autofocus: true,
-          child: PopScope(
-            canPop: allowsRoutePop || !canNavigateBack,
-            onPopInvokedWithResult: (didPop, _) {
-              if (!allowsRoutePop && !didPop) onBackRequested();
-            },
-            child: Scaffold(
-              extendBody: !TvModeScope.isEnabled(context),
-              body: SafeArea(
-                bottom: false,
-                child: LayoutBuilder(
-                  builder: (BuildContext context, BoxConstraints constraints) {
-                    final bool useWidePagePadding = constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint;
-                    final double pagePadding = useWidePagePadding ? AppSpacing.widePagePadding : AppSpacing.discoveryPagePadding;
-                    return Align(
-                      alignment: isNestedPage ? Alignment.topLeft : Alignment.topCenter,
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(maxWidth: isNestedPage ? AppSpacing.discoveryListMaxWidth : AppSpacing.contentMaxWidth),
-                        child: AnimatedSwitcher(
-                          duration: reduceMotion ? Duration.zero : const Duration(milliseconds: 180),
-                          reverseDuration: reduceMotion ? Duration.zero : const Duration(milliseconds: 150),
-                          switchInCurve: Curves.easeOutCubic,
-                          switchOutCurve: Curves.easeInCubic,
-                          transitionBuilder: (child, animation) => SlideTransition(
-                            position: Tween<Offset>(begin: const Offset(0.07, 0), end: Offset.zero).animate(animation),
-                            child: FadeTransition(opacity: animation, child: child),
+      child: TvFocusRegion(
+        child: CallbackShortcuts(
+          // Discovery owns an in-page navigation stack. Keep Escape on the same
+          // callback as the visible back button and PopScope; do not pop the
+          // outer GoRouter destination while a category stack still exists.
+          bindings: <ShortcutActivator, VoidCallback>{
+            if (canNavigateBack || allowsRoutePop) const SingleActivator(LogicalKeyboardKey.escape, includeRepeats: false): onBackRequested,
+          },
+          child: Focus(
+            autofocus: !TvModeScope.isEnabled(context),
+            canRequestFocus: !TvModeScope.isEnabled(context),
+            child: PopScope(
+              canPop: allowsRoutePop || !canNavigateBack,
+              onPopInvokedWithResult: (didPop, _) {
+                if (!allowsRoutePop && !didPop) onBackRequested();
+              },
+              child: Scaffold(
+                extendBody: !TvModeScope.isEnabled(context),
+                body: SafeArea(
+                  bottom: false,
+                  child: LayoutBuilder(
+                    builder: (BuildContext context, BoxConstraints constraints) {
+                      final bool useWidePagePadding = constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint;
+                      final double pagePadding = useWidePagePadding ? AppSpacing.widePagePadding : AppSpacing.discoveryPagePadding;
+                      return Align(
+                        alignment: isNestedPage ? Alignment.topLeft : Alignment.topCenter,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: isNestedPage ? AppSpacing.discoveryListMaxWidth : AppSpacing.contentMaxWidth,
                           ),
-                          child: KeyedSubtree(
-                            key: ValueKey<String>('runtime-discovery-page-$navigationDepth-${result == null ? 'loading' : 'content'}'),
-                            child: ListView(
-                              key: PageStorageKey<int>(navigationDepth),
-                              padding: EdgeInsets.fromLTRB(
-                                pagePadding,
-                                AppSpacing.pageHeaderTopPaddingFor(context),
-                                pagePadding,
-                                AppSpacing.bottomNavigationContentBottomPadding + MediaQuery.viewPaddingOf(context).bottom,
-                              ),
-                              children: <Widget>[
-                                DiscoveryTopBar(
-                                  title: isNestedPage ? _nestedPageTitle(components) ?? '发现' : '发现',
-                                  sourceName: resolvedSourceName,
-                                  onSourcePressed: onSourcePressed,
-                                  onSearchPressed: onSearchRequested ?? () => onDestinationRequested(AppNavigationDestination.search),
-                                  onToggleTheme: () => AppThemeModeScope.of(context).onToggleTheme(Theme.of(context).brightness),
-                                  onRefreshPressed: onRefreshRequested,
-                                  onBackPressed: isNestedPage ? onBackRequested : null,
-                                  barKey: isNestedPage ? const Key('runtime-discovery-nested-header') : null,
-                                  backButtonKey: isNestedPage ? const Key('runtime-discovery-back') : null,
-                                  showSourceSelector: !isNestedPage,
-                                  showThemeToggle: false,
+                          child: AnimatedSwitcher(
+                            duration: reduceMotion ? Duration.zero : const Duration(milliseconds: 180),
+                            reverseDuration: reduceMotion ? Duration.zero : const Duration(milliseconds: 150),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            layoutBuilder: (current, previous) => Stack(
+                              alignment: Alignment.topCenter,
+                              children: [
+                                for (final child in previous) ExcludeFocus(child: IgnorePointer(child: child)),
+                                ?current,
+                              ],
+                            ),
+                            transitionBuilder: (child, animation) => SlideTransition(
+                              position: Tween<Offset>(begin: const Offset(0.07, 0), end: Offset.zero).animate(animation),
+                              child: FadeTransition(opacity: animation, child: child),
+                            ),
+                            child: KeyedSubtree(
+                              key: ValueKey<String>('runtime-discovery-page-$navigationDepth'),
+                              child: ListView(
+                                key: PageStorageKey<int>(navigationDepth),
+                                padding: EdgeInsets.fromLTRB(
+                                  pagePadding,
+                                  AppSpacing.pageHeaderTopPaddingFor(context),
+                                  pagePadding,
+                                  AppSpacing.bottomNavigationContentBottomPadding + MediaQuery.viewPaddingOf(context).bottom,
                                 ),
-                                if (result == null)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: AppSpacing.section),
-                                    child: DiscoveryContentState(
-                                      isLoading: isContentLoading,
-                                      isEmpty: contentIsEmpty,
+                                children: <Widget>[
+                                  DiscoveryTopBar(
+                                    title: isNestedPage ? _nestedPageTitle(components) ?? '发现' : '发现',
+                                    sourceName: resolvedSourceName,
+                                    onSourcePressed: onSourcePressed,
+                                    onSearchPressed: onSearchRequested ?? () => onDestinationRequested(AppNavigationDestination.search),
+                                    onToggleTheme: () => AppThemeModeScope.of(context).onToggleTheme(Theme.of(context).brightness),
+                                    onRefreshPressed: onRefreshRequested,
+                                    onBackPressed: isNestedPage ? onBackRequested : null,
+                                    barKey: isNestedPage ? const Key('runtime-discovery-nested-header') : null,
+                                    backButtonKey: isNestedPage ? const Key('runtime-discovery-back') : null,
+                                    showSourceSelector: !isNestedPage,
+                                    showThemeToggle: false,
+                                  ),
+                                  if (result != null && isContentLoading)
+                                    const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: LinearProgressIndicator()),
+                                  if (result != null && contentFailureMessage != null)
+                                    DiscoveryContentState(
+                                      isLoading: false,
+                                      isEmpty: false,
                                       failureMessage: contentFailureMessage,
                                       failureDetail: contentFailureDetail,
                                       failureCode: contentFailureCode,
@@ -173,44 +186,59 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                                       onCopy: onCopyFailure,
                                       onRetry: onRefreshRequested,
                                     ),
-                                  )
-                                else
-                                  for (var index = 0; index < components.length; index++) ...<Widget>[
-                                    _DiscoveryComponentRenderer(
-                                      pluginId: result.pluginId,
-                                      component: components[index],
-                                      hideSectionTitle: canNavigateBack && index == 0,
-                                      onTabSelected: onTabSelected,
-                                      onCategorySelected: onCategorySelected,
-                                      onContentPressed: onContentPressed,
-                                      onLoadMore: onLoadMore,
-                                      loadingCollectionId: loadingCollectionId,
-                                      isInBookshelf: isInBookshelf,
-                                    ),
-                                    if (index != components.length - 1) const SizedBox(height: AppSpacing.discoverySectionSpacing),
-                                  ],
-                              ],
+                                  if (result == null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: AppSpacing.section),
+                                      child: DiscoveryContentState(
+                                        isLoading: isContentLoading,
+                                        isEmpty: contentIsEmpty,
+                                        failureMessage: contentFailureMessage,
+                                        failureDetail: contentFailureDetail,
+                                        failureCode: contentFailureCode,
+                                        failureCopyPayload: contentFailureCopyPayload,
+                                        onCopy: onCopyFailure,
+                                        onRetry: onRefreshRequested,
+                                      ),
+                                    )
+                                  else
+                                    for (var index = 0; index < components.length; index++) ...<Widget>[
+                                      _DiscoveryComponentRenderer(
+                                        key: ValueKey(components[index].id),
+                                        pluginId: result.pluginId,
+                                        component: components[index],
+                                        hideSectionTitle: canNavigateBack && index == 0,
+                                        onTabSelected: onTabSelected,
+                                        onCategorySelected: onCategorySelected,
+                                        onContentPressed: onContentPressed,
+                                        onLoadMore: onLoadMore,
+                                        loadingCollectionId: loadingCollectionId,
+                                        isInBookshelf: isInBookshelf,
+                                      ),
+                                      if (index != components.length - 1) const SizedBox(height: AppSpacing.discoverySectionSpacing),
+                                    ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
-              ),
-              bottomNavigationBar: isNestedPage || SourcePreviewScope.active(context)
-                  ? null
-                  : SafeArea(
-                      top: false,
-                      child: AppBottomNavigation(
-                        selected: AppNavigationDestination.discover,
-                        onSelected: (destination) {
-                          if (destination != AppNavigationDestination.discover) {
-                            onDestinationRequested(destination);
-                          }
-                        },
+                bottomNavigationBar: isNestedPage || SourcePreviewScope.active(context)
+                    ? null
+                    : SafeArea(
+                        top: false,
+                        child: AppBottomNavigation(
+                          selected: AppNavigationDestination.discover,
+                          onSelected: (destination) {
+                            if (destination != AppNavigationDestination.discover) {
+                              onDestinationRequested(destination);
+                            }
+                          },
+                        ),
                       ),
-                    ),
+              ),
             ),
           ),
         ),
@@ -234,6 +262,7 @@ class _DiscoveryComponentRenderer extends StatelessWidget {
     required this.loadingCollectionId,
     required this.isInBookshelf,
     this.hideSectionTitle = false,
+    super.key,
   });
 
   final String pluginId;
@@ -303,6 +332,7 @@ class _ChildrenComponent extends StatelessWidget {
     children: <Widget>[
       for (var index = 0; index < children.length; index++) ...<Widget>[
         _DiscoveryComponentRenderer(
+          key: ValueKey(children[index].id),
           pluginId: renderer.pluginId,
           component: children[index],
           onTabSelected: renderer.onTabSelected,
@@ -331,21 +361,41 @@ class _TabsComponent extends StatelessWidget {
     height: TvModeScope.isEnabled(context)
         ? MediaQuery.textScalerOf(context).scale(Theme.of(context).textTheme.bodyMedium?.fontSize ?? 16) * 1.5 + 32
         : AppSpacing.minimumTouchTarget,
-    child: ListView.separated(
-      scrollDirection: Axis.horizontal,
-      itemCount: component.tabs.length,
-      separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.compact),
-      itemBuilder: (_, index) {
-        final tab = component.tabs[index];
-        return DiscoveryComponentChip(
-          key: ValueKey<String>('runtime-discovery-tab-${tab.id}'),
-          icon: tab.icon == null ? null : discoverySemanticIcon(tab.icon),
-          label: tab.label,
-          selected: tab.id == component.selectedTabId,
-          onPressed: () => onSelected(tab.target),
-        );
-      },
-    ),
+    child: TvModeScope.isEnabled(context)
+        ? SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final tab in component.tabs)
+                  Padding(
+                    key: ValueKey(tab.id),
+                    padding: const EdgeInsets.only(right: AppSpacing.compact),
+                    child: DiscoveryComponentChip(
+                      key: ValueKey<String>('runtime-discovery-tab-${tab.id}'),
+                      icon: tab.icon == null ? null : discoverySemanticIcon(tab.icon),
+                      label: tab.label,
+                      selected: tab.id == component.selectedTabId,
+                      onPressed: () => onSelected(tab.target),
+                    ),
+                  ),
+              ],
+            ),
+          )
+        : ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: component.tabs.length,
+            separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.compact),
+            itemBuilder: (_, index) {
+              final tab = component.tabs[index];
+              return DiscoveryComponentChip(
+                key: ValueKey<String>('runtime-discovery-tab-${tab.id}'),
+                icon: tab.icon == null ? null : discoverySemanticIcon(tab.icon),
+                label: tab.label,
+                selected: tab.id == component.selectedTabId,
+                onPressed: () => onSelected(tab.target),
+              );
+            },
+          ),
   );
 }
 
@@ -429,6 +479,7 @@ class _GroupComponent extends StatelessWidget {
     final children = component.children
         .map(
           (child) => _DiscoveryComponentRenderer(
+            key: ValueKey(child.id),
             pluginId: renderer.pluginId,
             component: child,
             onTabSelected: renderer.onTabSelected,

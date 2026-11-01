@@ -2,7 +2,7 @@
 /// Data, playback and mutation are owned by the caller.
 /// Refresh keeps the mounted shelf; destructive actions require confirmation.
 /// Slivers decode covers only near the viewport and retain keyed focus on refresh.
-/// Top tabs select on remote focus; content actions still require activation.
+/// Local filters select on focus; cross-page destinations require OK.
 library;
 
 import 'package:flutter/material.dart';
@@ -12,6 +12,7 @@ import 'package:mg_read/features/library/presentation/library_home_view_data.dar
 import 'package:mg_read/features/library/presentation/tv_library_data.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focus_region.dart';
 import 'tv_library_cards.dart';
 
 class TvLibraryShell extends StatefulWidget {
@@ -40,10 +41,12 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
   bool _busy = false;
   bool _dialogOpen = false;
   final ScrollController _scroll = ScrollController();
+  final FocusNode _homeFocus = FocusNode();
 
   @override
   void dispose() {
     _scroll.dispose();
+    _homeFocus.dispose();
     super.dispose();
   }
 
@@ -139,213 +142,219 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
     return PopScope<void>(
       canPop: _filter == TvLibraryFilter.all,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _select(TvLibraryFilter.all);
+        if (!didPop) {
+          _homeFocus.requestFocus();
+          _select(TvLibraryFilter.all);
+        }
       },
-      child: Scaffold(
-        key: const Key('tv-library-home'),
-        backgroundColor: tokens.pageBackground,
-        body: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final margin = constraints.maxWidth >= 900 ? 40.0 : 16.0;
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: margin, vertical: 12),
-                    child: Wrap(
-                      spacing: 12,
-                      runSpacing: 8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(right: 12),
-                          child: Text('MgRead TV', style: theme.textTheme.headlineSmall),
-                        ),
-                        _nav(
-                          '首页',
-                          'home',
-                          () => _select(TvLibraryFilter.all),
-                          selected: _filter == TvLibraryFilter.all,
-                          autofocus: hero == null,
-                          activateOnFocus: true,
-                        ),
-                        _nav(
-                          '电影',
-                          'movies',
-                          () => _select(TvLibraryFilter.movies),
-                          selected: _filter == TvLibraryFilter.movies,
-                          activateOnFocus: true,
-                        ),
-                        _nav(
-                          '剧集',
-                          'series',
-                          () => _select(TvLibraryFilter.series),
-                          selected: _filter == TvLibraryFilter.series,
-                          activateOnFocus: true,
-                        ),
-                        _nav(
-                          '搜索',
-                          'search',
-                          () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.search),
-                          activateOnFocus: true,
-                        ),
-                        _nav(
-                          '发现',
-                          'discover',
-                          () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.discover),
-                          activateOnFocus: true,
-                        ),
-                        _nav(
-                          '设置',
-                          'settings',
-                          () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.profile),
-                          activateOnFocus: true,
-                        ),
-                      ],
+      child: TvFocusRegion(
+        child: Scaffold(
+          key: const Key('tv-library-home'),
+          backgroundColor: tokens.pageBackground,
+          body: SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final margin = constraints.maxWidth >= 900 ? 40.0 : 16.0;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: margin, vertical: 12),
+                      child: Wrap(
+                        spacing: 12,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(right: 12),
+                            child: Text('MgRead TV', style: theme.textTheme.headlineSmall),
+                          ),
+                          _nav(
+                            '首页',
+                            'home',
+                            () => _select(TvLibraryFilter.all),
+                            selected: _filter == TvLibraryFilter.all,
+                            autofocus: hero == null,
+                            activateOnFocus: true,
+                          ),
+                          _nav(
+                            '电影',
+                            'movies',
+                            () => _select(TvLibraryFilter.movies),
+                            selected: _filter == TvLibraryFilter.movies,
+                            activateOnFocus: true,
+                          ),
+                          _nav(
+                            '剧集',
+                            'series',
+                            () => _select(TvLibraryFilter.series),
+                            selected: _filter == TvLibraryFilter.series,
+                            activateOnFocus: true,
+                          ),
+                          _nav('搜索', 'search', () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.search)),
+                          _nav('发现', 'discover', () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.discover)),
+                          _nav('设置', 'settings', () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.profile)),
+                        ],
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: CustomScrollView(
-                      controller: _scroll,
-                      key: const PageStorageKey('tv-library-scroll'),
-                      slivers: [
-                        SliverPadding(
-                          padding: EdgeInsets.fromLTRB(margin, 8, margin, 24),
-                          sliver: SliverList.list(
-                            children: [
-                              ?widget.errorNotice,
-                              if (hero != null) ...[
-                                TvLibraryHero(
-                                  entry: hero,
-                                  onPlay: () => _run(() => widget.onPlay(hero.book)),
-                                  onDetail: () => _run(() => widget.onDetail(hero.book)),
-                                ),
-                                const SizedBox(height: 24),
-                              ],
-                              Wrap(
-                                spacing: 16,
-                                runSpacing: 8,
-                                crossAxisAlignment: WrapCrossAlignment.center,
+                    Expanded(
+                      child: _transitionContent(
+                        CustomScrollView(
+                          controller: _scroll,
+                          key: const PageStorageKey('tv-library-scroll'),
+                          slivers: [
+                            SliverPadding(
+                              padding: EdgeInsets.fromLTRB(margin, 8, margin, 24),
+                              sliver: SliverList.list(
                                 children: [
-                                  Text(switch (_filter) {
-                                    TvLibraryFilter.all => '我的影视',
-                                    TvLibraryFilter.movies => '电影收藏',
-                                    TvLibraryFilter.series => '剧集收藏',
-                                    TvLibraryFilter.reading => '阅读与听书',
-                                  }, style: theme.textTheme.headlineSmall),
-                                  _nav(_busy ? '正在处理…' : '刷新收藏', 'refresh', () => _run(widget.onRefresh)),
-                                  if (_filter != TvLibraryFilter.reading) _nav('全部影视', 'all', () => _select(TvLibraryFilter.all)),
-                                ],
-                              ),
-                              const SizedBox(height: 18),
-                              if (entries.isEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 40),
-                                  child: Column(
+                                  ?widget.errorNotice,
+                                  if (hero != null) ...[
+                                    TvLibraryHero(
+                                      entry: hero,
+                                      onPlay: () => _run(() => widget.onPlay(hero.book)),
+                                      onDetail: () => _run(() => widget.onDetail(hero.book)),
+                                    ),
+                                    const SizedBox(height: 24),
+                                  ],
+                                  Wrap(
+                                    spacing: 16,
+                                    runSpacing: 8,
+                                    crossAxisAlignment: WrapCrossAlignment.center,
                                     children: [
-                                      Icon(Icons.video_library_outlined, size: 56, color: tokens.mutedText),
-                                      const SizedBox(height: 16),
-                                      Text(
-                                        '暂无${_filter == TvLibraryFilter.reading ? '阅读内容' : '对应的影视收藏'}',
-                                        style: theme.textTheme.titleLarge,
-                                      ),
-                                      const SizedBox(height: 12),
-                                      Text(
-                                        _filter == TvLibraryFilter.movies || _filter == TvLibraryFilter.series
-                                            ? '只按来源标注的分类筛选，未分类内容请到“全部影视”查看。'
-                                            : '通过搜索或发现找到内容后，加入收藏。',
-                                        textAlign: TextAlign.center,
-                                      ),
-                                      const SizedBox(height: 20),
-                                      _nav(
-                                        '搜索内容',
-                                        'empty-search',
-                                        () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.search),
-                                      ),
+                                      Text(switch (_filter) {
+                                        TvLibraryFilter.all => '我的影视',
+                                        TvLibraryFilter.movies => '电影收藏',
+                                        TvLibraryFilter.series => '剧集收藏',
+                                        TvLibraryFilter.reading => '阅读与听书',
+                                      }, style: theme.textTheme.headlineSmall),
+                                      _nav(_busy ? '正在处理…' : '刷新收藏', 'refresh', () => _run(widget.onRefresh)),
+                                      if (_filter != TvLibraryFilter.reading) _nav('全部影视', 'all', () => _select(TvLibraryFilter.all)),
                                     ],
                                   ),
-                                ),
-                            ],
-                          ),
-                        ),
-                        if (entries.isNotEmpty)
-                          SliverPadding(
-                            padding: EdgeInsets.symmetric(horizontal: margin),
-                            sliver: SliverLayoutBuilder(
-                              builder: (context, shelf) {
-                                final columns = (shelf.crossAxisExtent / 250).floor().clamp(1, 5);
-                                final width = (shelf.crossAxisExtent - (columns - 1) * 20) / columns;
-                                final indices = {for (var i = 0; i < entries.length; i++) entries[i].book.id: i};
-                                return SliverGrid.builder(
-                                  itemCount: entries.length,
-                                  findChildIndexCallback: (key) => key is ValueKey<String> ? indices[key.value] : null,
-                                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: columns,
-                                    crossAxisSpacing: 20,
-                                    mainAxisSpacing: 24,
-                                    mainAxisExtent: (width - 12) * 9 / 16 + 160 * MediaQuery.textScalerOf(context).scale(1),
-                                  ),
-                                  itemBuilder: (context, index) {
-                                    final entry = entries[index];
-                                    return TvLibraryCard(
-                                      key: ValueKey(entry.book.id),
-                                      entry: entry,
-                                      width: width,
-                                      onOpen: () => _run(() => widget.onDetail(entry.book)),
-                                      onMore: () => _more(entry),
-                                    );
-                                  },
-                                );
-                              },
-                            ),
-                          ),
-                        SliverPadding(
-                          padding: EdgeInsets.fromLTRB(margin, 0, margin, 24),
-                          sliver: SliverList.list(
-                            children: [
-                              const SizedBox(height: 28),
-                              Wrap(
-                                spacing: 16,
-                                runSpacing: 12,
-                                children: [
-                                  _nav(
-                                    '阅读与听书',
-                                    'reading',
-                                    () => _select(TvLibraryFilter.reading),
-                                    selected: _filter == TvLibraryFilter.reading,
-                                  ),
-                                  if (widget.callbacks.onManageSources != null) _nav('管理数据源', 'sources', widget.callbacks.onManageSources!),
-                                  if (widget.callbacks.onReadingHistory != null)
-                                    _nav('观看与阅读记录', 'history', widget.callbacks.onReadingHistory!),
+                                  const SizedBox(height: 18),
+                                  if (entries.isEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 40),
+                                      child: Column(
+                                        children: [
+                                          Icon(Icons.video_library_outlined, size: 56, color: tokens.mutedText),
+                                          const SizedBox(height: 16),
+                                          Text(
+                                            '暂无${_filter == TvLibraryFilter.reading ? '阅读内容' : '对应的影视收藏'}',
+                                            style: theme.textTheme.titleLarge,
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Text(
+                                            _filter == TvLibraryFilter.movies || _filter == TvLibraryFilter.series
+                                                ? '只按来源标注的分类筛选，未分类内容请到“全部影视”查看。'
+                                                : '通过搜索或发现找到内容后，加入收藏。',
+                                            textAlign: TextAlign.center,
+                                          ),
+                                          const SizedBox(height: 20),
+                                          _nav(
+                                            '搜索内容',
+                                            'empty-search',
+                                            () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.search),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                 ],
                               ),
-                            ],
-                          ),
+                            ),
+                            if (entries.isNotEmpty)
+                              SliverPadding(
+                                padding: EdgeInsets.symmetric(horizontal: margin),
+                                sliver: SliverLayoutBuilder(
+                                  builder: (context, shelf) {
+                                    final columns = (shelf.crossAxisExtent / 250).floor().clamp(1, 5);
+                                    final width = (shelf.crossAxisExtent - (columns - 1) * 20) / columns;
+                                    final indices = {for (var i = 0; i < entries.length; i++) entries[i].book.id: i};
+                                    return SliverGrid.builder(
+                                      itemCount: entries.length,
+                                      findChildIndexCallback: (key) => key is ValueKey<String> ? indices[key.value] : null,
+                                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                        crossAxisCount: columns,
+                                        crossAxisSpacing: 20,
+                                        mainAxisSpacing: 24,
+                                        mainAxisExtent: (width - 12) * 9 / 16 + 160 * MediaQuery.textScalerOf(context).scale(1),
+                                      ),
+                                      itemBuilder: (context, index) {
+                                        final entry = entries[index];
+                                        return TvLibraryCard(
+                                          key: ValueKey(entry.book.id),
+                                          entry: entry,
+                                          width: width,
+                                          onOpen: () => _run(() => widget.onDetail(entry.book)),
+                                          onMore: () => _more(entry),
+                                        );
+                                      },
+                                    );
+                                  },
+                                ),
+                              ),
+                            SliverPadding(
+                              padding: EdgeInsets.fromLTRB(margin, 0, margin, 24),
+                              sliver: SliverList.list(
+                                children: [
+                                  const SizedBox(height: 28),
+                                  Wrap(
+                                    spacing: 16,
+                                    runSpacing: 12,
+                                    children: [
+                                      _nav(
+                                        '阅读与听书',
+                                        'reading',
+                                        () => _select(TvLibraryFilter.reading),
+                                        selected: _filter == TvLibraryFilter.reading,
+                                      ),
+                                      if (widget.callbacks.onManageSources != null)
+                                        _nav('管理数据源', 'sources', widget.callbacks.onManageSources!),
+                                      if (widget.callbacks.onReadingHistory != null)
+                                        _nav('观看与阅读记录', 'history', widget.callbacks.onReadingHistory!),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    child: Text(
-                      '方向键 移动    OK 打开    菜单键 更多    返回键 返回',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyLarge?.copyWith(color: tokens.mutedText),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Text(
+                        '方向键 移动    OK 打开    菜单键 更多    返回键 返回',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyLarge?.copyWith(color: tokens.mutedText),
+                      ),
                     ),
-                  ),
-                ],
-              );
-            },
+                  ],
+                );
+              },
+            ),
           ),
         ),
       ),
     );
   }
 
+  Widget _transitionContent(Widget child) => TweenAnimationBuilder<double>(
+    key: ValueKey(_filter),
+    tween: Tween(begin: 0, end: 1),
+    duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 220),
+    curve: Curves.easeOutCubic,
+    child: child,
+    builder: (_, value, child) => Opacity(
+      opacity: value,
+      child: Transform.translate(offset: Offset(0, 12 * (1 - value)), child: child),
+    ),
+  );
+
   Widget _nav(String text, String id, VoidCallback action, {bool selected = false, bool autofocus = false, bool activateOnFocus = false}) =>
       TvFocusable(
         key: Key('tv-nav-$id'),
+        focusNode: id == 'home' ? _homeFocus : null,
         selected: selected,
         autofocus: autofocus,
         activateOnFocus: activateOnFocus,

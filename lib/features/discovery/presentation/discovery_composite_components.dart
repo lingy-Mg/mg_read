@@ -14,6 +14,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'widgets/discovery_remote_action.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -55,6 +56,7 @@ class DiscoveryCoverGrid extends StatelessWidget {
           children: items
               .map(
                 (item) => SizedBox(
+                  key: ValueKey(item.content.id),
                   width: width,
                   child: _CoverTile(
                     item: item,
@@ -94,31 +96,57 @@ class DiscoveryBookShelf extends StatelessWidget {
     if (items.isEmpty) return const SizedBox.shrink();
     return SizedBox(
       key: const Key('runtime-discovery-book-shelf'),
-      height: coverHeightRatio == 1
+      height: TvModeScope.isEnabled(context)
+          ? AppSpacing.discoveryShelfItemWidth * 1.5 * coverHeightRatio + discoveryRemoteMetadataExtent(context)
+          : coverHeightRatio == 1
           ? AppSpacing.discoveryShelfItemWidth + AppSpacing.discoveryCoverMetadataExtent
           : AppSpacing.discoveryShelfHeight,
       child: ScrollConfiguration(
         behavior: discoveryDragScrollBehavior(context),
-        child: ListView.separated(
-          primary: false,
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.only(right: AppSpacing.discoveryComponentGap),
-          itemCount: items.length,
-          separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.discoveryComponentGap),
-          itemBuilder: (context, index) {
-            final item = items[index];
-            return SizedBox(
-              width: AppSpacing.discoveryShelfItemWidth,
-              child: _CoverTile(
-                item: item,
-                width: AppSpacing.discoveryShelfItemWidth,
-                coverHeight: AppSpacing.discoveryShelfItemWidth * coverHeightRatio,
-                inBookshelf: isInBookshelf(item.content),
-                onPressed: () => onPressed(item.content),
+        child: TvModeScope.isEnabled(context)
+            ? SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final item in items)
+                      Padding(
+                        key: ValueKey(item.content.id),
+                        padding: const EdgeInsets.only(right: AppSpacing.discoveryComponentGap),
+                        child: SizedBox(
+                          width: AppSpacing.discoveryShelfItemWidth * 1.5,
+                          child: _CoverTile(
+                            item: item,
+                            width: AppSpacing.discoveryShelfItemWidth * 1.5,
+                            coverHeight: AppSpacing.discoveryShelfItemWidth * 1.5 * coverHeightRatio,
+                            inBookshelf: isInBookshelf(item.content),
+                            onPressed: () => onPressed(item.content),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              )
+            : ListView.separated(
+                primary: false,
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.only(right: AppSpacing.discoveryComponentGap),
+                itemCount: items.length,
+                separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.discoveryComponentGap),
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  return SizedBox(
+                    width: AppSpacing.discoveryShelfItemWidth,
+                    child: _CoverTile(
+                      item: item,
+                      width: AppSpacing.discoveryShelfItemWidth,
+                      coverHeight: AppSpacing.discoveryShelfItemWidth * coverHeightRatio,
+                      inBookshelf: isInBookshelf(item.content),
+                      onPressed: () => onPressed(item.content),
+                    ),
+                  );
+                },
               ),
-            );
-          },
-        ),
       ),
     );
   }
@@ -157,58 +185,62 @@ class DiscoveryCompactBookList extends StatelessWidget {
                   if (content.categories.isNotEmpty) content.categories.first,
                 ].join(' · ');
                 final rankColor = rank <= 3 ? tokens.notification : tokens.mutedText;
-                return Semantics(
-                  button: true,
-                  label: '${showRanks ? '第 $rank 名，' : ''}${content.title}',
-                  child: InkWell(
-                    key: ValueKey<String>('runtime-discovery-compact-${content.id}'),
-                    onTap: () => onPressed(content),
-                    borderRadius: _rowRadius(index, items.length),
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: AppSpacing.discoveryCompactRowMinHeight),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.discoveryPanelPadding, vertical: AppSpacing.compact),
-                        child: Row(
-                          children: <Widget>[
-                            if (showRanks) ...<Widget>[
-                              SizedBox(
-                                width: 24,
-                                child: Text(
-                                  '$rank',
-                                  textAlign: TextAlign.center,
-                                  style: theme.textTheme.titleSmall?.copyWith(color: rankColor, fontWeight: FontWeight.w800),
+                return DiscoveryRemoteAction(
+                  onPressed: () => onPressed(content),
+                  label: content.title,
+                  child: Semantics(
+                    button: true,
+                    label: '${showRanks ? '第 $rank 名，' : ''}${content.title}',
+                    child: InkWell(
+                      key: ValueKey<String>('runtime-discovery-compact-${content.id}'),
+                      onTap: () => onPressed(content),
+                      borderRadius: _rowRadius(index, items.length),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: AppSpacing.discoveryCompactRowMinHeight),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.discoveryPanelPadding, vertical: AppSpacing.compact),
+                          child: Row(
+                            children: <Widget>[
+                              if (showRanks) ...<Widget>[
+                                SizedBox(
+                                  width: 24,
+                                  child: Text(
+                                    '$rank',
+                                    textAlign: TextAlign.center,
+                                    style: theme.textTheme.titleSmall?.copyWith(color: rankColor, fontWeight: FontWeight.w800),
+                                  ),
+                                ),
+                                const SizedBox(width: AppSpacing.compact),
+                              ],
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    Text(content.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall),
+                                    if (metadata.isNotEmpty) ...<Widget>[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        metadata,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                               ),
-                              const SizedBox(width: AppSpacing.compact),
+                              if (isInBookshelf(content)) ...<Widget>[
+                                const SizedBox(width: AppSpacing.compact),
+                                Icon(Icons.bookmark_added_rounded, size: 17, color: tokens.accent),
+                              ],
+                              if (item.metric != null) ...<Widget>[
+                                const SizedBox(width: AppSpacing.compact),
+                                Text(item.metric!.value, style: theme.textTheme.labelSmall?.copyWith(color: tokens.mutedText)),
+                              ],
+                              const SizedBox(width: AppSpacing.unit),
+                              Icon(Icons.chevron_right_rounded, size: 18, color: tokens.mutedText),
                             ],
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: <Widget>[
-                                  Text(content.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall),
-                                  if (metadata.isNotEmpty) ...<Widget>[
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      metadata,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                            if (isInBookshelf(content)) ...<Widget>[
-                              const SizedBox(width: AppSpacing.compact),
-                              Icon(Icons.bookmark_added_rounded, size: 17, color: tokens.accent),
-                            ],
-                            if (item.metric != null) ...<Widget>[
-                              const SizedBox(width: AppSpacing.compact),
-                              Text(item.metric!.value, style: theme.textTheme.labelSmall?.copyWith(color: tokens.mutedText)),
-                            ],
-                            const SizedBox(width: AppSpacing.unit),
-                            Icon(Icons.chevron_right_rounded, size: 18, color: tokens.mutedText),
-                          ],
+                          ),
                         ),
                       ),
                     ),
@@ -457,62 +489,66 @@ class _CoverTile extends StatelessWidget {
     final content = item.content;
     final theme = Theme.of(context);
     final tokens = AppThemeTokens.of(context);
-    return Semantics(
-      button: true,
-      label: '查看 ${content.title}${inBookshelf ? '，已在书架' : ''}',
-      child: InkWell(
-        key: ValueKey<String>('runtime-discovery-cover-${content.id}'),
-        onTap: onPressed,
-        borderRadius: AppRadii.discoveryTile,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Stack(
-              children: <Widget>[
-                DiscoveryBookCover(
-                  title: content.title,
-                  contentKind: content.contentKind,
-                  coverBytes: content.coverBytes,
-                  remoteContentId: content.id,
-                  coverUrl: content.coverUrl,
-                  variant: _coverVariant(content.id),
-                  presentation: discoveryCoverPresentation(content.coverOrientation),
-                  width: width,
-                  height: coverHeight,
-                ),
-                if (inBookshelf) const Positioned(top: 6, right: 6, child: DiscoveryBookshelfBadge()),
-                if (item.metric != null)
-                  Positioned(
-                    left: 6,
-                    bottom: 6,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.66), borderRadius: AppRadii.pill),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                        child: Text(
-                          item.metric!.value,
-                          style: theme.textTheme.labelSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w600),
+    return DiscoveryRemoteAction(
+      onPressed: onPressed,
+      label: content.title,
+      child: Semantics(
+        button: true,
+        label: '查看 ${content.title}${inBookshelf ? '，已在书架' : ''}',
+        child: InkWell(
+          key: ValueKey<String>('runtime-discovery-cover-${content.id}'),
+          onTap: onPressed,
+          borderRadius: AppRadii.discoveryTile,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Stack(
+                children: <Widget>[
+                  DiscoveryBookCover(
+                    title: content.title,
+                    contentKind: content.contentKind,
+                    coverBytes: content.coverBytes,
+                    remoteContentId: content.id,
+                    coverUrl: content.coverUrl,
+                    variant: _coverVariant(content.id),
+                    presentation: discoveryCoverPresentation(content.coverOrientation),
+                    width: width,
+                    height: coverHeight,
+                  ),
+                  if (inBookshelf) const Positioned(top: 6, right: 6, child: DiscoveryBookshelfBadge()),
+                  if (item.metric != null)
+                    Positioned(
+                      left: 6,
+                      bottom: 6,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.66), borderRadius: AppRadii.pill),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          child: Text(
+                            item.metric!.value,
+                            style: theme.textTheme.labelSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w600),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 7),
-            Text(
-              content.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              content.author ?? (content.categories.isEmpty ? _contentKindLabel(content.contentKind) : content.categories.first),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
-            ),
-          ],
+                ],
+              ),
+              const SizedBox(height: 7),
+              Text(
+                content.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                content.author ?? (content.categories.isEmpty ? _contentKindLabel(content.contentKind) : content.categories.first),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -552,36 +588,40 @@ class _CategoryGrid extends StatelessWidget {
             .map(
               (category) => SizedBox(
                 width: width,
-                child: Material(
-                  color: tokens.featureSurface,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: AppRadii.discoveryTile,
-                    side: BorderSide(color: tokens.divider),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    key: ValueKey<String>('runtime-discovery-category-${category.id}'),
-                    onTap: () => onSelected(category.target),
-                    borderRadius: AppRadii.discoveryTile,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: AppSpacing.minimumTouchTarget),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.discoveryPanelPadding),
-                        child: Row(
-                          children: <Widget>[
-                            Icon(discoverySemanticIcon(category.icon), size: 18, color: tokens.accent),
-                            const SizedBox(width: AppSpacing.compact),
-                            Expanded(
-                              child: Text(
-                                category.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                child: DiscoveryRemoteAction(
+                  label: category.title,
+                  onPressed: () => onSelected(category.target),
+                  child: Material(
+                    color: tokens.featureSurface,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: AppRadii.discoveryTile,
+                      side: BorderSide(color: tokens.divider),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      key: ValueKey<String>('runtime-discovery-category-${category.id}'),
+                      onTap: () => onSelected(category.target),
+                      borderRadius: AppRadii.discoveryTile,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: AppSpacing.minimumTouchTarget),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.discoveryPanelPadding),
+                          child: Row(
+                            children: <Widget>[
+                              Icon(discoverySemanticIcon(category.icon), size: 18, color: tokens.accent),
+                              const SizedBox(width: AppSpacing.compact),
+                              Expanded(
+                                child: Text(
+                                  category.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                                ),
                               ),
-                            ),
-                            if (category.count != null)
-                              Text('${category.count}', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
-                          ],
+                              if (category.count != null)
+                                Text('${category.count}', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -613,32 +653,36 @@ class _CategoryList extends StatelessWidget {
             Builder(
               builder: (context) {
                 final category = categories[index];
-                return InkWell(
-                  key: ValueKey<String>('runtime-discovery-category-${category.id}'),
-                  onTap: () => onSelected(category.target),
-                  borderRadius: _rowRadius(index, categories.length),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(minHeight: AppSpacing.discoveryCompactRowMinHeight),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.discoveryPanelPadding),
-                      child: Row(
-                        children: <Widget>[
-                          Icon(discoverySemanticIcon(category.icon), size: 18, color: tokens.accent),
-                          const SizedBox(width: AppSpacing.compact),
-                          Expanded(
-                            child: Text(
-                              category.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                return DiscoveryRemoteAction(
+                  label: category.title,
+                  onPressed: () => onSelected(category.target),
+                  child: InkWell(
+                    key: ValueKey<String>('runtime-discovery-category-${category.id}'),
+                    onTap: () => onSelected(category.target),
+                    borderRadius: _rowRadius(index, categories.length),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: AppSpacing.discoveryCompactRowMinHeight),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.discoveryPanelPadding),
+                        child: Row(
+                          children: <Widget>[
+                            Icon(discoverySemanticIcon(category.icon), size: 18, color: tokens.accent),
+                            const SizedBox(width: AppSpacing.compact),
+                            Expanded(
+                              child: Text(
+                                category.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                              ),
                             ),
-                          ),
-                          if (category.count != null) ...<Widget>[
-                            Text('${category.count}', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
-                            const SizedBox(width: AppSpacing.unit),
+                            if (category.count != null) ...<Widget>[
+                              Text('${category.count}', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+                              const SizedBox(width: AppSpacing.unit),
+                            ],
+                            Icon(Icons.chevron_right_rounded, size: 18, color: tokens.mutedText),
                           ],
-                          Icon(Icons.chevron_right_rounded, size: 18, color: tokens.mutedText),
-                        ],
+                        ),
                       ),
                     ),
                   ),

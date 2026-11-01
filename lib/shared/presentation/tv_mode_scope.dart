@@ -4,6 +4,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focus_traversal.dart';
 
 class TvModeScope extends InheritedWidget {
   const TvModeScope({required this.enabled, required this.onChanged, required super.child, super.key});
@@ -47,7 +48,12 @@ class TvRemoteShortcuts extends StatelessWidget {
               SingleActivator(LogicalKeyboardKey.select, includeRepeats: false): ActivateIntent(),
               SingleActivator(LogicalKeyboardKey.gameButtonA, includeRepeats: false): ActivateIntent(),
             },
-      child: child,
+      child: enabled
+          ? FocusTraversalGroup(
+              policy: ReadingOrderTraversalPolicy(requestFocusCallback: requestTvFocus),
+              child: child,
+            )
+          : child,
     ),
   );
 }

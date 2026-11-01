@@ -5,6 +5,7 @@
 /// - 提供小说预加载、音频行为、视频解码/输出和书架布局设置。
 /// - Android 界面渲染由视频设置面板交给原生启动偏好保存，重启后生效。
 /// - 将阅读器内设置与应用级设置边界解释清楚。
+/// - TV 使用大尺寸标题与宽屏分栏，窄屏保持可滚动单列。
 library;
 
 import 'package:flutter/material.dart';
@@ -14,6 +15,7 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/profile/presentation/profile_video_settings.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 
 part 'profile_appearance_theme_controls.dart';
 part 'profile_reading_player_settings_components.dart';
@@ -29,6 +31,12 @@ class ProfileGeneralSettingPage extends ConsumerWidget {
     ref.watch(appSettingsStatusProvider);
     final AppSettingsManager settings = ref.watch(appSettingsProvider);
     final _GeneralSettingSpec spec = _specFor(settingId);
+    final sections = switch (settingId) {
+      'reading-settings' => _readingSections(context, settings),
+      'theme-appearance' => _appearanceSections(context, settings),
+      _ => _fallbackSections(context),
+    };
+    final tv = TvModeScope.isEnabled(context);
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -42,24 +50,41 @@ class ProfileGeneralSettingPage extends ConsumerWidget {
                 backButtonKey: const Key('secondary-placeholder-back'),
               ),
               Expanded(
-                child: ListView(
-                  key: Key('profile-general-setting-$settingId'),
-                  padding: const EdgeInsets.fromLTRB(
-                    AppDetailMetrics.horizontalPadding,
-                    AppSpacing.regular,
-                    AppDetailMetrics.horizontalPadding,
-                    AppSpacing.section,
-                  ),
-                  children: <Widget>[
-                    _SettingHero(spec: spec),
-                    const SizedBox(height: AppSpacing.section),
-                    ...switch (settingId) {
-                      'reading-settings' => _readingSections(context, settings),
-                      'theme-appearance' => _appearanceSections(context, settings),
-                      _ => _fallbackSections(context),
-                    },
-                  ],
-                ),
+                child: tv && MediaQuery.sizeOf(context).width >= 1000
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 2,
+                            child: SingleChildScrollView(
+                              padding: const EdgeInsets.fromLTRB(0, 16, 28, 24),
+                              child: _SettingHero(spec: spec),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 5,
+                            child: ListView(
+                              key: Key('profile-general-setting-$settingId'),
+                              padding: const EdgeInsets.fromLTRB(12, 16, 20, 32),
+                              children: sections,
+                            ),
+                          ),
+                        ],
+                      )
+                    : ListView(
+                        key: Key('profile-general-setting-$settingId'),
+                        padding: const EdgeInsets.fromLTRB(
+                          AppDetailMetrics.horizontalPadding,
+                          AppSpacing.regular,
+                          AppDetailMetrics.horizontalPadding,
+                          AppSpacing.section,
+                        ),
+                        children: <Widget>[
+                          _SettingHero(spec: spec),
+                          const SizedBox(height: AppSpacing.section),
+                          ...sections,
+                        ],
+                      ),
               ),
             ],
           ),

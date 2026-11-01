@@ -10,9 +10,22 @@ import 'package:mg_read/app/app_router.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/library/presentation/widgets/tv_library_shell.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
+import 'package:mg_read/features/profile/presentation/tv_profile_page.dart';
 import 'mg_read_app_test_support.dart';
 
 void main() {
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('mgread/rendering_settings'),
+      (_) async => {'selected': 'auto', 'activeRenderer': 'opengl', 'restartRequired': false},
+    );
+  });
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('mgread/rendering_settings'),
+      null,
+    );
+  });
   setUpAll(() async {
     await (FontLoader(
       'packages/novel_reader_ui/MiSans',
@@ -46,6 +59,9 @@ void main() {
       container.read(appRouterProvider).go(route);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+      if (route.startsWith('/profile/')) {
+        expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvProfilePage>(), isNull);
+      }
       if (route == '/search') {
         expect(
           tester.getRect(find.byKey(const Key('search-page-scroll'))).bottom,

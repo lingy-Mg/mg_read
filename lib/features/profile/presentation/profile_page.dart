@@ -7,6 +7,7 @@
 /// 注意：
 /// - 不在 build() 中读取或写入持久化、Runtime 数据。
 /// - 根页与二级页必须消费同一顶部间距和最小操作命中区 token。
+/// - TV 模式交给电视设置面板，沿用相同设置和导航回调。
 ///
 library;
 
@@ -17,6 +18,7 @@ import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/profile/presentation/profile_view_data.dart';
+import 'package:mg_read/features/profile/presentation/tv_profile_page.dart';
 import 'package:mg_read/features/profile/domain/profile_identity.dart';
 import 'package:mg_read/features/profile/domain/profile_reading_stats.dart';
 import 'package:mg_read/features/profile/presentation/widgets/profile_overview_card.dart';
@@ -84,6 +86,14 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    if (TvModeScope.isEnabled(context)) {
+      return TvProfilePage(
+        appVersion: widget.appVersion,
+        onDestinationRequested: _handleDestinationSelected,
+        onSettingRequested: _handleSettingsItemPressed,
+        onAboutRequested: _handleAboutItemPressed,
+      );
+    }
     var data = ProfileFixtures.preview.withIdentity(widget.profileIdentity).withAppVersion(widget.appVersion);
     if (widget.readingStats case final stats?) {
       data = data.withReadingStats(stats);

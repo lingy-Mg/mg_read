@@ -11,6 +11,8 @@ library;
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 
 class DiscoveryTopAction extends StatelessWidget {
   const DiscoveryTopAction({required this.tooltip, required this.icon, required this.onPressed, super.key});
@@ -22,6 +24,9 @@ class DiscoveryTopAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    if (TvModeScope.isEnabled(context)) {
+      return TvFocusable(label: tooltip, onPressed: onPressed, child: Icon(icon, size: 24));
+    }
     return Semantics(
       button: true,
       label: tooltip,

@@ -11,6 +11,7 @@ import 'package:mg_read/app/app_tv_theme.dart';
 import 'package:mg_read/features/discovery/presentation/runtime_discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
@@ -45,7 +46,8 @@ void main() {
           await expectLater(find.byType(RuntimeDiscoveryPage), matchesGoldenFile('goldens/tv_discovery_compact_posters.png'));
         }
 
-        Focus.of(tester.element(find.descendant(of: first, matching: find.byType(Column)).first)).requestFocus();
+        final action = find.ancestor(of: first, matching: find.byType(TvFocusable)).first;
+        tester.widget<Focus>(find.descendant(of: action, matching: find.byType(Focus)).first).focusNode!.requestFocus();
         await tester.pumpAndSettle();
         await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
         await tester.pumpAndSettle();
@@ -55,7 +57,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.sendKeyEvent(LogicalKeyboardKey.select);
         expect(selected, 'video-${columns + 1}');
-        expect(_tile(columns + 1).hitTestable(), findsOneWidget);
+        expect(find.ancestor(of: _tile(columns + 1), matching: find.byType(TvFocusable)).first.hitTestable(), findsOneWidget);
         expect(tester.getRect(_tile(columns + 1)).bottom, lessThanOrEqualTo(tester.getTopLeft(find.byType(AppBottomNavigation)).dy));
         expect(tester.takeException(), isNull);
       });

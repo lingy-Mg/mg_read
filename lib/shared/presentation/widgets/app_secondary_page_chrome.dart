@@ -16,6 +16,9 @@ import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focus_region.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 
 /// The common title bar for profile-owned secondary pages.
 ///
@@ -41,6 +44,20 @@ class AppSecondaryPageTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    if (TvModeScope.isEnabled(context)) {
+      return Padding(
+        key: headerKey,
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          children: [
+            TvFocusable(key: backButtonKey, label: '返回', onPressed: onBack, child: const Icon(Icons.arrow_back_rounded)),
+            const SizedBox(width: 24),
+            Expanded(child: Text(title, style: theme.textTheme.headlineSmall)),
+            ...actions,
+          ],
+        ),
+      );
+    }
     return SizedBox(
       key: headerKey,
       height: AppSpacing.minimumTouchTarget,
@@ -126,19 +143,21 @@ class AppSecondaryPageContent extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (BuildContext context, BoxConstraints constraints) {
-      final double horizontalPadding = constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint ? AppSpacing.widePagePadding : 0;
-      return Padding(
-        padding: EdgeInsets.fromLTRB(horizontalPadding, AppSpacing.pageHeaderTopPaddingFor(context), horizontalPadding, 0),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: AppSpacing.contentMaxWidth),
-            child: SizedBox(width: double.infinity, child: child),
+  Widget build(BuildContext context) => TvFocusRegion(
+    child: LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final double horizontalPadding = constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint ? AppSpacing.widePagePadding : 0;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(horizontalPadding, AppSpacing.pageHeaderTopPaddingFor(context), horizontalPadding, 0),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: AppSpacing.contentMaxWidth),
+              child: SizedBox(width: double.infinity, child: child),
+            ),
           ),
-        ),
-      );
-    },
+        );
+      },
+    ),
   );
 }
 
