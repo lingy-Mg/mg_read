@@ -120,12 +120,22 @@ jobs:
         run: flutter pub get
 
       - name: Check changed Dart code and regressions
+        timeout-minutes: 10
         shell: pwsh
         run: |
           $owned = @('lib/app/app_startup.dart', 'lib/app/app_startup_gate.dart', 'lib/app/bootstrap.dart', 'lib/core/settings/src/app_settings_manager.dart', 'test/app/app_startup_gate_test.dart', 'test/app/app_settings_bootstrap_test.dart', 'test/app/app_startup_test.dart')
           $tests = @('test/app/app_startup_gate_test.dart', 'test/app/app_settings_bootstrap_test.dart', 'test/app/app_startup_test.dart', 'test/app/tv_mode_test.dart')
           ./tools/run_flutter_checks.ps1 -Mode Fast -DartPath $owned -TestPath $tests
           ./tools/run_flutter_checks.ps1 -Mode Final -DartPath $owned -TestPath $tests
+
+      - name: Preserve Android check logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mgread-android-checks-${{ github.sha }}
+          path: .dart_tool/ai-checks/*.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Install local Android signing key
         env:
