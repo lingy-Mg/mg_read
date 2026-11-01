@@ -3,6 +3,7 @@
 /// Dispatcher callbacks are attached and released with this scope's lifetime.
 /// TV hosts may capture a whole key gesture before page shortcuts and consume
 /// its paired Android platform signal, including one arriving after key-up.
+/// Platform-only callback bursts are also coalesced until 180 ms of quiet.
 library;
 
 import 'dart:async';
@@ -37,11 +38,13 @@ class AppBackNavigationScope extends StatefulWidget {
 
 class _AppBackNavigationScopeState extends State<AppBackNavigationScope> with WidgetsBindingObserver {
   static const _echoWindow = Duration(milliseconds: 350);
+  static const _platformQuietWindow = Duration(milliseconds: 180);
   bool _isHandlingBack = false;
   final _heldBackKeys = <PhysicalKeyboardKey>{};
   bool _platformEcho = false;
   bool _keyboardEcho = false;
   Timer? _echoTimer;
+  Timer? _platformTimer;
   BackButtonDispatcher? _parentDispatcher;
   ChildBackButtonDispatcher? _backDispatcher;
 
@@ -75,6 +78,8 @@ class _AppBackNavigationScopeState extends State<AppBackNavigationScope> with Wi
   void _clearBackGesture() {
     _echoTimer?.cancel();
     _echoTimer = null;
+    _platformTimer?.cancel();
+    _platformTimer = null;
     _heldBackKeys.clear();
     _platformEcho = false;
     _keyboardEcho = false;
@@ -87,6 +92,11 @@ class _AppBackNavigationScopeState extends State<AppBackNavigationScope> with Wi
       _keyboardEcho = false;
       _echoTimer = null;
     });
+  }
+
+  void _waitForPlatformQuiet() {
+    _platformTimer?.cancel();
+    _platformTimer = Timer(_platformQuietWindow, () => _platformTimer = null);
   }
 
   @override
@@ -105,6 +115,8 @@ class _AppBackNavigationScopeState extends State<AppBackNavigationScope> with Wi
       _waitForEcho();
     } else if (event is KeyDownEvent && _heldBackKeys.add(event.physicalKey)) {
       final echo = _keyboardEcho;
+      _platformTimer?.cancel();
+      _platformTimer = null;
       _echoTimer?.cancel();
       _keyboardEcho = false;
       _platformEcho = true;
@@ -144,6 +156,12 @@ class _AppBackNavigationScopeState extends State<AppBackNavigationScope> with Wi
   Future<bool> _requestBack() async {
     if (widget.captureBackKeys) {
       if (_heldBackKeys.isNotEmpty || _platformEcho) return true;
+      if (_platformTimer?.isActive ?? false) {
+        _waitForPlatformQuiet();
+        _waitForEcho();
+        return true;
+      }
+      _waitForPlatformQuiet();
       _keyboardEcho = true;
       _waitForEcho();
     }

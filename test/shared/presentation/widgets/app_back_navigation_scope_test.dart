@@ -6,6 +6,36 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/shared/presentation/widgets/app_back_navigation_scope.dart';
 
 void main() {
+  testWidgets('TV coalesces repeated platform-only callbacks but accepts a subsequent gesture', (tester) async {
+    final dispatcher = RootBackButtonDispatcher();
+    Future<bool> fallback() async => false;
+    dispatcher.addCallback(fallback);
+    addTearDown(() => dispatcher.removeCallback(fallback));
+    var calls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AppBackNavigationScope(
+          backButtonDispatcher: dispatcher,
+          captureBackKeys: true,
+          onBackRequested: () async {
+            calls++;
+            return true;
+          },
+          child: const Focus(autofocus: true, child: SizedBox.expand()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await dispatcher.invokeCallback(Future.value(false));
+    await dispatcher.invokeCallback(Future.value(false));
+    await tester.pump(const Duration(milliseconds: 40));
+    await dispatcher.invokeCallback(Future.value(false));
+    expect(calls, 1);
+    await tester.pump(const Duration(milliseconds: 250));
+    await dispatcher.invokeCallback(Future.value(false));
+    expect(calls, 2);
+  });
+
   testWidgets('captured back keys dispatch once before child shortcuts and release on mode change', (tester) async {
     var rootCalls = 0;
     var childCalls = 0;

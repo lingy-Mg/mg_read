@@ -9,6 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read_video_player/mg_read_video_player.dart';
+import 'package:mg_read/features/app_update/presentation/github_apk_update_prompt.dart';
+import '../support/github_apk_release_fixture.dart';
 
 import 'package:mg_read/app/app_router.dart';
 import 'package:mg_read/core/settings/settings.dart';
@@ -292,6 +294,37 @@ void main() {
     expect(find.text('再按一次返回键退出应用'), findsNothing);
     expect(exitCount, 0);
   });
+
+  for (final kind in ['update', 'dialog', 'sheet']) {
+    testWidgets('TV $kind consumes duplicate platform back without backing settings', (tester) async {
+      final router = await _startTvApp(tester);
+      router.go('/profile');
+      await tester.pumpAndSettle();
+      final context = appRootNavigatorKey.currentContext!;
+      if (kind == 'update') {
+        showGitHubApkUpdatePrompt(context, githubApkReleaseFixture);
+      } else if (kind == 'dialog') {
+        showDialog<void>(
+          context: context,
+          builder: (_) => const AlertDialog(key: Key('generic-tv-overlay'), title: Text('测试弹窗')),
+        );
+      } else {
+        showModalBottomSheet<void>(
+          context: context,
+          builder: (_) => const SizedBox(key: Key('generic-tv-overlay'), height: 200, child: Text('测试选项')),
+        );
+      }
+      await tester.pumpAndSettle();
+      await tester.binding.handlePopRoute();
+      await tester.pump(const Duration(milliseconds: 20));
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('github-apk-update-prompt')), findsNothing);
+      expect(find.byKey(const Key('generic-tv-overlay')), findsNothing);
+      expect(router.routeInformationProvider.value.uri.path, '/profile');
+      expect(exitCount, 0);
+    });
+  }
 
   testWidgets('TV secondary settings back returns to settings before home', (tester) async {
     final router = await _startTvApp(tester);
