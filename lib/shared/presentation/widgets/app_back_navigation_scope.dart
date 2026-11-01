@@ -1,3 +1,8 @@
+/// Shared back input dispatch; page-owned navigation always runs first.
+/// An explicit dispatcher supports hosts above MaterialApp.router's Router.
+/// Dispatcher callbacks are attached and released with this scope's lifetime.
+library;
+
 import 'dart:async';
 
 import 'package:flutter/gestures.dart';
@@ -8,12 +13,13 @@ import 'package:flutter/services.dart';
 ///
 /// Router history already handles browser back and forward navigation. This
 /// scope adds the equivalent Escape and mouse side-back actions, while
-/// [BackButtonListener] covers platform back dispatchers such as Android.
+/// a child dispatcher covers platform back events such as Android.
 class AppBackNavigationScope extends StatefulWidget {
-  const AppBackNavigationScope({required this.onBackRequested, required this.child, super.key});
+  const AppBackNavigationScope({required this.onBackRequested, required this.child, this.backButtonDispatcher, super.key});
 
-  /// Returns true when a page was popped and false when the app is at its root.
+  /// Returns true when back was consumed, including page-local handling.
   final Future<bool> Function() onBackRequested;
+  final BackButtonDispatcher? backButtonDispatcher;
   final Widget child;
 
   @override
@@ -22,6 +28,45 @@ class AppBackNavigationScope extends StatefulWidget {
 
 class _AppBackNavigationScopeState extends State<AppBackNavigationScope> {
   bool _isHandlingBack = false;
+  BackButtonDispatcher? _parentDispatcher;
+  ChildBackButtonDispatcher? _backDispatcher;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncDispatcher();
+  }
+
+  @override
+  void didUpdateWidget(covariant AppBackNavigationScope oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncDispatcher();
+  }
+
+  void _syncDispatcher() {
+    final parent = widget.backButtonDispatcher ?? Router.maybeOf(context)?.backButtonDispatcher;
+    if (identical(parent, _parentDispatcher)) return;
+    _backDispatcher?.removeCallback(_requestBack);
+    _parentDispatcher = parent;
+    _backDispatcher = parent?.createChildBackButtonDispatcher();
+    _backDispatcher?.addCallback(_requestBack);
+    if (parent?.hasCallbacks ?? false) {
+      _backDispatcher?.takePriority();
+    } else {
+      // An explicit dispatcher can arrive before the descendant Router mounts.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && identical(parent, _parentDispatcher) && (parent?.hasCallbacks ?? false)) {
+          _backDispatcher?.takePriority();
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _backDispatcher?.removeCallback(_requestBack);
+    super.dispose();
+  }
 
   Future<bool> _requestBack() async {
     if (_isHandlingBack) return true;
@@ -41,10 +86,10 @@ class _AppBackNavigationScopeState extends State<AppBackNavigationScope> {
 
   @override
   Widget build(BuildContext context) {
-    final Widget shortcutAwareChild = Shortcuts(
+    return Shortcuts(
       shortcuts: <ShortcutActivator, Intent>{
-        const SingleActivator(LogicalKeyboardKey.escape): const _AppBackIntent(),
-        const SingleActivator(LogicalKeyboardKey.goBack): const _AppBackIntent(),
+        const SingleActivator(LogicalKeyboardKey.escape, includeRepeats: false): const _AppBackIntent(),
+        const SingleActivator(LogicalKeyboardKey.goBack, includeRepeats: false): const _AppBackIntent(),
       },
       child: Actions(
         actions: <Type, Action<Intent>>{
@@ -58,12 +103,6 @@ class _AppBackNavigationScopeState extends State<AppBackNavigationScope> {
         child: Listener(behavior: HitTestBehavior.translucent, onPointerDown: _handlePointerDown, child: widget.child),
       ),
     );
-    // MaterialApp.router's builder is above Router, so BackButtonListener
-    // would assert during the first frame when this scope is installed there.
-    // In that position go_router/Navigator handles platform back by default;
-    // keep the explicit listener only when a Router is actually available.
-    if (Router.maybeOf(context) == null) return shortcutAwareChild;
-    return BackButtonListener(onBackButtonPressed: _requestBack, child: shortcutAwareChild);
   }
 }
 

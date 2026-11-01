@@ -1,6 +1,7 @@
 /// 应用路由、主题和后台服务的组合根。
 /// 首屏遮罩由 AppStartupGate 持有；Runtime、更新和设备同步在首屏绘制后启动。
 /// 异步完成后必须检查 mounted；全局订阅随根组件销毁而取消。
+/// TV 根页面始终接管 Android 返回，防止关闭详情后系统直接退出 Activity。
 library;
 
 import 'dart:async';
@@ -18,6 +19,7 @@ import 'package:mg_read/app/app_fatal_error_reporter.dart';
 import 'package:mg_read/app/app_runtime_fatal_error_observer.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_tv_theme.dart';
+import 'package:mg_read/app/app_tv_back_navigation.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/app/data_source_system_error_dialog_host.dart';
 import 'package:mg_read/app/data_source_system_error_reporter.dart';
@@ -29,7 +31,6 @@ import 'package:mg_read/features/lan_sync/application/device_sync_controller.dar
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/media/presentation/source_audio_playback_host.dart';
 import 'package:mg_read/features/reader/presentation/chapter_cache_task_bar.dart';
-import 'package:mg_read/shared/presentation/widgets/app_back_navigation_scope.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 
@@ -45,6 +46,20 @@ class MgReadApp extends ConsumerStatefulWidget {
 class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserver {
   Timer? _developmentSyncDebounce;
   StreamSubscription<RuntimeInitializationProgress>? _runtimeInitializationSubscription;
+  bool _tvMode = false;
+  bool _navigatorCanHandlePop = false;
+
+  bool _handleNavigationNotification(NavigationNotification notification) {
+    _navigatorCanHandlePop = notification.canHandlePop;
+    _syncFrameworkBack();
+    return true;
+  }
+
+  void _syncFrameworkBack() {
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    if (lifecycle == null || lifecycle == AppLifecycleState.detached) return;
+    unawaited(SystemNavigator.setFrameworkHandlesBack(_tvMode || _navigatorCanHandlePop));
+  }
 
   @override
   void initState() {
@@ -191,6 +206,12 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
     ref.watch(appSettingsStatusProvider);
     final AppSettingsManager settings = ref.watch(appSettingsProvider);
     final bool tvMode = settings.get(AppSettingKeys.tvMode);
+    if (_tvMode != tvMode) {
+      _tvMode = tvMode;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _syncFrameworkBack();
+      });
+    }
     final AppThemeColor themeColor = AppThemeColor.fromId(settings.get(AppSettingKeys.themeColor));
     final AppDarkThemeColor darkThemeColor = AppDarkThemeColor.fromId(settings.get(AppSettingKeys.darkThemeColor));
     final ThemeMode themeMode = switch (settings.get(AppSettingKeys.themeMode)) {
@@ -209,6 +230,7 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
       darkTheme: tvMode ? appTvTheme(AppTheme.dark(color: darkThemeColor)) : AppTheme.dark(color: darkThemeColor),
       themeMode: tvMode ? ThemeMode.dark : themeMode,
       routerConfig: router,
+      onNavigationNotification: _handleNavigationNotification,
       builder: (BuildContext context, Widget? child) {
         final pageBackground = AppThemeTokens.of(context).pageBackground;
         return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -229,8 +251,9 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
                   child: AppFatalErrorDialogHost(
                     reporter: ref.watch(fatalErrorReporterProvider),
                     child: AppBottomNavigationMotionScope(
-                      child: AppBackNavigationScope(
-                        onBackRequested: popApplicationRoute,
+                      child: AppTvBackNavigation(
+                        router: router,
+                        enabled: tvMode,
                         child: AppThemeModeScope(
                           themeMode: themeMode,
                           onToggleTheme: _toggleTheme,

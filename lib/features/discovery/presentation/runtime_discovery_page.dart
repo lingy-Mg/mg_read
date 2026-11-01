@@ -12,6 +12,7 @@
 /// 注意：
 /// - 页面只渲染已由 application 层准备好的数据，不在 build() 中执行 IO。
 /// - 分类列表标签需与复用的发现内容列表项保持一致的视觉规格。
+/// - 根发现页的返回交给应用；只有本地层级拦截 Escape。
 ///
 library;
 
@@ -104,7 +105,9 @@ class RuntimeDiscoveryPage extends StatelessWidget {
         // Discovery owns an in-page navigation stack. Keep Escape on the same
         // callback as the visible back button and PopScope; do not pop the
         // outer GoRouter destination while a category stack still exists.
-        bindings: <ShortcutActivator, VoidCallback>{const SingleActivator(LogicalKeyboardKey.escape): onBackRequested},
+        bindings: <ShortcutActivator, VoidCallback>{
+          if (canNavigateBack || allowsRoutePop) const SingleActivator(LogicalKeyboardKey.escape, includeRepeats: false): onBackRequested,
+        },
         child: Focus(
           autofocus: true,
           child: PopScope(
