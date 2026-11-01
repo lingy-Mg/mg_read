@@ -95,18 +95,49 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets('startup and timer checks run on settings pages even with a back stack', (tester) async {
+    final app = await _TestApp.create(tester);
+    await tester.pumpWidget(app.widget);
+    app.router.go('/profile/settings');
+    await tester.pumpAndSettle();
+    expect(appRootNavigatorKey.currentState!.canPop(), isTrue);
+    app.startup.signalLibraryTerminalFrame();
+    await tester.pumpAndSettle();
+    expect(app.requests, 1);
+    await app.elapse(tester, const Duration(minutes: 30));
+    expect(app.requests, 2);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('startup and due checks wait for an imperative player or comic route to close', (tester) async {
     final app = await _TestApp.create(tester);
     await tester.pumpWidget(app.widget);
     await tester.pumpAndSettle();
     unawaited(appRootNavigatorKey.currentState!.push<void>(MaterialPageRoute(builder: (_) => const SizedBox.shrink())));
+    await tester.pumpAndSettle();
+    unawaited(
+      appRootNavigatorKey.currentState!.push<void>(
+        MaterialPageRoute(
+          settings: const RouteSettings(name: appContentSessionRouteName),
+          builder: (_) => const SizedBox.shrink(),
+        ),
+      ),
+    );
     app.startup.signalLibraryTerminalFrame();
     await tester.pumpAndSettle();
     expect(app.requests, 0);
     appRootNavigatorKey.currentState!.pop();
     await tester.pumpAndSettle();
     expect(app.requests, 1);
-    unawaited(appRootNavigatorKey.currentState!.push<void>(MaterialPageRoute(builder: (_) => const SizedBox.shrink())));
+    expect(appRootNavigatorKey.currentState!.canPop(), isTrue);
+    unawaited(
+      appRootNavigatorKey.currentState!.push<void>(
+        MaterialPageRoute(
+          settings: const RouteSettings(name: appContentSessionRouteName),
+          builder: (_) => const SizedBox.shrink(),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     await app.elapse(tester, const Duration(minutes: 30));
     expect(app.requests, 1);
@@ -146,6 +177,30 @@ void main() {
     expect(app.requests, 2);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets('content activity follows push, pop, replacement and removal without marking ordinary routes', (tester) async {
+    final navigation = AppNavigationActivity();
+    final ordinary = MaterialPageRoute<void>(builder: (_) => const SizedBox.shrink());
+    final content = MaterialPageRoute<void>(
+      settings: const RouteSettings(name: appContentSessionRouteName),
+      builder: (_) => const SizedBox.shrink(),
+    );
+    navigation.didPush(ordinary, null);
+    expect(navigation.hasContentSession, isFalse);
+    navigation.didPush(content, ordinary);
+    expect(navigation.hasContentSession, isTrue);
+    navigation.didReplace(oldRoute: content, newRoute: ordinary);
+    expect(navigation.hasContentSession, isFalse);
+    navigation.didReplace(oldRoute: ordinary, newRoute: content);
+    expect(navigation.hasContentSession, isTrue);
+    navigation.didRemove(content, ordinary);
+    expect(navigation.hasContentSession, isFalse);
+    navigation.didPush(content, ordinary);
+    navigation.didPop(content, ordinary);
+    expect(navigation.hasContentSession, isFalse);
+    navigation.close();
+    await tester.pump();
+  });
 }
 
 final class _TestApp {
@@ -168,7 +223,12 @@ final class _TestApp {
     navigatorKey: appRootNavigatorKey,
     observers: [navigation],
     routes: [
-      for (final path in ['/', '/profile', '/reader/:id']) GoRoute(path: path, builder: (_, _) => const SizedBox.shrink()),
+      for (final path in ['/', '/reader/:id']) GoRoute(path: path, builder: (_, _) => const SizedBox.shrink()),
+      GoRoute(
+        path: '/profile',
+        builder: (_, _) => const SizedBox.shrink(),
+        routes: [GoRoute(path: 'settings', builder: (_, _) => const SizedBox.shrink())],
+      ),
     ],
   );
 

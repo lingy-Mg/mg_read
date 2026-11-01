@@ -15,6 +15,7 @@ import 'package:mg_read_video_player/mg_read_video_player.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_startup.dart';
+import 'package:mg_read/app/app_navigation_activity.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/settings/settings.dart';
@@ -54,6 +55,7 @@ Future<void> openTransientSourceVideoPlayer(
   }
   return navigator.push<void>(
     MaterialPageRoute<void>(
+      settings: const RouteSettings(name: appContentSessionRouteName),
       builder: (_) => _SourceVideoPlayerDestination(
         container: container,
         navigator: navigator,

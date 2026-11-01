@@ -1,7 +1,8 @@
 /// Foreground-triggered maintenance after the first usable local frame. Checks
 /// are independently deduplicated by their owners. App updates bypass persisted
-/// timing once per launch, then run every 30 minutes while idle. Due checks and
-/// prompts wait for an idle top-level route, including minimized audio stopping.
+/// timing once per launch, then run every 30 minutes outside reader/player
+/// sessions and active audio. Prompts wait for an idle top-level route. The
+/// widget owns and cancels its timer; navigation/audio exit releases due checks.
 library;
 
 import 'dart:async';
@@ -48,6 +49,16 @@ class _AppBackgroundTasksState extends ConsumerState<AppBackgroundTasks> with Wi
     return {'/', '/discover', '/profile'}.contains(path);
   }
 
+  bool get _canCheckApk {
+    if (appRootNavigatorKey.currentState == null ||
+        _navigation.hasContentSession ||
+        ref.read(sourceAudioPlaybackServiceProvider).isActive) {
+      return false;
+    }
+    final path = ref.read(appRouterProvider).routerDelegate.currentConfiguration.uri.path;
+    return path != '/reader' && !path.startsWith('/reader/');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -64,19 +75,27 @@ class _AppBackgroundTasksState extends ConsumerState<AppBackgroundTasks> with Wi
 
   void _onNavigation() {
     if (!mounted) return;
-    if (appRootNavigatorKey.currentState?.canPop() == false) _trigger();
+    if (appRootNavigatorKey.currentState?.canPop() == false) {
+      _trigger();
+    } else {
+      _triggerAppUpdate();
+    }
   }
 
   void _trigger() {
     if (!mounted || !_ready || !_foreground) return;
-    unawaited(_checkApk().catchError((Object _) {}));
+    _triggerAppUpdate();
     unawaited(_checkSources().catchError((Object _) {}));
     unawaited(_refreshCatalog());
+  }
+
+  void _triggerAppUpdate() {
+    unawaited(_checkApk().catchError((Object _) {}));
     unawaited(_flushPrompts());
   }
 
   Future<void> _checkApk() async {
-    if (!mounted || !_ready || !_foreground || _checkingApk || _promptOpen || _installing || !_idle) return;
+    if (!mounted || !_ready || !_foreground || _checkingApk || _promptOpen || _installing || !_canCheckApk) return;
     _checkingApk = true;
     final force = _startupApkCheckPending;
     _startupApkCheckPending = false;
@@ -87,7 +106,7 @@ class _AppBackgroundTasksState extends ConsumerState<AppBackgroundTasks> with Wi
         _apkCheckTimer?.cancel();
         _apkCheckTimer = Timer(githubApkUpdateCheckInterval, () {
           _apkCheckTimer = null;
-          _trigger();
+          _triggerAppUpdate();
         });
       }
       if (result.value != null) _apk = result.value;
@@ -199,7 +218,7 @@ class _AppBackgroundTasksState extends ConsumerState<AppBackgroundTasks> with Wi
   @override
   Widget build(BuildContext context) {
     ref.listen(sourceAudioPlaybackServiceProvider, (_, next) {
-      if (!next.isActive) _trigger();
+      if (!next.isActive) _triggerAppUpdate();
     });
     return const SizedBox.shrink();
   }

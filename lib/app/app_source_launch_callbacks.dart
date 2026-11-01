@@ -7,6 +7,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
+import 'app_navigation_activity.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
@@ -126,6 +127,7 @@ Future<void> _openTransientSourceTextReader(
   );
   await navigator.push<void>(
     MaterialPageRoute<void>(
+      settings: const RouteSettings(name: appContentSessionRouteName),
       builder: (BuildContext routeContext) => ReaderEntryTransition(
         request: session.createLaunchRequest(initialChapterId: chapter.id, observer: _DismissReaderObserver(navigator)),
       ),
@@ -160,7 +162,12 @@ Future<void> _openTransientSourceComicReader(
     stateStore: TransientComicReaderStateStore(),
     observer: _DismissComicReaderObserver(navigator),
   );
-  await navigator.push<void>(MaterialPageRoute<void>(builder: (_) => ReaderEntryTransition(request: request)));
+  await navigator.push<void>(
+    MaterialPageRoute<void>(
+      settings: const RouteSettings(name: appContentSessionRouteName),
+      builder: (_) => ReaderEntryTransition(request: request),
+    ),
+  );
 }
 
 final class _DismissReaderObserver extends ReaderObserver {
