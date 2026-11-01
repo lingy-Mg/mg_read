@@ -30,6 +30,7 @@ import 'package:mg_read/features/diagnostics/application/diagnostics_viewer_gate
 
 import '../core/diagnostics/diagnostics_testkit.dart';
 import '../core/settings/settings_testkit.dart';
+import 'mg_read_app_test_support.dart';
 
 void main() {
   test('default composition opens one shared app persistence', () async {
@@ -52,7 +53,7 @@ void main() {
           diagnostics: diagnostics,
         );
       },
-      appRunner: (app) => mounted = app,
+      appRunner: (app) => mounted = isolateTestAppRuntime(app),
       child: const SizedBox.shrink(),
     );
 
@@ -67,6 +68,7 @@ void main() {
     await host.manager.close();
     await host.closeContentLibrary?.call();
     host.disposeDiagnosticsBoundary?.call();
+    host.disposeFatalErrorReporter?.call();
     await host.closeDiagnostics?.call();
   });
 
@@ -87,7 +89,7 @@ void main() {
       diagnosticsServiceFactory: null,
       contentLibraryFactory: null,
       televisionDetector: () async => true,
-      appRunner: (app) => mounted = app,
+      appRunner: (app) => mounted = isolateTestAppRuntime(app),
       child: const SizedBox.shrink(),
     );
     expect(first.get(AppSettingKeys.tvMode), isTrue);
@@ -102,7 +104,7 @@ void main() {
       diagnosticsServiceFactory: null,
       contentLibraryFactory: null,
       televisionDetector: () async => true,
-      appRunner: (app) => mounted = app,
+      appRunner: (app) => mounted = isolateTestAppRuntime(app),
       child: const SizedBox.shrink(),
     );
     expect(second.get(AppSettingKeys.tvMode), isFalse);
@@ -120,7 +122,7 @@ void main() {
       contentLibraryFactory: null,
       appPersistenceFactory: null,
       dataRootResolver: () async => root,
-      appRunner: (app) => mounted = app,
+      appRunner: (app) => mounted = isolateTestAppRuntime(app),
       child: const SizedBox.shrink(),
     );
 
@@ -190,6 +192,7 @@ void main() {
     await host.manager.close();
     await host.closeContentLibrary?.call();
     host.disposeDiagnosticsBoundary?.call();
+    host.disposeFatalErrorReporter?.call();
   });
 
   test('persisted diagnostics opt-in starts exactly one current-run log', () async {
@@ -209,7 +212,7 @@ void main() {
       contentLibraryFactory: null,
       appPersistenceFactory: null,
       dataRootResolver: () async => root,
-      appRunner: (app) => mounted = app,
+      appRunner: (app) => mounted = isolateTestAppRuntime(app),
       child: const SizedBox.shrink(),
     );
 
@@ -225,6 +228,7 @@ void main() {
     await host.manager.close();
     await host.closeContentLibrary?.call();
     host.disposeDiagnosticsBoundary?.call();
+    host.disposeFatalErrorReporter?.call();
   });
 
   testWidgets('bootstrap mounts a startup surface before settings initialization completes', (WidgetTester tester) async {
@@ -235,7 +239,7 @@ void main() {
       settingsManager: manager,
       diagnosticsServiceFactory: null,
       contentLibraryFactory: null,
-      appRunner: (app) => mounted = app,
+      appRunner: (app) => mounted = isolateTestAppRuntime(app),
       child: const MgReadApp(),
     );
 
@@ -266,7 +270,7 @@ void main() {
       settingsManager: manager,
       diagnosticsServiceFactory: null,
       contentLibraryFactory: null,
-      appRunner: (app) => mounted = app,
+      appRunner: (app) => mounted = isolateTestAppRuntime(app),
       child: const MgReadApp(),
     );
 
@@ -309,7 +313,7 @@ void main() {
       diagnosticsManager: diagnostics.manager,
       diagnosticsServiceFactory: (_) async => throw StateError('factory must not run for an injected manager'),
       contentLibraryFactory: null,
-      appRunner: (app) => mounted = app,
+      appRunner: (app) => mounted = isolateTestAppRuntime(app),
       child: Consumer(
         builder: (context, ref, child) {
           return Text('${identical(ref.watch(diagnosticsManagerProvider), diagnostics.manager)}', textDirection: TextDirection.ltr);
@@ -327,6 +331,7 @@ void main() {
 
     container.dispose();
     host.disposeDiagnosticsBoundary?.call();
+    host.disposeFatalErrorReporter?.call();
     await manager.close();
     await diagnostics.manager.close();
   });

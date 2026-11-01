@@ -1,4 +1,5 @@
 """Reject APKs whose packaged native ABIs or ELF headers differ from release labels."""
+import argparse
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -33,5 +34,9 @@ def verify(path: Path, expected: set[str]) -> None:
 
 
 if __name__ == "__main__":
-    for name, abis in EXPECTED.items():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("names", nargs="*", choices=list(EXPECTED))
+    names = parser.parse_args().names or list(EXPECTED)
+    for name in names:
+        abis = EXPECTED[name]
         verify(Path("build/android-release") / f"app-{name}.apk", abis)

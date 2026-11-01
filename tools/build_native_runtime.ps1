@@ -10,7 +10,8 @@ Linux using that host's pinned NDK. Android prerequisites are checked first.
 [CmdletBinding()]
 param(
     [ValidateSet('windows','android','all')][string]$Platform='all',
-    [string]$NdkRoot=''
+    [string]$NdkRoot='',
+    [ValidateSet('armeabi-v7a','arm64-v8a','x86_64')][string[]]$AndroidAbi=@('x86_64','arm64-v8a','armeabi-v7a')
 )
 $ErrorActionPreference='Stop'
 $nativeRepo=Split-Path -Parent $PSScriptRoot
@@ -80,8 +81,8 @@ if($Platform -in @('android','all')){
         $env:AR_aarch64_linux_android=$nativeToolchain.Archiver
         $env:AR_x86_64_linux_android=$nativeToolchain.Archiver
         $env:RUSTFLAGS='-C link-arg=-Wl,-z,max-page-size=16384'
-        Build-NativeTarget 'x86_64-linux-android' 'x86_64'
-        Build-NativeTarget 'aarch64-linux-android' 'arm64-v8a'
-        Build-NativeTarget 'armv7-linux-androideabi' 'armeabi-v7a'
+        if('x86_64' -in $AndroidAbi){Build-NativeTarget 'x86_64-linux-android' 'x86_64'}
+        if('arm64-v8a' -in $AndroidAbi){Build-NativeTarget 'aarch64-linux-android' 'arm64-v8a'}
+        if('armeabi-v7a' -in $AndroidAbi){Build-NativeTarget 'armv7-linux-androideabi' 'armeabi-v7a'}
     }finally{foreach($name in $nativeEnvNames){[Environment]::SetEnvironmentVariable($name,$nativeSaved[$name],'Process')}}
 }

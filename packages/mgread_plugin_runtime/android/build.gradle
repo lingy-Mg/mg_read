@@ -30,18 +30,22 @@ if (encodedDartDefines instanceof String) {
     }
 }
 def includesNativeRuntime = !isNodeOnlyRuntimeBuild
+def selectedFlutterTargets = (findProperty('target-platform') ?: 'android-arm,android-arm64,android-x64').toString().split(',')
+def targetAbiMap = ['android-arm': 'armeabi-v7a', 'android-arm64': 'arm64-v8a', 'android-x64': 'x86_64']
+def selectedTargetAbis = selectedFlutterTargets.collect { target ->
+    if (!targetAbiMap.containsKey(target)) throw new GradleException("Unsupported Android target: $target")
+    targetAbiMap[target]
+}
 
 // Local and CI builds must reject Git LFS pointers before Android packages them.
 if (!isNativeRuntimeBuild) {
     apply from: 'node-runtime-library.gradle'
     def verifyNodeRuntimeLibrary = tasks.register('verifyNodeRuntimeLibrary') {
-        def library = file('src/main/jniLibs/arm64-v8a/libnode.so')
-        inputs.file(library)
+        def nodeAbis = selectedTargetAbis.findAll { it != 'x86_64' }
+        inputs.files(nodeAbis.collect { file("src/main/jniLibs/${it}/libnode.so") })
         doLast {
-            verifyAndroidNodeRuntimeLibrary(library)
-            def targets = (findProperty('target-platform') ?: 'android-arm,android-arm64,android-x64').toString().split(',')
-            if (targets.contains('android-arm')) {
-                verifyAndroidNodeRuntimeLibrary(file('src/main/jniLibs/armeabi-v7a/libnode.so'))
+            nodeAbis.each { abi ->
+                verifyAndroidNodeRuntimeLibrary(file("src/main/jniLibs/${abi}/libnode.so"))
             }
         }
     }
@@ -57,6 +61,7 @@ android {
 
     defaultConfig {
         minSdk = 24
+        ndk { abiFilters.addAll(selectedTargetAbis) }
     }
 
     flavorDimensions += 'mgreadRuntimeBackend'
@@ -160,7 +165,7 @@ tasks.withType(Test).configureEach {
 if (includesNativeRuntime) {
     def verifyNativeRuntimeLibraries = tasks.register('verifyNativeRuntimeLibraries') {
         doLast {
-            ['arm64-v8a', 'armeabi-v7a', 'x86_64'].each { abi ->
+            selectedTargetAbis.each { abi ->
                 if (!file("src/native/jniLibs/${abi}/libmgread_native_runtime.so").isFile()) {
                     throw new GradleException('Build the Rust hosts with tools/build_native_runtime.ps1 -Platform android before building the native app.')
                 }
@@ -169,3 +174,4 @@ if (includesNativeRuntime) {
     }
     tasks.named('preBuild').configure { dependsOn(verifyNativeRuntimeLibraries) }
 }
+

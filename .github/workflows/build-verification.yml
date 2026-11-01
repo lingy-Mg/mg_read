@@ -33,56 +33,16 @@ jobs:
     steps:
       - name: Debounce rapid pushes
         if: github.event_name == 'push'
-        run: sleep 60
+        run: sleep 15
 
-  android:
-    name: Android release APK
+  android-checks:
+    name: Android startup regressions
     needs: debounce
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    env:
-      ANDROID_NDK_VERSION: "28.2.13676358"
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Fetch Android Node Runtime from Git LFS
-        run: git lfs pull --include="packages/mgread_plugin_runtime/android/src/main/jniLibs/arm64-v8a/libnode.so" --exclude=""
-
-      - name: Stage pinned ARMv7 Node Runtime
-        run: python3 tools/stage_android_node_runtime.py
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: "17"
-          cache: gradle
-          cache-dependency-path: |
-            android/**/*.gradle*
-            android/gradle/wrapper/gradle-wrapper.properties
-
-      - name: Set up Android SDK command-line tools
-        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
-        with:
-          packages: ''
-
-      - name: Install Android NDK
-        run: sdkmanager --sdk_root="$ANDROID_HOME" --install "ndk;$ANDROID_NDK_VERSION"
-
-      - name: Set up Rust
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
-        with:
-          toolchain: 1.97.1
-          target: x86_64-linux-android,aarch64-linux-android,armv7-linux-androideabi
-          rustflags: ""
-
-      - name: Test native Runtime target metadata
-        run: cargo test --manifest-path packages/mg_read_native_runtime/Cargo.toml --locked --lib
-
-      - name: Build Android native Runtime
-        shell: pwsh
-        run: ./tools/build_native_runtime.ps1 -Platform android -NdkRoot "$env:ANDROID_HOME/ndk/$env:ANDROID_NDK_VERSION"
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -123,7 +83,7 @@ jobs:
         timeout-minutes: 10
         shell: pwsh
         run: |
-          $owned = @('lib/app/app_startup.dart', 'lib/app/app_startup_gate.dart', 'lib/app/bootstrap.dart', 'lib/core/settings/src/app_settings_manager.dart', 'test/app/app_startup_gate_test.dart', 'test/app/app_settings_bootstrap_test.dart', 'test/app/app_startup_test.dart')
+          $owned = @('lib/app/app_startup.dart', 'lib/app/app_startup_gate.dart', 'lib/app/bootstrap.dart', 'lib/core/settings/src/app_settings_manager.dart', 'test/app/app_startup_gate_test.dart', 'test/app/app_settings_bootstrap_test.dart', 'test/app/app_startup_test.dart', 'test/app/mg_read_app_test_support.dart')
           $tests = @('test/app/app_startup_gate_test.dart', 'test/app/app_settings_bootstrap_test.dart', 'test/app/app_startup_test.dart', 'test/app/tv_mode_test.dart')
           ./tools/run_flutter_checks.ps1 -Mode Fast -DartPath $owned -TestPath $tests
           ./tools/run_flutter_checks.ps1 -Mode Final -DartPath $owned -TestPath $tests
@@ -136,6 +96,115 @@ jobs:
           path: .dart_tool/ai-checks/*.log
           if-no-files-found: ignore
           retention-days: 7
+
+
+  android:
+    name: Android ${{ matrix.name }} APK
+    needs: debounce
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - name: arm64
+            flutter: android-arm64
+            abis: arm64-v8a
+            rust: aarch64-linux-android
+          - name: armv7
+            flutter: android-arm
+            abis: armeabi-v7a
+            rust: armv7-linux-androideabi
+          - name: universal
+            flutter: android-arm,android-arm64
+            abis: armeabi-v7a,arm64-v8a
+            rust: armv7-linux-androideabi,aarch64-linux-android
+    env:
+      ANDROID_NDK_VERSION: "28.2.13676358"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Fetch Android Node Runtime from Git LFS
+        if: matrix.name != 'armv7'
+        run: git lfs pull --include="packages/mgread_plugin_runtime/android/src/main/jniLibs/arm64-v8a/libnode.so" --exclude=""
+
+      - name: Stage pinned ARMv7 Node Runtime
+        if: matrix.name != 'arm64'
+        run: python3 tools/stage_android_node_runtime.py
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Restore Gradle dependencies and task outputs
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-read-only: false
+
+      - name: Set up Android SDK command-line tools
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: ''
+
+      - name: Install Android NDK
+        run: sdkmanager --sdk_root="$ANDROID_HOME" --install "ndk;$ANDROID_NDK_VERSION"
+
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+        with:
+          toolchain: 1.97.1
+          target: ${{ matrix.rust }}
+          cache-workspaces: packages/mg_read_native_runtime -> target
+          cache-key: android-${{ matrix.name }}-ndk-${{ env.ANDROID_NDK_VERSION }}
+          cache-workspace-crates: true
+          rustflags: ""
+
+      - name: Test native Runtime target metadata
+        if: matrix.name == 'universal'
+        run: cargo test --manifest-path packages/mg_read_native_runtime/Cargo.toml --locked --lib
+
+      - name: Build Android native Runtime
+        shell: pwsh
+        run: ./tools/build_native_runtime.ps1 -Platform android -AndroidAbi ('${{ matrix.abis }}'.Split(',')) -NdkRoot "$env:ANDROID_HOME/ndk/$env:ANDROID_NDK_VERSION"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: packages/mg_read_node_runtime/package-lock.json
+
+      - name: Pin npm
+        run: npm install --global npm@${{ env.NPM_VERSION }}
+
+      - name: Build Android Runtime assets
+        working-directory: packages/mg_read_node_runtime
+        run: |
+          npm ci
+          npm run build
+
+      - name: Ensure declared Runtime asset directories exist
+        shell: bash
+        run: |
+          mkdir -p packages/mgread_plugin_runtime/assets/runtime/windows-x64/node
+          mkdir -p packages/mgread_plugin_runtime/assets/runtime/windows-x64/dist/debug-ui
+          mkdir -p packages/mgread_plugin_runtime/assets/runtime/macos-arm64/node
+          mkdir -p packages/mgread_plugin_runtime/assets/runtime/macos-arm64/dist/debug-ui
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.4"
+          channel: stable
+          cache: true
+          pub-cache: true
+
+      - name: Flutter dependencies
+        run: flutter pub get
 
       - name: Install local Android signing key
         env:
@@ -156,33 +225,33 @@ jobs:
             exit 1
           fi
 
+      - name: Restore Flutter compilation cache
+        uses: actions/cache@v5
+        with:
+          path: .dart_tool/flutter_build
+          key: flutter-build-linux-3.47.4-${{ matrix.name }}-${{ hashFiles('pubspec.*', 'lib/**', 'assets/**', 'packages/**/lib/**', 'packages/**/pubspec.*') }}
+          restore-keys: |
+            flutter-build-linux-3.47.4-${{ matrix.name }}-
+
       - name: Build Android APK
         run: |
-          flutter build apk --release --target-platform android-arm64 --no-pub
+          echo "Runner CPUs: $(nproc); memory: $(free -h | awk '/^Mem:/ {print $2}')"
+          flutter build apk --release --target-platform ${{ matrix.flutter }} --no-pub
           mkdir -p build/android-release
-          cp build/app/outputs/flutter-apk/app-release.apk build/android-release/app-arm64.apk
-
-      - name: Build ARMv7 Android APK
-        run: |
-          flutter build apk --release --target-platform android-arm --no-pub
-          cp build/app/outputs/flutter-apk/app-release.apk build/android-release/app-armv7.apk
-
-      - name: Build universal Android APK
-        run: |
-          flutter build apk --release --target-platform android-arm,android-arm64 --no-pub
-          cp build/app/outputs/flutter-apk/app-release.apk build/android-release/app-universal.apk
+          cp build/app/outputs/flutter-apk/app-release.apk build/android-release/app-${{ matrix.name }}.apk
 
       - name: Check Android backend ABI policy
+        if: matrix.name == 'universal'
         working-directory: android
-        run: ./gradlew :mgread_plugin_runtime:testHybridDebugUnitTest --tests '*AndroidNodeBackendPolicyTest'
+        run: ./gradlew :mgread_plugin_runtime:testHybridDebugUnitTest -Ptarget-platform=android-arm,android-arm64 --tests '*AndroidNodeBackendPolicyTest'
 
       - name: Verify packaged Android runtimes
-        run: python3 tools/verify_android_release.py
+        run: python3 tools/verify_android_release.py ${{ matrix.name }}
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v7
         with:
-          name: mgread-android-${{ github.sha }}
+          name: mgread-apk-${{ matrix.name }}-${{ github.sha }}
           path: build/android-release/*.apk
           if-no-files-found: error
           compression-level: 0
@@ -202,6 +271,8 @@ jobs:
         with:
           toolchain: 1.97.1
           target: x86_64-pc-windows-msvc
+          cache-workspaces: packages/mg_read_native_runtime -> target
+          cache-workspace-crates: true
           rustflags: ""
 
       - name: Build native Runtime hosts
@@ -328,7 +399,7 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    needs: [android, windows, macos]
+    needs: [android-checks, android, windows, macos]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -398,7 +469,8 @@ jobs:
         if: steps.existing.outputs.exists != 'true'
         uses: actions/download-artifact@v8
         with:
-          name: mgread-android-${{ github.sha }}
+          pattern: mgread-apk-*-${{ github.sha }}
+          merge-multiple: true
           path: release/android
 
       - name: Download Windows artifact
@@ -422,6 +494,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p build/android-release
+          cp release/android/*.apk build/android-release/
+          python3 tools/verify_android_release.py
           mkdir -p release/final
 
           mv release/android/app-arm64.apk             "release/final/MgRead-${VERSION}-android-arm64.apk"

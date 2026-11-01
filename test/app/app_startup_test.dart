@@ -79,11 +79,15 @@ void main() {
         return const AppStartupResources();
       },
     );
-    addTearDown(startup.close);
+    addTearDown(() async {
+      if (!gate.isCompleted) gate.complete();
+      await startup.close();
+    });
     final boot = startup.start();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          pluginRuntimeFacadeProvider.overrideWith(testPluginRuntimeFacade),
           appSettingsProvider.overrideWithValue(settings),
           appStartupControllerProvider.overrideWithValue(startup),
           pluginRuntimeGatewayProvider.overrideWithValue(const TestReadyPluginRuntimeGateway()),
@@ -119,6 +123,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          pluginRuntimeFacadeProvider.overrideWith(testPluginRuntimeFacade),
           appSettingsProvider.overrideWithValue(settings),
           appStartupControllerProvider.overrideWithValue(startup),
           pluginRuntimeGatewayProvider.overrideWithValue(const TestReadyPluginRuntimeGateway()),
@@ -231,6 +236,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          pluginRuntimeFacadeProvider.overrideWith(testPluginRuntimeFacade),
           appSettingsProvider.overrideWithValue(settings),
           appStartupControllerProvider.overrideWithValue(startup),
           diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),

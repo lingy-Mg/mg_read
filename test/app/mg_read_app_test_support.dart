@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -9,6 +11,29 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 
 import '../core/settings/settings_testkit.dart';
+
+/// Supplies an inert Facade for diagnostics/proxy observers without launching
+/// an unsupported production Runtime on the Linux widget-test host.
+PluginRuntime testPluginRuntimeFacade(Ref ref) {
+  final runtime = PluginRuntime.nativeForTesting(executablePath: '/unused-widget-test-runtime', dataRoot: '/unused-widget-test-data');
+  ref.onDispose(() => unawaited(runtime.debugDispose()));
+  return runtime;
+}
+
+/// Retains bootstrap's lifecycle and persistence overrides while replacing
+/// platform process and source capabilities at the test composition boundary.
+Widget isolateTestAppRuntime(Widget app) {
+  final scope = app as ProviderScope;
+  return ProviderScope(
+    overrides: [
+      ...scope.overrides,
+      pluginRuntimeFacadeProvider.overrideWith(testPluginRuntimeFacade),
+      pluginRuntimeGatewayProvider.overrideWithValue(const TestReadyPluginRuntimeGateway()),
+      sourceContentGatewayProvider.overrideWithValue(const _EmptySourceContentGateway()),
+    ],
+    child: scope.child,
+  );
+}
 
 /// Provides the initialized settings boundary required by [MgReadApp] tests.
 Future<AppSettingsManager> createTestAppSettings({String themeMode = 'system'}) async {
@@ -38,6 +63,7 @@ Widget testMgReadApp(
   final projectedConnection = runtimeConnection;
   return ProviderScope(
     overrides: [
+      pluginRuntimeFacadeProvider.overrideWith(testPluginRuntimeFacade),
       appSettingsProvider.overrideWithValue(settings),
       sourceContentGatewayProvider.overrideWithValue(sourceGateway),
       pluginRuntimeGatewayProvider.overrideWithValue(runtimeGateway),
