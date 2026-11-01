@@ -3,6 +3,8 @@
 /// timing once per launch, then run every 30 minutes outside reader/player
 /// sessions and active audio. Prompts wait for an idle top-level route. The
 /// widget owns and cancels its timer; navigation/audio exit releases due checks.
+/// Update dialogs use the root navigator context because this maintenance
+/// widget is mounted beside the router, outside its Navigator subtree.
 library;
 
 import 'dart:async';
@@ -184,11 +186,12 @@ class _AppBackgroundTasksState extends ConsumerState<AppBackgroundTasks> with Wi
 
   Future<void> _installAcceptedApk() async {
     final apk = _acceptedApk;
-    if (apk == null || _installing || !mounted) return;
+    final dialogContext = appRootNavigatorKey.currentContext;
+    if (apk == null || _installing || !mounted || dialogContext == null) return;
     _installing = true;
     try {
       await showGitHubApkUpdateInstallProgress(
-        context,
+        dialogContext,
         (onProgress) => ref.read(githubApkUpdateCoordinatorProvider).install(apk, onProgress: onProgress),
       );
       _acceptedApk = null;

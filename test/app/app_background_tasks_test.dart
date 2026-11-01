@@ -1,7 +1,9 @@
-/// App-update launch, timer and idle regressions without network or Runtime IO.
+/// App-update launch, timer, idle and accepted-download progress regressions
+/// without network or Runtime IO. Manifest streams yield on the event queue.
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,6 +16,7 @@ import 'package:mg_read/app/app_router.dart';
 import 'package:mg_read/app/app_startup.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/app_update/application/github_apk_update.dart';
+import 'package:mg_read/features/lan_sync/domain/app_update_models.dart';
 import 'package:mg_read/features/library/application/library_catalog_refresh_coordinator.dart';
 import 'package:mg_read/features/media/application/source_audio_playback_service.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
@@ -21,6 +24,41 @@ import '../core/diagnostics/diagnostics_testkit.dart';
 import '../core/settings/settings_testkit.dart';
 
 void main() {
+  testWidgets('launch with a newer release shows the same update prompt without installing', (tester) async {
+    final app = (await _TestApp.create(tester))..newRelease = true;
+    await app.start(tester);
+    expect(app.requests, 1);
+    expect(app.installs, 0);
+    expect(find.byKey(const Key('github-apk-update-prompt')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('github-apk-update-later')));
+    await tester.pumpAndSettle();
+    await app.elapse(tester, const Duration(minutes: 30));
+    expect(app.requests, 2);
+    expect(find.byKey(const Key('github-apk-update-prompt')), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('accepting the launch update displays download progress until installation completes', (tester) async {
+    final app = (await _TestApp.create(tester))..newRelease = true;
+    final completeInstall = Completer<void>();
+    app.install = (_, {onProgress}) async {
+      app.installs++;
+      onProgress!(const GitHubApkDownloadProgress(receivedBytes: 25, totalBytes: 100));
+      await completeInstall.future;
+    };
+    await app.start(tester);
+    await tester.tap(find.byKey(const Key('github-apk-update-install')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(app.installs, 1);
+    expect(find.text('正在下载更新'), findsOneWidget);
+    expect(tester.widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator)).value, 0.25);
+    completeInstall.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('正在下载更新'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('local frame unlocks checks despite stalled Runtime and resumes honor failure backoff', (tester) async {
     final app = await _TestApp.create(tester);
     await tester.pumpWidget(app.widget);
@@ -211,11 +249,15 @@ final class _TestApp {
   final stalledRuntime = Completer<PluginRuntimeConnection>();
   var now = DateTime.utc(2026, 11, 1);
   var requests = 0;
+  var newRelease = false;
+  var installs = 0;
+  Future<void> Function(GitHubApkRelease, {GitHubApkDownloadProgressCallback? onProgress}) install = (_, {onProgress}) async =>
+      fail('checks must not install without consent');
   late final updater = GitHubApkUpdateCoordinator(
-    currentVersion: () async => throw StateError('HTTP fails first'),
-    downloadAndInstall: (_, {onProgress}) async => fail('automatic checks cannot install'),
+    currentVersion: () async => const AppVersionInfo(platform: AppUpdatePlatform.android, version: '1.0.0', buildNumber: 1),
+    downloadAndInstall: (release, {onProgress}) => install(release, onProgress: onProgress),
     supportDirectory: () async => throw StateError('no disk in this test'),
-    httpClientFactory: () => _Client(() => requests++),
+    httpClientFactory: () => _Client(() => requests++, newRelease),
     clock: () => now,
     isAndroid: true,
   );
@@ -273,12 +315,20 @@ final class _TestApp {
     await tester.pumpWidget(widget);
     startup.signalLibraryTerminalFrame();
     await tester.pumpAndSettle();
+    if (newRelease) {
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pumpAndSettle();
+    }
   }
 
   Future<void> elapse(WidgetTester tester, Duration duration) async {
     now = now.add(duration);
     await tester.pump(duration);
     await tester.pumpAndSettle();
+    if (newRelease) {
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pumpAndSettle();
+    }
   }
 }
 
@@ -339,12 +389,13 @@ SourceAudioPlaybackRequest _audioRequest() {
 }
 
 final class _Client implements HttpClient {
-  _Client(this.onRequest);
+  _Client(this.onRequest, this.newRelease);
   final void Function() onRequest;
+  final bool newRelease;
   @override
   Future<HttpClientRequest> getUrl(Uri url) async {
     onRequest();
-    return _Request();
+    return _Request(newRelease);
   }
 
   @override
@@ -354,10 +405,12 @@ final class _Client implements HttpClient {
 }
 
 final class _Request implements HttpClientRequest {
+  _Request(this.newRelease);
+  final bool newRelease;
   @override
   HttpHeaders get headers => _Headers();
   @override
-  Future<HttpClientResponse> close() async => _Response();
+  Future<HttpClientResponse> close() async => _Response(newRelease);
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -369,9 +422,31 @@ final class _Headers implements HttpHeaders {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-final class _Response implements HttpClientResponse {
+final class _Response extends Stream<List<int>> implements HttpClientResponse {
+  _Response(this.newRelease);
+  final bool newRelease;
   @override
-  int get statusCode => HttpStatus.serviceUnavailable;
+  int get statusCode => newRelease ? HttpStatus.ok : HttpStatus.serviceUnavailable;
+  @override
+  StreamSubscription<List<int>> listen(
+    void Function(List<int>)? onData, {
+    Function? onError,
+    void Function()? onDone,
+    bool? cancelOnError,
+  }) => Stream.value(
+    utf8.encode(
+      jsonEncode({
+        'schema': 'mgread.android-update.v1',
+        'repository': 'lingy-Mg/mg_read',
+        'version': '1.2.3',
+        'buildNumber': 4,
+        'tag': 'v1.2.3+4',
+        'publishedAt': '2026-11-01T00:00:00Z',
+        'releaseNotes': '修复更新提示',
+        'apk': {'name': 'MgRead-1.2.3+4-android-arm64.apk', 'sha256': List.filled(64, 'a').join()},
+      }),
+    ),
+  ).listen(onData, onError: onError, onDone: onDone, cancelOnError: cancelOnError);
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
