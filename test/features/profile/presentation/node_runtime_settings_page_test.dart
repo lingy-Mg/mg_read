@@ -15,6 +15,7 @@ void main() {
   const channel = MethodChannel('mgread_plugin_runtime/android_backend');
   late String persisted;
   late bool supported;
+  late bool javetSupported;
   late bool failSave;
   late bool failRestart;
   late int restarts;
@@ -23,12 +24,13 @@ void main() {
   setUp(() {
     persisted = 'javet';
     supported = true;
+    javetSupported = true;
     failSave = false;
     failRestart = false;
     restarts = 0;
     settings = AndroidNodeRuntimeSettings();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
-      if (call.method == 'read') return {'selected': persisted, 'supportsNodeProcess': supported};
+      if (call.method == 'read') return {'selected': persisted, 'supportsNodeProcess': supported, 'supportsJavet': javetSupported};
       if (failSave) throw PlatformException(code: 'backend_save_failed');
       persisted = (call.arguments as Map)['backend'] as String;
       return null;
@@ -124,6 +126,17 @@ void main() {
     expect(settings.active, AndroidNodeBackend.javet);
     expect(tester.widget<ListTile>(find.byKey(const Key('node-runtime-nodeProcess'))).enabled, isFalse);
     await expectLater(settings.select(AndroidNodeBackend.nodeProcess), throwsUnsupportedError);
+  });
+
+  testWidgets('ARMv7 uses Node process and disables incompatible Javet selection', (tester) async {
+    javetSupported = false;
+    persisted = 'javet';
+    await mount(tester);
+    expect(settings.active, AndroidNodeBackend.nodeProcess);
+    expect(settings.restartRequired, isFalse);
+    expect(tester.widget<ListTile>(find.byKey(const Key('node-runtime-javet'))).enabled, isFalse);
+    expect(tester.widget<ListTile>(find.byKey(const Key('node-runtime-nodeProcess'))).enabled, isTrue);
+    await expectLater(settings.select(AndroidNodeBackend.javet), throwsUnsupportedError);
   });
 
   testWidgets('restart failure keeps saved choice and offers retry', (tester) async {

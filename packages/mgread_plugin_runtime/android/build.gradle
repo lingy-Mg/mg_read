@@ -37,7 +37,13 @@ if (!isNativeRuntimeBuild) {
     def verifyNodeRuntimeLibrary = tasks.register('verifyNodeRuntimeLibrary') {
         def library = file('src/main/jniLibs/arm64-v8a/libnode.so')
         inputs.file(library)
-        doLast { verifyAndroidNodeRuntimeLibrary(library) }
+        doLast {
+            verifyAndroidNodeRuntimeLibrary(library)
+            def targets = (findProperty('target-platform') ?: 'android-arm,android-arm64,android-x64').toString().split(',')
+            if (targets.contains('android-arm')) {
+                verifyAndroidNodeRuntimeLibrary(file('src/main/jniLibs/armeabi-v7a/libnode.so'))
+            }
+        }
     }
     tasks.named('preBuild').configure { dependsOn(verifyNodeRuntimeLibrary) }
 }
@@ -154,7 +160,7 @@ tasks.withType(Test).configureEach {
 if (includesNativeRuntime) {
     def verifyNativeRuntimeLibraries = tasks.register('verifyNativeRuntimeLibraries') {
         doLast {
-            ['arm64-v8a', 'x86_64'].each { abi ->
+            ['arm64-v8a', 'armeabi-v7a', 'x86_64'].each { abi ->
                 if (!file("src/native/jniLibs/${abi}/libmgread_native_runtime.so").isFile()) {
                     throw new GradleException('Build the Rust hosts with tools/build_native_runtime.ps1 -Platform android before building the native app.')
                 }

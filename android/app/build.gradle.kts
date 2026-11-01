@@ -83,6 +83,7 @@ android {
         ndk {
             val runtimeAbis = buildSet {
                 add("arm64-v8a")
+                add("armeabi-v7a")
                 if (isNativeRuntimeBuild || !isNodeOnlyRuntimeBuild) add("x86_64")
             }
             val targetAbis = (findProperty("target-platform") as? String)
@@ -113,7 +114,6 @@ android {
             // Android extracts them during installation.
             useLegacyPackaging = true
             excludes += buildSet {
-                add("**/armeabi-v7a/**")
                 add("**/x86/**")
                 if (isReleaseBuild && isNodeOnlyRuntimeBuild) add("**/x86_64/**")
                 if (isNativeRuntimeBuild) {
@@ -206,4 +206,3 @@ tasks.matching { it.name == "compileReleaseJavaWithJavac" }.configureEach {
         logger.lifecycle("Removed dev-only integration_test from the release plugin registrant.")
     }
 }
-

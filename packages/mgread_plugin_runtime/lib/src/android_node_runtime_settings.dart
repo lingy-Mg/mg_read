@@ -7,22 +7,22 @@ enum AndroidNodeBackend { javet, nodeProcess }
 ///
 /// Initialize before constructing the production Facade. Saving never changes
 /// the active supervisor: the application must restart its process to apply it.
-/// Unsupported ABIs expose Javet only, even if a preference was restored.
+/// Backend capabilities follow the installed process ABI; ARMv7 uses Node only.
 final class AndroidNodeRuntimeSettings {
   AndroidNodeRuntimeSettings();
 
   static final instance = AndroidNodeRuntimeSettings();
-  static const _channel = MethodChannel(
-    'mgread_plugin_runtime/android_backend',
-  );
+  static const _channel = MethodChannel('mgread_plugin_runtime/android_backend');
   Future<void>? _initialization;
   AndroidNodeBackend _active = AndroidNodeBackend.javet;
   AndroidNodeBackend _selected = AndroidNodeBackend.javet;
   bool _supportsNodeProcess = false;
+  bool _supportsJavet = true;
 
   AndroidNodeBackend get active => _active;
   AndroidNodeBackend get selected => _selected;
   bool get supportsNodeProcess => _supportsNodeProcess;
+  bool get supportsJavet => _supportsJavet;
   bool get restartRequired => _selected != _active;
 
   Future<void> initialize() => _initialization ??= _load();
@@ -31,14 +31,19 @@ final class AndroidNodeRuntimeSettings {
     final value = await _channel.invokeMapMethod<String, Object?>('read');
     if (value == null) throw StateError('Android backend settings unavailable');
     _supportsNodeProcess = value['supportsNodeProcess'] == true;
-    _selected = value['selected'] == 'nodeProcess' && _supportsNodeProcess
-        ? AndroidNodeBackend.nodeProcess
-        : AndroidNodeBackend.javet;
+    _supportsJavet = value['supportsJavet'] != false;
+    _selected = value['selected'] == 'nodeProcess' && _supportsNodeProcess ? AndroidNodeBackend.nodeProcess : AndroidNodeBackend.javet;
+    if (!_supportsJavet && _supportsNodeProcess) {
+      _selected = AndroidNodeBackend.nodeProcess;
+    }
     _active = _selected;
   }
 
   Future<void> select(AndroidNodeBackend backend) async {
     await initialize();
+    if (backend == AndroidNodeBackend.javet && !_supportsJavet) {
+      throw UnsupportedError('This process does not support Javet');
+    }
     if (backend == AndroidNodeBackend.nodeProcess && !_supportsNodeProcess) {
       throw UnsupportedError('This device does not support the Node process');
     }

@@ -529,7 +529,8 @@ final class GitHubApkUpdateCoordinator {
       final versionText = manifest['version'];
       final buildNumber = manifest['buildNumber'];
       final tag = manifest['tag'];
-      final apk = manifest['apk'];
+      final hasUniversalApk = manifest.containsKey('universalApk');
+      final apk = hasUniversalApk ? manifest['universalApk'] : manifest['apk'];
       final publishedAt = DateTime.tryParse(manifest['publishedAt'] as String? ?? '');
       if (versionText is! String ||
           !RegExp(r'^\d+\.\d+\.\d+$').hasMatch(versionText) ||
@@ -543,7 +544,7 @@ final class GitHubApkUpdateCoordinator {
         return null;
       }
       final version = AppVersionInfo(platform: AppUpdatePlatform.android, version: versionText, buildNumber: buildNumber);
-      final apkName = githubAndroidApkAssetName(version);
+      final apkName = hasUniversalApk ? 'MgRead-$versionText+$buildNumber-android-universal.apk' : githubAndroidApkAssetName(version);
       final sha256 = apk['sha256'];
       if (apk['name'] != apkName || sha256 is! String || !RegExp(r'^[a-fA-F0-9]{64}$').hasMatch(sha256)) return null;
       final apkUrl = Uri.parse('https://github.com/lingy-Mg/mg_read/releases/latest/download/${Uri.encodeComponent(apkName)}');

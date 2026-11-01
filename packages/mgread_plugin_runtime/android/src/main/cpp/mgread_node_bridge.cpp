@@ -2,7 +2,7 @@
  * Android remote-process Node launcher.
  *
  * This JNI entrypoint is called only by AndroidNodeProcessService. It loads the
- * pinned arm64 libnode.so and runs its exported node::Start() on the service's
+ * pinned per-ABI libnode.so and runs its exported node::Start() on the service's
  * worker thread. The service process owns stdout/stderr and the Node event loop;
  * neither a second VM nor a writable extracted executable is created.
  */
@@ -85,7 +85,7 @@ Java_com_mgread_mgread_1plugin_1runtime_AndroidNodeNative_run(
     std::fputs("mgread_libnode_load_failed\n", stderr);
     return -4;
   }
-  // Verified against the pinned nodejs-mobile 24.21.0 arm64 artifact.
+  // Verified against the pinned nodejs-mobile 24.21.0 ARMv7/ARMv8 artifacts.
   using NodeStart = int (*)(int, char**);
   auto start = reinterpret_cast<NodeStart>(dlsym(library, "_ZN4node5StartEiPPc"));
   if (start == nullptr) {

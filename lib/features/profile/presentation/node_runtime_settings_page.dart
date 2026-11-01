@@ -95,7 +95,7 @@ class _NodeRuntimeSettingsPageState extends ConsumerState<NodeRuntimeSettingsPag
                   children: [
                     Text('当前运行：${_label(settings.active)}', key: const Key('node-runtime-active')),
                     const SizedBox(height: AppSpacing.regular),
-                    const Text('两套运行时随 App 一起安装，可在这里选择使用。切换将在重启后生效，已安装的数据源保留。'),
+                    Text(settings.supportsJavet ? '可选择当前设备支持的运行时。切换将在重启后生效，已安装的数据源保留。' : '当前设备使用 Node.js 独立进程运行数据源。'),
                     const SizedBox(height: AppSpacing.regular),
                     for (final backend in AndroidNodeBackend.values)
                       Card(
@@ -104,13 +104,15 @@ class _NodeRuntimeSettingsPageState extends ConsumerState<NodeRuntimeSettingsPag
                           title: Text(_label(backend)),
                           subtitle: Text(
                             backend == AndroidNodeBackend.javet
-                                ? '在 App 进程内运行'
+                                ? settings.supportsJavet
+                                      ? '在 App 进程内运行'
+                                      : '当前设备不支持此运行时'
                                 : settings.supportsNodeProcess
                                 ? '在独立进程中运行'
-                                : '当前设备不支持，需要 arm64 设备',
+                                : '当前安装包不包含此运行时',
                           ),
                           trailing: Icon(settings.selected == backend ? Icons.radio_button_checked : Icons.radio_button_unchecked),
-                          enabled: !_busy && (backend == AndroidNodeBackend.javet || settings.supportsNodeProcess),
+                          enabled: !_busy && (backend == AndroidNodeBackend.javet ? settings.supportsJavet : settings.supportsNodeProcess),
                           onTap: () => _select(backend),
                         ),
                       ),

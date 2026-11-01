@@ -80,6 +80,8 @@ pub fn target() -> &'static str {
     if cfg!(target_os = "android") {
         if cfg!(target_arch = "aarch64") {
             "android-arm64-v8a"
+        } else if cfg!(target_arch = "arm") {
+            "android-armeabi-v7a"
         } else {
             "android-x86_64"
         }
@@ -258,7 +260,7 @@ impl Catalog {
             return Err(invalid("Unsupported native manifest"));
         }
         for (name, t) in &m.targets {
-            if !["windows-x86_64", "android-arm64-v8a", "android-x86_64"].contains(&name.as_str())
+            if !["windows-x86_64", "android-arm64-v8a", "android-armeabi-v7a", "android-x86_64"].contains(&name.as_str())
                 || !safe_relative(&t.path)
                 || t.sha256.len() != 64
                 || !t.sha256.bytes().all(|c| c.is_ascii_hexdigit())
@@ -481,7 +483,8 @@ mod tests {
             "format":"mgread-native", "engine":"native", "abi":mgread_native_abi::ABI_VERSION,
             "id":"org.mgread.legacy", "name":"Legacy", "version":"1.0.0", "description":"",
             "contentKinds":["novel"], "capabilities":["search"],
-            "targets":{target():{"path":"native/source.dll", "sha256":"a".repeat(64)}}
+            "targets":{target():{"path":"native/source.dll", "sha256":"a".repeat(64)},
+                "android-armeabi-v7a":{"path":"native/armv7/source.so", "sha256":"b".repeat(64)}}
         })).unwrap();
         assert!(Catalog::validate_manifest(&manifest).is_ok());
         for state in ["available", "disabled", "invalid"] {

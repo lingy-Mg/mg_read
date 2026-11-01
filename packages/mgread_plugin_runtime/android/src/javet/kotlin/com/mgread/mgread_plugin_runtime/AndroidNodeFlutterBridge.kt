@@ -15,7 +15,6 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import android.os.Handler
 import android.os.Looper
-import android.os.Build
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.EventChannel
@@ -84,13 +83,13 @@ internal class AndroidNodeFlutterBridge(
         }
         when (call.method) {
             "start" -> {
-                if (!Build.SUPPORTED_ABIS.contains("arm64-v8a")) {
-                    result.error("unsupported", "Android Node process requires arm64-v8a.", null)
+                if (!File(context.applicationInfo.nativeLibraryDir, "libnode.so").isFile) {
+                    result.error("unsupported", "No Node library is packaged for the current process.", null)
                 } else process.start { error, ready -> finish(result, error, ready) }
             }
             "restart" -> {
-                if (!Build.SUPPORTED_ABIS.contains("arm64-v8a")) {
-                    result.error("unsupported", "Android Node process requires arm64-v8a.", null)
+                if (!File(context.applicationInfo.nativeLibraryDir, "libnode.so").isFile) {
+                    result.error("unsupported", "No Node library is packaged for the current process.", null)
                 } else process.restart { error, ready -> finish(result, error, ready) }
             }
             "browserStart" -> {

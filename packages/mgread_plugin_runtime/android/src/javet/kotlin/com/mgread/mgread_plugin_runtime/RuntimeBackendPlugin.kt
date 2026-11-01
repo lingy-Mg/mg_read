@@ -73,7 +73,7 @@ class JavetRuntimeBackendPlugin : FlutterPlugin, MethodChannel.MethodCallHandler
         val assetRoot = binding.flutterAssets.getAssetFilePathByName(
             "packages/mgread_plugin_runtime/assets/runtime/android",
         )
-        runtime = AndroidRuntimeHost(context, assetRoot) { progress ->
+        if (android.os.Process.is64Bit()) runtime = AndroidRuntimeHost(context, assetRoot) { progress ->
             mainHandler.post {
                 progressSink?.success(
                     mapOf(

@@ -1,5 +1,5 @@
 # Owns signed platform builds and versioned release assets. Android publishes
-# ARM64 and a universal ARM64/x86_64 APK; Javet Node 6 does not ship ARMv7.
+# ARMv8, ARMv7 and their universal APK. ARMv7 uses the private Node process.
 name: Build verification
 
 on:
@@ -49,6 +49,9 @@ jobs:
       - name: Fetch Android Node Runtime from Git LFS
         run: git lfs pull --include="packages/mgread_plugin_runtime/android/src/main/jniLibs/arm64-v8a/libnode.so" --exclude=""
 
+      - name: Stage pinned ARMv7 Node Runtime
+        run: python3 tools/stage_android_node_runtime.py
+
       - name: Set up Java 17
         uses: actions/setup-java@v6
         with:
@@ -71,8 +74,11 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
         with:
           toolchain: 1.97.1
-          target: x86_64-linux-android,aarch64-linux-android
+          target: x86_64-linux-android,aarch64-linux-android,armv7-linux-androideabi
           rustflags: ""
+
+      - name: Test native Runtime target metadata
+        run: cargo test --manifest-path packages/mg_read_native_runtime/Cargo.toml --locked --lib
 
       - name: Build Android native Runtime
         shell: pwsh
@@ -113,6 +119,18 @@ jobs:
       - name: Flutter dependencies
         run: flutter pub get
 
+      - name: Check changed Dart code and regressions
+        shell: pwsh
+        run: |
+          $owned = @('lib/features/profile/presentation/node_runtime_settings_page.dart', 'lib/features/app_update/application/github_apk_update.dart', 'packages/mgread_plugin_runtime/lib/src/android_node_runtime_settings.dart', 'test/features/profile/presentation/node_runtime_settings_page_test.dart', 'test/features/app_update/github_apk_update_test.dart')
+          $tests = @('test/features/profile/presentation/node_runtime_settings_page_test.dart', 'test/features/app_update/github_apk_update_test.dart')
+          ./tools/run_flutter_checks.ps1 -Mode Fast -DartPath $owned -TestPath $tests
+          ./tools/run_flutter_checks.ps1 -Mode Final -DartPath $owned -TestPath $tests
+
+      - name: Check Android backend ABI policy
+        working-directory: android
+        run: ./gradlew :mgread_plugin_runtime:testHybridDebugUnitTest --tests '*AndroidNodeBackendPolicyTest'
+
       - name: Install local Android signing key
         env:
           ANDROID_DEBUG_KEYSTORE_BASE64: ${{ secrets.MGREAD_ANDROID_DEBUG_KEYSTORE_BASE64 }}
@@ -138,34 +156,18 @@ jobs:
           mkdir -p build/android-release
           cp build/app/outputs/flutter-apk/app-release.apk build/android-release/app-arm64.apk
 
+      - name: Build ARMv7 Android APK
+        run: |
+          flutter build apk --release --target-platform android-arm --no-pub
+          cp build/app/outputs/flutter-apk/app-release.apk build/android-release/app-armv7.apk
+
       - name: Build universal Android APK
         run: |
-          flutter build apk --release --target-platform android-arm64,android-x64 --no-pub
+          flutter build apk --release --target-platform android-arm,android-arm64 --no-pub
           cp build/app/outputs/flutter-apk/app-release.apk build/android-release/app-universal.apk
 
       - name: Verify packaged Android runtimes
-        shell: python
-        run: |
-          from pathlib import Path
-          from zipfile import ZipFile
-
-          for name, abis in {
-              'arm64': {'arm64-v8a'},
-              'universal': {'arm64-v8a', 'x86_64'},
-          }.items():
-              with ZipFile(Path('build/android-release') / f'app-{name}.apk') as apk:
-                  libraries = {p for p in apk.namelist() if p.startswith('lib/') and p.endswith('.so')}
-                  actual_abis = {p.split('/')[1] for p in libraries}
-                  if actual_abis != abis:
-                      raise RuntimeError(f'{name}: expected {abis}, found {actual_abis}')
-                  for abi in abis:
-                      for library in ('libflutter.so', 'libapp.so', 'libmgread_native_runtime.so'):
-                          if f'lib/{abi}/{library}' not in libraries:
-                              raise RuntimeError(f'{name}: missing {abi}/{library}')
-                      if not any(p.startswith(f'lib/{abi}/libjavet') for p in libraries):
-                          raise RuntimeError(f'{name}: missing Javet for {abi}')
-                  if 'lib/arm64-v8a/libnode.so' not in libraries:
-                      raise RuntimeError(f'{name}: missing ARM64 Node process runtime')
+        run: python3 tools/verify_android_release.py
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v7
@@ -413,6 +415,7 @@ jobs:
           mkdir -p release/final
 
           mv release/android/app-arm64.apk             "release/final/MgRead-${VERSION}-android-arm64.apk"
+          mv release/android/app-armv7.apk             "release/final/MgRead-${VERSION}-android-armv7.apk"
           mv release/android/app-universal.apk             "release/final/MgRead-${VERSION}-android-universal.apk"
           mv release/windows/mgread-windows-x64.zip             "release/final/MgRead-${VERSION}-windows-x64.zip"
           mv release/macos/mgread-macos-arm64.zip             "release/final/MgRead-${VERSION}-macos-arm64.zip"
@@ -444,6 +447,10 @@ jobs:
           APK_PATH="release/final/$APK_NAME"
           APK_SHA256="$(sha256sum "$APK_PATH" | cut -d ' ' -f 1)"
           APK_SIZE="$(stat -c '%s' "$APK_PATH")"
+          UNIVERSAL_NAME="MgRead-${VERSION}-android-universal.apk"
+          UNIVERSAL_PATH="release/final/$UNIVERSAL_NAME"
+          UNIVERSAL_SHA256="$(sha256sum "$UNIVERSAL_PATH" | cut -d ' ' -f 1)"
+          UNIVERSAL_SIZE="$(stat -c '%s' "$UNIVERSAL_PATH")"
           PUBLISHED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           COMPARE_URL=""
           if [[ -n "$PREVIOUS_TAG" ]]; then
@@ -465,6 +472,9 @@ jobs:
             --arg apkName "$APK_NAME" \
             --arg apkSha256 "$APK_SHA256" \
             --argjson apkSize "$APK_SIZE" \
+            --arg universalName "$UNIVERSAL_NAME" \
+            --arg universalSha256 "$UNIVERSAL_SHA256" \
+            --argjson universalSize "$UNIVERSAL_SIZE" \
             '{
               schema: $schema,
               repository: $repository,
@@ -477,7 +487,8 @@ jobs:
               commitSha: $commitSha,
               compareUrl: (if $compareUrl == "" then null else $compareUrl end),
               releaseNotes: ($releaseNotes | sub("\\n$"; "")),
-              apk: {name: $apkName, sha256: $apkSha256, size: $apkSize}
+              apk: {name: $apkName, sha256: $apkSha256, size: $apkSize},
+              universalApk: {name: $universalName, sha256: $universalSha256, size: $universalSize}
             }' > release/final/update.json
 
           (
@@ -515,6 +526,3 @@ jobs:
             --notes-file release/release-notes.txt \
             --prerelease \
             --latest=false
-
-
-

@@ -7,8 +7,11 @@
 import java.security.MessageDigest
 
 ext.verifyAndroidNodeRuntimeLibrary = { File library ->
-    def recovery = 'Run git lfs pull --include="packages/mgread_plugin_runtime/android/src/main/jniLibs/arm64-v8a/libnode.so" --exclude="" from the repository root.'
-    if (!library.isFile() || library.length() != 87657320L) {
+    def armv7 = library.parentFile.name == 'armeabi-v7a'
+    def expectedLength = armv7 ? 79641320L : 87657320L
+    def expectedHash = armv7 ? '15cfa70b29f83fe969c0357c133cef94cb15d99b90e53a06724b334ae915fa49' : '955b308b1dfdf7662e8fe5ee4eb8c0c7d0a313f2d306387f2307529993c4bc32'
+    def recovery = armv7 ? 'Run python3 tools/stage_android_node_runtime.py from the repository root.' : 'Run git lfs pull --include="packages/mgread_plugin_runtime/android/src/main/jniLibs/arm64-v8a/libnode.so" --exclude="" from the repository root.'
+    if (!library.isFile() || library.length() != expectedLength) {
         throw new GradleException("Android Node library is missing, truncated, or still a Git LFS pointer. ${recovery}")
     }
     def digest = MessageDigest.getInstance('SHA-256')
@@ -16,15 +19,15 @@ ext.verifyAndroidNodeRuntimeLibrary = { File library ->
         byte[] header = new byte[20]
         if (stream.read(header) != header.length ||
             header[0] != 0x7f || header[1] != 0x45 || header[2] != 0x4c || header[3] != 0x46 ||
-            header[4] != 2 || header[5] != 1 || (header[18] & 0xff) != 183 || header[19] != 0) {
-            throw new GradleException("Android Node library must be an arm64 ELF binary. ${recovery}")
+            header[4] != (armv7 ? 1 : 2) || header[5] != 1 || (header[18] & 0xff) != (armv7 ? 40 : 183) || header[19] != 0) {
+            throw new GradleException("Android Node library must be an ${armv7 ? 'ARMv7' : 'arm64'} ELF binary. ${recovery}")
         }
         digest.update(header)
         byte[] buffer = new byte[65536]
         int count
         while ((count = stream.read(buffer)) != -1) digest.update(buffer, 0, count)
     }
-    if (digest.digest().encodeHex().toString() != '955b308b1dfdf7662e8fe5ee4eb8c0c7d0a313f2d306387f2307529993c4bc32') {
+    if (digest.digest().encodeHex().toString() != expectedHash) {
         throw new GradleException("Android Node library checksum does not match the pinned 24.21.0 artifact. ${recovery}")
     }
 }

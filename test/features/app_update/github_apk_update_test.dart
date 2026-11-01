@@ -80,6 +80,45 @@ void main() {
     expect((await coordinator.checkForUpdate()).status, UpdateCheckStatus.skipped);
   });
 
+  test('new clients prefer ARM universal assets and reject a mismatched filename', () async {
+    final root = await Directory.systemTemp.createTemp('mgread-universal-update-');
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    var tampered = false;
+    final listener = server.listen((request) async {
+      request.response.write(
+        jsonEncode({
+          'schema': 'mgread.android-update.v1',
+          'repository': 'lingy-Mg/mg_read',
+          'version': '1.2.3',
+          'buildNumber': 4,
+          'tag': 'v1.2.3+4',
+          'publishedAt': '2026-11-01T00:00:00Z',
+          'apk': {'name': 'MgRead-1.2.3+4-android-arm64.apk', 'sha256': List.filled(64, 'a').join()},
+          'universalApk': {'name': tampered ? 'other.apk' : 'MgRead-1.2.3+4-android-universal.apk', 'sha256': List.filled(64, 'b').join()},
+        }),
+      );
+      await request.response.close();
+    });
+    addTearDown(() async {
+      await server.close(force: true);
+      await listener.cancel();
+      await root.delete(recursive: true);
+    });
+    final coordinator = GitHubApkUpdateCoordinator(
+      currentVersion: () async => const AppVersionInfo(platform: AppUpdatePlatform.android, version: '1.0.0', buildNumber: 1),
+      downloadAndInstall: (_, {onProgress}) async => fail('checks must not install'),
+      supportDirectory: () async => root,
+      manifestUri: Uri.parse('http://127.0.0.1:${server.port}/manifest'),
+      isAndroid: true,
+    );
+    final result = await coordinator.checkForUpdate(force: true);
+    expect(result.status, UpdateCheckStatus.available);
+    expect(result.value?.apkName, 'MgRead-1.2.3+4-android-universal.apk');
+    expect(result.value?.sha256, List.filled(64, 'b').join());
+    tampered = true;
+    expect((await coordinator.checkForUpdate(force: true)).status, UpdateCheckStatus.failed);
+  });
+
   test('startup checks become due at the 30 minute boundary', () {
     final checkedAt = DateTime.utc(2026, 10, 23, 10);
 

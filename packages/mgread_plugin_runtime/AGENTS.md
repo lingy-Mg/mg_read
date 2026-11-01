@@ -18,7 +18,7 @@
   wire envelope、Runtime 数据根或平台对象。
 - Android 正常包同时包含 Javet 与 arm64-v8a 私有 Service 中的 Node 24.21.0；设置页保存所选 Node 后端，
   重启 App 进程后生效，默认 Javet。启动组合根必须先初始化 `AndroidNodeRuntimeSettings` 再创建 Facade；
-  不支持 arm64 Node 库的设备仅可选择 Javet。Rust 原生后端与所选 Node 后端并存，WebView 仍由主进程持有。Runtime 私有数据
+  ARMv7 自动使用 Node 24.21.0 私有进程，禁止选择或创建 Javet；x86_64 无 Node 库时仅可选择 Javet。Rust 原生后端与所选 Node 后端并存，WebView 仍由主进程持有。Runtime 私有数据
   不得承载主应用持久化权威。
 - Windows/Android 默认同时交付 Node 和 Rust 宿主，Facade 按来源引擎归属路由；两种来源 ID 必须全局唯一。
   `MGREAD_NATIVE_RUNTIME=true` 只用于原生独立性验收，该包不提供 Node 切换设置。Windows 按该 define
@@ -43,7 +43,8 @@
 ## 验证
 
 - Android 正常包的 `preBuild` 必须通过 `verifyNodeRuntimeLibrary`：校验固定 Node arm64 ELF 的长度与 SHA-256，
-  禁止将 Git LFS 指针打入 APK。GitHub Android 构建先精确拉取该 LFS 文件；原生独立包不需要 Node 库。
+  禁止将 Git LFS 指针打入 APK。GitHub Android 构建先精确拉取该 LFS 文件；ARMv7 本地/CI 构建另执行
+  `python3 tools/stage_android_node_runtime.py`，该脚本验证固定 ZIP 与 ARMv7 ELF 哈希；原生独立包不需要 Node 库。
 - Dart/Facade：运行目标 Flutter 测试；Node 桌面 transport 变化时追加 Node package 的 `test:flutter-desktop`。
 - 发现 `searchInput` 的公开模型和解码属于 `plugin_discovery_input.dart`，输入请求和结果状态由主应用拥有。
   原生 transport 使用 `test/native_supervisor_test.dart` 和真实原生宿主验收；共享类型需覆盖旧 decoder 测试。

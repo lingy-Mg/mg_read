@@ -29,6 +29,7 @@ function Get-AndroidNativeToolchain([string]$Root,[string]$HostTag) {
         throw "Android NDK compiler is unavailable: $nativeCompiler. Install ndk;28.2.13676358 or pass -NdkRoot."
     }
     return @{
+        ArmV7Linker=Join-Path $nativeBin "armv7a-linux-androideabi24-clang$nativeDriverSuffix"
         Arm64Linker=Join-Path $nativeBin "aarch64-linux-android24-clang$nativeDriverSuffix"
         X64Linker=Join-Path $nativeBin "x86_64-linux-android24-clang$nativeDriverSuffix"
         Archiver=Join-Path $nativeBin "llvm-ar$nativeExeSuffix"
@@ -49,10 +50,10 @@ if($Platform -in @('android','all')){
 function Build-NativeTarget([string]$Target,[string]$Abi) {
     $nativeLog=Join-Path $nativeLogs "build-host-$Target.log"
     $nativeArgs=@('build','--manifest-path',"$nativePackage/Cargo.toml",'--locked','--release','--target',$Target)
-    if($Target -like '*android'){$nativeArgs+='--lib'}else{$nativeArgs+=@('--bin','mgread-native-host')}
+    if($Target -like '*android*'){$nativeArgs+='--lib'}else{$nativeArgs+=@('--bin','mgread-native-host')}
     & cargo '+1.97.1' @nativeArgs *> $nativeLog
     if($LASTEXITCODE -ne 0){Get-Content -LiteralPath $nativeLog -Tail 35;throw "Native build failed: $Target"}
-    if($Target -like '*android'){
+    if($Target -like '*android*'){
         $nativeOut=Join-Path $nativeRepo "packages/mgread_plugin_runtime/android/src/native/jniLibs/$Abi"
         New-Item -ItemType Directory -Force -Path $nativeOut | Out-Null
         Copy-Item -LiteralPath "$nativePackage/target/$Target/release/libmgread_native_runtime.so" -Destination "$nativeOut/libmgread_native_runtime.so"
@@ -65,10 +66,13 @@ function Build-NativeTarget([string]$Target,[string]$Abi) {
 }
 if($Platform -in @('windows','all')){Build-NativeTarget 'x86_64-pc-windows-msvc' ''}
 if($Platform -in @('android','all')){
-    $nativeEnvNames=@('CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER','CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER','CC_aarch64_linux_android','CC_x86_64_linux_android','AR_aarch64_linux_android','AR_x86_64_linux_android','RUSTFLAGS')
+    $nativeEnvNames=@('CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER','CC_armv7_linux_androideabi','AR_armv7_linux_androideabi','CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER','CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER','CC_aarch64_linux_android','CC_x86_64_linux_android','AR_aarch64_linux_android','AR_x86_64_linux_android','RUSTFLAGS')
     $nativeSaved=@{}
     foreach($name in $nativeEnvNames){$nativeSaved[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}
     try {
+        $env:CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER=$nativeToolchain.ArmV7Linker
+        $env:CC_armv7_linux_androideabi=$nativeToolchain.ArmV7Linker
+        $env:AR_armv7_linux_androideabi=$nativeToolchain.Archiver
         $env:CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$nativeToolchain.Arm64Linker
         $env:CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER=$nativeToolchain.X64Linker
         $env:CC_aarch64_linux_android=$env:CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER
@@ -78,5 +82,6 @@ if($Platform -in @('android','all')){
         $env:RUSTFLAGS='-C link-arg=-Wl,-z,max-page-size=16384'
         Build-NativeTarget 'x86_64-linux-android' 'x86_64'
         Build-NativeTarget 'aarch64-linux-android' 'arm64-v8a'
+        Build-NativeTarget 'armv7-linux-androideabi' 'armeabi-v7a'
     }finally{foreach($name in $nativeEnvNames){[Environment]::SetEnvironmentVariable($name,$nativeSaved[$name],'Process')}}
 }
