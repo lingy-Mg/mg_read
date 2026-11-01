@@ -55,6 +55,16 @@ import 'package:mg_read/features/reader/data/content_library_source_comic_reader
 import 'package:mg_read/features/reader/data/content_library_source_text_reader.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
+enum AppStartupPhase {
+  persistence('正在打开本地书架…'),
+  library('正在加载书架数据…'),
+  settings('正在读取应用设置…'),
+  firstFrame('正在准备书架…');
+
+  const AppStartupPhase(this.label);
+  final String label;
+}
+
 enum AppStartupStatus { booting, ready, retryableFailure }
 
 @immutable
@@ -120,6 +130,16 @@ final class AppStartupController extends ValueNotifier<AppStartupState> {
   AppStartupState get state => value;
   set state(AppStartupState next) => value = next;
   int get attemptNumber => _attemptNumber;
+  AppStartupPhase _activePhase = AppStartupPhase.persistence;
+  AppStartupPhase get activePhase => _activePhase;
+
+  void beginPhase(AppStartupPhase phase) {
+    if (_disposed) return;
+    _activePhase = phase;
+    recordStage(phase.name, resultState: 'starting');
+    notifyListeners();
+  }
+
   bool get requiresLibraryFrame => _resources?.contentLibrary != null;
   bool get hasLibraryTerminalFrame => _libraryFrameRecorded;
   bool get isInteractive => state.isReady && (!requiresLibraryFrame || hasLibraryTerminalFrame);
@@ -206,9 +226,13 @@ final class AppStartupController extends ValueNotifier<AppStartupState> {
     int? itemCount,
     String? catalogState,
   }) {
+    debugPrint(
+      '[MgRead startup] stage=$stage state=$resultState attempt=${attempt ?? _attemptNumber} elapsedMs=${_elapsed.elapsedMilliseconds}${errorCode == null ? '' : ' code=$errorCode'}',
+    );
     try {
       diagnostics.emit(
         AppDiagnosticEvents.startupStage,
+        severity: resultState == 'timeout' ? DiagnosticSeverity.warn : null,
         attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
           'stage': DiagnosticValue.string(stage),
           'durationMicros': DiagnosticValue.int64(durationMicros ?? _elapsed.elapsedMicroseconds),
@@ -288,6 +312,7 @@ final class AppStartupController extends ValueNotifier<AppStartupState> {
         return;
       }
       _resources = resources;
+      _activePhase = AppStartupPhase.firstFrame;
       state = const AppStartupState.ready();
       recordStage('resourcesReady', resultState: 'ready', attempt: attemptNumber);
     } on Object catch (error) {

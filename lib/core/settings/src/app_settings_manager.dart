@@ -111,6 +111,12 @@ final class AppSettingsManager {
     return _snapshot.get(key);
   }
 
+  /// Distinguishes a saved user choice from a default when applying device defaults.
+  bool isExplicitlySet(SettingKey<dynamic> key) {
+    _requireRegisteredKey(key);
+    return _documents[key.documentKind]!.values.containsKey(key.id);
+  }
+
   Future<void> initialize() => _initializeFuture ??= _initialize();
 
   /// Reopens settings after a failed first initialization.

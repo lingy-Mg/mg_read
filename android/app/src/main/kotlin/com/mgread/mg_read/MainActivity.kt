@@ -1,5 +1,7 @@
 package com.mgread.mg_read
 
+import android.app.UiModeManager
+import android.content.res.Configuration
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Context
@@ -52,6 +54,15 @@ class MainActivity : AudioServiceActivity() {
                         result.error("app_restart_failed", error.javaClass.simpleName, null)
                     }
                 }
+            }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mgread/device_profile")
+            .setMethodCallHandler { call, result ->
+                if (call.method == "isTelevision") {
+                    val mode = getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+                    result.success(mode.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION ||
+                        intent?.hasCategory(Intent.CATEGORY_LEANBACK_LAUNCHER) == true ||
+                        intent?.component?.className?.endsWith("TvLauncher") == true)
+                } else result.notImplemented()
             }
         if (!flutterEngine.plugins.has(AudioBackgroundPlatformBridge::class.java)) {
             flutterEngine.plugins.add(AudioBackgroundPlatformBridge())

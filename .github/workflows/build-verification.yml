@@ -122,8 +122,8 @@ jobs:
       - name: Check changed Dart code and regressions
         shell: pwsh
         run: |
-          $owned = @('lib/features/profile/presentation/node_runtime_settings_page.dart', 'lib/features/app_update/application/github_apk_update.dart', 'packages/mgread_plugin_runtime/lib/src/android_node_runtime_settings.dart', 'test/features/profile/presentation/node_runtime_settings_page_test.dart', 'test/features/app_update/github_apk_update_test.dart')
-          $tests = @('test/features/profile/presentation/node_runtime_settings_page_test.dart', 'test/features/app_update/github_apk_update_test.dart')
+          $owned = @('lib/app/app_startup.dart', 'lib/app/app_startup_gate.dart', 'lib/app/bootstrap.dart', 'lib/core/settings/src/app_settings_manager.dart', 'test/app/app_startup_gate_test.dart', 'test/app/app_settings_bootstrap_test.dart', 'test/app/app_startup_test.dart')
+          $tests = @('test/app/app_startup_gate_test.dart', 'test/app/app_settings_bootstrap_test.dart', 'test/app/app_startup_test.dart', 'test/app/tv_mode_test.dart')
           ./tools/run_flutter_checks.ps1 -Mode Fast -DartPath $owned -TestPath $tests
           ./tools/run_flutter_checks.ps1 -Mode Final -DartPath $owned -TestPath $tests
 

@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_startup.dart';
 import 'package:mg_read/app/bootstrap.dart';
+import 'package:mg_read/features/library/application/library_page_controller.dart';
+import 'package:mg_read/features/library/presentation/widgets/tv_library_shell.dart';
 import 'package:mg_read/app/mg_read_app.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
@@ -149,6 +151,52 @@ void main() {
     startup.signalLibraryTerminalFrame(resultState: 'empty');
     expect(startup.hasLibraryTerminalFrame, isTrue);
     expect(startup.isInteractive, isTrue);
+  });
+
+  testWidgets('a TV cold start opens the real empty SQLite shelf and removes the mask', (tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final settings = await createTestAppSettings();
+    await settings.set(AppSettingKeys.tvMode, true);
+    final root = await tester.runAsync(() => Directory.systemTemp.createTemp('mgread-tv-cold-start-'));
+    final persistence = await tester.runAsync(
+      () => AppPersistence.open(dataRoot: root!, registry: RecordDocumentRegistry(contentLibraryRecordDocumentCodecs)),
+    );
+    final startup = AppStartupController(
+      ownsLoadingAnimation: true,
+      diagnostics: DiagnosticsManager(
+        sink: const NoopDiagnosticEventSink(),
+        registry: AppDiagnosticEvents.registry,
+        source: DiagnosticSource.app,
+      ),
+      openResources: () async =>
+          AppStartupResources(contentLibrary: ContentLibrary.fromPersistence(persistence!), persistence: persistence),
+    );
+    addTearDown(() async {
+      await tester.runAsync(() async {
+        await startup.close();
+        await settings.close();
+        await root!.delete(recursive: true);
+      });
+    });
+    await startup.start();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [libraryOverviewLoaderProvider.overrideWithValue(DeferredLibraryOverviewLoader(startup))],
+        child: testMgReadApp(settings, startupController: startup),
+      ),
+    );
+    for (var turn = 0; turn < 100 && !startup.isInteractive; turn++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(startup.isInteractive, isTrue);
+    expect(find.byKey(const Key('app-startup-mask')), findsNothing);
+    expect(find.byType(TvLibraryShell), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   test('Runtime startup phases retain count, duration and catalog state', () async {

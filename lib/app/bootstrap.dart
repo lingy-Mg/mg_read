@@ -17,6 +17,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -94,6 +95,7 @@ Future<void> bootstrapMgReadApp({
   ContentLibraryFactory? contentLibraryFactory = _openDefaultContentLibrary,
   AppPersistenceFactory? appPersistenceFactory = _openDefaultAppPersistence,
   SettingsDataRootResolver dataRootResolver = _defaultSettingsDataRoot,
+  Future<bool> Function() televisionDetector = _detectTelevision,
   MgReadAppRunner appRunner = runApp,
   Widget child = const MgReadApp(),
 }) async {
@@ -192,13 +194,16 @@ Future<void> bootstrapMgReadApp({
     try {
       if (attemptLibrary == null && contentLibraryFactory != null) {
         if (appPersistenceFactory != null) {
+          startup.beginPhase(AppStartupPhase.persistence);
           attemptPersistence = await appPersistenceFactory(await resolveDataRoot(), diagnostics);
           sharedPersistence = attemptPersistence;
           startup.recordStage('persistence', resultState: 'ready');
         }
+        startup.beginPhase(AppStartupPhase.library);
         attemptLibrary = await contentLibraryFactory(await resolveDataRoot(), diagnostics, attemptPersistence);
         startup.recordStage('library', resultState: 'ready');
       }
+      startup.beginPhase(AppStartupPhase.settings);
       if (startup.attemptNumber > 1 && resolvedManager.state == SettingsState.failed) {
         await resolvedManager.retryInitialization();
       } else {
@@ -207,18 +212,30 @@ Future<void> bootstrapMgReadApp({
       if (resolvedManager.state != SettingsState.ready) {
         throw StateError('settings_not_ready');
       }
+      if (resolvedManager.supports(AppSettingKeys.tvMode) &&
+          !resolvedManager.isExplicitlySet(AppSettingKeys.tvMode) &&
+          await televisionDetector()) {
+        await resolvedManager.set(AppSettingKeys.tvMode, true);
+      }
       startup.recordStage('settings', resultState: 'ready');
       if (resolvedManager.supports(AppSettingKeys.diagnosticsEnabled) && resolvedManager.get(AppSettingKeys.diagnosticsEnabled)) {
         fileRecordingEnabled = true;
         attemptDiagnostics = await openPersistentDiagnostics();
       }
       return AppStartupResources(contentLibrary: attemptLibrary, persistence: attemptPersistence, diagnosticsService: attemptDiagnostics);
-    } on Object {
+    } on Object catch (error, stack) {
+      fatalErrorReporter.reportUnhandled(
+        boundary: 'app-startup',
+        errorCode: 'startup_failed',
+        errorText: error.toString(),
+        stackTrace: stack,
+        fatal: false,
+      );
       try {
-        await attemptLibrary?.close();
+        await attemptLibrary?.close().timeout(const Duration(seconds: 2));
       } catch (_) {}
       try {
-        await attemptPersistence?.close();
+        await attemptPersistence?.close().timeout(const Duration(seconds: 2));
       } catch (_) {}
       rethrow;
     }
@@ -512,3 +529,13 @@ LibraryItemSummary _summaryFromShelfRequest(String mutationId, BookshelfAddReque
       LibraryItemSummaryAttribute(key: attribute.key, label: attribute.label, value: attribute.value),
   ],
 );
+
+Future<bool> _detectTelevision() async {
+  if (!Platform.isAndroid) return false;
+  try {
+    return await const MethodChannel('mgread/device_profile').invokeMethod<bool>('isTelevision').timeout(const Duration(seconds: 2)) ??
+        false;
+  } catch (_) {
+    return false;
+  }
+}

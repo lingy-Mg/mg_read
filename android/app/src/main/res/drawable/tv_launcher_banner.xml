@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 320x180 at xhdpi. Reuses the app's established cat-and-book brand asset. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <size android:width="160dp" android:height="90dp" />
+            <solid android:color="#FFF3DF" />
+            <corners android:radius="6dp" />
+        </shape>
+    </item>
+    <item android:width="72dp" android:height="72dp" android:left="6dp" android:top="9dp" android:gravity="left|top">
+        <bitmap android:src="@drawable/mg_read_brand" android:gravity="fill" android:filter="true" />
+    </item>
+    <item android:width="72dp" android:height="38dp" android:left="82dp" android:top="26dp" android:gravity="left|top"
+        android:drawable="@drawable/tv_brand_wordmark" />
+</layer-list>

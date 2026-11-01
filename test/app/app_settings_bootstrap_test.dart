@@ -70,6 +70,45 @@ void main() {
     await host.closeDiagnostics?.call();
   });
 
+  test('TV device default is applied once and explicit ordinary mode is preserved', () async {
+    final store = FakeSettingsStore();
+    Widget? mounted;
+    Future<void> closeMounted() async {
+      final host = (mounted! as ProviderScope).child as AppSettingsLifecycleHost;
+      await host.manager.close();
+      host.disposeDiagnosticsBoundary?.call();
+      host.disposeFatalErrorReporter?.call();
+      await host.closeContentLibrary?.call();
+    }
+
+    final first = AppSettingsManager(store: store, registry: AppSettingKeys.registry);
+    await bootstrapMgReadApp(
+      settingsManager: first,
+      diagnosticsServiceFactory: null,
+      contentLibraryFactory: null,
+      televisionDetector: () async => true,
+      appRunner: (app) => mounted = app,
+      child: const SizedBox.shrink(),
+    );
+    expect(first.get(AppSettingKeys.tvMode), isTrue);
+    expect(first.isExplicitlySet(AppSettingKeys.tvMode), isTrue);
+    await first.set(AppSettingKeys.tvMode, false);
+    await first.flush();
+    final saved = Map<String, SettingsDocument>.of(store.documents);
+    await closeMounted();
+    final second = AppSettingsManager(store: FakeSettingsStore()..documents.addAll(saved), registry: AppSettingKeys.registry);
+    await bootstrapMgReadApp(
+      settingsManager: second,
+      diagnosticsServiceFactory: null,
+      contentLibraryFactory: null,
+      televisionDetector: () async => true,
+      appRunner: (app) => mounted = app,
+      child: const SizedBox.shrink(),
+    );
+    expect(second.get(AppSettingKeys.tvMode), isFalse);
+    await closeMounted();
+  });
+
   test('default diagnostics stays absent until explicit current-run activation', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-bootstrap-default-diagnostics-');
     addTearDown(() => root.delete(recursive: true));
