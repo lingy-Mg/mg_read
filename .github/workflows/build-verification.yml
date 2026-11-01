@@ -83,7 +83,7 @@ jobs:
         timeout-minutes: 10
         shell: pwsh
         run: |
-          $owned = @('lib/app/app_startup.dart', 'lib/app/app_startup_gate.dart', 'lib/app/bootstrap.dart', 'lib/core/settings/src/app_settings_manager.dart', 'test/app/app_startup_gate_test.dart', 'test/app/app_settings_bootstrap_test.dart', 'test/app/app_startup_test.dart', 'test/app/mg_read_app_test_support.dart')
+          $owned = @('lib/app/app_startup.dart', 'lib/app/app_startup_gate.dart', 'lib/app/bootstrap.dart', 'lib/core/settings/src/app_settings_manager.dart', 'test/app/app_startup_gate_test.dart', 'test/app/app_settings_bootstrap_test.dart', 'test/app/app_startup_test.dart', 'test/app/mg_read_app_test_support.dart', 'test/app/tv_mode_test.dart')
           $tests = @('test/app/app_startup_gate_test.dart', 'test/app/app_settings_bootstrap_test.dart', 'test/app/app_startup_test.dart', 'test/app/tv_mode_test.dart')
           ./tools/run_flutter_checks.ps1 -Mode Fast -DartPath $owned -TestPath $tests
           ./tools/run_flutter_checks.ps1 -Mode Final -DartPath $owned -TestPath $tests

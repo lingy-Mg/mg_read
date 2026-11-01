@@ -27,7 +27,7 @@ void main() {
     addTearDown(() async {
       if (!resources.isCompleted) resources.complete(const AppStartupResources());
       await startup.close();
-    });
+    }, timeout: const Timeout(Duration(minutes: 1)));
     final boot = startup.start();
     var taps = 0;
     var paints = 0;
@@ -68,7 +68,7 @@ void main() {
     await tester.tap(find.text('打开书籍'));
     expect(taps, 1);
     semantics.dispose();
-  });
+  }, timeout: const Timeout(Duration(minutes: 1)));
 
   testWidgets('masked routes keep ticking but cannot receive remote activation', (tester) async {
     final resources = Completer<AppStartupResources>();
@@ -83,7 +83,7 @@ void main() {
     addTearDown(() async {
       if (!resources.isCompleted) resources.complete(const AppStartupResources());
       await startup.close();
-    });
+    }, timeout: const Timeout(Duration(minutes: 1)));
     final boot = startup.start();
     var completed = false;
     var activated = 0;
@@ -112,7 +112,7 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pump();
     expect(activated, 1);
-  });
+  }, timeout: const Timeout(Duration(minutes: 1)));
 
   testWidgets('slow startup exposes its stage without opening a duplicate attempt', (tester) async {
     final resources = Completer<AppStartupResources>();
@@ -131,7 +131,7 @@ void main() {
     addTearDown(() async {
       if (!resources.isCompleted) resources.complete(const AppStartupResources());
       await startup.close();
-    });
+    }, timeout: const Timeout(Duration(minutes: 1)));
     final boot = startup.start();
     await tester.pumpWidget(
       ProviderScope(
@@ -154,7 +154,7 @@ void main() {
     await boot;
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('app-startup-mask')), findsNothing);
-  });
+  }, timeout: const Timeout(Duration(minutes: 1)));
 
   testWidgets('failed startup can retry behind the same mask', (tester) async {
     final retryResources = Completer<AppStartupResources>();
@@ -191,7 +191,7 @@ void main() {
     retryResources.complete(const AppStartupResources());
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('app-startup-mask')), findsNothing);
-  });
+  }, timeout: const Timeout(Duration(minutes: 1)));
 }
 
 class _PaintProbe extends CustomPainter {

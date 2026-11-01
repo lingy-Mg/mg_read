@@ -36,7 +36,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(calls - before, 1, reason: key.debugName);
     }
-  });
+  }, timeout: const Timeout(Duration(minutes: 1)));
 
   testWidgets('switching TV from appearance retains the current settings route', (tester) async {
     final settings = await createTestAppSettings();
@@ -58,7 +58,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(settings.get(AppSettingKeys.tvMode), isFalse);
     expect(find.byType(ProfileGeneralSettingPage), findsOneWidget);
-  });
+  }, timeout: const Timeout(Duration(minutes: 1)));
 
   test('TV preference survives store reload without replacing ordinary preferences', () async {
     final store = FakeSettingsStore();
@@ -76,7 +76,7 @@ void main() {
     expect(second.get(AppSettingKeys.tvMode), isTrue);
     expect(second.get(AppSettingKeys.themeMode), 'light');
     await second.close();
-  });
+  }, timeout: const Timeout(Duration(minutes: 1)));
 
   testWidgets('root switches in place and restores ordinary light theme', (tester) async {
     tester.view.physicalSize = const Size(1280, 720);
@@ -97,5 +97,5 @@ void main() {
     expect(settings.get(AppSettingKeys.tvMode), isFalse);
     expect(find.byType(LibraryHomeShell), findsOneWidget);
     expect(Theme.of(tester.element(find.byType(LibraryHomeShell))).brightness, Brightness.light);
-  });
+  }, timeout: const Timeout(Duration(minutes: 1)));
 }

@@ -121,7 +121,7 @@ try {
   if ($Mode -eq 'Full') {
     Invoke-NativeCheck -Label 'Flutter test (full suite)' -Program 'flutter' -Arguments @('test')
   } elseif ($testFiles.Count -gt 0) {
-    Invoke-NativeCheck -Label 'Flutter test (owned tests)' -Program 'flutter' -Arguments (@('test') + $testFiles)
+    Invoke-NativeCheck -Label 'Flutter test (owned tests)' -Program 'flutter' -Arguments (@('test', '--reporter', 'expanded') + $testFiles)
   } else {
     Write-Warning 'No TestPath supplied. Run the directly affected tests separately before reporting completion.'
   }
@@ -129,3 +129,4 @@ try {
 finally {
   Pop-Location
 }
+

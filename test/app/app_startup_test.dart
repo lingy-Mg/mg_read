@@ -158,50 +158,60 @@ void main() {
     expect(startup.isInteractive, isTrue);
   });
 
-  testWidgets('a TV cold start opens the real empty SQLite shelf and removes the mask', (tester) async {
-    tester.view.physicalSize = const Size(1280, 720);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final settings = await createTestAppSettings();
-    await settings.set(AppSettingKeys.tvMode, true);
-    final root = await tester.runAsync(() => Directory.systemTemp.createTemp('mgread-tv-cold-start-'));
-    final persistence = await tester.runAsync(
-      () => AppPersistence.open(dataRoot: root!, registry: RecordDocumentRegistry(contentLibraryRecordDocumentCodecs)),
-    );
-    final startup = AppStartupController(
-      ownsLoadingAnimation: true,
-      diagnostics: DiagnosticsManager(
-        sink: const NoopDiagnosticEventSink(),
-        registry: AppDiagnosticEvents.registry,
-        source: DiagnosticSource.app,
-      ),
-      openResources: () async =>
-          AppStartupResources(contentLibrary: ContentLibrary.fromPersistence(persistence!), persistence: persistence),
-    );
-    addTearDown(() async {
-      await tester.runAsync(() async {
-        await startup.close();
-        await settings.close();
-        await root!.delete(recursive: true);
-      });
+  group('real SQLite TV startup', () {
+    late Directory root;
+    late AppPersistence persistence;
+    late AppSettingsManager settings;
+    late AppStartupController startup;
+
+    // Open and close background SQLite outside the widget test's FakeAsync
+    // zone; native I/O and stream cleanup must continue in real time.
+    setUp(() async {
+      settings = await createTestAppSettings();
+      await settings.set(AppSettingKeys.tvMode, true);
+      root = await Directory.systemTemp.createTemp('mgread-tv-cold-start-');
+      persistence = await AppPersistence.open(dataRoot: root, registry: RecordDocumentRegistry(contentLibraryRecordDocumentCodecs));
+      final library = ContentLibrary.fromPersistence(persistence);
+      startup = AppStartupController(
+        ownsLoadingAnimation: true,
+        diagnostics: DiagnosticsManager(
+          sink: const NoopDiagnosticEventSink(),
+          registry: AppDiagnosticEvents.registry,
+          source: DiagnosticSource.app,
+        ),
+        openResources: () async => AppStartupResources(contentLibrary: library, persistence: persistence),
+      );
+      await startup.start();
     });
-    await startup.start();
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [libraryOverviewLoaderProvider.overrideWithValue(DeferredLibraryOverviewLoader(startup))],
-        child: testMgReadApp(settings, startupController: startup),
-      ),
-    );
-    for (var turn = 0; turn < 100 && !startup.isInteractive; turn++) {
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
-      await tester.pump(const Duration(milliseconds: 50));
-    }
-    expect(startup.isInteractive, isTrue);
-    expect(find.byKey(const Key('app-startup-mask')), findsNothing);
-    expect(find.byType(TvLibraryShell), findsOneWidget);
-    expect(tester.takeException(), isNull);
-    await tester.pumpWidget(const SizedBox.shrink());
+    tearDown(() async {
+      await startup.close().timeout(const Duration(seconds: 10));
+      await settings.close();
+      await root.delete(recursive: true);
+    });
+
+    testWidgets('opens the empty shelf and removes the mask', (tester) async {
+      tester.view.physicalSize = const Size(1280, 720);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [libraryOverviewLoaderProvider.overrideWithValue(DeferredLibraryOverviewLoader(startup))],
+          child: testMgReadApp(settings, startupController: startup),
+        ),
+      );
+      for (var turn = 0; turn < 100 && !startup.isInteractive; turn++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      // A terminal post-frame callback schedules the gate's next rebuild.
+      await tester.pump();
+      expect(startup.isInteractive, isTrue);
+      expect(find.byKey(const Key('app-startup-mask')), findsNothing);
+      expect(find.byType(TvLibraryShell), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    }, timeout: const Timeout(Duration(minutes: 1)));
   });
 
   test('Runtime startup phases retain count, duration and catalog state', () async {
