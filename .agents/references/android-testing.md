@@ -3,6 +3,16 @@
 本文只负责 Android 真机或模拟器测试的设备准备、MuMu 实例启动与 ADB 连接。仅在用户明确授权且当前任务
 确实需要 Android 平台验证时读取；普通开发、静态检查和非 Android 测试不得加载本文。
 
+## 既有应用数据保护
+
+- 不得用集成测试 APK 覆盖设备上的正式应用。使用 `--dart-define=MGREAD_APPLICATION_ID_SUFFIX=tvqa`
+  等合法后缀；参数值不带前导点，Gradle 会自行添加分隔点。
+- 安装前必须用 Android SDK 的 `aapt2 dump badging` 核对已构建 APK 的真实包名；Dart define 或源码中的
+  applicationId 不能代替 APK 核验。正式包名为 `com.mgread.mg_read`，不能作为测试安装目标。
+- `flutter drive` 默认结束时会卸载应用。必须使用已核验的 `--use-application-binary` 和
+  `--keep-app-running`，避免工具按源码包名误清理正式应用；测试后仅清理已核验的测试包。
+- 测试失败不得通过卸载正式应用、清空数据或重置设备修复。
+
 ## 设备选择
 
 1. 优先使用已经连接且状态为 `device` 的 `emulator-5556`。

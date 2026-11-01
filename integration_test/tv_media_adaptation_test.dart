@@ -1,10 +1,15 @@
 /// On-device TV layout/orientation and remote navigation acceptance.
 /// Runs in a suffixed test app with deterministic metadata and an injected
 /// engine: validates real Android window sizing, not network/native decoding.
+/// Before installation verify the APK ID is com.mgread.mg_read.tvqa, then run
+/// flutter drive with --use-application-binary and --keep-app-running.
 library;
 
 import 'dart:async';
+import 'dart:convert';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -27,6 +32,7 @@ void main() {
     final fullscreen = SourceVideoFullscreenController(tvMode: true);
     final controller = VideoPlayerController();
     final store = TvFixtureVideoStore();
+    final captureKey = GlobalKey();
     addTearDown(controller.dispose);
     addTearDown(fullscreen.restoreAndClose);
     await tester.pumpWidget(
@@ -34,10 +40,13 @@ void main() {
         debugShowCheckedModeBanner: false,
         navigatorKey: navigator,
         theme: appTvTheme(AppTheme.dark()),
-        builder: (_, child) => TvModeScope(
-          enabled: true,
-          onChanged: (_) {},
-          child: TvRemoteShortcuts(child: child!),
+        builder: (_, child) => RepaintBoundary(
+          key: captureKey,
+          child: TvModeScope(
+            enabled: true,
+            onChanged: (_) {},
+            child: TvRemoteShortcuts(child: child!),
+          ),
         ),
         home: TvDetailFixtureEntry(
           onSave: (_, _) async {},
@@ -65,9 +74,7 @@ void main() {
     await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 15));
     expect(find.byKey(const Key('tv-video-detail-summary')), findsOneWidget);
     expect(find.text('字数'), findsNothing);
-    await binding.convertFlutterSurfaceToImage();
-    await tester.pump();
-    await binding.takeScreenshot('tv_video_detail');
+    await _capture(binding, captureKey, 'tv_video_detail');
     await _press(tester, LogicalKeyboardKey.select);
     await tester.pumpAndSettle(const Duration(milliseconds: 100), EnginePhase.sendSemanticsUpdate, const Duration(seconds: 15));
     expect(find.byType(VideoPlayerView), findsOneWidget);
@@ -91,7 +98,7 @@ void main() {
     await _press(tester, LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
     expect(controller.snapshot.playing, isFalse);
-    await binding.takeScreenshot('tv_video_player_controls');
+    await _capture(binding, captureKey, 'tv_video_player_controls');
     for (var i = 0; i < 3; i++) {
       await _press(tester, LogicalKeyboardKey.arrowRight);
       await tester.pumpAndSettle();
@@ -99,7 +106,7 @@ void main() {
     await _press(tester, LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('video-player-episode-sheet')), findsOneWidget);
-    await binding.takeScreenshot('tv_video_player_episodes');
+    await _capture(binding, captureKey, 'tv_video_player_episodes');
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     await _press(tester, LogicalKeyboardKey.escape);
@@ -114,6 +121,21 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
   }, timeout: const Timeout(Duration(minutes: 2)));
+}
+
+// Profile APKs may omit the native test plugin. Save real Flutter frames through
+// the driver's reportData rather than depending on its screenshot channel.
+Future<void> _capture(IntegrationTestWidgetsFlutterBinding binding, GlobalKey key, String name) async {
+  final boundary = key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+  final frame = await boundary.toImage(pixelRatio: 1);
+  try {
+    final bytes = await frame.toByteData(format: ui.ImageByteFormat.png);
+    binding.reportData ??= {};
+    final screenshots = binding.reportData!.putIfAbsent('tvScreenshots', () => <String, String>{}) as Map<String, String>;
+    screenshots[name] = base64Encode(bytes!.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes));
+  } finally {
+    frame.dispose();
+  }
 }
 
 // Profile builds omit key debug names, so the simulator needs explicit HID keys.
