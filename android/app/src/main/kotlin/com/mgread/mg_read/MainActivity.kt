@@ -25,6 +25,8 @@ import java.io.File
  * The App-update channel exposes our installed base APK for LAN transfer and hands an
  * already verified received APK to Android's Package Installer. It never attempts a
  * silent install: Android owns the confirmation and the update-signature validation.
+ * Device-profile queries also identify the verified MT5893 TV direct-video-surface
+ * quirk; presentation mode alone must not change the decoder on other hardware.
  */
 class MainActivity : AudioServiceActivity() {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -57,12 +59,15 @@ class MainActivity : AudioServiceActivity() {
             }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mgread/device_profile")
             .setMethodCallHandler { call, result ->
-                if (call.method == "isTelevision") {
-                    val mode = getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
-                    result.success(mode.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION ||
-                        intent?.hasCategory(Intent.CATEGORY_LEANBACK_LAUNCHER) == true ||
-                        intent?.component?.className?.endsWith("TvLauncher") == true)
-                } else result.notImplemented()
+                when (call.method) {
+                    "isTelevision" -> result.success(isTelevisionDevice())
+                    // MT5893's raw codec-buffer output fails negotiation or
+                    // corrupts frames. Its native MediaCodec Surface is usable.
+                    "prefersDirectVideoSurface" -> result.success(
+                        isTelevisionDevice() && Build.HARDWARE.equals("mt5893", ignoreCase = true)
+                    )
+                    else -> result.notImplemented()
+                }
             }
         if (!flutterEngine.plugins.has(AudioBackgroundPlatformBridge::class.java)) {
             flutterEngine.plugins.add(AudioBackgroundPlatformBridge())
@@ -117,6 +122,13 @@ class MainActivity : AudioServiceActivity() {
                 else -> result.notImplemented()
             }
         }
+    }
+
+    private fun isTelevisionDevice(): Boolean {
+        val mode = getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+        return mode.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION ||
+            intent?.hasCategory(Intent.CATEGORY_LEANBACK_LAUNCHER) == true ||
+            intent?.component?.className?.endsWith("TvLauncher") == true
     }
 
     private fun deviceLabel(): String {

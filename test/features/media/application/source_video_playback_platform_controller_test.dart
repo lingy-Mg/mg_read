@@ -2,9 +2,49 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:mg_read/features/media/application/source_video_playback_platform_controller.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  group('native video output compatibility', () {
+    const channel = MethodChannel('mgread/device_profile');
+    setUp(() => debugDefaultTargetPlatformOverride = TargetPlatform.android);
+    tearDown(() {
+      debugDefaultTargetPlatformOverride = null;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, null);
+    });
+
+    test('uses the native hardware decision for Android video output', () async {
+      for (final preferred in [true, false]) {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+          expect(call.method, 'prefersDirectVideoSurface');
+          return preferred;
+        });
+        expect(await readSourceVideoDirectSurfacePreference(), preferred);
+      }
+    });
+
+    test('unavailable native capability retains default output', () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (_) async {
+        throw MissingPluginException();
+      });
+      expect(await readSourceVideoDirectSurfacePreference(), isFalse);
+    });
+
+    test('other platforms never query Android hardware policy', () async {
+      var calls = 0;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (_) async {
+        calls++;
+        return true;
+      });
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      expect(await readSourceVideoDirectSurfacePreference(), isFalse);
+      expect(calls, 0);
+    });
+  });
+
   test('playing holds the screen awake and pause releases it', () async {
     final platform = _FakePlaybackPlatform();
     final controller = SourceVideoPlaybackPlatformController.withPlatform(platform);

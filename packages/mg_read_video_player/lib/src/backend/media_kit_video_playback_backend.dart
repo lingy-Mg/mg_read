@@ -11,6 +11,10 @@
 /// - MediaKit's first-frame future is controller-lifetime scoped, so players are
 ///   never reused across episode opens.
 /// - Open completion does not clear errors already delivered by native streams.
+/// - Android per-decoder negotiation errors allow mpv's fallback to finish;
+///   terminal errors and the view's first-frame deadline still report failure.
+/// - The host may select a direct Android codec surface for verified hardware;
+///   TV presentation mode never determines this native output policy.
 library;
 
 import 'dart:async';
@@ -26,19 +30,31 @@ import '../api/models.dart';
 import 'anime4k_shader_store.dart';
 
 /// Creates the package default backend without exposing MediaKit publicly.
-VideoPlaybackBackend createMediaKitVideoPlaybackBackend({Uri? proxyUri}) =>
-    MediaKitVideoPlaybackBackend(proxyUri: proxyUri);
+VideoPlaybackBackend createMediaKitVideoPlaybackBackend({
+  Uri? proxyUri,
+  bool preferAndroidSurface = false,
+}) => MediaKitVideoPlaybackBackend(
+  proxyUri: proxyUri,
+  preferAndroidSurface: preferAndroidSurface,
+);
 
 /// MediaKit-backed implementation used by default in production hosts.
 final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
   /// Prepares MediaKit without choosing a host native-library bundle.
-  MediaKitVideoPlaybackBackend({this.proxyUri}) {
+  MediaKitVideoPlaybackBackend({
+    this.proxyUri,
+    this.preferAndroidSurface = false,
+  }) {
     MediaKit.ensureInitialized();
-    _preparedSession = _MediaKitEpisodeSession(proxyUri);
+    _preparedSession = _MediaKitEpisodeSession(proxyUri, preferAndroidSurface);
   }
 
   /// Optional HTTP proxy sampled for this backend session.
   final Uri? proxyUri;
+
+  /// Uses Android's direct codec surface on host-selected compatible hardware.
+  /// Other platforms retain their default output.
+  final bool preferAndroidSurface;
 
   final ValueNotifier<VideoPlaybackBackendState> _state =
       ValueNotifier<VideoPlaybackBackendState>(
@@ -128,7 +144,8 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
     }
 
     final prepared = _preparedSession;
-    final session = prepared ?? _MediaKitEpisodeSession(proxyUri);
+    final session =
+        prepared ?? _MediaKitEpisodeSession(proxyUri, preferAndroidSurface);
     _preparedSession = null;
     _bind(session, generation, episode);
     if (!_isRequestedGeneration(generation)) {
@@ -242,6 +259,15 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
       ),
       session.player.stream.error.listen((String value) {
         if (value.trim().isEmpty) return;
+        // MediaTek's buffer decoder can fail before mpv selects another decoder,
+        // including when the Android surface is first attached. Pausing on this
+        // diagnostic aborts that fallback and makes autoplay require a button
+        // press. A terminal load error or the first-frame deadline still fails
+        // media for which no decoder succeeds.
+        if (Platform.isAndroid && value.trim() == 'Could not open codec.') {
+          _debugPlaybackFailure('decoder-negotiation', episode, value);
+          return;
+        }
         final failure = _classifyStreamFailure(value, episode);
         _debugPlaybackFailure(
           'stream-error',
@@ -478,9 +504,17 @@ final class _BackendStreamFailure {
 }
 
 final class _MediaKitEpisodeSession {
-  _MediaKitEpisodeSession(this.proxyUri) {
+  _MediaKitEpisodeSession(this.proxyUri, bool preferAndroidSurface) {
     player = Player();
-    controller = VideoController(player);
+    controller = VideoController(
+      player,
+      configuration: Platform.isAndroid && preferAndroidSurface
+          ? const VideoControllerConfiguration(
+              vo: 'mediacodec_embed',
+              hwdec: 'mediacodec',
+            )
+          : const VideoControllerConfiguration(),
+    );
     controllerReady = WidgetsBinding.instance.endOfFrame;
   }
 

@@ -13,13 +13,10 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <application
         android:label="MgRead"
-        android:name="${applicationName}"
+        android:name=".MgReadApplication"
         android:icon="@mipmap/ic_launcher"
         android:banner="@drawable/tv_launcher_banner"
         android:allowBackup="false">
-        <!-- TV resources disable Vulkan Impeller on older television drivers. -->
-        <meta-data android:name="io.flutter.embedding.android.EnableImpeller"
-            android:value="@bool/mgread_enable_impeller" />
         <activity
             android:name=".AppRestartActivity"
             android:exported="false"

@@ -13,6 +13,10 @@
   TV 返回先收起控制栏，再走现有保存退出；TV 不自动隐藏持有焦点的控制栏。
 - 可选 `VideoGroupDataSource` 按需取得一个 deferred 分组的完整选集；选集弹层浏览不打断当前播放，
   续播必须先解析保存的分组。失败保留重试，下一集不得越过尚未加载的分组跳到另一组。
+- Android 原生解码器协商的 `Could not open codec.` 允许 mpv 继续回退，不直接触发暂停；终止错误与
+  首帧超时仍必须可见。原生解码和自动播放验收使用根目录的 `integration_test/tv_native_video_playback_test.dart`。
+- 宿主可通过后端工厂的 `preferAndroidSurface` 为确认兼容的 Android 硬件选择直连解码 Surface；
+  `VideoPlayerView.tvMode` 不推断硬件，也不切换解码策略。
 
 验证仅在本 package 内执行：
 

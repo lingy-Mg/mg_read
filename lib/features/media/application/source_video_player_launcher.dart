@@ -5,6 +5,8 @@
 /// lifetimes. It retains no media URL, request header, cookie or Runtime state.
 /// Shelf launches discard their placeholder catalog before player setup.
 /// Playback failures also dismiss the entry cover so retry remains reachable.
+/// Native hardware policy, sampled once per setup, selects compatible Android
+/// video output independently of the TV layout setting.
 library;
 
 import 'dart:async';
@@ -137,6 +139,7 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
       final libraryFuture = widget.libraryItemId == null ? null : widget.container.read(appStartupControllerProvider).contentLibrary;
       final itemId = widget.libraryItemId == null ? null : LibraryItemId(widget.libraryItemId!);
       final proxyUri = widget.container.read(configuredFlutterNetworkProxyManagerProvider).playerProxyUriFor(NetworkProxyTraffic.video);
+      final preferAndroidSurface = await readSourceVideoDirectSurfacePreference();
       if (!mounted || generation != _generation) return;
       setState(
         () => _setup = _VideoPlayerSetup(
@@ -157,6 +160,7 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
             libraryItemId: itemId,
           ),
           proxyUri: proxyUri,
+          preferAndroidSurface: preferAndroidSurface,
         ),
       );
     } on Object catch (error) {
@@ -221,7 +225,8 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
           diagnostics: widget.diagnostics,
         ),
         startupSession: widget.startupSession,
-        backendFactory: () => createMediaKitVideoPlaybackBackend(proxyUri: setup.proxyUri),
+        backendFactory: () =>
+            createMediaKitVideoPlaybackBackend(proxyUri: setup.proxyUri, preferAndroidSurface: setup.preferAndroidSurface),
       ),
     );
   }
@@ -238,11 +243,12 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
 }
 
 final class _VideoPlayerSetup {
-  const _VideoPlayerSetup({required this.dataSource, required this.stateStore, required this.proxyUri});
+  const _VideoPlayerSetup({required this.dataSource, required this.stateStore, required this.proxyUri, required this.preferAndroidSurface});
 
   final SourceVideoDataSource dataSource;
   final TransientSourceVideoPlaybackStateStore stateStore;
   final Uri? proxyUri;
+  final bool preferAndroidSurface;
 }
 
 final class _VideoEntryObserver extends VideoPlayerObserver {

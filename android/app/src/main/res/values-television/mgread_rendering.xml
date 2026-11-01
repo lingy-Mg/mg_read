@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Use the supported OpenGL fallback on legacy TV Vulkan drivers. -->
-    <bool name="mgread_enable_impeller">false</bool>
-</resources>

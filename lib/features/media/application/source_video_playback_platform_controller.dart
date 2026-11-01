@@ -3,6 +3,8 @@
 /// Playing video holds the screen awake; pause, failure, backgrounding and
 /// route disposal release it. Gesture brightness is application-local and is
 /// always reset when the video route closes.
+/// Samples the native device's direct-video-surface preference independently of
+/// TV presentation mode; unsupported hosts keep the default backend output.
 library;
 
 import 'dart:async';
@@ -11,6 +13,19 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+
+/// Reads a narrowly selected Android hardware compatibility policy.
+Future<bool> readSourceVideoDirectSurfacePreference() async {
+  if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return false;
+  try {
+    return await const MethodChannel(
+          'mgread/device_profile',
+        ).invokeMethod<bool>('prefersDirectVideoSurface').timeout(const Duration(seconds: 2)) ??
+        false;
+  } on Object {
+    return false;
+  }
+}
 
 @visibleForTesting
 abstract interface class SourceVideoPlaybackPlatform {
