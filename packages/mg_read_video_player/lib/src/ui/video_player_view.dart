@@ -21,6 +21,7 @@ import 'video_player_host_bridge.dart';
 import 'video_player_shutdown.dart';
 import 'video_player_keyboard.dart';
 import 'video_player_stage.dart';
+import 'video_tv_seek_gesture.dart';
 
 part 'video_player_view_actions.dart';
 part 'video_player_tv_actions.dart';
@@ -104,6 +105,12 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   late VideoPlayerHostBridge _hostBridge;
   final FocusNode _focusNode = FocusNode(debugLabel: 'mg-read-video-player');
   final FocusNode _tvPlayFocus = FocusNode(debugLabel: 'video-tv-play');
+  late final _tvSeekGesture = VideoTvSeekGesture(
+    readPosition: () => _backendState.position,
+    readDuration: () => _backendState.duration,
+    onSeek: seek,
+    onActivity: _showControls,
+  );
 
   VideoContent? _content;
   VideoEpisodeGroup? _group;
@@ -139,6 +146,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   @override
   void initState() {
     super.initState();
+    _focusNode.addListener(_handleTvSeekFocus);
     _ownsController = widget.controller == null;
     _controller = widget.controller ?? VideoPlayerController();
     _controller.attach(this, this);
@@ -156,6 +164,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   void didUpdateWidget(covariant VideoPlayerView oldWidget) {
     super.didUpdateWidget(oldWidget);
     _hostBridge.observer = widget.observer;
+    if (oldWidget.tvMode != widget.tvMode) _tvSeekGesture.cancel();
     if (oldWidget.controller != widget.controller) {
       _controller.detach(this);
       if (_ownsController) _controller.dispose();
@@ -181,6 +190,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   }
 
   Future<void> _reloadSession() async {
+    _tvSeekGesture.cancel();
     final generation = ++_reloadGeneration;
     _loadGeneration++;
     _episodeGeneration++;
@@ -589,17 +599,11 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
 
   VideoPlaybackProgress? get _currentProgress => _actionCurrentProgress;
 
-  void _handleLifecycle(AppLifecycleState state) => _actionLifecycle(state);
-
   void _showControls() => _actionShowControls();
 
   void _scheduleControlsHide() => _actionScheduleControlsHide();
 
   Future<void> _showEpisodes() => _actionShowEpisodes();
-
-  KeyEventResult _handleKey(FocusNode _, KeyEvent event) => widget.tvMode
-      ? _handleTvKey(event)
-      : handleVideoPlayerKeyEvent(event, this, _snapshot);
 
   Future<void> _retry() async {
     _reportedBackendError = null;
@@ -608,6 +612,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
 
   void _setFailure(VideoPlayerFailure failure) {
     if (_disposed) return;
+    _tvSeekGesture.cancel();
     _playbackDesired = false;
     _hostBridge.reportPlaybackActive(false);
     _cancelFirstFrameTimeout();
@@ -735,6 +740,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   @override
   void dispose() {
     _hostBridge.dispose();
+    _tvSeekGesture.dispose();
     _disposed = true;
     _loadGeneration++;
     _episodeGeneration++;
@@ -742,6 +748,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     _controlsTimer?.cancel();
     _firstFrameTimer?.cancel();
     _lifecycleListener.dispose();
+    _focusNode.removeListener(_handleTvSeekFocus);
     _focusNode.dispose();
     _tvPlayFocus.dispose();
     _controller.detach(this);

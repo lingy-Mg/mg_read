@@ -3,6 +3,119 @@ part of 'video_player_view_test.dart';
 
 void _registerTvTests() {
   testWidgets(
+    'TV held seek accelerates independently of repeated events and stops on key up',
+    (tester) async {
+      final backend = _FakeVideoBackend();
+      final controller = VideoPlayerController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: VideoPlayerView(
+            tvMode: true,
+            contentId: 'show',
+            dataSource: const _ImmediateDataSource(),
+            stateStore: _RecordingStore(),
+            controller: controller,
+            backendFactory: () => backend,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      backend.state.value = backend.state.value.copyWith(
+        duration: const Duration(hours: 3),
+      );
+      await tester.pump();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump(const Duration(milliseconds: 100));
+      for (var i = 0; i < 20; i++) {
+        await tester.sendKeyRepeatEvent(LogicalKeyboardKey.arrowRight);
+      }
+      expect(backend.seekCalls, [const Duration(seconds: 10)]);
+      for (var i = 0; i < 45; i++) {
+        await tester.pump(const Duration(milliseconds: 200));
+        await tester.sendKeyRepeatEvent(LogicalKeyboardKey.arrowRight);
+      }
+      expect(
+        controller.snapshot.position,
+        greaterThan(const Duration(minutes: 30)),
+      );
+      final steps = [
+        for (var i = 1; i < backend.seekCalls.length; i++)
+          (backend.seekCalls[i] - backend.seekCalls[i - 1]).inSeconds,
+      ];
+      expect(steps, containsAll([10, 30, 60, 120]));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump();
+      final stopped = controller.snapshot.position;
+      final count = backend.seekCalls.length;
+      await tester.pump(const Duration(seconds: 4));
+      await tester.pumpAndSettle();
+      expect(backend.seekCalls.length, count);
+      expect(controller.snapshot.controlsVisible, isFalse);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pumpAndSettle();
+      expect(
+        controller.snapshot.position,
+        stopped - const Duration(seconds: 10),
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'TV held seek cancels when controls take focus or the player enters background',
+    (tester) async {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      final backend = _FakeVideoBackend();
+      final controller = VideoPlayerController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: VideoPlayerView(
+            tvMode: true,
+            contentId: 'show',
+            dataSource: const _ImmediateDataSource(),
+            stateStore: _RecordingStore(),
+            controller: controller,
+            backendFactory: () => backend,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      backend.state.value = backend.state.value.copyWith(
+        duration: const Duration(hours: 3),
+      );
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump(const Duration(milliseconds: 650));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+      final controlsCount = backend.seekCalls.length;
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump(const Duration(seconds: 1));
+      expect(backend.seekCalls.length, controlsCount);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.arrowRight);
+      await controller.toggleControls();
+      await tester.pumpAndSettle();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pump(const Duration(milliseconds: 650));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      final backgroundCount = backend.seekCalls.length;
+      await tester.pump(const Duration(seconds: 4));
+      expect(backend.seekCalls.length, backgroundCount);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpWidget(const SizedBox.shrink());
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
     'TV seeking chrome auto-hides and returns directional seeking to the stage',
     (tester) async {
       final backend = _FakeVideoBackend();

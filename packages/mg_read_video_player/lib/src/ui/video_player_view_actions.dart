@@ -85,6 +85,7 @@ extension _VideoPlayerViewActions on _VideoPlayerViewState {
         (loadGeneration != null && !_isCurrentLoad(loadGeneration))) {
       return null;
     }
+    _tvSeekGesture.cancel();
     final int generation = ++_episodeGeneration;
     _cancelFirstFrameTimeout();
     _completionGeneration = 0;
@@ -163,11 +164,13 @@ extension _VideoPlayerViewActions on _VideoPlayerViewState {
       _backendState.playing ? _actionPause() : _actionPlay();
 
   Future<void> _actionSeek(Duration position) async {
+    final generation = _episodeGeneration;
     final target = _clampPosition(position, _backendState.duration);
     await _runPlaybackCommand(
       (backend) => backend.seek(target),
       code: 'seek_failed',
     );
+    if (_disposed || generation != _episodeGeneration) return;
     _progressDirty = true;
     _scheduleProgressSave();
     _showControls();
@@ -305,6 +308,7 @@ extension _VideoPlayerViewActions on _VideoPlayerViewState {
   }
 
   Future<void> _actionRequestExit() async {
+    _tvSeekGesture.cancel();
     if (_fullscreenRequested) {
       await _actionRequestFullscreen(false);
       return;

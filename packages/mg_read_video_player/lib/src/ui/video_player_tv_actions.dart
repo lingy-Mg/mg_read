@@ -4,6 +4,19 @@
 part of 'video_player_view.dart';
 
 extension _VideoPlayerTvActions on _VideoPlayerViewState {
+  void _handleLifecycle(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) _tvSeekGesture.cancel();
+    _actionLifecycle(state);
+  }
+
+  void _handleTvSeekFocus() {
+    if (!_focusNode.hasPrimaryFocus) _tvSeekGesture.cancel();
+  }
+
+  KeyEventResult _handleKey(FocusNode _, KeyEvent event) => widget.tvMode
+      ? _handleTvKey(event)
+      : handleVideoPlayerKeyEvent(event, this, _snapshot);
+
   void _tvHideControls() {
     _controlsTimer?.cancel();
     _focusNode.requestFocus();
@@ -11,6 +24,7 @@ extension _VideoPlayerTvActions on _VideoPlayerViewState {
   }
 
   void _tvBack() {
+    _tvSeekGesture.cancel();
     if (_controlsVisible && _status == VideoPlayerStatus.ready) {
       _tvHideControls();
     } else {
@@ -19,6 +33,7 @@ extension _VideoPlayerTvActions on _VideoPlayerViewState {
   }
 
   void _tvReveal() {
+    _tvSeekGesture.cancel();
     _controlsTimer?.cancel();
     _update(() => _controlsVisible = true);
     _scheduleControlsHide();
@@ -28,10 +43,19 @@ extension _VideoPlayerTvActions on _VideoPlayerViewState {
   }
 
   KeyEventResult _handleTvKey(KeyEvent event) {
+    final key = event.logicalKey;
+    final seekKey =
+        key == LogicalKeyboardKey.arrowLeft ||
+        key == LogicalKeyboardKey.arrowRight;
+    if (event is KeyUpEvent && seekKey) {
+      final active = _tvSeekGesture.isActive;
+      _tvSeekGesture.release(key == LogicalKeyboardKey.arrowLeft ? -1 : 1);
+      return active ? KeyEventResult.handled : KeyEventResult.ignored;
+    }
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
-    final key = event.logicalKey;
+    if (!seekKey) _tvSeekGesture.cancel();
     final repeated = event is KeyRepeatEvent;
     if (key == LogicalKeyboardKey.escape || key == LogicalKeyboardKey.goBack) {
       if (!repeated) _tvBack();
@@ -54,11 +78,10 @@ extension _VideoPlayerTvActions on _VideoPlayerViewState {
         key == LogicalKeyboardKey.space ||
         key == LogicalKeyboardKey.gameButtonA) {
       if (!repeated) unawaited(playOrPause());
-    } else if (key == LogicalKeyboardKey.arrowLeft ||
-        key == LogicalKeyboardKey.arrowRight) {
-      unawaited(
-        skip(Duration(seconds: key == LogicalKeyboardKey.arrowLeft ? -10 : 10)),
-      );
+    } else if (seekKey) {
+      if (!repeated) {
+        _tvSeekGesture.press(key == LogicalKeyboardKey.arrowLeft ? -1 : 1);
+      }
     } else if (key == LogicalKeyboardKey.arrowDown ||
         key == LogicalKeyboardKey.arrowUp) {
       if (!repeated) _tvReveal();
