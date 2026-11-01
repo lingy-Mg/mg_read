@@ -1,4 +1,6 @@
 /// Playback commands, persistence and user interaction actions for the view.
+/// Playing chrome times out after the last interaction, including in TV mode;
+/// modal controls suspend the timer and restart it when they close.
 part of 'video_player_view.dart';
 
 extension _VideoPlayerViewActions on _VideoPlayerViewState {
@@ -276,6 +278,14 @@ extension _VideoPlayerViewActions on _VideoPlayerViewState {
   }
 
   Future<void> _actionToggleControls() async {
+    if (widget.tvMode) {
+      if (_controlsVisible) {
+        _tvHideControls();
+      } else {
+        _tvReveal();
+      }
+      return;
+    }
     _update(() => _controlsVisible = !_controlsVisible);
     if (_controlsVisible) _scheduleControlsHide();
   }
@@ -452,11 +462,18 @@ extension _VideoPlayerViewActions on _VideoPlayerViewState {
   void _actionScheduleControlsHide() {
     _controlsTimer?.cancel();
     _controlsTimer = null;
-    if (widget.tvMode) return;
     if (!_backendState.playing || !_controlsVisible || _disposed) return;
     _controlsTimer = Timer(widget.controlsAutoHideDelay, () {
-      if (_disposed || !_backendState.playing) return;
-      _update(() => _controlsVisible = false);
+      if (_disposed ||
+          !_backendState.playing ||
+          !(ModalRoute.of(context)?.isCurrent ?? true)) {
+        return;
+      }
+      if (widget.tvMode) {
+        _tvHideControls();
+      } else {
+        _update(() => _controlsVisible = false);
+      }
     });
   }
 
@@ -497,7 +514,9 @@ extension _VideoPlayerViewActions on _VideoPlayerViewState {
             }
           : null,
     );
-    if (!mounted || selected == null) return;
+    if (!mounted) return;
+    _scheduleControlsHide();
+    if (selected == null) return;
     await _actionSelectEpisode(selected.groupId, selected.episodeId);
     _focusNode.requestFocus();
   }

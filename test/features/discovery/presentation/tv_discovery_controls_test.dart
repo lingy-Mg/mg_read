@@ -14,6 +14,60 @@ import 'package:mg_read/features/discovery/presentation/runtime_discovery_page.d
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 void main() {
+  for (final size in [const Size(1280, 720), const Size(1920, 1080)]) {
+    testWidgets('TV nested category uses the available screen width at $size', (tester) async {
+      await tester.binding.setSurfaceSize(size);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        _host(
+          RuntimeDiscoveryPage(
+            result: PluginDiscoveryDocumentResult(
+              pluginId: 'sakura-category',
+              sourceName: '樱花动漫',
+              document: PluginDiscoveryDocument(
+                components: [
+                  PluginDiscoveryCategoryCollectionComponent(
+                    id: 'genres',
+                    layout: PluginDiscoveryCategoryLayout.chips,
+                    categories: List.generate(
+                      16,
+                      (i) => PluginDiscoveryCategory(id: 'genre-$i', title: '动漫分类 $i', target: 'genre:$i', count: null, url: null),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            onDestinationRequested: (_) {},
+            onSourcePressed: () {},
+            onTabSelected: (_) {},
+            onCategorySelected: (_) {},
+            onContentPressed: (_) {},
+            onRefreshRequested: () {},
+            onLoadMore: (_) {},
+            canNavigateBack: true,
+            onBackRequested: () {},
+            loadingCollectionId: null,
+            navigationDepth: 1,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final category = find.byType(DiscoveryCategoryCollection);
+      final rect = tester.getRect(category);
+      expect(rect.width, greaterThan(size.width * .85));
+      expect(rect.left, greaterThanOrEqualTo(0));
+      expect(rect.right, lessThanOrEqualTo(size.width));
+      final first = find.byKey(const ValueKey('runtime-discovery-category-genre-0'));
+      final action = find.descendant(of: first, matching: find.byType(TvFocusable)).first;
+      tester.widget<Focus>(find.descendant(of: action, matching: find.byType(Focus)).first).focusNode!.requestFocus();
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvFocusable>(), isNotNull);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('TV horizontal discovery tabs scroll by remote through offscreen items', (tester) async {
     var selected = '';
     await tester.pumpWidget(

@@ -4,11 +4,15 @@
 part of 'video_player_view.dart';
 
 extension _VideoPlayerTvActions on _VideoPlayerViewState {
+  void _tvHideControls() {
+    _controlsTimer?.cancel();
+    _focusNode.requestFocus();
+    _update(() => _controlsVisible = false);
+  }
+
   void _tvBack() {
     if (_controlsVisible && _status == VideoPlayerStatus.ready) {
-      _controlsTimer?.cancel();
-      _update(() => _controlsVisible = false);
-      _focusNode.requestFocus();
+      _tvHideControls();
     } else {
       unawaited(requestExit());
     }
@@ -17,6 +21,7 @@ extension _VideoPlayerTvActions on _VideoPlayerViewState {
   void _tvReveal() {
     _controlsTimer?.cancel();
     _update(() => _controlsVisible = true);
+    _scheduleControlsHide();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _controlsVisible) _tvPlayFocus.requestFocus();
     });
@@ -33,6 +38,7 @@ extension _VideoPlayerTvActions on _VideoPlayerViewState {
       return KeyEventResult.handled;
     }
     if (_status != VideoPlayerStatus.ready) return KeyEventResult.ignored;
+    if (_controlsVisible) _scheduleControlsHide();
     if (key == LogicalKeyboardKey.mediaPlayPause) {
       if (!repeated) unawaited(playOrPause());
       return KeyEventResult.handled;

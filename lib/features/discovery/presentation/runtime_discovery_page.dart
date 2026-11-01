@@ -14,6 +14,7 @@
 /// - 分类列表标签需与复用的发现内容列表项保持一致的视觉规格。
 /// - 根发现页的返回交给应用；只有本地层级拦截 Escape。
 /// - TV 页面使用独立焦点域；内容过渡中的旧页面不参与遥控遍历。
+/// - TV 二级分类使用屏幕可用宽度；普通模式保留窄列表阅读宽度。
 ///
 library;
 
@@ -100,6 +101,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
     final components = result?.document.components ?? const <PluginDiscoveryComponent>[];
     final resolvedSourceName = sourceName ?? result?.sourceName ?? '当前来源';
     final isNestedPage = navigationDepth > 0;
+    final tv = TvModeScope.isEnabled(context);
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return BookCoverSourceScope(
       pluginId: result?.pluginId ?? 'unavailable',
@@ -128,10 +130,14 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                       final bool useWidePagePadding = constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint;
                       final double pagePadding = useWidePagePadding ? AppSpacing.widePagePadding : AppSpacing.discoveryPagePadding;
                       return Align(
-                        alignment: isNestedPage ? Alignment.topLeft : Alignment.topCenter,
+                        alignment: isNestedPage && !tv ? Alignment.topLeft : Alignment.topCenter,
                         child: ConstrainedBox(
                           constraints: BoxConstraints(
-                            maxWidth: isNestedPage ? AppSpacing.discoveryListMaxWidth : AppSpacing.contentMaxWidth,
+                            maxWidth: isNestedPage && tv
+                                ? constraints.maxWidth
+                                : isNestedPage
+                                ? AppSpacing.discoveryListMaxWidth
+                                : AppSpacing.contentMaxWidth,
                           ),
                           child: AnimatedSwitcher(
                             duration: reduceMotion ? Duration.zero : const Duration(milliseconds: 180),

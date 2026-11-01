@@ -3,6 +3,134 @@ part of 'video_player_view_test.dart';
 
 void _registerTvTests() {
   testWidgets(
+    'TV seeking chrome auto-hides and returns directional seeking to the stage',
+    (tester) async {
+      final backend = _FakeVideoBackend();
+      final controller = VideoPlayerController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: VideoPlayerView(
+            tvMode: true,
+            contentId: 'show',
+            dataSource: const _ImmediateDataSource(),
+            stateStore: _RecordingStore(),
+            controller: controller,
+            backendFactory: () => backend,
+            controlsAutoHideDelay: const Duration(seconds: 1),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(controller.snapshot.position, const Duration(seconds: 10));
+      expect(controller.snapshot.controlsVisible, isTrue);
+      await tester.pump(const Duration(milliseconds: 1100));
+      await tester.pumpAndSettle();
+      expect(controller.snapshot.controlsVisible, isFalse);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(controller.snapshot.position, const Duration(seconds: 20));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'TV focused controls hide after inactivity while remote movement restarts the delay',
+    (tester) async {
+      final controller = VideoPlayerController();
+      final backend = _FakeVideoBackend();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: VideoPlayerView(
+            tvMode: true,
+            contentId: 'show',
+            dataSource: const _ImmediateDataSource(),
+            stateStore: _RecordingStore(),
+            controller: controller,
+            backendFactory: () => backend,
+            controlsAutoHideDelay: const Duration(seconds: 3),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('tv-video-play')))
+            .focusNode!
+            .hasFocus,
+        isTrue,
+      );
+      await tester.pump(const Duration(milliseconds: 1000));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(backend.seekCalls, isEmpty);
+      await tester.pump(const Duration(milliseconds: 2000));
+      expect(controller.snapshot.controlsVisible, isTrue);
+      await tester.pump(const Duration(milliseconds: 1200));
+      await tester.pumpAndSettle();
+      expect(controller.snapshot.controlsVisible, isFalse);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(controller.snapshot.position, const Duration(seconds: 10));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'TV paused playback and open menus retain controls, then resume hiding after dismissal',
+    (tester) async {
+      final controller = VideoPlayerController();
+      final backend = _FakeVideoBackend();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: VideoPlayerView(
+            tvMode: true,
+            contentId: 'show',
+            dataSource: const _ImmediateDataSource(),
+            stateStore: _RecordingStore(),
+            controller: controller,
+            backendFactory: () => backend,
+            controlsAutoHideDelay: const Duration(seconds: 1),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+      await controller.pause();
+      await tester.pump(const Duration(seconds: 2));
+      expect(controller.snapshot.controlsVisible, isTrue);
+      await controller.play();
+      await tester.pumpAndSettle();
+      for (final key in ['tv-video-rate', 'tv-video-episodes']) {
+        await tester.tap(find.byKey(Key(key)));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pump(const Duration(seconds: 2));
+        expect(controller.snapshot.controlsVisible, isTrue);
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(controller.snapshot.controlsVisible, isTrue);
+        await tester.pump(const Duration(milliseconds: 1100));
+        await tester.pumpAndSettle();
+        expect(controller.snapshot.controlsVisible, isFalse);
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pumpAndSettle();
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
     'TV playback starts unobstructed and holding OK does not repeatedly toggle playback',
     (tester) async {
       final backend = _FakeVideoBackend();

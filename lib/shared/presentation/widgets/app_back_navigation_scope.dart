@@ -1,6 +1,8 @@
 /// Shared back input dispatch; page-owned navigation always runs first.
 /// An explicit dispatcher supports hosts above MaterialApp.router's Router.
 /// Dispatcher callbacks are attached and released with this scope's lifetime.
+/// TV hosts may capture a whole key gesture before page shortcuts and consume
+/// its paired Android platform signal, including one arriving after key-up.
 library;
 
 import 'dart:async';
@@ -15,21 +17,40 @@ import 'package:flutter/services.dart';
 /// scope adds the equivalent Escape and mouse side-back actions, while
 /// a child dispatcher covers platform back events such as Android.
 class AppBackNavigationScope extends StatefulWidget {
-  const AppBackNavigationScope({required this.onBackRequested, required this.child, this.backButtonDispatcher, super.key});
+  const AppBackNavigationScope({
+    required this.onBackRequested,
+    required this.child,
+    this.backButtonDispatcher,
+    this.captureBackKeys = false,
+    super.key,
+  });
 
   /// Returns true when back was consumed, including page-local handling.
   final Future<bool> Function() onBackRequested;
   final BackButtonDispatcher? backButtonDispatcher;
+  final bool captureBackKeys;
   final Widget child;
 
   @override
   State<AppBackNavigationScope> createState() => _AppBackNavigationScopeState();
 }
 
-class _AppBackNavigationScopeState extends State<AppBackNavigationScope> {
+class _AppBackNavigationScopeState extends State<AppBackNavigationScope> with WidgetsBindingObserver {
+  static const _echoWindow = Duration(milliseconds: 350);
   bool _isHandlingBack = false;
+  final _heldBackKeys = <PhysicalKeyboardKey>{};
+  bool _platformEcho = false;
+  bool _keyboardEcho = false;
+  Timer? _echoTimer;
   BackButtonDispatcher? _parentDispatcher;
   ChildBackButtonDispatcher? _backDispatcher;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    if (widget.captureBackKeys) FocusManager.instance.addEarlyKeyEventHandler(_captureBackKey);
+  }
 
   @override
   void didChangeDependencies() {
@@ -40,7 +61,56 @@ class _AppBackNavigationScopeState extends State<AppBackNavigationScope> {
   @override
   void didUpdateWidget(covariant AppBackNavigationScope oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.captureBackKeys != widget.captureBackKeys) {
+      if (widget.captureBackKeys) {
+        FocusManager.instance.addEarlyKeyEventHandler(_captureBackKey);
+      } else {
+        FocusManager.instance.removeEarlyKeyEventHandler(_captureBackKey);
+        _clearBackGesture();
+      }
+    }
     _syncDispatcher();
+  }
+
+  void _clearBackGesture() {
+    _echoTimer?.cancel();
+    _echoTimer = null;
+    _heldBackKeys.clear();
+    _platformEcho = false;
+    _keyboardEcho = false;
+  }
+
+  void _waitForEcho() {
+    _echoTimer?.cancel();
+    _echoTimer = Timer(_echoWindow, () {
+      _platformEcho = false;
+      _keyboardEcho = false;
+      _echoTimer = null;
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) _clearBackGesture();
+  }
+
+  KeyEventResult _captureBackKey(KeyEvent event) {
+    final back = event.logicalKey == LogicalKeyboardKey.escape || event.logicalKey == LogicalKeyboardKey.goBack;
+    if (!back && !_heldBackKeys.contains(event.physicalKey)) {
+      if (event is KeyDownEvent && _heldBackKeys.isEmpty) _keyboardEcho = false;
+      return KeyEventResult.ignored;
+    }
+    if (event is KeyUpEvent) {
+      _heldBackKeys.remove(event.physicalKey);
+      _waitForEcho();
+    } else if (event is KeyDownEvent && _heldBackKeys.add(event.physicalKey)) {
+      final echo = _keyboardEcho;
+      _echoTimer?.cancel();
+      _keyboardEcho = false;
+      _platformEcho = true;
+      if (!echo) unawaited(_dispatchBack());
+    }
+    return KeyEventResult.handled;
   }
 
   void _syncDispatcher() {
@@ -64,11 +134,23 @@ class _AppBackNavigationScopeState extends State<AppBackNavigationScope> {
 
   @override
   void dispose() {
+    FocusManager.instance.removeEarlyKeyEventHandler(_captureBackKey);
+    WidgetsBinding.instance.removeObserver(this);
+    _clearBackGesture();
     _backDispatcher?.removeCallback(_requestBack);
     super.dispose();
   }
 
   Future<bool> _requestBack() async {
+    if (widget.captureBackKeys) {
+      if (_heldBackKeys.isNotEmpty || _platformEcho) return true;
+      _keyboardEcho = true;
+      _waitForEcho();
+    }
+    return _dispatchBack();
+  }
+
+  Future<bool> _dispatchBack() async {
     if (_isHandlingBack) return true;
     _isHandlingBack = true;
     try {
@@ -81,7 +163,7 @@ class _AppBackNavigationScopeState extends State<AppBackNavigationScope> {
   void _handlePointerDown(PointerDownEvent event) {
     if (event.kind != PointerDeviceKind.mouse) return;
     if (event.buttons & kBackMouseButton == 0) return;
-    unawaited(_requestBack());
+    unawaited(_dispatchBack());
   }
 
   @override
@@ -95,7 +177,7 @@ class _AppBackNavigationScopeState extends State<AppBackNavigationScope> {
         actions: <Type, Action<Intent>>{
           _AppBackIntent: CallbackAction<_AppBackIntent>(
             onInvoke: (_) {
-              unawaited(_requestBack());
+              unawaited(_dispatchBack());
               return null;
             },
           ),

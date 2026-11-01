@@ -92,6 +92,7 @@ class _AppTvBackNavigationState extends State<AppTvBackNavigation> with WidgetsB
   @override
   Widget build(BuildContext context) => AppBackNavigationScope(
     backButtonDispatcher: widget.enabled ? widget.router.backButtonDispatcher : null,
+    captureBackKeys: widget.enabled,
     onBackRequested: _requestBack,
     child: widget.child,
   );

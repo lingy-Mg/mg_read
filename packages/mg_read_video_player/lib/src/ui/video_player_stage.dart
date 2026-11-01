@@ -169,6 +169,8 @@ final class VideoPlayerStage extends StatelessWidget {
                           onFit: onFit,
                           onExit: onExit,
                           onReveal: onToggleControls,
+                          onInteractionStart: onInteractionStart,
+                          onInteractionEnd: onInteractionEnd,
                         ),
                       if (snapshot.status == VideoPlayerStatus.ready && !tvMode)
                         _VideoPlayerInteractionLayer(

@@ -40,7 +40,7 @@ class DiscoveryCoverGrid extends StatelessWidget {
       builder: (context, constraints) {
         final tvMode = TvModeScope.isEnabled(context);
         final columns = tvMode
-            ? ((constraints.maxWidth + 12) / 168).ceil().clamp(3, 8)
+            ? ((constraints.maxWidth + 12) / 168).ceil().clamp(3, 16)
             : switch (constraints.maxWidth) {
                 < 600 => 3,
                 < 1040 => 4,

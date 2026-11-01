@@ -24,6 +24,8 @@ class VideoPlayerTvChrome extends StatelessWidget {
     required this.onFit,
     required this.onExit,
     required this.onReveal,
+    required this.onInteractionStart,
+    required this.onInteractionEnd,
     super.key,
   });
   final VideoPlayerSnapshot snapshot;
@@ -37,6 +39,8 @@ class VideoPlayerTvChrome extends StatelessWidget {
   final Future<void> Function() onFit;
   final Future<void> Function() onExit;
   final Future<void> Function() onReveal;
+  final VoidCallback onInteractionStart;
+  final VoidCallback onInteractionEnd;
 
   @override
   Widget build(BuildContext context) => VideoTvShortcuts(
@@ -158,7 +162,10 @@ class VideoPlayerTvChrome extends StatelessWidget {
   }) => FilledButton(
     key: Key(key),
     focusNode: focus,
-    onPressed: () => unawaited(action()),
+    onPressed: () => unawaited(_perform(action)),
+    onFocusChange: (focused) {
+      if (focused) onInteractionEnd();
+    },
     style: ButtonStyle(
       minimumSize: const WidgetStatePropertyAll(Size(72, 48)),
       padding: const WidgetStatePropertyAll(
@@ -182,6 +189,15 @@ class VideoPlayerTvChrome extends StatelessWidget {
     ),
     child: Text(label),
   );
+
+  Future<void> _perform(Future<void> Function() action) async {
+    onInteractionStart();
+    try {
+      await action();
+    } finally {
+      onInteractionEnd();
+    }
+  }
 
   Future<void> _chooseRate(BuildContext context) async {
     final rate = await showDialog<double>(

@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
+import 'package:mg_read_video_player/mg_read_video_player.dart';
 
 import 'package:mg_read/app/app_router.dart';
 import 'package:mg_read/core/settings/settings.dart';
@@ -118,6 +119,97 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(exitCount, 1);
+  });
+
+  for (final key in [LogicalKeyboardKey.escape, LogicalKeyboardKey.goBack]) {
+    for (final afterRelease in [false, true]) {
+      testWidgets('TV detail consumes paired ${key.keyLabel} platform back afterRelease=$afterRelease', (tester) async {
+        final router = await _startTvApp(tester, runtimeDiscovery: true);
+        await _openTvDetail(tester);
+        await tester.sendKeyDownEvent(key, physicalKey: PhysicalKeyboardKey.escape);
+        await tester.pump(const Duration(milliseconds: 20));
+        if (!afterRelease) await tester.binding.handlePopRoute();
+        await tester.sendKeyUpEvent(key, physicalKey: PhysicalKeyboardKey.escape);
+        if (afterRelease) {
+          await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+          await tester.pump(const Duration(milliseconds: 20));
+          await tester.binding.handlePopRoute();
+        }
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('source-content-detail-sheet')), findsNothing);
+        expect(router.routeInformationProvider.value.uri.path, '/discover');
+        expect(find.text('测试发现内容'), findsOneWidget);
+        await tester.sendKeyEvent(key, physicalKey: PhysicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+        expect(find.byType(TvLibraryShell), findsOneWidget);
+        expect(exitCount, 0);
+      });
+    }
+  }
+
+  testWidgets('TV player back hides controls, exits to detail, and never also backs discovery', (tester) async {
+    final router = await _startTvApp(tester, runtimeDiscovery: true);
+    await _openTvDetail(tester);
+    final controller = VideoPlayerController();
+    final store = TvFixtureVideoStore();
+    addTearDown(controller.dispose);
+    appRootNavigatorKey.currentState!.push<void>(
+      MaterialPageRoute(
+        builder: (_) => VideoPlayerView(
+          tvMode: true,
+          contentId: 'show',
+          dataSource: TvFixtureVideoSource(),
+          stateStore: store,
+          controller: controller,
+          backendFactory: TvFixtureVideoBackend.new,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pumpAndSettle();
+    expect(controller.snapshot.controlsVisible, isTrue);
+    await _remoteBackWithPlatformEcho(tester);
+    expect(find.byType(VideoPlayerView), findsOneWidget);
+    expect(controller.snapshot.controlsVisible, isFalse);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('tv-video-episodes')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byKey(const Key('video-player-episode-sheet')), findsOneWidget);
+    await _remoteBackWithPlatformEcho(tester);
+    expect(find.byKey(const Key('video-player-episode-sheet')), findsNothing);
+    expect(find.byType(VideoPlayerView), findsOneWidget);
+    expect(controller.snapshot.controlsVisible, isTrue);
+    await _remoteBackWithPlatformEcho(tester);
+    expect(find.byType(VideoPlayerView), findsOneWidget);
+    expect(controller.snapshot.controlsVisible, isFalse);
+    await _remoteBackWithPlatformEcho(tester);
+    expect(find.byType(VideoPlayerView), findsNothing);
+    expect(find.byKey(const Key('source-content-detail-sheet')), findsOneWidget);
+    expect(store.saved?.position, const Duration(seconds: 10));
+    expect(router.routeInformationProvider.value.uri.path, '/discover');
+    await _remoteBackWithPlatformEcho(tester);
+    expect(find.byKey(const Key('source-content-detail-sheet')), findsNothing);
+    expect(find.text('测试发现内容'), findsOneWidget);
+    expect(router.routeInformationProvider.value.uri.path, '/discover');
+    expect(exitCount, 0);
+  });
+
+  testWidgets('TV detail also consumes a platform signal followed by its keyboard echo', (tester) async {
+    final router = await _startTvApp(tester, runtimeDiscovery: true);
+    await _openTvDetail(tester);
+    await tester.binding.handlePopRoute();
+    await tester.pump(const Duration(milliseconds: 20));
+    await tester.sendKeyEvent(LogicalKeyboardKey.goBack, physicalKey: PhysicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('source-content-detail-sheet')), findsNothing);
+    expect(find.text('测试发现内容'), findsOneWidget);
+    expect(router.routeInformationProvider.value.uri.path, '/discover');
+    await tester.sendKeyEvent(LogicalKeyboardKey.goBack, physicalKey: PhysicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.byType(TvLibraryShell), findsOneWidget);
   });
 
   testWidgets('TV home exit confirmation expires after two seconds', (tester) async {
@@ -247,6 +339,30 @@ Future<GoRouter> _startTvApp(WidgetTester tester, {bool runtimeDiscovery = false
   );
   await tester.pumpAndSettle();
   return ProviderScope.containerOf(tester.element(find.byType(TvLibraryShell))).read(appRouterProvider);
+}
+
+Future<void> _openTvDetail(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('tv-nav-discover')));
+  await tester.pumpAndSettle();
+  final context = tester.element(find.text('测试发现内容'));
+  showSourceContentDetailSheet(
+    context,
+    gateway: ProviderScope.containerOf(context).read(sourceContentGatewayProvider),
+    pluginId: tvDetailFixture.pluginId,
+    id: tvDetailFixture.summary.id,
+    initialDetail: tvDetailFixture,
+    initialCatalog: tvCatalogFixture,
+    refreshInitialContent: false,
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<void> _remoteBackWithPlatformEcho(WidgetTester tester) async {
+  await tester.sendKeyDownEvent(LogicalKeyboardKey.goBack, physicalKey: PhysicalKeyboardKey.escape);
+  await tester.pump(const Duration(milliseconds: 20));
+  await tester.binding.handlePopRoute();
+  await tester.sendKeyUpEvent(LogicalKeyboardKey.goBack, physicalKey: PhysicalKeyboardKey.escape);
+  await tester.pumpAndSettle();
 }
 
 class _LoadedDiscoveryController extends DiscoveryPageController {
