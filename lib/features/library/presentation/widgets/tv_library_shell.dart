@@ -324,7 +324,7 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       child: Text(
-                        '方向键 移动    OK 打开    菜单键 更多    返回键 返回',
+                        '方向键 移动    OK 打开    长按 OK / 菜单键 更多    返回键 返回',
                         textAlign: TextAlign.center,
                         style: theme.textTheme.bodyLarge?.copyWith(color: tokens.mutedText),
                       ),

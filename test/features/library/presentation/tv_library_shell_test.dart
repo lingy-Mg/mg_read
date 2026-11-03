@@ -16,6 +16,30 @@ import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 
 void main() {
+  testWidgets('holding OK opens the card menu and releasing keeps its default action unselected', (tester) async {
+    final played = <String>[];
+    await _mount(tester, onPlay: (book) async => played.add(book.id));
+    await tester.tap(find.byKey(const Key('tv-nav-movies')));
+    await tester.pumpAndSettle();
+    final card = find.byKey(const Key('tv-card-movie'));
+    final focus = tester.widget<Focus>(find.descendant(of: card, matching: find.byType(Focus)).first).focusNode!;
+    focus.requestFocus();
+    await tester.pumpAndSettle();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
+    await tester.pump(const Duration(milliseconds: 650));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    await tester.sendKeyRepeatEvent(LogicalKeyboardKey.select);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(played, isEmpty);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(focus.hasFocus, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('remote focus switches top filters and stays on the tab', (tester) async {
     final played = <String>[];
     await _mount(tester, onPlay: (book) async => played.add(book.id));

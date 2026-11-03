@@ -4,7 +4,11 @@
 /// Local tabs may activate on focus; route changes require confirmation.
 /// Focused lazy children stay alive until focus moves to another control.
 /// Caller-supplied focus nodes remain caller-owned.
+/// Actions with a menu defer OK until release; holding OK opens the menu once.
+/// Losing focus, disabling or disposing cancels a pending remote hold.
 library;
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -40,6 +44,8 @@ class TvFocusable extends StatefulWidget {
 class _TvFocusableState extends State<TvFocusable> with AutomaticKeepAliveClientMixin {
   late FocusNode _node = widget.focusNode ?? FocusNode();
   bool _focused = false;
+  Timer? _holdTimer;
+  LogicalKeyboardKey? _heldKey;
 
   @override
   bool get wantKeepAlive => _focused;
@@ -47,6 +53,7 @@ class _TvFocusableState extends State<TvFocusable> with AutomaticKeepAliveClient
   @override
   void didUpdateWidget(covariant TvFocusable oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.onPressed == null || widget.onMore == null || oldWidget.focusNode != widget.focusNode) _cancelHold();
     if (oldWidget.focusNode == widget.focusNode) return;
     if (oldWidget.focusNode == null) _node.dispose();
     _node = widget.focusNode ?? FocusNode();
@@ -56,12 +63,53 @@ class _TvFocusableState extends State<TvFocusable> with AutomaticKeepAliveClient
 
   @override
   void dispose() {
+    _cancelHold();
     if (widget.focusNode == null) _node.dispose();
     super.dispose();
   }
 
   void _activate() {
     if (widget.onPressed != null) widget.onPressed!();
+  }
+
+  void _cancelHold() {
+    _holdTimer?.cancel();
+    _holdTimer = null;
+    _heldKey = null;
+  }
+
+  KeyEventResult _onKeyEvent(FocusNode _, KeyEvent event) {
+    final key = event.logicalKey;
+    final activate = const [
+      LogicalKeyboardKey.select,
+      LogicalKeyboardKey.enter,
+      LogicalKeyboardKey.numpadEnter,
+      LogicalKeyboardKey.space,
+      LogicalKeyboardKey.gameButtonA,
+    ].contains(key);
+    final more = key == LogicalKeyboardKey.contextMenu;
+    if (!activate && !more) return KeyEventResult.ignored;
+    if (widget.onPressed == null) return KeyEventResult.handled;
+    if (more) {
+      if (event is KeyDownEvent) {
+        _cancelHold();
+        widget.onMore?.call();
+      }
+    } else if (widget.onMore != null) {
+      if (event is KeyDownEvent && _heldKey == null) {
+        _heldKey = key;
+        _holdTimer = Timer(const Duration(milliseconds: 600), () {
+          _cancelHold();
+          if (mounted && _node.hasFocus && widget.onPressed != null) widget.onMore?.call();
+        });
+      } else if (event is KeyUpEvent && _heldKey == key) {
+        _cancelHold();
+        if (!widget.activateOnFocus) _activate();
+      }
+    } else if (event is KeyDownEvent && !widget.activateOnFocus) {
+      _activate();
+    }
+    return KeyEventResult.handled;
   }
 
   @override
@@ -79,31 +127,14 @@ class _TvFocusableState extends State<TvFocusable> with AutomaticKeepAliveClient
         autofocus: widget.autofocus,
         canRequestFocus: widget.onPressed != null,
         onFocusChange: (value) {
+          if (!value) _cancelHold();
           setState(() => _focused = value);
           updateKeepAlive();
           if (value) {
             if (widget.activateOnFocus) _activate();
           }
         },
-        onKeyEvent: (_, event) {
-          final key = event.logicalKey;
-          final activate =
-              key == LogicalKeyboardKey.select ||
-              key == LogicalKeyboardKey.enter ||
-              key == LogicalKeyboardKey.numpadEnter ||
-              key == LogicalKeyboardKey.space ||
-              key == LogicalKeyboardKey.gameButtonA;
-          final more = key == LogicalKeyboardKey.contextMenu;
-          if (!activate && !more) return KeyEventResult.ignored;
-          if (event is KeyDownEvent) {
-            if (more) {
-              widget.onMore?.call();
-            } else if (!widget.activateOnFocus) {
-              _activate();
-            }
-          }
-          return KeyEventResult.handled;
-        },
+        onKeyEvent: _onKeyEvent,
         child: GestureDetector(
           onTap: widget.onPressed == null
               ? null
