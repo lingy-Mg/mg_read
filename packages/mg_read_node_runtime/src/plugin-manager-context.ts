@@ -111,7 +111,15 @@ export async function createPluginContext(options: {
           void response.clone().text().then((body) => emitLog("debug", `HTTP 响应预览：正文=${body.slice(0, 2000)}`, "plugin.http"), () => emitLog("warn", "HTTP 响应预览失败", "plugin.http"));
         }
         return response;
-      }, (error) => { if (debugLogEnabled()) emitLog("error", `HTTP 请求出错：耗时毫秒=${Math.round(performance.now() - startedAt)}，错误=${error instanceof Error ? error.name : "unknown"}`, "plugin.http"); throw error; });
+      }, (error) => {
+        if (debugLogEnabled()) {
+          // The Runtime HTTP wrapper contains endpoint-only diagnostic fields.
+          const detail = error instanceof Error && error.message.startsWith("HTTP request context=")
+            ? error.message : error instanceof Error ? error.name : "unknown";
+          emitLog("error", `HTTP 请求出错：耗时毫秒=${Math.round(performance.now() - startedAt)}，错误=${detail}`, "plugin.http");
+        }
+        throw error;
+      });
     } }),
     log: Object.freeze({
       debug: (message: string) => emitLog("debug", message),

@@ -1,10 +1,17 @@
+/// Existing guarded error channel and copyable reports. Each report freezes
+/// package/platform/proxy preferences independently of the HTTP request snapshot;
+/// metadata and observer failures never replace the original error or stack.
+library;
+
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/errors/app_error.dart';
+import 'app_failure_environment.dart';
 
 /// Immutable, user-copyable projection of a fatal application diagnostic.
 ///
@@ -18,6 +25,7 @@ final class AppFatalDiagnosticReport {
     required this.phase,
     required this.runtimeState,
     required this.diagnosticsMarker,
+    this.environment = const <String, String>{},
   });
 
   /// A small controlled lifecycle phase, never an exception-derived value.
@@ -32,9 +40,11 @@ final class AppFatalDiagnosticReport {
   final String errorText;
   final String traceId;
   final String stackTrace;
+  final Map<String, String> environment;
 
   String get copyPayload =>
       'MgRead 诊断报告\n'
+      '环境: ${jsonEncode(environment)}\n'
       '错误代码: $errorCode\n'
       '错误内容: $errorText\n'
       '追踪 ID: $traceId\n'
@@ -48,9 +58,10 @@ final class AppFatalDiagnosticReport {
 ///
 /// Callers provide stable codes plus the original error text and [StackTrace].
 final class AppFatalErrorReporter {
-  AppFatalErrorReporter(this._diagnostics);
+  AppFatalErrorReporter(this._diagnostics, {AppFailureEnvironment? environment}) : _environment = environment ?? AppFailureEnvironment();
 
   final DiagnosticsManager _diagnostics;
+  final AppFailureEnvironment _environment;
   final StreamController<AppFatalDiagnosticReport> _reports = StreamController<AppFatalDiagnosticReport>.broadcast(sync: true);
   final Queue<AppFatalDiagnosticReport> _pending = Queue<AppFatalDiagnosticReport>();
   bool _disposed = false;
@@ -72,6 +83,7 @@ final class AppFatalErrorReporter {
     final traceId = _newOpaqueId('trace', 'fataltraceunavailable');
     final spanId = _newOpaqueId('span', 'fatalspanunavailable');
     final stackText = stackTrace.toString();
+    final environment = _environment.snapshot();
     try {
       _diagnostics.emit(
         AppDiagnosticEvents.unhandledError,
@@ -82,6 +94,7 @@ final class AppFatalErrorReporter {
           'errorText': DiagnosticValue.string(errorText),
           'stackTrace': DiagnosticValue.string(stackText),
           'fatal': DiagnosticValue.boolean(fatal),
+          'environment': _environmentValue(environment),
         }),
       );
     } catch (_) {
@@ -97,6 +110,7 @@ final class AppFatalErrorReporter {
           phase: 'unhandled',
           runtimeState: 'not_applicable',
           diagnosticsMarker: 'app_boundary_recorded',
+          environment: environment,
         ),
       );
     }
@@ -110,6 +124,7 @@ final class AppFatalErrorReporter {
     final spanId = _newOpaqueId('span', 'fatalspanunavailable');
     final stackText = stackTrace.toString();
     final errorText = (originalError ?? error).toString();
+    final environment = _environment.snapshot();
     try {
       _diagnostics.emit(
         AppDiagnosticEvents.unhandledError,
@@ -117,6 +132,7 @@ final class AppFatalErrorReporter {
         severity: DiagnosticSeverity.fatal,
         attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
           'boundary': DiagnosticValue.string('runtime-warmup'),
+          'environment': _environmentValue(environment),
           'errorCode': DiagnosticValue.string(error.code.wireValue),
           'errorText': DiagnosticValue.string(errorText),
           'stackTrace': DiagnosticValue.string(stackText),
@@ -135,6 +151,7 @@ final class AppFatalErrorReporter {
         phase: 'runtime_facade',
         runtimeState: _runtimeStateFor(error),
         diagnosticsMarker: 'runtime_failure_observed',
+        environment: environment,
       ),
     );
   }
@@ -149,6 +166,7 @@ final class AppFatalErrorReporter {
     final traceId = _newOpaqueId('trace', 'fataltraceunavailable');
     final spanId = _newOpaqueId('span', 'fatalspanunavailable');
     final stackText = StackTrace.empty.toString();
+    final environment = _environment.snapshot();
     try {
       _diagnostics.emit(
         AppDiagnosticEvents.unhandledError,
@@ -156,6 +174,7 @@ final class AppFatalErrorReporter {
         severity: DiagnosticSeverity.fatal,
         attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
           'boundary': DiagnosticValue.string('runtime-observer'),
+          'environment': _environmentValue(environment),
           'errorCode': DiagnosticValue.string(errorCode),
           'errorText': DiagnosticValue.string(diagnosticText),
           'stackTrace': DiagnosticValue.string(stackText),
@@ -174,6 +193,7 @@ final class AppFatalErrorReporter {
         phase: phase,
         runtimeState: runtimeState,
         diagnosticsMarker: 'runtime_diagnostic_observed',
+        environment: environment,
       ),
     );
   }
@@ -229,6 +249,9 @@ final class AppFatalErrorReporter {
       return null;
     }
   }
+
+  DiagnosticObjectValue _environmentValue(Map<String, String> environment) =>
+      DiagnosticObjectValue(environment.map((key, value) => MapEntry(key, DiagnosticValue.string(value))));
 }
 
 final fatalErrorReporterProvider = Provider<AppFatalErrorReporter>((Ref ref) {

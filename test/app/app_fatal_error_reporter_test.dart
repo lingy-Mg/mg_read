@@ -4,13 +4,42 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_fatal_error_dialog_host.dart';
 import 'package:mg_read/app/app_fatal_error_reporter.dart';
+import 'package:mg_read/app/app_failure_environment.dart';
 import 'package:mg_read/app/app_router.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/errors/app_error.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../core/diagnostics/diagnostics_testkit.dart';
 
 void main() {
+  test('copied report and recorded event retain the same environment snapshot', () async {
+    final kit = DiagnosticsTestkit();
+    final environment = AppFailureEnvironment(
+      packageInfoLoader: () async => PackageInfo(appName: 'MgRead', packageName: 'com.mgread', version: '0.12.17', buildNumber: '482'),
+      proxyPreferences: () => {'customSourceProxyEnabled': 'false'},
+    );
+    final reporter = AppFatalErrorReporter(kit.manager, environment: environment);
+    addTearDown(() async {
+      reporter.dispose();
+      await kit.dispose();
+    });
+    await Future<void>.value();
+    reporter.reportUnhandled(
+      boundary: 'platform-dispatcher',
+      errorCode: 'unhandled_platform_error',
+      errorText: 'fetch failed',
+      stackTrace: StackTrace.empty,
+      fatal: true,
+    );
+    final report = reporter.takeNextReport()!;
+    expect(report.copyPayload, contains('"appVersion":"0.12.17"'));
+    expect(report.copyPayload, contains('"buildNumber":"482"'));
+    expect(report.copyPayload, contains('"customSourceProxyEnabled":"false"'));
+    final stored = kit.sink.events.single.attributes.values['environment'] as DiagnosticObjectValue;
+    expect(stored.values['appVersion'], DiagnosticValue.string(report.environment['appVersion']!));
+  });
+
   test('fatal reports keep the supplied stack unchanged', () async {
     const secretCanary = 'Cookie=SECRET-CANARY https://private.example/a';
     final kit = DiagnosticsTestkit();

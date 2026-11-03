@@ -41,6 +41,8 @@
 - Runtime-only 任务不修改主应用 UI、Reader、模板或真实数据源，除非用户把对应公开边界纳入同一任务。
 - 系统代理对字面量 loopback 目标的绕过由 HTTP dispatcher 逐跳保证；Undici 7 的 NO_PROXY 不支持 CIDR。
   显式书源代理保持覆盖语义。连接排查见 `docs/plugin-http-routing.md`；独立探针不代表 App 现场状态。
+- HTTP 失败上下文经现有异常链和 Debug 事件输出；请求开始时冻结配置，连接观测按异步调用隔离，
+  不另建日志通道，不在新增上下文中携带代理凭据、URL 路径/查询或请求头。
 
 ## 固定工具链与验证
 

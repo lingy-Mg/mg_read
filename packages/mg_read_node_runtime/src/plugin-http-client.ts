@@ -22,6 +22,7 @@
  *   proxy tunnel until upstream supports omitting SNI for IP destinations.
  */
 import { isIP } from "node:net";
+import { httpDiagnosticOrigin, withHttpFailureContext } from "./plugin-http-diagnostics.js";
 import {
   Agent,
   EnvHttpProxyAgent,
@@ -63,8 +64,17 @@ export class ConfigurablePluginHttpClient implements PluginRuntimeHttpClient {
   #proxyAgent: Dispatcher | undefined;
   #proxyUrl: string | undefined;
   readonly #retiring = new Map<Dispatcher, Promise<void>>();
+  readonly #systemProxySnapshot: Readonly<Record<string, string | undefined>>;
 
-  constructor(environmentProxy: PluginHttpEnvironmentProxyOptions = {}) {
+  constructor(
+    environmentProxy: PluginHttpEnvironmentProxyOptions = {},
+    private readonly runtimeKind: () => string = () => "unknown",
+  ) {
+    const httpProxy = environmentProxy.httpProxy ?? process.env.http_proxy ?? process.env.HTTP_PROXY;
+    const httpsProxy = environmentProxy.httpsProxy ?? process.env.https_proxy ?? process.env.HTTPS_PROXY ?? httpProxy;
+    this.#systemProxySnapshot = Object.freeze({
+      systemHttpProxy: httpDiagnosticOrigin(httpProxy), systemHttpsProxy: httpDiagnosticOrigin(httpsProxy),
+    });
     this.#directAgent = new Agent(http2TlsOptions);
     this.#systemProxyAgent = new EnvHttpProxyAgent({
       allowH2: true,
@@ -100,7 +110,7 @@ export class ConfigurablePluginHttpClient implements PluginRuntimeHttpClient {
   fetch(
     input: string | URL,
     init: RequestInit,
-    _trace?: PluginRuntimeTraceContext,
+    trace?: PluginRuntimeTraceContext,
     proxyMode?: PluginRuntimeHttpProxyMode,
   ): Promise<Response> {
     if (this.#proxyUrl?.startsWith("socks5:") &&
@@ -119,7 +129,17 @@ export class ConfigurablePluginHttpClient implements PluginRuntimeHttpClient {
       ? this.#directAgent
       : this.#proxyAgent ?? this.#systemProxyAgent;
     const proxiedInit = { ...requestInit, dispatcher } as RequestInit & { readonly dispatcher: Dispatcher };
-    return fetch(input, proxiedInit);
+    return withHttpFailureContext({
+      ...(proxyMode !== "direct" && this.#proxyAgent === undefined ? this.#systemProxySnapshot : {}),
+      runtimeKind: this.runtimeKind(),
+      targetOrigin: httpDiagnosticOrigin(input),
+      route: proxyMode === "direct" ? "source-direct" : this.#proxyAgent === undefined ? "system-default" : "configured-proxy",
+      configuredProxy: httpDiagnosticOrigin(this.#proxyUrl),
+      requestTraceId: trace?.traceId,
+      runtimeHttpStateAtStart: this.#shutdown.signal.aborted ? "closed" : "open",
+    }, () => fetch(input, proxiedInit), () => ({
+      runtimeHttpStateAtFailure: this.#shutdown.signal.aborted ? "closed" : "open",
+    }));
   }
 
   async close(): Promise<void> {

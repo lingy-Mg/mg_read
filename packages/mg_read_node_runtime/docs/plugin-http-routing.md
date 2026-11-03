@@ -112,6 +112,28 @@ Android 的全局设置值也不一定等于当前默认网络 ProxyInfo，应�
 
 ## 独立 TCP 探针
 
+### 自动附加的失败上下文
+
+来源 HTTP 请求在等待响应头期间失败时，现有异常链和 `plugin.http` 错误日志会附带
+`HTTP request context`，包括平台/架构、Node/Runtime 版本、实际 Runtime 后端、初始/最后请求
+origin、请求开始时的路由与代理端点、Undici 连接 origin/errno、socket 实际 TCP 尝试地址与端口、
+请求 trace，以及 HTTP 客户端在请求
+开始/失败时是否已关闭。原始 fetch 异常和底层网络 errno 保留为 cause，不增加重试。
+
+`system-default` 表示交给系统 dispatcher 决策，不能直接等同于走代理；发生 CONNECT 时的
+`proxyTunnelOrigin` 和 `tcpAttemptAddress`/`tcpAttemptPort` 提供实际路径证据。Undici 的
+`connectionTarget` 可能是隧道内的逻辑 origin，不可当作物理 TCP 对端。没有连接事件明确标为 `not_observed`，可能
+是复用连接或连接前失败，不表示没有发出请求。字段随每次请求冻结，代理切换不改写在途请求。
+这些字段不包含 URL 用户信息、路径、查询、headers 或正文；此约束只针对新增上下文，
+已有显式 Debug 请求日志和原始异常的保存策略不变。
+
+App 的可复制错误报告和 `app.error.unhandled` v2 事件另附环境快照：已安装应用版本/构建号、
+平台/OS、构建模式、所选 Node 后端、自定义书源代理偏好及端点。偏好标记为 `report_time`，
+可能晚于 HTTP 请求开始；以异常中的请求快照为准。包元数据尚未加载或读取失败分别标记
+`loading`/`unavailable`；VPN 状态没有可靠观测时标记 `not_observed`，不得据此认定未开启 VPN。
+
+### 使用方式
+
 在本 package 目录，把固定 `tools/node-v26.10.0-win-x64` 放到 PATH 前，先 `npm.cmd run build`，再运行：
 
 ```powershell

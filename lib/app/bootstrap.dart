@@ -26,6 +26,7 @@ import 'package:mg_read/app/app.dart';
 import 'package:mg_read/app/app_content_library_source_prefetcher_coordinator.dart';
 import 'package:mg_read/app/app_diagnostics_boundary.dart';
 import 'package:mg_read/app/app_fatal_error_reporter.dart';
+import 'package:mg_read/app/app_failure_environment.dart';
 import 'package:mg_read/app/app_settings_lifecycle.dart';
 import 'package:mg_read/app/app_startup.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
@@ -48,6 +49,7 @@ import 'package:mg_read/features/lan_sync/data/platform_lan_sync_network_environ
 import 'package:mg_read/features/lan_sync/data/persistent_device_identity_store.dart';
 import 'package:mg_read/features/lan_sync/data/persistent_paired_device_repository.dart';
 import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
+import 'package:mg_read/features/network_proxy/application/network_proxy_settings.dart';
 import 'package:mg_read/features/notifications/application/notification_center.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/profile/application/profile_reading_stats_loader.dart';
@@ -130,11 +132,25 @@ Future<void> bootstrapMgReadApp({
       );
   final diagnosticsPorts = DeferredDiagnosticsPorts(coldArchive: ColdDiagnosticsLogArchive(resolveDataRoot));
   if (diagnosticsService != null) diagnosticsPorts.attach(diagnosticsService);
-  final fatalErrorReporter = AppFatalErrorReporter(diagnostics);
+  AppSettingsManager? manager = settingsManager;
+  final fatalErrorReporter = AppFatalErrorReporter(
+    diagnostics,
+    environment: AppFailureEnvironment(
+      proxyPreferences: () {
+        final current = manager;
+        if (current == null) return {'customSourceProxyEnabled': 'unknown'};
+        final settings = NetworkProxySettings.fromSettingValue(current.get(AppSettingKeys.networkProxyPreferences));
+        final enabled = settings.isEnabled(NetworkProxyTraffic.sourceHttp);
+        return {
+          'customSourceProxyEnabled': enabled.toString(),
+          if (enabled) 'customSourceProxy': Uri(scheme: settings.protocol.name, host: settings.host, port: settings.port).toString(),
+        };
+      },
+    ),
+  );
   final errorBoundary = AppDiagnosticsErrorBoundary.install(diagnostics, fatalReporter: fatalErrorReporter);
   AppPersistence? sharedPersistence;
   AppDiagnosticsService? persistentDiagnostics = diagnosticsService;
-  AppSettingsManager? manager = settingsManager;
   manager ??= AppSettingsManager(
     registry: AppSettingKeys.registry,
     diagnostics: diagnostics,

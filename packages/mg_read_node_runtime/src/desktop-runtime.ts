@@ -236,7 +236,7 @@ export class DesktopRuntime {
   #startPromise: Promise<DesktopRuntimeReady> | undefined;
   #stopPromise: Promise<void> | undefined;
   #pluginManager: PluginManager | undefined;
-  readonly #pluginHttp = new ConfigurablePluginHttpClient();
+  readonly #pluginHttp = new ConfigurablePluginHttpClient({}, () => process.platform !== "android" ? "desktop-node" : this.#embedded ? "android-javet" : "android-node-process");
   /** Optional, separately-bound Debug inspector; never carries Runtime RPC. */
   #debugHttp: RuntimeDebugHttpServer | undefined;
   #debugHttpConfiguredEnabled = false;

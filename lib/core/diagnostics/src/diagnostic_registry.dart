@@ -364,6 +364,7 @@ abstract final class AppDiagnosticEvents {
     component: 'app.error',
     summary: 'An unhandled application error reached a guarded boundary.',
     severity: DiagnosticSeverity.error,
+    schemaVersion: 2,
     fields: <String, DiagnosticFieldDefinition>{
       'boundary': _requiredInstantString,
       'errorCode': _requiredInstantString,
@@ -372,6 +373,7 @@ abstract final class AppDiagnosticEvents {
       'pluginName': _string,
       'stackTrace': _string,
       'fatal': _boolean,
+      'environment': const DiagnosticFieldDefinition(type: DiagnosticFieldType.object),
     },
   );
 
