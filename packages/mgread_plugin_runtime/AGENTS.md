@@ -56,6 +56,9 @@
   与 Kotlin `AndroidPluginArtifactTransferTest`。
 - Javet 模块解析在 JNI 编译前记录模块名和引用者；异常只记录 Java 类型，禁止读取或格式化原始
   Javet Throwable 的 message/toString/stackTrace，也不得作为 cause 继续跨 JNI 传播。
+- Javet 零参数直接回调经 JNI 传入 null 参数数组；唤醒/失败信号使用 `AndroidJavetSignalCallback` 接受
+  nullable array，禁止使用非空 Kotlin vararg，否则未捕获 Node 异常会退出整个 App。回归入口为
+  `AndroidJavetSignalCallbackTest` 和可选真实 JNI `AndroidJavetCallbacksNativeTest`，发布前另验 release 冷启动。
 - Javet 的唯一 VM 由 `AndroidRuntimeEventLoop` 单线程拥有，能力调用、模块求值和 Core 生命周期通过
   Promise 回调完成；禁止在 JNI 模块加载回调内再次运行 libuv。先用 `RunNoWait` 消化就绪任务，再用
   `RunOnce` 等待内核事件；Android 私有管道把新任务、取消、单次期限和 WebView 完成通知唤醒到该线程，

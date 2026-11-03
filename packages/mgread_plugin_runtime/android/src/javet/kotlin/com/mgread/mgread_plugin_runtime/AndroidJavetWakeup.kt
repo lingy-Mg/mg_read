@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /** Kernel pipe from Android producers to Node's libuv loop. Node owns the
  * detached read descriptor; this owner keeps and closes only the write end.
  * At most one outstanding byte is needed, so writes cannot fill the pipe.
+ * Zero-argument JNI callbacks use a nullable array, not Kotlin's non-null vararg.
  */
 internal class AndroidJavetWakeup(private val onFailure: () -> Unit) : AutoCloseable {
     private val armed = AtomicBoolean(false)
@@ -28,15 +29,11 @@ internal class AndroidJavetWakeup(private val onFailure: () -> Unit) : AutoClose
             writer = pipe[1]
             Os.fcntlInt(pipe[1].fileDescriptor, OsConstants.F_SETFL, OsConstants.O_NONBLOCK)
             val context = JavetCallbackContext("__mgreadWakeConsumed", JavetCallbackType.DirectCallNoThisAndNoResult,
-                object : IJavetDirectCallable.NoThisAndNoResult<Exception> {
-                    override fun call(vararg values: V8Value) { armed.set(false) }
-                })
+                AndroidJavetSignalCallback { armed.set(false) })
             consumed = runtime.createV8ValueFunction(context)
             runtime.getGlobalObject().set("__mgreadWakeConsumed", consumed)
             val failureContext = JavetCallbackContext("__mgreadWakeFailed", JavetCallbackType.DirectCallNoThisAndNoResult,
-                object : IJavetDirectCallable.NoThisAndNoResult<Exception> {
-                    override fun call(vararg values: V8Value) { onFailure() }
-                })
+                AndroidJavetSignalCallback(onFailure))
             failed = runtime.createV8ValueFunction(failureContext)
             runtime.getGlobalObject().set("__mgreadWakeFailed", failed)
             // Socket adopts an existing pipe descriptor; there is no TCP listener,
@@ -80,4 +77,13 @@ internal class AndroidJavetWakeup(private val onFailure: () -> Unit) : AutoClose
         writer?.close()
         writer = null
     }
+}
+
+/** Javet passes null for the argument array when JavaScript calls without args.
+ * Accept that Java/JNI contract so a pipe event cannot become an uncaught Node
+ * exception that exits the application process. Callback arguments are unused.
+ */
+internal class AndroidJavetSignalCallback(private val signal: () -> Unit) :
+    IJavetDirectCallable.NoThisAndNoResult<Exception> {
+    override fun call(values: Array<out V8Value>?) { signal() }
 }

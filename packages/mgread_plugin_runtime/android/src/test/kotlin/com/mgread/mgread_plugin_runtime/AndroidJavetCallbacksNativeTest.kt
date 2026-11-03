@@ -24,6 +24,22 @@ import org.junit.Test
  * TCP only substitutes for Android's wake pipe in this non-device test.
  */
 class AndroidJavetCallbacksNativeTest {
+    @Test fun realNodeZeroArgumentSignalsCrossJniWithoutThrowing() {
+        assumeTrue(System.getProperty("mgread.javet.nativeTest") == "true")
+        val signals = AtomicInteger()
+        V8Host.getNodeInstance().createV8Runtime<NodeRuntime>().use { runtime ->
+            val context = JavetCallbackContext("__testSignal", JavetCallbackType.DirectCallNoThisAndNoResult,
+                AndroidJavetSignalCallback { signals.incrementAndGet() })
+            runtime.createV8ValueFunction(context).use { function ->
+                runtime.getGlobalObject().set("__testSignal", function)
+                runtime.getExecutor("__testSignal(); __testSignal(undefined); __testSignal();").executeVoid()
+                assertEquals(3, signals.get())
+                runtime.getExecutor("delete globalThis.__testSignal;").executeVoid()
+            }
+            runtime.setStopping(true)
+        }
+    }
+
     @Test fun realNodeLoopWakesAndFastReplyOvertakesPendingIo() {
         assumeTrue(System.getProperty("mgread.javet.nativeTest") == "true")
         val port = AtomicInteger()
