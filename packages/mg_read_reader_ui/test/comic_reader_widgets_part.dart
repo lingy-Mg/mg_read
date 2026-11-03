@@ -114,7 +114,6 @@ void _registerComicWidgetTests() {
       expect(find.text('90%'), findsOneWidget);
       expect(find.text('点击翻页方向'), findsOneWidget);
       expect(find.text('上下区域'), findsOneWidget);
-      expect(find.text('单手模式'), findsOneWidget);
 
       await tester.tap(
         find.byKey(const ValueKey<String>('comic-reader-page-turn-fraction')),
@@ -124,14 +123,27 @@ void _registerComicWidgetTests() {
       await tester.pumpAndSettle();
       expect(store.preferences?.pageTurnFraction, .5);
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('comic-reader-page-turn-layout')),
+      final layoutControl = find.byKey(
+        const ValueKey<String>('comic-reader-page-turn-layout'),
       );
+      await tester.ensureVisible(layoutControl);
+      await tester.pumpAndSettle();
+      await tester.tap(layoutControl);
       await tester.pumpAndSettle();
       await tester.tap(find.text('左右区域').last);
       await tester.pumpAndSettle();
       expect(store.preferences?.pageTurnLayout, ComicPageTurnLayout.horizontal);
 
+      await tester.scrollUntilVisible(
+        find.text('单手模式'),
+        100,
+        scrollable: find
+            .descendant(
+              of: find.byType(BottomSheet),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
       await tester.tap(find.text('单手模式'));
       await tester.pump();
       expect(store.preferences?.singleHandMode, isTrue);

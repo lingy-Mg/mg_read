@@ -487,6 +487,7 @@ void main() {
       pageTurnLayout: ComicPageTurnLayout.horizontal,
       singleHandMode: true,
       imageSpacing: 12,
+      contentWidthFraction: .65,
     );
     final bookmark = ComicReaderBookmark(
       id: 'bookmark-1',
@@ -498,6 +499,8 @@ void main() {
       createdAt: DateTime.utc(2026, 1, 2),
     );
 
+    await fixture.settings!.set(AppSettingKeys.comicReaderPreferences, <String, Object?>{'brightness': .8});
+    expect((await store.loadPreferences())!.contentWidthFraction, 1);
     await store.saveProgress(fixture.manga.id.value, progress);
     await store.savePreferences(preferences);
     await store.addBookmark(bookmark);

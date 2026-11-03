@@ -1,3 +1,4 @@
+/// User-visible labels shared by the comic reader and its session sheets.
 abstract final class ComicReaderStrings {
   static const back = '返回';
   static const catalog = '目录';
@@ -15,6 +16,7 @@ abstract final class ComicReaderStrings {
   static const more = '更多';
   static const removeBookmark = '删除书签';
   static const brightness = '亮度';
+  static const contentWidth = '漫画宽度';
   static const spacing = '图片间距';
   static const keepAwake = '屏幕常亮';
   static const immersive = '沉浸阅读';

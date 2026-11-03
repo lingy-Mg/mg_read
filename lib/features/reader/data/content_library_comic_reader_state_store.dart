@@ -62,6 +62,7 @@ final class ContentLibraryComicReaderStateStore implements ComicReaderStateStore
             pageTurnLayout: raw['pageTurnLayout'] == 'horizontal' ? ComicPageTurnLayout.horizontal : ComicPageTurnLayout.vertical,
             singleHandMode: raw['singleHandMode'] as bool? ?? false,
             imageSpacing: (raw['imageSpacing'] as num?)?.toDouble() ?? 0,
+            contentWidthFraction: (raw['contentWidthFraction'] as num?)?.toDouble() ?? 1,
           ).normalized();
   }
 
@@ -78,6 +79,7 @@ final class ContentLibraryComicReaderStateStore implements ComicReaderStateStore
       'pageTurnLayout': p.pageTurnLayout.name,
       'singleHandMode': p.singleHandMode,
       'imageSpacing': p.imageSpacing,
+      'contentWidthFraction': p.contentWidthFraction,
     });
     await s.flush();
   }

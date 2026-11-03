@@ -205,9 +205,14 @@ extension _ComicReaderSheets on _ComicReaderViewState {
                     return;
                   }
                   final ComicReaderPreferences normalized = value.normalized();
-                  final ComicReaderProgress? anchor = _progress;
                   final bool layoutChanged =
-                      normalized.imageSpacing != _preferences.imageSpacing;
+                      normalized.imageSpacing != _preferences.imageSpacing ||
+                      normalized.contentWidthFraction !=
+                          _preferences.contentWidthFraction;
+                  // Scroll notifications may precede image layout. Capture the
+                  // currently rendered anchor before changing image extents.
+                  if (layoutChanged) _updateProgressFromScroll();
+                  final ComicReaderProgress? anchor = _progress;
                   setState(() {
                     _preferences = normalized;
                     _preferencesAuthoritative = true;
@@ -245,6 +250,36 @@ extension _ComicReaderSheets on _ComicReaderViewState {
                             child: ListView(
                               padding: const EdgeInsets.fromLTRB(20, 6, 20, 24),
                               children: <Widget>[
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: <Widget>[
+                                    const Text(ComicReaderStrings.contentWidth),
+                                    Text(
+                                      _preferences.contentWidthFraction == 1
+                                          ? '100%（不限制）'
+                                          : '${(_preferences.contentWidthFraction * 100).round()}%',
+                                    ),
+                                  ],
+                                ),
+                                Slider(
+                                  key: const ValueKey<String>(
+                                    'comic-reader-content-width',
+                                  ),
+                                  value: _preferences.contentWidthFraction,
+                                  min: .1,
+                                  max: 1,
+                                  divisions: 90,
+                                  semanticFormatterCallback: (double value) =>
+                                      '${(value * 100).round()}%',
+                                  onChanged: (double value) => update(
+                                    _preferences.copyWith(
+                                      contentWidthFraction: value,
+                                    ),
+                                    persist: false,
+                                  ),
+                                  onChangeEnd: (_) => commit(),
+                                ),
                                 _settingSlider(
                                   label: ComicReaderStrings.brightness,
                                   value: _preferences.brightness,

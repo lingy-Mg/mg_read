@@ -13,11 +13,13 @@ import 'package:novel_reader_ui/src/ui/reader_theme.dart';
 
 part 'comic_reader_cache_part.dart';
 part 'comic_reader_preferences_part.dart';
+part 'comic_reader_width_part.dart';
 part 'comic_reader_widgets_part.dart';
 
 void main() {
   _registerComicCacheTests();
   _registerComicPreferencesTests();
+  _registerComicWidthTests();
   _registerComicWidgetTests();
 }
 

@@ -1,3 +1,6 @@
+/// Session preference writes, metadata validation and image layout indexing.
+/// The host owns persistence; every presentation field participates in write
+/// deduplication and failed-write recovery.
 part of 'comic_reader_view.dart';
 
 // ignore_for_file: invalid_use_of_protected_member
@@ -13,7 +16,8 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
         '${normalized.brightness}\u0000${normalized.imageSpacing}\u0000'
         '${normalized.keepScreenOn}\u0000${normalized.immersiveMode}\u0000'
         '${normalized.pageTurnShortcuts}\u0000${normalized.pageTurnFraction}\u0000'
-        '${normalized.pageTurnLayout.name}\u0000${normalized.singleHandMode}';
+        '${normalized.pageTurnLayout.name}\u0000${normalized.singleHandMode}\u0000'
+        '${normalized.contentWidthFraction}';
     if (_lastPreferenceWriteKeys[targetStore] == writeKey) {
       return _preferenceWrites[targetStore] ?? Future<void>.value();
     }
@@ -29,6 +33,8 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
         if (identical(targetStore, widget.stateStore) &&
             normalized.brightness == _preferences.brightness &&
             normalized.imageSpacing == _preferences.imageSpacing &&
+            normalized.contentWidthFraction ==
+                _preferences.contentWidthFraction &&
             normalized.keepScreenOn == _preferences.keepScreenOn &&
             normalized.immersiveMode == _preferences.immersiveMode &&
             normalized.pageTurnShortcuts == _preferences.pageTurnShortcuts &&

@@ -9,6 +9,7 @@
 /// - 不直接访问网络、文件或数据库；异步结果必须验证会话世代。
 /// - 图片缓存、滚动控制器、监听器和常亮资源必须在会话结束时成对释放。
 /// - 设备内存快照只调整图片上限；前台周期评估，后台/销毁取消，内存压力立即收缩。
+/// - 图片按持久化宽度比例居中排版；尺寸变化沿用语义锚点恢复阅读位置。
 ///
 library;
 
@@ -420,9 +421,9 @@ class _ComicReaderViewState extends State<ComicReaderView>
                 body: LayoutBuilder(
                   builder: (BuildContext context, BoxConstraints constraints) {
                     final double previousWidth = _viewportWidth;
-                    _viewportWidth = constraints.maxWidth > 960
-                        ? 960
-                        : constraints.maxWidth;
+                    _viewportWidth =
+                        constraints.maxWidth *
+                        _preferences.contentWidthFraction;
                     _horizontalInset =
                         ((constraints.maxWidth - _viewportWidth) / 2).clamp(
                           0,
@@ -447,7 +448,13 @@ class _ComicReaderViewState extends State<ComicReaderView>
                       children: <Widget>[
                         ColoredBox(
                           color: Colors.white,
-                          child: _buildReadingSurface(palette),
+                          // Keep image semantics under their own boundary as
+                          // live width changes relayout a modal-covered list.
+                          child: Semantics(
+                            container: true,
+                            explicitChildNodes: true,
+                            child: _buildReadingSurface(palette),
+                          ),
                         ),
                         IgnorePointer(
                           child: ColoredBox(

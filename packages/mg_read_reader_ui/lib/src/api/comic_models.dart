@@ -1,3 +1,7 @@
+/// Host-neutral comic metadata and persisted semantic reading state.
+/// Preferences normalize presentation values; hosts own their serialization.
+library;
+
 import 'package:flutter/foundation.dart';
 
 import 'models.dart';
@@ -440,6 +444,7 @@ class ComicReaderPreferences {
     this.pageTurnLayout = ComicPageTurnLayout.vertical,
     this.singleHandMode = false,
     this.imageSpacing = 0,
+    this.contentWidthFraction = 1,
   });
 
   /// Default settings used when the host has no saved value.
@@ -470,8 +475,12 @@ class ComicReaderPreferences {
   final bool singleHandMode;
 
   /// Legacy setting retained for persistence compatibility. Comic pages always
-  /// render edge-to-edge, so normalized values are zero.
+  /// render without vertical gaps, so normalized values are zero.
   final double imageSpacing;
+
+  /// Centered image width as a fraction of available reader width (0.1–1.0).
+  /// One uses the full width without an additional fixed pixel limit.
+  final double contentWidthFraction;
 
   /// Returns preferences constrained to safe layout ranges.
   ComicReaderPreferences normalized() => ComicReaderPreferences(
@@ -485,6 +494,9 @@ class ComicReaderPreferences {
     pageTurnLayout: pageTurnLayout,
     singleHandMode: singleHandMode,
     imageSpacing: 0,
+    contentWidthFraction: contentWidthFraction.isFinite
+        ? contentWidthFraction.clamp(.1, 1).toDouble()
+        : defaults.contentWidthFraction,
   );
 
   static double _nearestPageTurnFraction(double value) {
@@ -508,6 +520,7 @@ class ComicReaderPreferences {
     ComicPageTurnLayout? pageTurnLayout,
     bool? singleHandMode,
     double? imageSpacing,
+    double? contentWidthFraction,
   }) => ComicReaderPreferences(
     brightness: brightness ?? this.brightness,
     keepScreenOn: keepScreenOn ?? this.keepScreenOn,
@@ -517,6 +530,7 @@ class ComicReaderPreferences {
     pageTurnLayout: pageTurnLayout ?? this.pageTurnLayout,
     singleHandMode: singleHandMode ?? this.singleHandMode,
     imageSpacing: imageSpacing ?? this.imageSpacing,
+    contentWidthFraction: contentWidthFraction ?? this.contentWidthFraction,
   );
 
   @override
@@ -529,7 +543,8 @@ class ComicReaderPreferences {
       pageTurnFraction == other.pageTurnFraction &&
       pageTurnLayout == other.pageTurnLayout &&
       singleHandMode == other.singleHandMode &&
-      imageSpacing == other.imageSpacing;
+      imageSpacing == other.imageSpacing &&
+      contentWidthFraction == other.contentWidthFraction;
 
   @override
   int get hashCode => Object.hash(
@@ -541,6 +556,7 @@ class ComicReaderPreferences {
     pageTurnLayout,
     singleHandMode,
     imageSpacing,
+    contentWidthFraction,
   );
 }
 

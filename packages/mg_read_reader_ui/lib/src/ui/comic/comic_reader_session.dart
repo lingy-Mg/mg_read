@@ -1,3 +1,5 @@
+/// Session navigation, semantic progress and image geometry reconciliation.
+/// Restore operations use the extent index until jumpTo has been laid out.
 part of 'comic_reader_view.dart';
 
 // ignore_for_file: invalid_use_of_protected_member
@@ -693,7 +695,7 @@ extension _ComicReaderSession on _ComicReaderViewState {
     _scrollController.jumpTo(
       offset.clamp(0, _scrollController.position.maxScrollExtent),
     );
-    _updateProgressFromScroll();
+    _updateProgressFromScroll(useRenderedPosition: false);
   }
 
   void _handleScroll() {
@@ -727,13 +729,13 @@ extension _ComicReaderSession on _ComicReaderViewState {
         imageTop <= surface.size.height + padding;
   }
 
-  void _updateProgressFromScroll() {
+  void _updateProgressFromScroll({bool useRenderedPosition = true}) {
     if (_window.isEmpty || _viewportWidth <= 0) return;
     final double probe =
         _scrollController.offset +
         _viewportHeight * _ComicReaderViewState._progressProbeFraction;
     final ({_ComicImageEntry entry, double fraction})? measured =
-        _imageAtViewportProbe();
+        useRenderedPosition ? _imageAtViewportProbe() : null;
     _ComicImageEntry? selected = measured?.entry;
     double fraction = measured?.fraction ?? 0;
     if (selected == null) {
