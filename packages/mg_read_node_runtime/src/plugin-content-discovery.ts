@@ -10,6 +10,8 @@ import {
   MAX_DISCOVERY_DEPTH,
   MAX_DISCOVERY_ITEMS,
   MAX_DISCOVERY_TABS,
+  MAX_DISCOVERY_FILTER_GROUPS,
+  MAX_DISCOVERY_FILTER_OPTIONS,
   MAX_ID_CHARACTERS,
   MAX_LABEL_CHARACTERS,
   MAX_TEXT_METADATA_CHARACTERS,
@@ -153,6 +155,24 @@ function validateDiscoveryComponent(
   state.ids.add(id);
   const type = readRequiredString(raw, "type", MAX_LABEL_CHARACTERS);
   switch (type) {
+    case "filters": {
+      const groups = Object.freeze(readArray(raw, "groups", MAX_DISCOVERY_FILTER_GROUPS).map((value) => {
+        const group = readRecord(value);
+        const options = Object.freeze(readArray(group, "options", MAX_DISCOVERY_FILTER_OPTIONS).map(validateDiscoveryTab));
+        assertUnique(options.map((option) => option.id));
+        const selectedOptionId = readNullableString(group, "selectedOptionId", MAX_ID_CHARACTERS);
+        if (selectedOptionId !== null && !options.some((option) => option.id === selectedOptionId)) {
+          fail('Discovery filter selectedOptionId must identify a declared option.');
+        }
+        return Object.freeze({
+          id: readRequiredString(group, "id", MAX_ID_CHARACTERS),
+          label: readRequiredString(group, "label", MAX_LABEL_CHARACTERS),
+          selectedOptionId, options,
+        });
+      }));
+      assertUnique(groups.map((group) => group.id));
+      return Object.freeze({ id, type, groups, resetTarget: readRequiredString(raw, "resetTarget", MAX_ID_CHARACTERS) });
+    }
     case "tabs": {
       if (!isFirstRootComponent || depth !== 1) fail('Discovery tabs must be the first root component.');
       const tabs = Object.freeze(

@@ -42,6 +42,9 @@
 
 ## 验证
 
+- 发现 `filters` 的不可变模型和解码归 `plugin_discovery_filters.dart`；直接回归为 `test/discovery_filters_test.dart`，
+  经真实 Node 校验到 Dart 解码验证组合 target 与选中状态。
+
 - Android 正常包的 `preBuild` 必须通过 `verifyNodeRuntimeLibrary`：校验固定 Node arm64 ELF 的长度与 SHA-256，
   禁止将 Git LFS 指针打入 APK。GitHub Android 构建先精确拉取该 LFS 文件；ARMv7 本地/CI 构建另执行
   `python3 tools/stage_android_node_runtime.py`，该脚本验证固定 ZIP 与 ARMv7 ELF 哈希；原生独立包不需要 Node 库。

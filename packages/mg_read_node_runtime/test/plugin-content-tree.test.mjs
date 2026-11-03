@@ -10,6 +10,25 @@ const content = {
   latestChapter: null, categories: [], tags: [], attributes: [],
 };
 
+test('filter groups keep selected source targets and permit a full 45-option genre row', () => {
+  const options = Array.from({ length: 45 }, (_, index) => ({ id: `genre:${index}`, label: `剧情 ${index}`, target: `filter:${index}` }));
+  const component = { type: 'filters', id: 'library-filters', resetTarget: 'library', groups: [
+    { id: 'genre', label: '剧情', selectedOptionId: 'genre:20', options },
+  ] };
+  const validate = value => validateDiscoverResult('org.example.filters', '筛选来源', { kind: 'document', document: { components: [value] } });
+  const result = validate(component).document.components[0];
+  assert.equal(result.groups[0].options.length, 45);
+  assert.equal(result.groups[0].selectedOptionId, 'genre:20');
+  assert.equal(result.resetTarget, 'library');
+  for (const invalid of [
+    { ...component, resetTarget: null },
+    { ...component, groups: [...component.groups, ...component.groups] },
+    { ...component, groups: [{ ...component.groups[0], selectedOptionId: 'missing' }] },
+    { ...component, groups: [{ ...component.groups[0], options: [...options, options[0]] }] },
+    { ...component, groups: [{ ...component.groups[0], options: Array.from({ length: 65 }, (_, i) => ({ id: `${i}`, label: `${i}`, target: `${i}` })) }] },
+  ]) assert.throws(() => validate(invalid), PluginContentValidationError);
+});
+
 test('inline discovery search validates required bounded labels', () => {
   const input = { type: 'searchInput', id: 'link', label: '视频链接', placeholder: 'BV…', submitLabel: '读取音频' };
   const validate = (component) => validateDiscoverResult('org.example.input', '输入来源', {

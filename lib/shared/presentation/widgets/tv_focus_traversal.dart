@@ -5,12 +5,13 @@ library;
 import 'package:flutter/material.dart';
 
 void requestTvFocus(FocusNode node, {ScrollPositionAlignmentPolicy? alignmentPolicy, double? alignment, Duration? duration, Curve? curve}) {
-  if (node.context == null) return;
+  if (node.context == null || !node.context!.mounted) return;
   node.requestFocus();
   WidgetsBinding.instance.addPostFrameCallback((_) {
     final target = node.context;
-    final box = target?.findRenderObject();
-    if (target == null || !node.hasFocus || box is! RenderBox || !box.attached || !box.hasSize) return;
+    if (target == null || !target.mounted || !node.hasFocus) return;
+    final box = target.findRenderObject();
+    if (box is! RenderBox || !box.attached || !box.hasSize) return;
     Scrollable.ensureVisible(
       target,
       alignmentPolicy: alignmentPolicy ?? ScrollPositionAlignmentPolicy.keepVisibleAtEnd,

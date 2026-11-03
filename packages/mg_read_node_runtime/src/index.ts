@@ -141,6 +141,8 @@ export type {
   PluginDiscoverySectionComponent,
   PluginDiscoveryTab,
   PluginDiscoveryTabsComponent,
+  PluginDiscoveryFilterGroup,
+  PluginDiscoveryFiltersComponent,
   PluginDiscoveryTextComponent,
   PluginDiscoverySearchInputComponent,
   PluginLatestChapter,

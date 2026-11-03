@@ -25,6 +25,14 @@ test('live public flow reaches discovery, search, detail, catalog and playback r
     http: { fetch: liveFetch },
   });
   const discovery = await plugin.discover({ target: 'category:today', cursor: null, collectionId: null, pageSize: 3 });
+  const library = await plugin.discover({ target: 'category:library', cursor: null, collectionId: null, pageSize: 20 });
+  const filters = library.document.components.find(component => component.type === 'filters');
+  assert.deepEqual(filters.groups.map(group => group.label), ['类型', '剧情', '地区', '年份', '字母', '排序']);
+  const japanese = filters.groups[0].options.find(option => option.label === '日本动漫');
+  assert.ok(japanese);
+  const category = await plugin.discover({ target: japanese.target, cursor: null, collectionId: null, pageSize: 20 });
+  assert.ok(category.document.components.find(component => component.type === 'filters').groups[0].selectedOptionId);
+  t.diagnostic(`library_groups=${filters.groups.length} library_items=${library.document.components.at(-1).children[0].items.length}`);
   const items = discovery.document.components[0].children[0].items;
   assert.ok(items.length > 0);
   assert.ok(items.every((item) => item.content.coverUrl !== null));

@@ -12,6 +12,8 @@
 library;
 
 import 'dart:async';
+import 'tv_discovery_sources_page.dart';
+import 'package:mg_read/shared/presentation/tv_source_navigation_scope.dart';
 
 import 'source_preview_page.dart';
 import 'source_debug_page.dart';
@@ -75,6 +77,20 @@ class DiscoveryDestinationPage extends ConsumerWidget {
     });
 
     final selectedSource = _selectedSource(state);
+    final outerNavigation = TvSourceNavigationScope.maybeOf(context);
+    if (TvModeScope.isEnabled(context) &&
+        !SourcePreviewScope.active(context) &&
+        outerNavigation != null &&
+        !outerNavigation.showContent &&
+        outerNavigation.entries.isNotEmpty) {
+      return TvDiscoverySourcesPage(
+        state: state,
+        onSelected: (id) => unawaited(controller.selectSource(id)),
+        onDestinationRequested: onDestinationRequested,
+        onRefresh: () => unawaited(controller.retry()),
+        onManage: onSourceManagementRequested,
+      );
+    }
     if (selectedSource != null &&
         (state.result != null ||
             state.status == DiscoveryPageStatus.loadingContent ||
@@ -272,21 +288,28 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
     return RuntimeDiscoveryPage(
       result: displayedResult,
       tvNavigation: TvModeScope.isEnabled(context) && visualDepth == 0 ? controller.tvNavigation : null,
-      tvTarget: state.target,
-      onTvTabSelected: (target) => unawaited(controller.selectTvTab(target)),
+      tvPrimaryTarget: controller.tvPrimaryTarget,
       sourceName: selectedSource.displayName,
       onDestinationRequested: onDestinationRequested,
       onSearchRequested: onSearchRequested == null ? null : () => onSearchRequested!(state.selectedSourceId),
       onSourcePressed: () => unawaited(_selectDiscoverySource(context, ref, state, controller, onSourceManagementRequested)),
-      onTabSelected: (target) => unawaited(controller.selectTab(target)),
+      onTabSelected: (target) =>
+          unawaited(controller.tvNavigation == null ? controller.selectTab(target) : controller.selectTvFilter(target)),
       onCategorySelected: (target) => _pushCategoryRoute(context, ref, controller, target),
       isInBookshelf: (content) => bookshelfMembership.contains(pluginId: state.selectedSourceId!, title: content.title),
       onContentPressed: (content) => unawaited(openContent(content)),
       onRefreshRequested: () => unawaited(controller.refresh()),
       onLoadMore: (collection) => unawaited(controller.loadMore(collection)),
-      canNavigateBack: canNavigateBack || (controller.tvNavigation != null && visualDepth == 0 && state.target != null),
-      onBackRequested: controller.tvNavigation != null && visualDepth == 0 && state.target != null
-          ? () => unawaited(controller.selectTvTab(null))
+      canNavigateBack: canNavigateBack || (controller.tvNavigation != null && visualDepth == 0 && controller.tvPrimaryTarget != null),
+      onBackRequested: controller.tvNavigation != null && visualDepth == 0 && controller.tvPrimaryTarget != null
+          ? () {
+              final outer = TvSourceNavigationScope.maybeOf(context);
+              if (outer != null) {
+                outer.onSelected(null);
+              } else {
+                unawaited(controller.selectTvTab(null));
+              }
+            }
           : isPredictiveBackRoute
           ? () => Navigator.of(context).pop()
           : controller.goBack,

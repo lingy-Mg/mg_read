@@ -13,6 +13,9 @@
 
 ## Package 所有权
 
+- 发现 `filters` 的分组/选项预算与选中 ID 关联由 `plugin-content-discovery.ts` 校验；`plugin-content-tree.test.mjs`
+  保留 45 选项与非法选择/重复/超限回归。原有首个根 `tabs` 的约束不变。
+
 - 数据源执行输入仅为构建期已内联第三方包的单个 JS；archive 只是容器，不是 npm 项目分发机制。
   Runtime 不解析来源 lock、不恢复或缓存 npm 依赖，也不复制/链接开发项目依赖树。
   安装、导入、导出、同步和删除共用此约束，不新增依赖引用扫描或模块加载拦截。

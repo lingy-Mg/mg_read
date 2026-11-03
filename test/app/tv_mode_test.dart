@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
-import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mg_read/app/app_router.dart';
@@ -30,15 +29,9 @@ void main() {
     await tester.pumpWidget(testMgReadApp(settings));
     await tester.pumpAndSettle();
     final router = ProviderScope.containerOf(tester.element(find.byType(TvLibraryShell))).read(appRouterProvider);
-    final home = find.byKey(const Key('tv-nav-home'));
+    final home = find.byKey(const Key('app-nav-home'));
     tester.widget<Focus>(find.descendant(of: home, matching: find.byType(Focus)).first).focusNode!.requestFocus();
     await tester.pumpAndSettle();
-    for (final id in ['movies', 'series']) {
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-      await tester.pumpAndSettle();
-      expect(router.routeInformationProvider.value.uri.path, '/');
-      expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvFocusable>()?.key, Key('tv-nav-$id'));
-    }
     for (final entry in {'discover': '/discover', 'profile': '/profile', 'search': '/profile'}.entries) {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.pumpAndSettle();
@@ -58,7 +51,7 @@ void main() {
     }
     expect(
       FocusManager.instance.primaryFocus,
-      tester.widget<Focus>(find.descendant(of: find.byKey(const Key('tv-nav-home')), matching: find.byType(Focus)).first).focusNode,
+      tester.widget<Focus>(find.descendant(of: find.byKey(const Key('app-nav-home')), matching: find.byType(Focus)).first).focusNode,
     );
     expect(tester.takeException(), isNull);
   });

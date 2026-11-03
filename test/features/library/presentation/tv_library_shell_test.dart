@@ -19,8 +19,11 @@ void main() {
   testWidgets('holding OK opens the card menu and releasing keeps its default action unselected', (tester) async {
     final played = <String>[];
     await _mount(tester, onPlay: (book) async => played.add(book.id));
-    await tester.tap(find.byKey(const Key('tv-nav-movies')));
-    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('tv-card-movie')),
+      180,
+      scrollable: find.descendant(of: find.byType(CustomScrollView), matching: find.byType(Scrollable)).first,
+    );
     final card = find.byKey(const Key('tv-card-movie'));
     final focus = tester.widget<Focus>(find.descendant(of: card, matching: find.byType(Focus)).first).focusNode!;
     focus.requestFocus();
@@ -40,42 +43,21 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('remote focus switches top filters and stays on the tab', (tester) async {
-    final played = <String>[];
-    await _mount(tester, onPlay: (book) async => played.add(book.id));
-    expect(played, isEmpty);
-    _navFocus(tester, 'home').requestFocus();
-    await tester.pumpAndSettle();
-
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-    await tester.pumpAndSettle();
-    expect(find.text('电影收藏'), findsOneWidget);
+  testWidgets('home removes fixed movie and series tabs and retains the complete video shelf', (tester) async {
+    await _mount(tester);
+    expect(find.byKey(const Key('tv-nav-movies')), findsNothing);
+    expect(find.byKey(const Key('tv-nav-series')), findsNothing);
+    expect(find.byKey(const Key('app-nav-home')), findsOneWidget);
     expect(find.byKey(const Key('tv-card-movie')), findsOneWidget);
-    expect(find.byKey(const Key('tv-card-series')), findsNothing);
-    expect(FocusManager.instance.primaryFocus, _navFocus(tester, 'movies'));
-
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-    await tester.pumpAndSettle();
-    expect(find.text('剧集收藏'), findsOneWidget);
     expect(find.byKey(const Key('tv-card-series')), findsOneWidget);
-    expect(find.byKey(const Key('tv-card-movie')), findsNothing);
-    expect(FocusManager.instance.primaryFocus, _navFocus(tester, 'series'));
-
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
-    await tester.pumpAndSettle();
-    expect(find.text('电影收藏'), findsOneWidget);
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
-    await tester.pumpAndSettle();
-    expect(find.text('我的影视'), findsOneWidget);
-    expect(FocusManager.instance.primaryFocus, _navFocus(tester, 'home'));
-    expect(played, isEmpty);
-    expect(tester.takeException(), isNull);
+    expect(find.text('电影收藏'), findsNothing);
+    expect(find.text('剧集收藏'), findsNothing);
   });
 
   testWidgets('Search is last and only Search requires OK among destination tabs', (tester) async {
     final requested = <AppNavigationDestination>[];
     await _mount(tester, callbacks: LibraryHomeCallbacks(onNavigationSelected: requested.add));
-    _navFocus(tester, 'series').requestFocus();
+    _navFocus(tester, 'home').requestFocus();
     await tester.pumpAndSettle();
     for (final id in ['discover', 'settings', 'search']) {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
@@ -149,9 +131,16 @@ void main() {
       textScale: 1.6,
       callbacks: LibraryHomeCallbacks(onRefreshBook: (_) async {}, onDeleteBook: (_) async {}),
     );
-    await tester.tap(find.byKey(const Key('tv-nav-movies')));
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.byKey(const Key('tv-card-movie')), 180, scrollable: find.byType(Scrollable).first);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('tv-card-movie')),
+      180,
+      scrollable: find.descendant(of: find.byType(CustomScrollView), matching: find.byType(Scrollable)).first,
+    );
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('tv-card-movie')),
+      180,
+      scrollable: find.descendant(of: find.byType(CustomScrollView), matching: find.byType(Scrollable)).first,
+    );
     final focus = tester.widget<Focus>(find.descendant(of: find.byKey(const Key('tv-card-movie')), matching: find.byType(Focus)).first);
     focus.focusNode!.requestFocus();
     await tester.pumpAndSettle();
@@ -212,7 +201,7 @@ void main() {
     expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvLibraryShell>(), isNotNull);
   });
 
-  testWidgets('movie filter, remote menu, cancel and focus restoration keep shelf reachable', (tester) async {
+  testWidgets('remote menu, cancel and focus restoration keep the complete shelf reachable', (tester) async {
     final removed = <String>[];
     await _mount(
       tester,
@@ -222,9 +211,12 @@ void main() {
         },
       ),
     );
-    await tester.tap(find.byKey(const Key('tv-nav-movies')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('tv-card-series')), findsNothing);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('tv-card-movie')),
+      180,
+      scrollable: find.descendant(of: find.byType(CustomScrollView), matching: find.byType(Scrollable)).first,
+    );
+    expect(find.byKey(const Key('tv-card-series')), findsOneWidget);
     expect(find.byKey(const Key('tv-card-movie')), findsOneWidget);
     final cardFocus = tester.widget<Focus>(find.descendant(of: find.byKey(const Key('tv-card-movie')), matching: find.byType(Focus)).first);
     cardFocus.focusNode!.requestFocus();
@@ -271,7 +263,7 @@ void main() {
       find.byKey(const Key('tv-card-video-50')),
       500,
       maxScrolls: 30,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: find.descendant(of: find.byType(CustomScrollView), matching: find.byType(Scrollable)).first,
     );
     expect(find.byKey(const Key('tv-card-video-50')), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -281,7 +273,11 @@ void main() {
     testWidgets('TV library fits $size without overflow', (tester) async {
       await _mount(tester, size: size);
       expect(tester.takeException(), isNull);
-      await tester.scrollUntilVisible(find.byKey(const Key('tv-nav-reading')), 250, scrollable: find.byType(Scrollable).first);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('tv-nav-reading')),
+        250,
+        scrollable: find.descendant(of: find.byType(CustomScrollView), matching: find.byType(Scrollable)).first,
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('tv-nav-reading')));
       await tester.pumpAndSettle();
@@ -331,8 +327,22 @@ Future<void> _mount(
   await tester.pumpAndSettle();
 }
 
-FocusNode _navFocus(WidgetTester tester, String id) =>
-    tester.widget<Focus>(find.descendant(of: find.byKey(Key('tv-nav-$id')), matching: find.byType(Focus)).first).focusNode!;
+FocusNode _navFocus(WidgetTester tester, String id) => tester
+    .widget<Focus>(
+      find
+          .descendant(
+            of: find.byKey(
+              Key(
+                const {'home', 'discover', 'settings', 'search'}.contains(id)
+                    ? 'app-nav-${id == 'settings' ? 'profile' : id}'
+                    : 'tv-nav-$id',
+              ),
+            ),
+            matching: find.byType(Focus),
+          )
+          .first,
+    )
+    .focusNode!;
 
 TvLibraryData _data() {
   final items = [

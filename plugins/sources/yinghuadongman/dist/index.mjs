@@ -3,6 +3,101 @@ import { createRequire as __mgreadCreateRequire } from 'node:module'; const requ
 // src/index.mts
 import { createDecipheriv, createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
+
+// src/library.mts
+var fields = ["area", "by", "class", "letter", "year"];
+var labels = /* @__PURE__ */ new Map([["类型", "type"], ["剧情", "class"], ["地区", "area"], ["年份", "year"], ["字母", "letter"], ["排序", "by"]]);
+function libraryState(target) {
+  if (target === "category:library") return { type: "1" };
+  if (!/^library:[A-Za-z0-9_-]{1,1500}$/u.test(target)) throw new Error("Library target is invalid.");
+  let value;
+  try {
+    value = JSON.parse(Buffer.from(target.slice(8), "base64url").toString("utf8"));
+  } catch {
+    throw new Error("Library target is invalid.");
+  }
+  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("Library target is invalid.");
+  const state = value;
+  if (typeof state.type !== "string" || !/^\d{1,3}$/u.test(state.type) || Object.keys(state).some((key) => key !== "type" && !fields.includes(key))) {
+    throw new Error("Library target is invalid.");
+  }
+  for (const field of fields) {
+    const entry = state[field];
+    if (entry !== void 0 && (typeof entry !== "string" || !/^[\p{L}\p{N} -]{1,40}$/u.test(entry))) throw new Error("Library filter is invalid.");
+  }
+  return state;
+}
+function libraryRoute(state, page = 1) {
+  const suffix = fields.filter((field) => state[field] !== void 0).map((field) => `/${field}/${encodeURIComponent(state[field])}`).join("");
+  return `/w/${state.type}${suffix}${page > 1 ? `/page/${page}` : ""}.html`;
+}
+function libraryHasNext(html, state, page) {
+  for (const anchor of html.matchAll(/<a\b([^>]*)>/giu)) {
+    const href = attribute(anchor[1], "href");
+    if (href === null) continue;
+    const match = /\/page\/(\d+)\.html$/u.exec(href);
+    if (Number(match?.[1]) !== page + 1) continue;
+    const next = targetFromRoute(href.replace(/\/page\/\d+\.html$/u, ".html"));
+    if (next !== null && libraryRoute(next.state) === libraryRoute(state)) return true;
+  }
+  return false;
+}
+function targetFromRoute(href) {
+  const match = /^\/w\/(\d{1,3})((?:\/(?:area|by|class|letter|year)\/[^/]+)*)\.html$/u.exec(href);
+  if (match === null) return null;
+  const state = { type: match[1] };
+  const parts = match[2].split("/").slice(1);
+  for (let i = 0; i < parts.length; i += 2) {
+    try {
+      state[parts[i]] = decodeURIComponent(parts[i + 1]);
+    } catch {
+      return null;
+    }
+  }
+  const ordered = { type: state.type };
+  for (const field of fields) if (state[field] !== void 0) ordered[field] = state[field];
+  const target = `library:${Buffer.from(JSON.stringify(ordered)).toString("base64url")}`;
+  libraryState(target);
+  return { target, state: ordered };
+}
+function libraryFilters(html) {
+  const groups = [];
+  const rows = /<div\b[^>]*class=["'][^"']*\bmodule-item-title\b[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*<div\b[^>]*class=["'][^"']*\bmodule-item-box\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/giu;
+  for (const row of html.matchAll(rows)) {
+    const label = plain(row[1]);
+    const field = labels.get(label);
+    if (field === void 0) continue;
+    const tabs = [];
+    let selectedTabId = null;
+    const seen = /* @__PURE__ */ new Set();
+    for (const anchor of row[2].matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/giu)) {
+      const href = attribute(anchor[1], "href");
+      const title = plain(anchor[2]);
+      const option = href === null ? null : targetFromRoute(href);
+      if (option === null || title === "") continue;
+      const id = `${field}:${Buffer.from(option.state[field] ?? "all").toString("base64url")}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      tabs.push({ id, label: title, target: option.target });
+      if ((attribute(anchor[1], "class") ?? "").split(/\s+/u).includes("active")) selectedTabId = id;
+    }
+    if (tabs.length > 0) groups.push({
+      id: field,
+      label,
+      selectedOptionId: selectedTabId,
+      options: tabs
+    });
+  }
+  return groups.length === 0 ? [] : [{ type: "filters", id: "library-filters", resetTarget: "category:library", groups }];
+}
+function attribute(html, name) {
+  return new RegExp(`\\b${name}\\s*=\\s*["']([^"']*)["']`, "iu").exec(html)?.[1]?.replaceAll("&amp;", "&") ?? null;
+}
+function plain(html) {
+  return html.replace(/<[^>]*>/gu, "").replaceAll("&nbsp;", " ").replaceAll("&amp;", "&").trim();
+}
+
+// src/index.mts
 var base = "https://www.yinhuadm.xyz";
 var playerBase = "https://player.mcue.cc";
 var playerSalt = "lemon";
@@ -18,6 +113,7 @@ var pageHeaders = Object.freeze({
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
 });
 var categories = Object.freeze([
+  ["library", "动漫库", "/w/1.html"],
   ["today", "今日更新", "/label/new.html"],
   ["hot", "热榜", "/label/hot.html"],
   ["week", "本周追番", "/label/week.html"],
@@ -54,6 +150,28 @@ async function discover(request) {
   if (request.target === null) {
     if (request.cursor !== null || request.collectionId !== null) throw new Error("Initial discovery request is invalid.");
     return rootDocument(request.pageSize);
+  }
+  if (request.target === "category:library" || request.target.startsWith("library:")) {
+    const state = libraryState(request.target);
+    const page2 = request.cursor === null ? 1 : Number(new RegExp(`^${escape(request.target)}:(\\d+)$`, "u").exec(request.cursor)?.[1]);
+    if (!Number.isSafeInteger(page2) || page2 < 1 || page2 > 1e4 || request.cursor !== null && page2 < 2) throw new Error("Library cursor is invalid.");
+    const collectionId2 = "video:library";
+    if (request.collectionId !== null && request.collectionId !== collectionId2) throw new Error("Discovery collection is invalid.");
+    const html = await fetchText(`${base}${libraryRoute(state, page2)}`);
+    const values2 = parseListing(html).slice(0, 50);
+    const items2 = values2.map((content) => frozen({ content, rank: null, metric: null, recommendation: null }));
+    const continuation2 = page2 < 1e4 && libraryHasNext(html, state, page2) ? { target: request.target, cursor: `${request.target}:${page2 + 1}` } : null;
+    if (request.collectionId !== null) return frozen({ kind: "append", collectionId: collectionId2, items: items2, continuation: continuation2 });
+    return frozen({ kind: "document", document: { components: [
+      ...libraryFilters(html),
+      {
+        type: "section",
+        id: "library-results",
+        title: "动漫库",
+        subtitle: null,
+        children: [{ type: "contentCollection", id: collectionId2, layout: "coverGrid", items: items2, continuation: continuation2 }]
+      }
+    ] } });
   }
   const category = categories.find(([id]) => request.target === `category:${id}`);
   if (category === void 0) throw new Error("Discovery target is invalid.");
@@ -191,15 +309,15 @@ function parseListing(html) {
   for (const match of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/giu)) {
     const attributes = match[1] ?? "";
     const body = match[2] ?? "";
-    const href = attribute(attributes, "href");
+    const href = attribute2(attributes, "href");
     const id = /\/v\/(\d+)\.html(?:[?#]|$)/iu.exec(href)?.[1];
     if (id === void 0 || unique.has(id)) continue;
     const image = /<img\b[^>]*>/iu.exec(body)?.[0] ?? "";
     const title = cleanTitle(
-      attribute(attributes, "title") || attribute(image, "alt") || firstText(body, /<[^>]*class=["'][^"']*module-poster-item-title[^"']*["'][^>]*>([\s\S]*?)<\/[^>]+>/iu) || strip(body)
+      attribute2(attributes, "title") || attribute2(image, "alt") || firstText(body, /<[^>]*class=["'][^"']*module-poster-item-title[^"']*["'][^>]*>([\s\S]*?)<\/[^>]+>/iu) || strip(body)
     );
     if (title === "") continue;
-    const cover = attribute(image, "data-original") || attribute(image, "data-src") || attribute(image, "src");
+    const cover = attribute2(image, "data-original") || attribute2(image, "data-src") || attribute2(image, "src");
     const latest = firstText(body, /<[^>]*class=["'][^"']*module-item-note[^"']*["'][^>]*>([\s\S]*?)<\/[^>]+>/iu);
     unique.set(id, summary(id, title, cover, latest || null));
   }
@@ -218,10 +336,10 @@ function parseDetail(html, id) {
   const title = cleanTitle(firstText(html, /<h1\b[^>]*>([\s\S]*?)<\/h1>/iu)) || `视频 ${id}`;
   const coverContainer = /<[^>]*class=["'][^"']*(?:module-item-cover|module-item-pic)[^"']*["'][^>]*>([\s\S]*?)<\/[^>]+>/iu.exec(html)?.[1] ?? "";
   const coverImage = /<img\b[^>]*>/iu.exec(coverContainer)?.[0] ?? "";
-  const cover = firstAttribute(html, /<meta\b[^>]*property=["']og:image["'][^>]*>/iu, "content") || attribute(coverImage, "data-original") || attribute(coverImage, "data-src") || attribute(coverImage, "src");
+  const cover = firstAttribute(html, /<meta\b[^>]*property=["']og:image["'][^>]*>/iu, "content") || attribute2(coverImage, "data-original") || attribute2(coverImage, "data-src") || attribute2(coverImage, "src");
   const description = firstText(html, /<[^>]*class=["'][^"']*(?:module-info-introduction|vod_content)[^"']*["'][^>]*>([\s\S]*?)<\/[^>]+>/iu);
   const latest = firstText(html, /<[^>]*class=["'][^"']*module-item-note[^"']*["'][^>]*>([\s\S]*?)<\/[^>]+>/iu);
-  const tags = uniqueText([...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/giu)].filter((match) => /\/w\//iu.test(attribute(match[1] ?? "", "href"))).map((match) => strip(match[2] ?? "")));
+  const tags = uniqueText([...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/giu)].filter((match) => /\/w\//iu.test(attribute2(match[1] ?? "", "href"))).map((match) => strip(match[2] ?? "")));
   const item = summary(id, title, cover, latest || null, description || null, tags);
   return frozen({ ...item, aliases: [], catalogUrl: item.url });
 }
@@ -254,7 +372,7 @@ function parseGroups(html, id) {
   const byLine = /* @__PURE__ */ new Map();
   const seen = /* @__PURE__ */ new Set();
   for (const match of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/giu)) {
-    const href = attribute(match[1] ?? "", "href");
+    const href = attribute2(match[1] ?? "", "href");
     const parsed = new RegExp(`/p/${id}-(\\d+)-(\\d+)\\.html`, "iu").exec(href);
     if (parsed?.[1] === void 0 || parsed[2] === void 0) continue;
     const line = Number(parsed[1]);
@@ -262,7 +380,7 @@ function parseGroups(html, id) {
     const key = `${line}:${episode}`;
     if (!Number.isSafeInteger(line) || !Number.isSafeInteger(episode) || seen.has(key)) continue;
     seen.add(key);
-    const title = cleanEpisodeTitle(attribute(match[1] ?? "", "title") || strip(match[2] ?? ""), episode);
+    const title = cleanEpisodeTitle(attribute2(match[1] ?? "", "title") || strip(match[2] ?? ""), episode);
     const entries = byLine.get(line) ?? [];
     entries.push({ episode, title });
     byLine.set(line, entries);
@@ -290,17 +408,17 @@ function parseGroupTitles(html) {
   const titles = [];
   for (const match of html.matchAll(/<div\b([^>]*)>/giu)) {
     const attributes = match[1] ?? "";
-    if (!attribute(attributes, "class").split(/\s+/u).includes("module-tab-item")) continue;
+    if (!attribute2(attributes, "class").split(/\s+/u).includes("module-tab-item")) continue;
     const bodyStart = (match.index ?? 0) + match[0].length;
     const bodyEnd = html.indexOf("</div>", bodyStart);
     const body = bodyEnd < 0 ? "" : html.slice(bodyStart, bodyEnd);
-    const value = attribute(attributes, "data-dropdown-value") || firstText(body, /<span\b[^>]*>([\s\S]*?)<\/span>/iu) || strip(body).replace(/\d+$/u, "").trim();
+    const value = attribute2(attributes, "data-dropdown-value") || firstText(body, /<span\b[^>]*>([\s\S]*?)<\/span>/iu) || strip(body).replace(/\d+$/u, "").trim();
     if (value !== "" && value.length <= 80) titles.push(value);
   }
   return titles;
 }
 function groupTitlesByLine(html, id, titles) {
-  const starts = [...html.matchAll(/<div\b([^>]*)>/giu)].filter((match) => attribute(match[1] ?? "", "class").split(/\s+/u).includes("module-play-list")).map((match) => match.index);
+  const starts = [...html.matchAll(/<div\b([^>]*)>/giu)].filter((match) => attribute2(match[1] ?? "", "class").split(/\s+/u).includes("module-play-list")).map((match) => match.index);
   const byLine = /* @__PURE__ */ new Map();
   for (let index = 0; index < starts.length; index += 1) {
     const title = titles[index];
@@ -355,8 +473,8 @@ function decryptMcuePlayerHtml(html) {
   return decodeJsString(decrypted.trim().replace(/^(?:"|')|(?:"|')$/gu, ""));
 }
 function buildMcueSeed(html) {
-  const order = extractNowMetaId(html, (tag) => /^utf-8$/iu.test(attribute(tag, "charset")));
-  const values = extractNowMetaId(html, (tag) => /^viewport$/iu.test(attribute(tag, "name")));
+  const order = extractNowMetaId(html, (tag) => /^utf-8$/iu.test(attribute2(tag, "charset")));
+  const values = extractNowMetaId(html, (tag) => /^viewport$/iu.test(attribute2(tag, "name")));
   if (order === "" || values === "" || order.length !== values.length) return "";
   return [...order].map((id, index) => ({ id: Number(id), value: values[index] ?? "" })).sort((left, right) => left.id - right.id).map((entry) => entry.value).join("");
 }
@@ -364,7 +482,7 @@ function extractNowMetaId(html, predicate) {
   for (const match of html.matchAll(/<meta\b[^>]*>/giu)) {
     const tag = match[0];
     if (!predicate(tag)) continue;
-    const id = attribute(tag, "id");
+    const id = attribute2(tag, "id");
     if (id.startsWith("now_")) return id.slice(4);
   }
   return "";
@@ -469,14 +587,14 @@ function projectLatestChapter(value) {
   if (title === "" || title.length > 256) return null;
   return frozen({ id: null, title, updatedAt: null, url: null });
 }
-function attribute(value, name) {
+function attribute2(value, name) {
   const quoted = new RegExp(`\\s${escape(name)}\\s*=\\s*(["'])(.*?)\\1`, "iu").exec(value);
   if (quoted?.[2] !== void 0) return decodeJsString(quoted[2]);
   return new RegExp(`\\s${escape(name)}\\s*=\\s*([^\\s>]+)`, "iu").exec(value)?.[1] ?? "";
 }
 function firstAttribute(html, pattern, name) {
   const match = pattern.exec(html);
-  return match === null ? "" : attribute(match[0], name);
+  return match === null ? "" : attribute2(match[0], name);
 }
 function firstText(html, pattern) {
   return strip(pattern.exec(html)?.[1] ?? "");

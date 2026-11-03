@@ -53,8 +53,11 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
   bool _tvMode = false;
   TvDiscoverySession? _tvSession;
   List<_DiscoveryNavigationEntry>? _mobileStack;
+  String? _tvPrimaryTarget;
+  final _tvTabTargets = <String?, String?>{};
 
   TvDiscoveryNavigation? get tvNavigation => _tvMode ? _tvSession?.navigation : null;
+  String? get tvPrimaryTarget => _tvPrimaryTarget;
 
   @override
   DiscoveryPageState build() {
@@ -86,6 +89,8 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
       _tvSession?.dispose();
       _tvSession = null;
       _mobileStack = null;
+      _tvTabTargets.clear();
+      _tvPrimaryTarget = null;
       _catalogReloadSourceId = selected;
       _invalidateSourceCache(selected);
       _cancelActiveRequest();
@@ -172,6 +177,8 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
     _tvSession?.dispose();
     _tvSession = null;
     _mobileStack = null;
+    _tvTabTargets.clear();
+    _tvPrimaryTarget = null;
     final generation = ++_latestGeneration;
     _cancelActiveRequest();
     await _saveSelectedSource(pluginId);
@@ -200,6 +207,8 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
       }
       _tvSession?.dispose();
       _tvSession = null;
+      _tvTabTargets.clear();
+      _tvPrimaryTarget = null;
       final mobile = _mobileStack;
       _mobileStack = null;
       if (mobile != null && mobile.isNotEmpty && mobile.last.document.pluginId == state.selectedSourceId) {
@@ -235,12 +244,32 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
     state = state.withSources(state.sources);
   }
 
-  Future<void> selectTvTab(String? target) {
+  Future<void> selectTvTab(String? primaryTarget) {
     final session = _tvSession;
     final pluginId = state.selectedSourceId;
-    if (session == null || pluginId == null || !session.contains(target)) return Future.value();
+    if (session == null || pluginId == null || !session.contains(primaryTarget)) return Future.value();
+    _tvPrimaryTarget = primaryTarget;
+    final target = _tvTabTargets[primaryTarget] ?? primaryTarget;
+    return _selectTvDocument(pluginId, target);
+  }
+
+  Future<void> selectTvFilter(String target) {
+    final pluginId = state.selectedSourceId;
+    if (!_tvMode || _tvSession == null || pluginId == null) return Future.value();
+    _tvTabTargets[_tvPrimaryTarget] = target;
+    return _selectTvDocument(pluginId, target);
+  }
+
+  Future<void> resetTvFilters() {
+    final target = _tvPrimaryTarget;
+    if (target == null) return Future.value();
+    _tvTabTargets.remove(target);
+    return selectTvTab(target);
+  }
+
+  Future<void> _selectTvDocument(String pluginId, String? target) {
     if (state.target == target && state.navigationDepth == 0 && state.error == null) return Future.value();
-    final cached = session.read(target);
+    final cached = _tvSession!.read(target);
     if (cached == null) return _loadDocument(pluginId: pluginId, target: target, resetStack: true);
     ++_latestGeneration;
     _cancelActiveRequest();
@@ -436,7 +465,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
     }
     try {
       final session = _tvMode ? _tvSession : null;
-      final result = session != null && target != null && session.contains(target)
+      final result = session != null && target != null && (session.contains(target) || !push)
           ? await session.load(target, refresh: true)
           : await runCancellableSourceRequest(_gateway, cancellation, () => _gateway.discover(pluginId: pluginId, target: target));
       if (!_isCurrent(requestGeneration) || result is! PluginDiscoveryDocumentResult) {
@@ -463,7 +492,8 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
       _clearPendingCategory(requestGeneration);
       final appError = AppError.fromUnknown(error);
       final current = _stack.lastOrNull;
-      final uncachedTvTab = _tvMode && _tvSession?.contains(target) == true && !hasCachedDocument && current?.target != target;
+      final uncachedTvTab =
+          _tvMode && (_tvSession?.contains(target) == true || resetStack) && !hasCachedDocument && current?.target != target;
       if (!uncachedTvTab && (hasCachedDocument || !push) && current != null && state.selectedSourceId == pluginId) {
         _publish(current.document);
         state = state.withRefreshError(appError);
@@ -551,6 +581,11 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
     String? loadingCollectionId,
   }) {
     if (_tvMode && _stack.lastOrNull?.target == null) _prepareTvHome(result);
+    if (_tvMode && _tvSession != null) {
+      for (final filters in result.document.components.whereType<PluginDiscoveryFiltersComponent>()) {
+        _tvSession?.prefetchTargets(filters.groups.firstOrNull?.options.map((option) => option.target) ?? const []);
+      }
+    }
     state = DiscoveryPageState.resolved(
       sources: sources ?? state.sources,
       selectedSourceId: selectedSourceId ?? state.selectedSourceId!,

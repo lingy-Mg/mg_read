@@ -9,6 +9,7 @@
 import { createDecipheriv, createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { MgReadPluginContext } from '@mgread/source-api';
+import { libraryFilters, libraryHasNext, libraryRoute, libraryState } from './library.mjs';
 
 type Json = Record<string, unknown>;
 type Context = MgReadPluginContext;
@@ -28,6 +29,7 @@ const pageHeaders = Object.freeze({
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
 });
 const categories = Object.freeze([
+  ['library', '动漫库', '/w/1.html'],
   ['today', '今日更新', '/label/new.html'],
   ['hot', '热榜', '/label/hot.html'],
   ['week', '本周追番', '/label/week.html'],
@@ -76,6 +78,26 @@ export async function discover(request: {
   if (request.target === null) {
     if (request.cursor !== null || request.collectionId !== null) throw new Error('Initial discovery request is invalid.');
     return rootDocument(request.pageSize);
+  }
+  if (request.target === 'category:library' || request.target.startsWith('library:')) {
+    const state = libraryState(request.target);
+    const page = request.cursor === null ? 1 : Number(new RegExp(`^${escape(request.target)}:(\\d+)$`, 'u').exec(request.cursor)?.[1]);
+    if (!Number.isSafeInteger(page) || page < 1 || page > 10_000 || (request.cursor !== null && page < 2)) throw new Error('Library cursor is invalid.');
+    const collectionId = 'video:library';
+    if (request.collectionId !== null && request.collectionId !== collectionId) throw new Error('Discovery collection is invalid.');
+    const html = await fetchText(`${base}${libraryRoute(state, page)}`);
+    // One upstream page contains 35 cards. Keep that complete bounded page so
+    // the host's page-size hint cannot silently discard the other 15 cards.
+    const values = parseListing(html).slice(0, 50);
+    const items = values.map((content) => frozen({ content, rank: null, metric: null, recommendation: null }));
+    const continuation = page < 10_000 && libraryHasNext(html, state, page)
+      ? { target: request.target, cursor: `${request.target}:${page + 1}` } : null;
+    if (request.collectionId !== null) return frozen({ kind: 'append' as const, collectionId, items, continuation });
+    return frozen({ kind: 'document' as const, document: { components: [
+      ...libraryFilters(html),
+      { type: 'section', id: 'library-results', title: '动漫库', subtitle: null,
+        children: [{ type: 'contentCollection', id: collectionId, layout: 'coverGrid', items, continuation }] },
+    ] } });
   }
   const category = categories.find(([id]) => request.target === `category:${id}`);
   if (category === undefined) throw new Error('Discovery target is invalid.');

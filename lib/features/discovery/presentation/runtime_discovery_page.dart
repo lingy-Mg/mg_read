@@ -15,13 +15,13 @@
 /// - 根发现页的返回交给应用；只有本地层级拦截 Escape。
 /// - TV 页面使用独立焦点域；内容过渡中的旧页面不参与遥控遍历。
 /// - TV 二级分类使用屏幕可用宽度；普通模式保留窄列表阅读宽度。
-/// - TV 根标签固定在内容外，各标签独立保存滚动位置；导航投影来自 application。
+/// - TV 一级标签由共享外栏显示；内容页只保留二级分类与筛选，按一级标签保存滚动位置。
 ///
 library;
 
 import 'source_preview_page.dart';
 import '../application/tv_discovery_session.dart';
-import 'widgets/tv_discovery_tabs.dart';
+import 'widgets/discovery_filters.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -41,6 +41,7 @@ import 'package:mg_read/features/discovery/presentation/widgets/discovery_profil
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_search_input.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/tv_source_navigation_scope.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_focus_region.dart';
@@ -72,8 +73,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
     this.contentFailureCopyPayload,
     this.onCopyFailure = _copyDiscoveryFailure,
     this.tvNavigation,
-    this.tvTarget,
-    this.onTvTabSelected,
+    this.tvPrimaryTarget,
     super.key,
   });
 
@@ -101,18 +101,20 @@ class RuntimeDiscoveryPage extends StatelessWidget {
   final String? contentFailureCopyPayload;
   final DiscoveryFailureCopy onCopyFailure;
   final TvDiscoveryNavigation? tvNavigation;
-  final String? tvTarget;
-  final ValueChanged<String?>? onTvTabSelected;
+  final String? tvPrimaryTarget;
 
   @override
   Widget build(BuildContext context) {
     final result = this.result;
-    final components = identical(result, tvNavigation?.home) && result != null
-        ? tvNavigation!.homeContent
+    final components = tvNavigation != null && result != null
+        ? tvNavigation!.contentFor(result)
         : result?.document.components ?? const <PluginDiscoveryComponent>[];
     final resolvedSourceName = sourceName ?? result?.sourceName ?? '当前来源';
     final isNestedPage = navigationDepth > 0;
     final tv = TvModeScope.isEnabled(context);
+    final outer = TvSourceNavigationScope.maybeOf(context);
+    final tvContent = tv && outer?.showContent == true;
+    final tvTitle = outer?.entries.where((entry) => entry.target == outer.target).firstOrNull?.label ?? resolvedSourceName;
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return BookCoverSourceScope(
       pluginId: result?.pluginId ?? 'unavailable',
@@ -141,13 +143,6 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                   bottom: false,
                   child: Column(
                     children: [
-                      if (tv && tvNavigation != null && onTvTabSelected != null)
-                        TvDiscoveryTabs(
-                          key: ValueKey(tvNavigation!.home.pluginId),
-                          navigation: tvNavigation!,
-                          target: tvTarget,
-                          onSelected: onTvTabSelected!,
-                        ),
                       Expanded(
                         child: LayoutBuilder(
                           builder: (BuildContext context, BoxConstraints constraints) {
@@ -184,7 +179,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                                     child: ListView(
                                       key: tvNavigation == null
                                           ? PageStorageKey<int>(navigationDepth)
-                                          : PageStorageKey<(String, String?)>((tvNavigation!.home.pluginId, tvTarget)),
+                                          : PageStorageKey<(String, String?)>((tvNavigation!.home.pluginId, tvPrimaryTarget)),
                                       padding: EdgeInsets.fromLTRB(
                                         pagePadding,
                                         AppSpacing.pageHeaderTopPaddingFor(context),
@@ -193,7 +188,11 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                                       ),
                                       children: <Widget>[
                                         DiscoveryTopBar(
-                                          title: isNestedPage ? _nestedPageTitle(components) ?? '发现' : '发现',
+                                          title: isNestedPage
+                                              ? _nestedPageTitle(components) ?? '发现'
+                                              : tvContent
+                                              ? tvTitle
+                                              : '发现',
                                           sourceName: resolvedSourceName,
                                           onSourcePressed: onSourcePressed,
                                           onSearchPressed:
@@ -203,7 +202,8 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                                           onBackPressed: isNestedPage ? onBackRequested : null,
                                           barKey: isNestedPage ? const Key('runtime-discovery-nested-header') : null,
                                           backButtonKey: isNestedPage ? const Key('runtime-discovery-back') : null,
-                                          showSourceSelector: !isNestedPage,
+                                          showSourceSelector: !isNestedPage && !tvContent,
+                                          showSearchAction: !tvContent,
                                           showThemeToggle: false,
                                         ),
                                         if (result != null && isContentLoading)
@@ -315,6 +315,7 @@ class _DiscoveryComponentRenderer extends StatelessWidget {
   Widget build(BuildContext context) => KeyedSubtree(
     key: ValueKey<String>('runtime-discovery-component-${component.id}'),
     child: switch (component) {
+      PluginDiscoveryFiltersComponent filters => DiscoveryFilters(component: filters, pluginId: pluginId, onSelected: onTabSelected),
       PluginDiscoveryTabsComponent(:final tabs, :final selectedTabId) => _TabsComponent(
         component: PluginDiscoveryTabsComponent(id: component.id, tabs: tabs, selectedTabId: selectedTabId),
         onSelected: onTabSelected,

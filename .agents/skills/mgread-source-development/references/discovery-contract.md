@@ -12,6 +12,9 @@
 
 ## 当前组件与布局
 
+- 筛选：`filters` 包含来源命名的 `groups`、各组 `options/selectedOptionId` 与 `resetTarget`；最多 8 组、每组 64 个选项。
+  选项沿用 tab 的 `id/label/target/icon` 形状。首组表达二级分类，其余条件由 TV 确认面板或手机筛选行应用。
+
 - 容器：`tabs`、`section`、`group`、`text`、`divider`。
 - 输入：`searchInput` 提供必填有界 `label/placeholder/submitLabel`；宿主在内容区收集文本，仅提交时调用
   当前来源 `source.search.v1`，就地显示结果并复用详情入口。来源负责链接/BV/关键词解析；不得在宿主硬编码站点入口。

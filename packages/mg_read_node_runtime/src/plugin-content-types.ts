@@ -14,6 +14,8 @@ export const MAX_PAGE_SIZE = 50;
 export const MAX_SEARCH_ITEMS = 50;
 export const MAX_SEARCH_SUGGESTIONS = 50;
 export const MAX_DISCOVERY_TABS = 16;
+export const MAX_DISCOVERY_FILTER_GROUPS = 8;
+export const MAX_DISCOVERY_FILTER_OPTIONS = 64;
 export const MAX_DISCOVERY_COMPONENTS = 128;
 export const MAX_DISCOVERY_DEPTH = 8;
 export const MAX_DISCOVERY_ITEMS = 50;
@@ -229,6 +231,21 @@ export interface PluginDiscoveryTabsComponent extends JsonObject {
   readonly type: "tabs";
 }
 
+/** Source-owned filter state and combined navigation targets; host owns UI. */
+export interface PluginDiscoveryFilterGroup extends JsonObject {
+  readonly id: string;
+  readonly label: string;
+  readonly selectedOptionId: string | null;
+  readonly options: readonly PluginDiscoveryTab[];
+}
+
+export interface PluginDiscoveryFiltersComponent extends JsonObject {
+  readonly type: "filters";
+  readonly id: string;
+  readonly groups: readonly PluginDiscoveryFilterGroup[];
+  readonly resetTarget: string;
+}
+
 export interface PluginDiscoverySectionComponent extends JsonObject {
   readonly children: readonly PluginDiscoveryComponent[];
   readonly icon?: PluginDiscoveryIcon | null;
@@ -292,6 +309,7 @@ export interface PluginDiscoveryDividerComponent extends JsonObject {
 }
 
 export type PluginDiscoveryComponent =
+  | PluginDiscoveryFiltersComponent
   | PluginDiscoveryTabsComponent
   | PluginDiscoverySectionComponent
   | PluginDiscoveryGroupComponent

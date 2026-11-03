@@ -50,7 +50,7 @@ void main() {
   for (final destination in ['discover', 'search', 'settings']) {
     testWidgets('TV $destination back returns home before double-back exit', (tester) async {
       await _startTvApp(tester);
-      await tester.tap(find.byKey(Key('tv-nav-$destination')));
+      await tester.tap(find.byKey(Key('app-nav-${destination == 'settings' ? 'profile' : destination}')));
       await tester.pumpAndSettle();
 
       await tester.binding.handlePopRoute();
@@ -73,7 +73,7 @@ void main() {
   for (final key in [LogicalKeyboardKey.escape, LogicalKeyboardKey.goBack]) {
     testWidgets('TV runtime discovery ${key.keyLabel} returns home', (tester) async {
       await _startTvApp(tester, runtimeDiscovery: true);
-      await tester.tap(find.byKey(const Key('tv-nav-discover')));
+      await tester.tap(find.byKey(const Key('app-nav-discover')));
       await tester.pumpAndSettle();
       expect(find.text('测试发现内容'), findsOneWidget);
 
@@ -86,7 +86,7 @@ void main() {
 
   testWidgets('TV detail back retains discovery, then home requires its own double back', (tester) async {
     final router = await _startTvApp(tester, runtimeDiscovery: true);
-    await tester.tap(find.byKey(const Key('tv-nav-discover')));
+    await tester.tap(find.byKey(const Key('app-nav-discover')));
     await tester.pumpAndSettle();
     final context = tester.element(find.text('测试发现内容'));
     showSourceContentDetailSheet(
@@ -232,7 +232,7 @@ void main() {
 
   testWidgets('holding TV back does not cross multiple destinations or confirm exit', (tester) async {
     await _startTvApp(tester, runtimeDiscovery: true);
-    await tester.tap(find.byKey(const Key('tv-nav-discover')));
+    await tester.tap(find.byKey(const Key('app-nav-discover')));
     await tester.pumpAndSettle();
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.escape);
@@ -266,7 +266,7 @@ void main() {
     await _startTvApp(tester);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('tv-nav-discover')));
+    await tester.tap(find.byKey(const Key('app-nav-discover')));
     await tester.pumpAndSettle();
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
@@ -278,7 +278,12 @@ void main() {
 
   testWidgets('TV dialogs and home filters consume back before the exit prompt', (tester) async {
     await _startTvApp(tester);
-    await tester.tap(find.byKey(const Key('tv-nav-movies')));
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('tv-nav-reading')),
+      220,
+      scrollable: find.descendant(of: find.byType(CustomScrollView), matching: find.byType(Scrollable)).first,
+    );
+    await tester.tap(find.byKey(const Key('tv-nav-reading')));
     await tester.pumpAndSettle();
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
@@ -377,7 +382,7 @@ Future<GoRouter> _startTvApp(WidgetTester tester, {bool runtimeDiscovery = false
 }
 
 Future<void> _openTvDetail(WidgetTester tester) async {
-  await tester.tap(find.byKey(const Key('tv-nav-discover')));
+  await tester.tap(find.byKey(const Key('app-nav-discover')));
   await tester.pumpAndSettle();
   final context = tester.element(find.text('测试发现内容'));
   showSourceContentDetailSheet(

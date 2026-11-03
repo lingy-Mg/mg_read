@@ -1072,6 +1072,7 @@ PluginDiscoveryComponent _decodeDiscoveryComponent(
           )
           .toList(growable: false);
   return switch (type) {
+    'filters' => _decodeDiscoveryFilters(item, id),
     'tabs' when depth == 1 && isFirstRootComponent => _decodeDiscoveryTabs(
       item,
       id,

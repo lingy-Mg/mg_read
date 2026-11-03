@@ -41,7 +41,7 @@ test('fixture flow covers discovery, search, detail, neutral groups and both pla
   assert.equal(root.document.components[0].title, '今日更新');
   assert.equal(root.document.components[0].children[0].items[0].content.contentKind, 'video');
   assert.equal(root.document.components[0].children[0].items[0].content.coverOrientation, 'portrait');
-  assert.equal(root.document.components[1].children[0].categories.length, 4);
+  assert.equal(root.document.components[1].children[0].categories.length, 5);
   const discovery = await plugin.discover({ target: 'category:hot', cursor: null, collectionId: null, pageSize: 5 });
   assert.equal(discovery.document.components[0].children[0].items.length, 2);
   const results = await plugin.search({ query: 'fixture', cursor: null, pageSize: 5 });

@@ -13,7 +13,7 @@ import 'package:mg_read/features/library/presentation/tv_library_data.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_focus_region.dart';
-import 'package:mg_read/shared/presentation/widgets/tv_destination_action.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_top_navigation.dart';
 import 'tv_library_cards.dart';
 
 class TvLibraryShell extends StatefulWidget {
@@ -159,43 +159,15 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: margin, vertical: 12),
-                      child: Wrap(
-                        spacing: 12,
-                        runSpacing: 8,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(right: 12),
-                            child: Text('MgRead TV', style: theme.textTheme.headlineSmall),
-                          ),
-                          _nav(
-                            '首页',
-                            'home',
-                            () => _select(TvLibraryFilter.all),
-                            selected: _filter == TvLibraryFilter.all,
-                            autofocus: hero == null,
-                            activateOnFocus: true,
-                          ),
-                          _nav(
-                            '电影',
-                            'movies',
-                            () => _select(TvLibraryFilter.movies),
-                            selected: _filter == TvLibraryFilter.movies,
-                            activateOnFocus: true,
-                          ),
-                          _nav(
-                            '剧集',
-                            'series',
-                            () => _select(TvLibraryFilter.series),
-                            selected: _filter == TvLibraryFilter.series,
-                            activateOnFocus: true,
-                          ),
-                          _nav('发现', 'discover', () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.discover)),
-                          _nav('设置', 'settings', () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.profile)),
-                          _nav('搜索', 'search', () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.search)),
-                        ],
+                    SizedBox(
+                      height: AppSpacing.bottomNavigationHeight,
+                      child: TvTopNavigation(
+                        selected: AppNavigationDestination.home,
+                        homeFocusNode: _homeFocus,
+                        homeSelected: _filter == TvLibraryFilter.all,
+                        autofocus: hero == null,
+                        onHomeSelected: () => _select(TvLibraryFilter.all),
+                        onSelected: (destination) => widget.callbacks.onNavigationSelected?.call(destination),
                       ),
                     ),
                     Expanded(
@@ -341,7 +313,6 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
   }
 
   Widget _transitionContent(Widget child) => TweenAnimationBuilder<double>(
-    key: ValueKey(_filter),
     tween: Tween(begin: 0, end: 1),
     duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 220),
     curve: Curves.easeOutCubic,
@@ -353,25 +324,6 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
   );
 
   Widget _nav(String text, String id, VoidCallback action, {bool selected = false, bool autofocus = false, bool activateOnFocus = false}) {
-    final destination = switch (id) {
-      'home' => AppNavigationDestination.home,
-      'discover' => AppNavigationDestination.discover,
-      'settings' => AppNavigationDestination.profile,
-      'search' => AppNavigationDestination.search,
-      _ => null,
-    };
-    if (destination != null) {
-      return TvDestinationAction(
-        key: Key('tv-nav-$id'),
-        destination: destination,
-        current: AppNavigationDestination.home,
-        onPressed: action,
-        selected: selected,
-        autofocus: autofocus,
-        focusNode: id == 'home' ? _homeFocus : null,
-        child: Text(text, style: Theme.of(context).textTheme.titleMedium),
-      );
-    }
     return TvFocusable(
       key: Key('tv-nav-$id'),
       focusNode: id == 'home' ? _homeFocus : null,

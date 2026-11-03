@@ -1,141 +1,201 @@
-/// TV source-home expansion, pinned categories and focus-triggered cache hits.
+/// Outer TV source navigation and second-level library filter acceptance.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mg_read/app/app_theme.dart';
-import 'package:mg_read/app/app_tv_theme.dart';
+import 'package:mg_read/app/app_router.dart';
+import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/discovery/application/discovery_page_controller.dart';
 import 'package:mg_read/features/discovery/application/discovery_source_selection_store.dart';
-import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
-import 'package:mg_read/features/discovery/presentation/discovery_destination_page.dart';
-import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
-import 'package:mg_read/shared/presentation/widgets/tv_destination_action.dart';
+import 'package:mg_read/features/library/presentation/widgets/tv_library_shell.dart';
 import '../../../support/tv_discovery_test_fixture.dart';
+import '../../../app/mg_read_app_test_support.dart';
 
 void main() {
+  setUp(
+    () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('mgread/rendering_settings'),
+      (_) async => {'selected': 'auto', 'activeRenderer': 'opengl', 'restartRequired': false},
+    ),
+  );
+  tearDown(
+    () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('mgread/rendering_settings'),
+      null,
+    ),
+  );
   setUpAll(() async {
     await (FontLoader(
       'packages/novel_reader_ui/MiSans',
     )..addFont(rootBundle.load('packages/novel_reader_ui/assets/fonts/MiSansVF.ttf'))).load();
     await (FontLoader('MaterialIcons')..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
   });
-
-  testWidgets('source-named home expands every item and category focus uses preloaded content', (tester) async {
-    final gateway = TvDiscoveryTestGateway()..autoComplete = true;
+  testWidgets('outer tabs replace movie and series while library retains secondary filters', (tester) async {
+    final gateway = TvDiscoveryTestGateway()
+      ..autoComplete = true
+      ..includeLibrary = true;
     await _mount(tester, gateway);
-    expect(find.byKey(const ValueKey('tv-discovery-home')), findsOneWidget);
-    expect(find.text('首页全部推荐'), findsOneWidget);
-    expect(find.text('动漫分类'), findsNothing);
+    final container = ProviderScope.containerOf(tester.element(find.byType(TvLibraryShell)));
+    final controller = container.read(discoveryPageControllerProvider.notifier);
+    final router = container.read(appRouterProvider);
+    final outer = find.byKey(const Key('tv-outer-navigation'));
+    expect(find.descendant(of: outer, matching: find.text('樱花动漫')), findsOneWidget);
+    expect(find.descendant(of: outer, matching: find.text('动漫库')), findsOneWidget);
+    expect(find.text('电影'), findsNothing);
+    expect(find.text('剧集'), findsNothing);
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/tv_discovery_source_tabs.png'));
-    final tabs = find.byKey(const Key('tv-discovery-tabs'));
-    final tabsTop = tester.getTopLeft(tabs).dy;
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('runtime-discovery-cover-home-14')),
-      240,
-      scrollable: find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)).first,
-    );
-    expect(tester.getTopLeft(tabs).dy, tabsTop);
-    final homeFocus = _focus(tester, 'home');
-    homeFocus.requestFocus();
+    _focus(tester, find.byKey(const Key('app-nav-home'))).requestFocus();
     await tester.pumpAndSettle();
-    final bodyScroll = find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)).first;
-    final homeOffset = tester.state<ScrollableState>(bodyScroll).position.pixels;
-    expect(homeOffset, greaterThan(0));
-    final before = gateway.requests.length;
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pumpAndSettle();
-    expect(find.text('分类 today'), findsOneWidget);
+    expect(router.routeInformationProvider.value.uri.toString(), '/discover?tv=content');
+    expect(find.text('首页全部推荐'), findsOneWidget);
+    expect(find.byKey(const Key('tv-discovery-tabs')), findsNothing);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pumpAndSettle();
+    expect(controller.tvPrimaryTarget, 'library');
+    expect(find.byKey(const Key('tv-open-filters')), findsOneWidget);
+    expect(find.descendant(of: outer, matching: find.text('日本动漫')), findsNothing);
+    final before = gateway.requests.length;
+    _focus(tester, find.byKey(const ValueKey(('discovery-filter', 'type', 'jp')))).requestFocus();
+    await tester.pumpAndSettle();
+    expect(container.read(discoveryPageControllerProvider).target, 'library:jp');
+    expect(FocusManager.instance.primaryFocus, _focus(tester, find.byKey(const ValueKey(('discovery-filter', 'type', 'jp')))));
     expect(gateway.requests, hasLength(before));
-    expect(FocusManager.instance.primaryFocus, _focus(tester, 'today'));
-    expect(find.byKey(const Key('runtime-discovery-back')), findsNothing);
+    expect(controller.tvPrimaryTarget, 'library');
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/tv_discovery_category_tabs.png'));
+    await tester.tap(find.byKey(const Key('tv-open-filters')));
+    await tester.pumpAndSettle();
+    _focus(tester, find.byKey(const ValueKey(('discovery-filter', 'genre', 'comedy')))).requestFocus();
+    await tester.pumpAndSettle();
+    expect(container.read(discoveryPageControllerProvider).target, 'library:jp', reason: 'filters require OK');
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(container.read(discoveryPageControllerProvider).target, 'library:jp:comedy');
+    for (final key in [('area', 'jp'), ('year', '2026')]) {
+      final option = find.byKey(ValueKey(('discovery-filter', key.$1, key.$2)));
+      await tester.ensureVisible(option);
+      _focus(tester, option).requestFocus();
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+    }
+    expect(container.read(discoveryPageControllerProvider).target, 'library:jp:comedy:area-jp:2026');
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/tv_anime_library_filter_panel.png'));
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<Object>(('tv-source-tab', 'sakura', 'today'))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<Object>(('tv-source-tab', 'sakura', 'library'))));
+    await tester.pumpAndSettle();
+    expect(container.read(discoveryPageControllerProvider).target, 'library:jp:comedy:area-jp:2026');
+    await tester.tap(find.byKey(const Key('tv-reset-filters')));
+    await tester.pumpAndSettle();
+    expect(container.read(discoveryPageControllerProvider).target, 'library');
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(find.text('首页全部推荐'), findsOneWidget);
-    expect(FocusManager.instance.primaryFocus, homeFocus);
-    expect(tester.state<ScrollableState>(bodyScroll).position.pixels, closeTo(homeOffset, 1));
+    expect(container.read(discoveryPageControllerProvider).target, isNull);
+    expect(FocusManager.instance.primaryFocus, _focus(tester, find.byKey(const ValueKey<Object>(('tv-source-tab', 'sakura', null)))));
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(router.routeInformationProvider.value.uri.path, '/');
     expect(tester.takeException(), isNull);
   });
-
-  testWidgets('rapid category focus keeps its node and rejects an earlier category completion', (tester) async {
-    final gateway = TvDiscoveryTestGateway();
+  testWidgets('changing source in Discovery updates the outer source name and categories', (tester) async {
+    final gateway = TvDiscoveryTestGateway()
+      ..autoComplete = true
+      ..includeLibrary = true;
     await _mount(tester, gateway);
-    final container = ProviderScope.containerOf(tester.element(find.byType(DiscoveryDestinationPage)));
-    _focus(tester, 'home').requestFocus();
+    final container = ProviderScope.containerOf(tester.element(find.byType(TvLibraryShell)));
+    await tester.ensureVisible(find.byKey(const Key('app-nav-discover')));
+    await tester.tap(find.byKey(const Key('app-nav-discover')));
     await tester.pumpAndSettle();
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-    await tester.pump();
-    expect(find.byType(LinearProgressIndicator), findsOneWidget);
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-    await tester.pump();
-    final hotFocus = _focus(tester, 'hot');
-    expect(FocusManager.instance.primaryFocus, hotFocus);
-    gateway.complete('today');
-    await tester.pump();
-    expect(container.read(discoveryPageControllerProvider).target, 'hot');
-    gateway.complete('hot');
+    expect(find.byKey(const Key('tv-discovery-sources')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('tv-source-choice-other')));
     await tester.pumpAndSettle();
-    expect(find.text('分类 hot'), findsOneWidget);
-    expect(FocusManager.instance.primaryFocus, hotFocus);
-    gateway.autoComplete = true;
-    for (final gate in gateway.gates.values) {
-      if (!gate.isCompleted) gate.complete();
-    }
+    final outer = find.byKey(const Key('tv-outer-navigation'));
+    expect(find.descendant(of: outer, matching: find.text('备用动漫')), findsOneWidget);
+    expect(find.descendant(of: outer, matching: find.text('其他栏目')), findsOneWidget);
+    expect(find.descendant(of: outer, matching: find.text('动漫库')), findsNothing);
+    expect(find.descendant(of: outer, matching: find.text('樱花动漫')), findsNothing);
+    expect(await container.read(discoverySourceSelectionStoreProvider).load(), 'other');
+    await tester.ensureVisible(find.byKey(const Key('app-nav-home')));
+    await tester.tap(find.byKey(const Key('app-nav-home')));
     await tester.pumpAndSettle();
+    expect(find.byType(TvLibraryShell), findsOneWidget);
+    expect(find.descendant(of: outer, matching: find.text('备用动漫')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
-
-  testWidgets('pinned navigation fits a short screen with large text', (tester) async {
-    final gateway = TvDiscoveryTestGateway()..autoComplete = true;
+  testWidgets('all genre options remain reachable by remote on a short large-text screen', (tester) async {
+    final gateway = TvDiscoveryTestGateway()
+      ..autoComplete = true
+      ..includeLibrary = true;
     await _mount(tester, gateway, size: const Size(640, 360), scale: 1.6);
-    _focus(tester, 'home').requestFocus();
+    final container = ProviderScope.containerOf(tester.element(find.byType(TvLibraryShell)));
+    await container.read(discoveryPageControllerProvider.notifier).selectTvTab('library');
+    container.read(appRouterProvider).go('/discover?tv=content');
     await tester.pumpAndSettle();
-    for (var i = 0; i < 4; i++) {
+    await tester.ensureVisible(find.byKey(const Key('tv-open-filters')));
+    await tester.tap(find.byKey(const Key('tv-open-filters')));
+    await tester.pumpAndSettle();
+    final options = find.descendant(
+      of: find.byKey(const Key('tv-filter-dialog')),
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget.key is ValueKey<(String, String, String)> && (widget.key! as ValueKey<(String, String, String)>).value.$2 == 'genre',
+      ),
+    );
+    expect(options, findsNWidgets(45));
+    _focus(tester, options.first).requestFocus();
+    await tester.pumpAndSettle();
+    for (var i = 1; i < 45; i++) {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.pumpAndSettle();
     }
-    expect(FocusManager.instance.primaryFocus, _focus(tester, 'new'));
-    expect(find.byKey(const ValueKey('tv-discovery-tab-new')).hitTestable(), findsOneWidget);
+    expect(FocusManager.instance.primaryFocus, _focus(tester, options.last));
+    expect(options.last.hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('long outer navigation fits a short screen and Search still requires OK', (tester) async {
+    final gateway = TvDiscoveryTestGateway()
+      ..autoComplete = true
+      ..includeLibrary = true;
+    await _mount(tester, gateway, size: const Size(640, 360), scale: 1.6);
+    final container = ProviderScope.containerOf(tester.element(find.byType(TvLibraryShell)));
+    final router = container.read(appRouterProvider);
+    _focus(tester, find.byKey(const Key('app-nav-home'))).requestFocus();
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 9; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+    }
+    final search = find.byKey(const Key('app-nav-search'));
+    expect(FocusManager.instance.primaryFocus, _focus(tester, search));
+    expect(search.hitTestable(), findsOneWidget);
+    expect(router.routeInformationProvider.value.uri.path, '/profile');
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(router.routeInformationProvider.value.uri.path, '/search');
     expect(tester.takeException(), isNull);
   });
 }
 
-FocusNode _focus(WidgetTester tester, String tab) => tester
-    .widget<Focus>(
-      find
-          .descendant(of: find.byKey(ValueKey(tab == 'home' ? 'tv-discovery-home' : 'tv-discovery-tab-$tab')), matching: find.byType(Focus))
-          .first,
-    )
-    .focusNode!;
-
+FocusNode _focus(WidgetTester tester, Finder target) =>
+    tester.widget<Focus>(find.descendant(of: target, matching: find.byType(Focus)).first).focusNode!;
 Future<void> _mount(WidgetTester tester, TvDiscoveryTestGateway gateway, {Size size = const Size(1280, 720), double scale = 1}) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
+  tester.platformDispatcher.textScaleFactorTestValue = scale;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  await tester.pumpWidget(
-    ProviderScope(
-      overrides: [
-        sourceContentGatewayProvider.overrideWithValue(gateway),
-        discoverySourceSelectionStoreProvider.overrideWithValue(TvDiscoveryTestSelection()),
-      ],
-      child: MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: appTvTheme(AppTheme.dark()),
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
-          child: TvModeScope(
-            enabled: true,
-            onChanged: (_) {},
-            child: TvNavigationHandoff(child: TvRemoteShortcuts(child: child!)),
-          ),
-        ),
-        home: DiscoveryDestinationPage(onDestinationRequested: (_) {}),
-      ),
-    ),
-  );
+  addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+  final settings = await createTestAppSettings();
+  addTearDown(settings.close);
+  await settings.set(AppSettingKeys.tvMode, true);
+  await settings.set(AppSettingKeys.sourceAutoUpdateCheckEnabled, false);
+  await tester.pumpWidget(testMgReadApp(settings, sourceGateway: gateway));
   await tester.pumpAndSettle();
 }

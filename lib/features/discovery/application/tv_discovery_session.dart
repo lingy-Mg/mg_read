@@ -49,11 +49,17 @@ class TvDiscoveryNavigation {
 
   /// Retains every homepage content section while removing promoted controls.
   List<PluginDiscoveryComponent> get homeContent => _content(home.document.components);
+  List<PluginDiscoveryComponent> contentFor(PluginDiscoveryDocumentResult result) => _content(result.document.components);
 
   List<PluginDiscoveryComponent> _content(List<PluginDiscoveryComponent> components) => [
     for (final component in components)
       ...switch (component) {
-        PluginDiscoveryTabsComponent() || PluginDiscoveryCategoryCollectionComponent() => <PluginDiscoveryComponent>[],
+        PluginDiscoveryTabsComponent() =>
+          component.tabs.every((tab) => tabs.any((entry) => entry.target == tab.target)) ? <PluginDiscoveryComponent>[] : [component],
+        PluginDiscoveryCategoryCollectionComponent() =>
+          component.categories.every((category) => tabs.any((entry) => entry.target == category.target))
+              ? <PluginDiscoveryComponent>[]
+              : [component],
         PluginDiscoverySectionComponent() => [
           if (_content(component.children) case final children when children.isNotEmpty)
             PluginDiscoverySectionComponent(
@@ -83,16 +89,22 @@ class TvDiscoverySession {
   int _running = 0;
   bool _disposed = false;
 
-  PluginDiscoveryDocumentResult? read(String? target) => target == null ? navigation.home : _cache[target];
+  PluginDiscoveryDocumentResult? read(String? target) {
+    if (target == null) return navigation.home;
+    final value = _cache.remove(target);
+    if (value != null) _cache[target] = value;
+    return value;
+  }
 
   bool contains(String? target) => navigation.tabs.any((tab) => tab.target == target);
 
   void prefetch() {
-    for (final tab in navigation.tabs) {
-      final target = tab.target;
-      if (target != null) {
-        unawaited(load(target, foreground: false).then<void>((_) {}, onError: (Object _, StackTrace _) {}));
-      }
+    prefetchTargets(navigation.tabs.map((tab) => tab.target).whereType<String>());
+  }
+
+  void prefetchTargets(Iterable<String> targets) {
+    for (final target in targets) {
+      unawaited(load(target, foreground: false).then<void>((_) {}, onError: (Object _, StackTrace _) {}));
     }
   }
 
@@ -117,7 +129,15 @@ class TvDiscoverySession {
   }
 
   void update(String? target, PluginDiscoveryDocumentResult result) {
-    if (!_disposed && target != null) _cache[target] = result;
+    if (!_disposed && target != null) _remember(target, result);
+  }
+
+  void _remember(String target, PluginDiscoveryDocumentResult result) {
+    _cache.remove(target);
+    _cache[target] = result;
+    while (_cache.length > 64) {
+      _cache.remove(_cache.keys.first);
+    }
   }
 
   void _pump() {
@@ -136,7 +156,12 @@ class TvDiscoverySession {
       );
       if (_disposed) throw StateError('TV discovery session closed.');
       if (result is! PluginDiscoveryDocumentResult) throw StateError('Expected a TV discovery document.');
-      _cache[request.target] = result;
+      _remember(request.target, result);
+      if (contains(request.target)) {
+        for (final filters in result.document.components.whereType<PluginDiscoveryFiltersComponent>()) {
+          prefetchTargets(filters.groups.firstOrNull?.options.map((option) => option.target) ?? const []);
+        }
+      }
       request.completer.complete(result);
     } on Object catch (error, stack) {
       request.completer.completeError(error, stack);

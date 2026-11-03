@@ -19,6 +19,7 @@ import 'package:mg_read/app/app_fatal_error_reporter.dart';
 import 'package:mg_read/app/app_runtime_fatal_error_observer.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_tv_theme.dart';
+import 'app_tv_source_navigation.dart';
 import 'package:mg_read/app/app_tv_back_navigation.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/app/data_source_system_error_dialog_host.dart';
@@ -262,7 +263,11 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
                             enabled: tvMode,
                             onChanged: (value) => unawaited(settings.set(AppSettingKeys.tvMode, value)),
                             child: TvNavigationHandoff(
-                              child: TvRemoteShortcuts(enabled: tvMode, child: child ?? const SizedBox.shrink()),
+                              child: AppTvSourceNavigation(
+                                enabled: tvMode,
+                                router: router,
+                                child: TvRemoteShortcuts(enabled: tvMode, child: child ?? const SizedBox.shrink()),
+                              ),
                             ),
                           ),
                         ),

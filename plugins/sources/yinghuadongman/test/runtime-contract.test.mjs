@@ -7,8 +7,8 @@ import * as plugin from '../dist/index.mjs';
 
 test('fixture outputs pass the current Runtime source validators', async () => {
   const validators = await loadRuntimeValidators();
-  const [list, detail, player] = await Promise.all([
-    'list.html', 'detail.html', 'player-direct.html',
+  const [list, detail, player, filters] = await Promise.all([
+    'list.html', 'detail.html', 'player-direct.html', 'library-filters.html',
   ].map((name) => readFile(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')));
   await plugin.activate({
     log: { info() {}, warn() {} },
@@ -19,6 +19,7 @@ test('fixture outputs pass the current Runtime source validators', async () => {
     http: {
       async fetch(input) {
         const path = new URL(input).pathname;
+        if (path.startsWith('/w/')) return new Response(filters + list);
         if (path === '/v/101.html') return new Response(detail);
         if (path === '/p/101-5-1.html') return new Response(player);
         return new Response(list);
@@ -29,6 +30,9 @@ test('fixture outputs pass the current Runtime source validators', async () => {
   const sourceName = 'Fixture Yinghua';
   const discovery = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 5 });
   assert.doesNotThrow(() => validators.validateDiscoverResult(pluginId, sourceName, discovery));
+  const library = await plugin.discover({ target: 'category:library', cursor: null, collectionId: null, pageSize: 20 });
+  const normalized = validators.validateDiscoverResult(pluginId, sourceName, library);
+  assert.equal(normalized.document.components[0].groups[1].options.length, 45);
   const search = await plugin.search({ query: 'fixture', cursor: null, pageSize: 5 });
   assert.doesNotThrow(() => validators.validateSearchResult(pluginId, sourceName, search));
   const info = await plugin.getDetail({ id: search.items[0].id });

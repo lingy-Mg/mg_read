@@ -132,6 +132,8 @@ plugins/sources/                    真实数据源及其他能力参考实现
 - 数据源元数据 `sourceState=available|disabled|invalid`（缺省 `available`）与可选 `sourceStateReason` 声明维护状态，独立于安装启停。
   `disabled/invalid` 禁止发现、搜索及搜索建议，并从发现和搜索来源列表排除；状态随 artifact 和安装索引保存，
   更新为 `available` 后恢复。标记不会删除主应用的详情、目录、正文或受控文件缓存，已缓存内容仍可查看。
+- 发现 `filters` 表达来源拥有的筛选状态：最多 8 组、每组最多 64 个选项，选中 ID 必须属于该组；组合条件与
+  重置使用来源提供的不透明 target。TV 将首组作为二级分类，其余组放入确认式筛选面板，不展开组合条件的笛卡尔积预加载。
 - 数据源只返回允许的语义组件、布局和图标名。`contentKind` 表达小说、漫画、音频、视频等媒介能力；
   `coverOrientation=portrait|square|landscape` 独立表达真实封面的竖版、方形或横版构图，二者不得互相推断。Flutter 宿主按封面构图
   选择通用组件，并拥有主题、尺寸、断点、可访问性、导航和交互实现；横向组件不等同于视频播放器入口，

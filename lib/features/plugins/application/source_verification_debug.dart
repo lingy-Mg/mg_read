@@ -19,6 +19,22 @@ Map<String, Object?> _debugDiscover(PluginDiscoverResult result) => switch (resu
 };
 
 Map<String, Object?> _debugDiscoveryComponent(PluginDiscoveryComponent component) => switch (component) {
+  PluginDiscoveryFiltersComponent(:final groups, :final resetTarget) => <String, Object?>{
+    'type': 'filters',
+    'id': component.id,
+    'resetTarget': resetTarget,
+    'groups': [
+      for (final group in groups)
+        {
+          'id': group.id,
+          'label': group.label,
+          'selectedOptionId': group.selectedOptionId,
+          'options': [
+            for (final option in group.options) {'id': option.id, 'label': option.label, 'target': option.target},
+          ],
+        },
+    ],
+  },
   PluginDiscoveryTabsComponent(:final tabs, :final selectedTabId) => <String, Object?>{
     'type': 'tabs',
     'id': component.id,
