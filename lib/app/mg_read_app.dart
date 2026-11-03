@@ -33,6 +33,7 @@ import 'package:mg_read/features/media/presentation/source_audio_playback_host.d
 import 'package:mg_read/features/reader/presentation/chapter_cache_task_bar.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_destination_action.dart';
 
 /// The root widget for the MgRead host application.
 class MgReadApp extends ConsumerStatefulWidget {
@@ -260,7 +261,9 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
                           child: TvModeScope(
                             enabled: tvMode,
                             onChanged: (value) => unawaited(settings.set(AppSettingKeys.tvMode, value)),
-                            child: TvRemoteShortcuts(enabled: tvMode, child: child ?? const SizedBox.shrink()),
+                            child: TvNavigationHandoff(
+                              child: TvRemoteShortcuts(enabled: tvMode, child: child ?? const SizedBox.shrink()),
+                            ),
                           ),
                         ),
                       ),

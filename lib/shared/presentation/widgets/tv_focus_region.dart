@@ -1,11 +1,14 @@
 /// Page-owned TV traversal and recovery after asynchronous content replacement.
 /// Focus stays within the active page; dialogs retain their own focus scope.
 /// Directional scrolling animates only enough to reveal the next control.
+/// Recovery prefers an already selected control, so restoring a page cannot
+/// activate an unrelated destination whose navigation happens on focus.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'tv_focus_traversal.dart';
+import 'tv_focusable.dart';
 export 'tv_focus_traversal.dart';
 
 class TvFocusRegion extends StatefulWidget {
@@ -42,7 +45,11 @@ class _TvFocusRegionState extends State<TvFocusRegion> {
       _scheduled = false;
       if (!mounted || !_active || !_scope.hasPrimaryFocus) return;
       final nodes = _scope.traversalDescendants.where((node) => node is! FocusScopeNode && node.context != null);
-      if (nodes.isNotEmpty) requestTvFocus(_policy.sortDescendants(nodes, _scope).first);
+      if (nodes.isNotEmpty) {
+        final ordered = _policy.sortDescendants(nodes, _scope);
+        final selected = ordered.where((node) => node.context?.findAncestorWidgetOfExactType<TvFocusable>()?.selected ?? false);
+        requestTvFocus(selected.firstOrNull ?? ordered.first);
+      }
     });
     WidgetsBinding.instance.ensureVisualUpdate();
   }

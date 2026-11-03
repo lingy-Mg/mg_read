@@ -133,7 +133,9 @@ void main() {
         if (!afterRelease) await tester.binding.handlePopRoute();
         await tester.sendKeyUpEvent(key, physicalKey: PhysicalKeyboardKey.escape);
         if (afterRelease) {
-          await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+          // Move into content; left/right on the restored TV navigation now
+          // intentionally switches the destination.
+          await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
           await tester.pump(const Duration(milliseconds: 20));
           await tester.binding.handlePopRoute();
         }

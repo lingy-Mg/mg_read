@@ -80,15 +80,17 @@ class DiscoveryDestinationPage extends ConsumerWidget {
             state.status == DiscoveryPageStatus.loadingContent ||
             state.status == DiscoveryPageStatus.failure ||
             state.status == DiscoveryPageStatus.empty)) {
-      return _DiscoveryRuntimeLayer(
-        visualDepth: 0,
-        onDestinationRequested: onDestinationRequested,
-        onSearchRequested: onSearchRequested,
-        onSourceManagementRequested: onSourceManagementRequested,
-        onTextChapterRequested: onTextChapterRequested,
-        onComicChapterRequested: onComicChapterRequested,
-        onAudioChapterRequested: onAudioChapterRequested,
-        onVideoEpisodeRequested: onVideoEpisodeRequested,
+      return _TvDiscoveryLifecycle(
+        child: _DiscoveryRuntimeLayer(
+          visualDepth: 0,
+          onDestinationRequested: onDestinationRequested,
+          onSearchRequested: onSearchRequested,
+          onSourceManagementRequested: onSourceManagementRequested,
+          onTextChapterRequested: onTextChapterRequested,
+          onComicChapterRequested: onComicChapterRequested,
+          onAudioChapterRequested: onAudioChapterRequested,
+          onVideoEpisodeRequested: onVideoEpisodeRequested,
+        ),
       );
     }
 
@@ -134,35 +136,62 @@ class DiscoveryDestinationPage extends ConsumerWidget {
       DiscoveryPageStatus.loaded => throw StateError('Handled above.'),
     };
 
-    return Scaffold(
-      extendBody: !TvModeScope.isEnabled(context),
-      appBar: AppBar(
-        toolbarHeight: AppSpacing.pageHeaderHeight,
-        title: const AppPageTitle(title: '发现'),
-      ),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560),
-            child: SingleChildScrollView(padding: const EdgeInsets.all(AppSpacing.section), child: content),
+    return _TvDiscoveryLifecycle(
+      child: Scaffold(
+        extendBody: !TvModeScope.isEnabled(context),
+        appBar: TvModeScope.isEnabled(context) && !SourcePreviewScope.active(context)
+            ? AppBottomNavigation(selected: AppNavigationDestination.discover, onSelected: onDestinationRequested)
+            : AppBar(
+                toolbarHeight: AppSpacing.pageHeaderHeight,
+                title: const AppPageTitle(title: '发现'),
+              ),
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: SingleChildScrollView(padding: const EdgeInsets.all(AppSpacing.section), child: content),
+            ),
           ),
         ),
-      ),
-      bottomNavigationBar: SourcePreviewScope.active(context)
-          ? null
-          : SafeArea(
-              top: false,
-              child: AppBottomNavigation(
-                selected: AppNavigationDestination.discover,
-                onSelected: (destination) {
-                  if (destination != AppNavigationDestination.discover) {
-                    onDestinationRequested(destination);
-                  }
-                },
+        bottomNavigationBar: TvModeScope.isEnabled(context) || SourcePreviewScope.active(context)
+            ? null
+            : SafeArea(
+                top: false,
+                child: AppBottomNavigation(
+                  selected: AppNavigationDestination.discover,
+                  onSelected: (destination) {
+                    if (destination != AppNavigationDestination.discover) {
+                      onDestinationRequested(destination);
+                    }
+                  },
+                ),
               ),
-            ),
+      ),
     );
   }
+}
+
+/// Configures TV browsing after dependency changes, outside the build phase.
+class _TvDiscoveryLifecycle extends ConsumerStatefulWidget {
+  const _TvDiscoveryLifecycle({required this.child});
+  final Widget child;
+
+  @override
+  ConsumerState<_TvDiscoveryLifecycle> createState() => _TvDiscoveryLifecycleState();
+}
+
+class _TvDiscoveryLifecycleState extends ConsumerState<_TvDiscoveryLifecycle> {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final enabled = TvModeScope.isEnabled(context);
+    scheduleMicrotask(() {
+      if (mounted) ref.read(discoveryPageControllerProvider.notifier).configureTvMode(enabled);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 /// Keeps one visual discovery layer bound to one controller snapshot depth.
@@ -242,6 +271,9 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
 
     return RuntimeDiscoveryPage(
       result: displayedResult,
+      tvNavigation: TvModeScope.isEnabled(context) && visualDepth == 0 ? controller.tvNavigation : null,
+      tvTarget: state.target,
+      onTvTabSelected: (target) => unawaited(controller.selectTvTab(target)),
       sourceName: selectedSource.displayName,
       onDestinationRequested: onDestinationRequested,
       onSearchRequested: onSearchRequested == null ? null : () => onSearchRequested!(state.selectedSourceId),
@@ -252,8 +284,12 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
       onContentPressed: (content) => unawaited(openContent(content)),
       onRefreshRequested: () => unawaited(controller.refresh()),
       onLoadMore: (collection) => unawaited(controller.loadMore(collection)),
-      canNavigateBack: canNavigateBack,
-      onBackRequested: isPredictiveBackRoute ? () => Navigator.of(context).pop() : controller.goBack,
+      canNavigateBack: canNavigateBack || (controller.tvNavigation != null && visualDepth == 0 && state.target != null),
+      onBackRequested: controller.tvNavigation != null && visualDepth == 0 && state.target != null
+          ? () => unawaited(controller.selectTvTab(null))
+          : isPredictiveBackRoute
+          ? () => Navigator.of(context).pop()
+          : controller.goBack,
       loadingCollectionId: isActiveLayer ? state.loadingCollectionId : null,
       navigationDepth: visualDepth,
       allowsRoutePop: isPredictiveBackRoute,

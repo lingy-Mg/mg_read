@@ -1,7 +1,7 @@
 /// Remote-operable TV action with a persistent focus node and visible ring.
 /// Owns focus, keep-alive and feedback; traversal owns scrolling.
 /// Commands and data remain caller-owned.
-/// Local tabs may activate on focus; route changes require confirmation.
+/// Callers choose focus activation for navigation; content commands require OK.
 /// Focused lazy children stay alive until focus moves to another control.
 /// Caller-supplied focus nodes remain caller-owned.
 /// Actions with a menu defer OK until release; holding OK opens the menu once.
@@ -125,6 +125,9 @@ class _TvFocusableState extends State<TvFocusable> with AutomaticKeepAliveClient
       child: Focus(
         focusNode: _node,
         autofocus: widget.autofocus,
+        // Explicitly reset the local flag: a caller-owned node's computed
+        // skipTraversal is temporarily true under an inactive route scope.
+        skipTraversal: false,
         canRequestFocus: widget.onPressed != null,
         onFocusChange: (value) {
           if (!value) _cancelHold();

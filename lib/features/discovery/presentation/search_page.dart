@@ -156,6 +156,9 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     }
 
     return Scaffold(
+      appBar: TvModeScope.isEnabled(context) && !SourcePreviewScope.active(context)
+          ? AppBottomNavigation(selected: AppNavigationDestination.search, onSelected: widget.onDestinationRequested)
+          : null,
       extendBody: !TvModeScope.isEnabled(context),
       body: AppPageBackdrop(
         style: AppPageBackdropStyle.search,
@@ -227,7 +230,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
           ),
         ),
       ),
-      bottomNavigationBar: SourcePreviewScope.active(context)
+      bottomNavigationBar: TvModeScope.isEnabled(context) || SourcePreviewScope.active(context)
           ? null
           : SafeArea(
               top: false,

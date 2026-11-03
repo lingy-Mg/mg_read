@@ -2,7 +2,7 @@
 /// Data, playback and mutation are owned by the caller.
 /// Refresh keeps the mounted shelf; destructive actions require confirmation.
 /// Slivers decode covers only near the viewport and retain keyed focus on refresh.
-/// Local filters select on focus; cross-page destinations require OK.
+/// Navigation selects on focus; Search and content commands require OK.
 library;
 
 import 'package:flutter/material.dart';
@@ -13,6 +13,7 @@ import 'package:mg_read/features/library/presentation/tv_library_data.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_focus_region.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_destination_action.dart';
 import 'tv_library_cards.dart';
 
 class TvLibraryShell extends StatefulWidget {
@@ -191,9 +192,9 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
                             selected: _filter == TvLibraryFilter.series,
                             activateOnFocus: true,
                           ),
-                          _nav('搜索', 'search', () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.search)),
                           _nav('发现', 'discover', () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.discover)),
                           _nav('设置', 'settings', () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.profile)),
+                          _nav('搜索', 'search', () => widget.callbacks.onNavigationSelected?.call(AppNavigationDestination.search)),
                         ],
                       ),
                     ),
@@ -351,14 +352,34 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
     ),
   );
 
-  Widget _nav(String text, String id, VoidCallback action, {bool selected = false, bool autofocus = false, bool activateOnFocus = false}) =>
-      TvFocusable(
+  Widget _nav(String text, String id, VoidCallback action, {bool selected = false, bool autofocus = false, bool activateOnFocus = false}) {
+    final destination = switch (id) {
+      'home' => AppNavigationDestination.home,
+      'discover' => AppNavigationDestination.discover,
+      'settings' => AppNavigationDestination.profile,
+      'search' => AppNavigationDestination.search,
+      _ => null,
+    };
+    if (destination != null) {
+      return TvDestinationAction(
         key: Key('tv-nav-$id'),
-        focusNode: id == 'home' ? _homeFocus : null,
+        destination: destination,
+        current: AppNavigationDestination.home,
+        onPressed: action,
         selected: selected,
         autofocus: autofocus,
-        activateOnFocus: activateOnFocus,
-        onPressed: action,
+        focusNode: id == 'home' ? _homeFocus : null,
         child: Text(text, style: Theme.of(context).textTheme.titleMedium),
       );
+    }
+    return TvFocusable(
+      key: Key('tv-nav-$id'),
+      focusNode: id == 'home' ? _homeFocus : null,
+      selected: selected,
+      autofocus: autofocus,
+      activateOnFocus: activateOnFocus,
+      onPressed: action,
+      child: Text(text, style: Theme.of(context).textTheme.titleMedium),
+    );
+  }
 }

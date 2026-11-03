@@ -131,6 +131,7 @@ class _TvProfilePageState extends State<TvProfilePage> {
     return TvFocusRegion(
       child: Scaffold(
         key: const Key('tv-settings-page'),
+        appBar: AppBottomNavigation(selected: AppNavigationDestination.profile, onSelected: widget.onDestinationRequested),
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(28, 20, 28, 8),
@@ -208,7 +209,6 @@ class _TvProfilePageState extends State<TvProfilePage> {
             ),
           ),
         ),
-        bottomNavigationBar: AppBottomNavigation(selected: AppNavigationDestination.profile, onSelected: widget.onDestinationRequested),
       ),
     );
   }

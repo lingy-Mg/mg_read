@@ -40,8 +40,9 @@ void main() {
         expect(columns, size.width == 960 ? 6 : 7);
         expect(firstRect.width, lessThanOrEqualTo(156));
         expect(tester.getSize(covers.first).height, lessThanOrEqualTo(216));
-        expect(firstRect.bottom, lessThan(tester.getTopLeft(find.byType(AppBottomNavigation)).dy));
-        expect(tester.getTopLeft(_tile(columns)).dy, lessThan(tester.getTopLeft(find.byType(AppBottomNavigation)).dy));
+        expect(firstRect.top, greaterThanOrEqualTo(tester.getRect(find.byType(AppBottomNavigation)).bottom));
+        expect(firstRect.bottom, lessThan(size.height));
+        expect(tester.getTopLeft(_tile(columns)).dy, lessThan(size.height));
         if (size.width == 1280 && scale == 1) {
           await expectLater(find.byType(RuntimeDiscoveryPage), matchesGoldenFile('goldens/tv_discovery_compact_posters.png'));
         }
@@ -58,7 +59,7 @@ void main() {
         await tester.sendKeyEvent(LogicalKeyboardKey.select);
         expect(selected, 'video-${columns + 1}');
         expect(find.ancestor(of: _tile(columns + 1), matching: find.byType(TvFocusable)).first.hitTestable(), findsOneWidget);
-        expect(tester.getRect(_tile(columns + 1)).bottom, lessThanOrEqualTo(tester.getTopLeft(find.byType(AppBottomNavigation)).dy));
+        expect(tester.getRect(_tile(columns + 1)).bottom, lessThanOrEqualTo(size.height));
         expect(tester.takeException(), isNull);
       });
     }

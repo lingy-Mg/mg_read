@@ -1,4 +1,4 @@
-/// MgRead 底部导航的悬浮式外观与短时选中反馈。
+/// MgRead 手机底部导航与 TV 顶部导航。
 ///
 /// 职责：
 /// - 渲染四个主目的地与共享胶囊；选中前后始终保留标签和图标位置。
@@ -8,6 +8,7 @@
 /// 注意：
 /// - 跨路由移动、减少动态效果和资源释放属于 sibling MotionScope。
 /// - 本模块不处理导航路由或业务状态。
+/// - TV 搜索排最右且需 OK；其余目的地焦点到达即切换。
 ///
 library;
 
@@ -20,7 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
-import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_destination_action.dart';
 import 'package:mg_read/shared/presentation/motion/app_bottom_navigation_motion_scope.dart';
 
 /// Optional icon appearance supplied by a destination page.
@@ -31,8 +32,8 @@ final class AppNavigationIconOverride {
   final IconData selectedIcon;
 }
 
-/// Bottom destinations for the mobile-first root feature surfaces.
-class AppBottomNavigation extends StatelessWidget {
+/// Shared destinations: floating mobile bar or remote-operable TV app bar.
+class AppBottomNavigation extends StatelessWidget implements PreferredSizeWidget {
   /// Creates a navigation bar with one selected destination.
   const AppBottomNavigation({
     required this.selected,
@@ -51,6 +52,9 @@ class AppBottomNavigation extends StatelessWidget {
   final double height;
 
   @override
+  Size get preferredSize => Size.fromHeight(height);
+
+  @override
   Widget build(BuildContext context) {
     if (TvModeScope.isEnabled(context)) {
       return SafeArea(
@@ -63,13 +67,23 @@ class AppBottomNavigation extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  for (final destination in AppNavigationDestination.values)
+                  for (final destination in const [
+                    AppNavigationDestination.home,
+                    AppNavigationDestination.discover,
+                    AppNavigationDestination.profile,
+                    AppNavigationDestination.search,
+                  ])
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: TvFocusable(
+                      child: TvDestinationAction(
                         key: Key('app-nav-${destination.name}'),
+                        destination: destination,
+                        current: selected,
                         selected: destination == selected,
-                        onPressed: () => onSelected(destination),
+                        autofocus: destination == selected,
+                        onPressed: () {
+                          if (destination != selected) onSelected(destination);
+                        },
                         child: Text(switch (destination) {
                           AppNavigationDestination.home => '影视首页',
                           AppNavigationDestination.search => '搜索',

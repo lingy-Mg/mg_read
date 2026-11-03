@@ -72,23 +72,20 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('top destination tabs require OK and allow passing search to settings', (tester) async {
+  testWidgets('Search is last and only Search requires OK among destination tabs', (tester) async {
     final requested = <AppNavigationDestination>[];
     await _mount(tester, callbacks: LibraryHomeCallbacks(onNavigationSelected: requested.add));
     _navFocus(tester, 'series').requestFocus();
     await tester.pumpAndSettle();
-    for (final id in ['search', 'discover', 'settings']) {
+    for (final id in ['discover', 'settings', 'search']) {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.pumpAndSettle();
       expect(FocusManager.instance.primaryFocus, _navFocus(tester, id));
-      expect(requested, isEmpty);
     }
+    expect(requested, [AppNavigationDestination.discover, AppNavigationDestination.profile]);
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
-    expect(requested, [AppNavigationDestination.profile]);
-    await tester.tap(find.byKey(const Key('tv-nav-search')));
-    await tester.pumpAndSettle();
-    expect(requested, [AppNavigationDestination.profile, AppNavigationDestination.search]);
+    expect(requested, [AppNavigationDestination.discover, AppNavigationDestination.profile, AppNavigationDestination.search]);
   });
 
   testWidgets('focusing refresh still requires remote confirmation', (tester) async {

@@ -15,10 +15,13 @@
 /// - 根发现页的返回交给应用；只有本地层级拦截 Escape。
 /// - TV 页面使用独立焦点域；内容过渡中的旧页面不参与遥控遍历。
 /// - TV 二级分类使用屏幕可用宽度；普通模式保留窄列表阅读宽度。
+/// - TV 根标签固定在内容外，各标签独立保存滚动位置；导航投影来自 application。
 ///
 library;
 
 import 'source_preview_page.dart';
+import '../application/tv_discovery_session.dart';
+import 'widgets/tv_discovery_tabs.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -68,6 +71,9 @@ class RuntimeDiscoveryPage extends StatelessWidget {
     this.contentFailureCode,
     this.contentFailureCopyPayload,
     this.onCopyFailure = _copyDiscoveryFailure,
+    this.tvNavigation,
+    this.tvTarget,
+    this.onTvTabSelected,
     super.key,
   });
 
@@ -94,11 +100,16 @@ class RuntimeDiscoveryPage extends StatelessWidget {
   final String? contentFailureCode;
   final String? contentFailureCopyPayload;
   final DiscoveryFailureCopy onCopyFailure;
+  final TvDiscoveryNavigation? tvNavigation;
+  final String? tvTarget;
+  final ValueChanged<String?>? onTvTabSelected;
 
   @override
   Widget build(BuildContext context) {
     final result = this.result;
-    final components = result?.document.components ?? const <PluginDiscoveryComponent>[];
+    final components = identical(result, tvNavigation?.home) && result != null
+        ? tvNavigation!.homeContent
+        : result?.document.components ?? const <PluginDiscoveryComponent>[];
     final resolvedSourceName = sourceName ?? result?.sourceName ?? '当前来源';
     final isNestedPage = navigationDepth > 0;
     final tv = TvModeScope.isEnabled(context);
@@ -123,115 +134,134 @@ class RuntimeDiscoveryPage extends StatelessWidget {
               },
               child: Scaffold(
                 extendBody: !TvModeScope.isEnabled(context),
+                appBar: tv && !isNestedPage && !SourcePreviewScope.active(context)
+                    ? AppBottomNavigation(selected: AppNavigationDestination.discover, onSelected: onDestinationRequested)
+                    : null,
                 body: SafeArea(
                   bottom: false,
-                  child: LayoutBuilder(
-                    builder: (BuildContext context, BoxConstraints constraints) {
-                      final bool useWidePagePadding = constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint;
-                      final double pagePadding = useWidePagePadding ? AppSpacing.widePagePadding : AppSpacing.discoveryPagePadding;
-                      return Align(
-                        alignment: isNestedPage && !tv ? Alignment.topLeft : Alignment.topCenter,
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxWidth: isNestedPage && tv
-                                ? constraints.maxWidth
-                                : isNestedPage
-                                ? AppSpacing.discoveryListMaxWidth
-                                : AppSpacing.contentMaxWidth,
-                          ),
-                          child: AnimatedSwitcher(
-                            duration: reduceMotion ? Duration.zero : const Duration(milliseconds: 180),
-                            reverseDuration: reduceMotion ? Duration.zero : const Duration(milliseconds: 150),
-                            switchInCurve: Curves.easeOutCubic,
-                            switchOutCurve: Curves.easeInCubic,
-                            layoutBuilder: (current, previous) => Stack(
-                              alignment: Alignment.topCenter,
-                              children: [
-                                for (final child in previous) ExcludeFocus(child: IgnorePointer(child: child)),
-                                ?current,
-                              ],
-                            ),
-                            transitionBuilder: (child, animation) => SlideTransition(
-                              position: Tween<Offset>(begin: const Offset(0.07, 0), end: Offset.zero).animate(animation),
-                              child: FadeTransition(opacity: animation, child: child),
-                            ),
-                            child: KeyedSubtree(
-                              key: ValueKey<String>('runtime-discovery-page-$navigationDepth'),
-                              child: ListView(
-                                key: PageStorageKey<int>(navigationDepth),
-                                padding: EdgeInsets.fromLTRB(
-                                  pagePadding,
-                                  AppSpacing.pageHeaderTopPaddingFor(context),
-                                  pagePadding,
-                                  AppSpacing.bottomNavigationContentBottomPadding + MediaQuery.viewPaddingOf(context).bottom,
-                                ),
-                                children: <Widget>[
-                                  DiscoveryTopBar(
-                                    title: isNestedPage ? _nestedPageTitle(components) ?? '发现' : '发现',
-                                    sourceName: resolvedSourceName,
-                                    onSourcePressed: onSourcePressed,
-                                    onSearchPressed: onSearchRequested ?? () => onDestinationRequested(AppNavigationDestination.search),
-                                    onToggleTheme: () => AppThemeModeScope.of(context).onToggleTheme(Theme.of(context).brightness),
-                                    onRefreshPressed: onRefreshRequested,
-                                    onBackPressed: isNestedPage ? onBackRequested : null,
-                                    barKey: isNestedPage ? const Key('runtime-discovery-nested-header') : null,
-                                    backButtonKey: isNestedPage ? const Key('runtime-discovery-back') : null,
-                                    showSourceSelector: !isNestedPage,
-                                    showThemeToggle: false,
-                                  ),
-                                  if (result != null && isContentLoading)
-                                    const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: LinearProgressIndicator()),
-                                  if (result != null && contentFailureMessage != null)
-                                    DiscoveryContentState(
-                                      isLoading: false,
-                                      isEmpty: false,
-                                      failureMessage: contentFailureMessage,
-                                      failureDetail: contentFailureDetail,
-                                      failureCode: contentFailureCode,
-                                      failureCopyPayload: contentFailureCopyPayload,
-                                      onCopy: onCopyFailure,
-                                      onRetry: onRefreshRequested,
-                                    ),
-                                  if (result == null)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: AppSpacing.section),
-                                      child: DiscoveryContentState(
-                                        isLoading: isContentLoading,
-                                        isEmpty: contentIsEmpty,
-                                        failureMessage: contentFailureMessage,
-                                        failureDetail: contentFailureDetail,
-                                        failureCode: contentFailureCode,
-                                        failureCopyPayload: contentFailureCopyPayload,
-                                        onCopy: onCopyFailure,
-                                        onRetry: onRefreshRequested,
-                                      ),
-                                    )
-                                  else
-                                    for (var index = 0; index < components.length; index++) ...<Widget>[
-                                      _DiscoveryComponentRenderer(
-                                        key: ValueKey(components[index].id),
-                                        pluginId: result.pluginId,
-                                        component: components[index],
-                                        hideSectionTitle: canNavigateBack && index == 0,
-                                        onTabSelected: onTabSelected,
-                                        onCategorySelected: onCategorySelected,
-                                        onContentPressed: onContentPressed,
-                                        onLoadMore: onLoadMore,
-                                        loadingCollectionId: loadingCollectionId,
-                                        isInBookshelf: isInBookshelf,
-                                      ),
-                                      if (index != components.length - 1) const SizedBox(height: AppSpacing.discoverySectionSpacing),
-                                    ],
-                                ],
-                              ),
-                            ),
-                          ),
+                  child: Column(
+                    children: [
+                      if (tv && tvNavigation != null && onTvTabSelected != null)
+                        TvDiscoveryTabs(
+                          key: ValueKey(tvNavigation!.home.pluginId),
+                          navigation: tvNavigation!,
+                          target: tvTarget,
+                          onSelected: onTvTabSelected!,
                         ),
-                      );
-                    },
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (BuildContext context, BoxConstraints constraints) {
+                            final bool useWidePagePadding = constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint;
+                            final double pagePadding = useWidePagePadding ? AppSpacing.widePagePadding : AppSpacing.discoveryPagePadding;
+                            return Align(
+                              alignment: isNestedPage && !tv ? Alignment.topLeft : Alignment.topCenter,
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: isNestedPage && tv
+                                      ? constraints.maxWidth
+                                      : isNestedPage
+                                      ? AppSpacing.discoveryListMaxWidth
+                                      : AppSpacing.contentMaxWidth,
+                                ),
+                                child: AnimatedSwitcher(
+                                  duration: reduceMotion ? Duration.zero : const Duration(milliseconds: 180),
+                                  reverseDuration: reduceMotion ? Duration.zero : const Duration(milliseconds: 150),
+                                  switchInCurve: Curves.easeOutCubic,
+                                  switchOutCurve: Curves.easeInCubic,
+                                  layoutBuilder: (current, previous) => Stack(
+                                    alignment: Alignment.topCenter,
+                                    children: [
+                                      for (final child in previous) ExcludeFocus(child: IgnorePointer(child: child)),
+                                      ?current,
+                                    ],
+                                  ),
+                                  transitionBuilder: (child, animation) => SlideTransition(
+                                    position: Tween<Offset>(begin: const Offset(0.07, 0), end: Offset.zero).animate(animation),
+                                    child: FadeTransition(opacity: animation, child: child),
+                                  ),
+                                  child: KeyedSubtree(
+                                    key: ValueKey<String>('runtime-discovery-page-$navigationDepth'),
+                                    child: ListView(
+                                      key: tvNavigation == null
+                                          ? PageStorageKey<int>(navigationDepth)
+                                          : PageStorageKey<(String, String?)>((tvNavigation!.home.pluginId, tvTarget)),
+                                      padding: EdgeInsets.fromLTRB(
+                                        pagePadding,
+                                        AppSpacing.pageHeaderTopPaddingFor(context),
+                                        pagePadding,
+                                        AppSpacing.bottomNavigationContentBottomPadding + MediaQuery.viewPaddingOf(context).bottom,
+                                      ),
+                                      children: <Widget>[
+                                        DiscoveryTopBar(
+                                          title: isNestedPage ? _nestedPageTitle(components) ?? '发现' : '发现',
+                                          sourceName: resolvedSourceName,
+                                          onSourcePressed: onSourcePressed,
+                                          onSearchPressed:
+                                              onSearchRequested ?? () => onDestinationRequested(AppNavigationDestination.search),
+                                          onToggleTheme: () => AppThemeModeScope.of(context).onToggleTheme(Theme.of(context).brightness),
+                                          onRefreshPressed: onRefreshRequested,
+                                          onBackPressed: isNestedPage ? onBackRequested : null,
+                                          barKey: isNestedPage ? const Key('runtime-discovery-nested-header') : null,
+                                          backButtonKey: isNestedPage ? const Key('runtime-discovery-back') : null,
+                                          showSourceSelector: !isNestedPage,
+                                          showThemeToggle: false,
+                                        ),
+                                        if (result != null && isContentLoading)
+                                          const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: LinearProgressIndicator()),
+                                        if (result != null && contentFailureMessage != null)
+                                          DiscoveryContentState(
+                                            isLoading: false,
+                                            isEmpty: false,
+                                            failureMessage: contentFailureMessage,
+                                            failureDetail: contentFailureDetail,
+                                            failureCode: contentFailureCode,
+                                            failureCopyPayload: contentFailureCopyPayload,
+                                            onCopy: onCopyFailure,
+                                            onRetry: onRefreshRequested,
+                                          ),
+                                        if (result == null)
+                                          Padding(
+                                            padding: const EdgeInsets.only(top: AppSpacing.section),
+                                            child: DiscoveryContentState(
+                                              isLoading: isContentLoading,
+                                              isEmpty: contentIsEmpty,
+                                              failureMessage: contentFailureMessage,
+                                              failureDetail: contentFailureDetail,
+                                              failureCode: contentFailureCode,
+                                              failureCopyPayload: contentFailureCopyPayload,
+                                              onCopy: onCopyFailure,
+                                              onRetry: onRefreshRequested,
+                                            ),
+                                          )
+                                        else
+                                          for (var index = 0; index < components.length; index++) ...<Widget>[
+                                            _DiscoveryComponentRenderer(
+                                              key: ValueKey(components[index].id),
+                                              pluginId: result.pluginId,
+                                              component: components[index],
+                                              hideSectionTitle: isNestedPage && index == 0,
+                                              onTabSelected: onTabSelected,
+                                              onCategorySelected: onCategorySelected,
+                                              onContentPressed: onContentPressed,
+                                              onLoadMore: onLoadMore,
+                                              loadingCollectionId: loadingCollectionId,
+                                              isInBookshelf: isInBookshelf,
+                                            ),
+                                            if (index != components.length - 1) const SizedBox(height: AppSpacing.discoverySectionSpacing),
+                                          ],
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                bottomNavigationBar: isNestedPage || SourcePreviewScope.active(context)
+                bottomNavigationBar: tv || isNestedPage || SourcePreviewScope.active(context)
                     ? null
                     : SafeArea(
                         top: false,

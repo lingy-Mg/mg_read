@@ -13,7 +13,13 @@ import '../core/settings/settings_testkit.dart';
 import 'mg_read_app_test_support.dart';
 
 void main() {
-  testWidgets('TV top destinations remain traversable and open only on OK', (tester) async {
+  testWidgets('TV destinations open on focus and Search at the right requires OK', (tester) async {
+    const renderingChannel = MethodChannel('mgread/rendering_settings');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      renderingChannel,
+      (_) async => {'selected': 'auto', 'activeRenderer': 'opengl', 'restartRequired': false},
+    );
+    addTearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(renderingChannel, null));
     tester.view.physicalSize = const Size(1280, 720);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -27,20 +33,33 @@ void main() {
     final home = find.byKey(const Key('tv-nav-home'));
     tester.widget<Focus>(find.descendant(of: home, matching: find.byType(Focus)).first).focusNode!.requestFocus();
     await tester.pumpAndSettle();
-    for (final id in ['movies', 'series', 'search', 'discover', 'settings']) {
+    for (final id in ['movies', 'series']) {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.pumpAndSettle();
       expect(router.routeInformationProvider.value.uri.path, '/');
       expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvFocusable>()?.key, Key('tv-nav-$id'));
     }
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
-    await tester.pumpAndSettle();
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
-    await tester.pumpAndSettle();
+    for (final entry in {'discover': '/discover', 'profile': '/profile', 'search': '/profile'}.entries) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(router.routeInformationProvider.value.uri.path, entry.value);
+      final action = find.byKey(Key('app-nav-${entry.key}'));
+      final focus = tester.widget<Focus>(find.descendant(of: action, matching: find.byType(Focus)).first).focusNode;
+      expect(FocusManager.instance.primaryFocus, focus);
+    }
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
     expect(router.routeInformationProvider.value.uri.path, '/search');
     expect(find.byKey(const Key('source-search-query')), findsOneWidget);
+    for (final entry in {'profile': '/profile', 'discover': '/discover', 'home': '/'}.entries) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pumpAndSettle();
+      expect(router.routeInformationProvider.value.uri.path, entry.value);
+    }
+    expect(
+      FocusManager.instance.primaryFocus,
+      tester.widget<Focus>(find.descendant(of: find.byKey(const Key('tv-nav-home')), matching: find.byType(Focus)).first).focusNode,
+    );
     expect(tester.takeException(), isNull);
   });
 

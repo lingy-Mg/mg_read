@@ -64,8 +64,8 @@ void main() {
       }
       if (route == '/search') {
         expect(
-          tester.getRect(find.byKey(const Key('search-page-scroll'))).bottom,
-          lessThanOrEqualTo(tester.getRect(find.byType(AppBottomNavigation)).top),
+          tester.getRect(find.byKey(const Key('search-page-scroll'))).top,
+          greaterThanOrEqualTo(tester.getRect(find.byType(AppBottomNavigation)).bottom),
         );
         await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/tv_search_short_large_text.png'));
       }
