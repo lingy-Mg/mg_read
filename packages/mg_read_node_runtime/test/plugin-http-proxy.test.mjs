@@ -84,8 +84,8 @@ test("plugin HTTP client follows the environment proxy when no explicit override
   const proxy = http.createServer();
   proxy.on("connect", (request, downstream, head) => {
     proxyTunnels += 1;
-    const target = new URL(`http://${request.url}`);
-    const upstream = net.connect(Number(target.port), target.hostname, () => {
+    assert.equal(request.url, "origin.invalid:80");
+    const upstream = net.connect(origin.address().port, "127.0.0.1", () => {
       downstream.write("HTTP/1.1 200 Connection Established\r\n\r\n");
       if (head.length > 0) upstream.write(head);
       downstream.pipe(upstream);
@@ -112,7 +112,7 @@ test("plugin HTTP client follows the environment proxy when no explicit override
     await close(origin);
   });
 
-  const response = await client.fetch(`http://127.0.0.1:${originAddress.port}/content`, {});
+  const response = await client.fetch("http://origin.invalid/content", {});
 
   assert.equal(await response.text(), "system");
   assert.equal(proxyTunnels, 1);
@@ -202,12 +202,31 @@ test("Runtime configuration routes the installed plugin ctx.http.fetch boundary 
   assert.equal(originRequests, 3);
   assert.equal(proxyTunnels, 1);
   assert.deepEqual(userAgents, [defaultPluginUserAgent, defaultPluginUserAgent, defaultPluginUserAgent]);
+
+  // Exercise the actual getContent -> ctx.http.fetch -> wire error chain.
+  const closedProxy = http.createServer();
+  await listen(closedProxy, "127.173.137.161");
+  const closedPort = closedProxy.address().port;
+  await close(closedProxy);
+  await runtime.invokeEmbedded("runtime.pluginHttpProxy.configure.v1",
+    { proxyUrl: `http://127.173.137.161:${closedPort}` }, deadline());
+  const failedContent = await runtime.invokeEmbedded("source.getContent.v1", {
+    pluginId: "org.example.http-proxy", id: target, chapterId: "chapter:1",
+  }, deadline());
+  assert.equal(failedContent.ok, false);
+  assert.equal(failedContent.error.code, "plugin_execution_failed");
+  assert.match(failedContent.error.message, /operation=getContent/);
+  assert.match(failedContent.error.message, /fetch failed/);
+  assert.match(failedContent.error.message, new RegExp(`ECONNREFUSED 127\\.173\\.137\\.161:${closedPort}`));
+  assert.equal(originRequests, 3);
+  // An upstream connection failure does not imply that the Runtime exited.
+  assert.equal((await runtime.invokeEmbedded("runtime.status.v1", {}, deadline())).ok, true);
 });
 
-function listen(server) {
+function listen(server, host = "127.0.0.1") {
   return new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
+    server.listen(0, host, () => {
       server.off("error", reject);
       resolve();
     });
@@ -305,7 +324,11 @@ export async function search(request) {
 }
 export function getDetail() { throw new Error("unused"); }
 export function getChapters() { throw new Error("unused"); }
-export function getContent() { throw new Error("unused"); }
+export async function getContent(request) {
+  const response = await context.http.fetch(request.id);
+  return { chapterId: request.chapterId, contentKind: "novel", title: "fixture",
+    updatedAt: null, text: await response.text(), pages: [] };
+}
 `,
     ),
   ]);

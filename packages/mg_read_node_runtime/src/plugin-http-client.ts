@@ -9,6 +9,8 @@
  * - supply the Runtime-owned reduced desktop Chrome user-agent unless a
  *   source explicitly overrides it;
  * - switch future requests without mutating process environment or global fetch.
+ * - bypass the system proxy for literal loopback targets on every dispatch,
+ *   including redirects; explicit source proxies keep their configured route.
  *
  * Notes:
  * - the app supplies the upstream HTTP, HTTPS or SOCKS5 URL;
@@ -68,6 +70,13 @@ export class ConfigurablePluginHttpClient implements PluginRuntimeHttpClient {
       allowH2: true,
       requestTls: http2TlsOptions,
       ...environmentProxy,
+    }).compose((dispatch) => (options, handler) => {
+      // Undici 7 NO_PROXY matches hostnames, not CIDR ranges or 127.*.
+      // Check each dispatched origin, rather than only the initial fetch URL.
+      const hostname = options.origin === undefined ? "" : new URL(options.origin).hostname;
+      return isLoopbackHostname(hostname)
+        ? this.#directAgent.dispatch(options, handler)
+        : dispatch(options, handler);
     });
   }
 
@@ -136,4 +145,9 @@ function withDefaultUserAgent(init: RequestInit): RequestInit {
   const headers = new Headers(init.headers);
   if (!headers.has("user-agent")) headers.set("user-agent", defaultPluginUserAgent);
   return { ...init, headers };
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "[::1]" ||
+    (isIP(hostname) === 4 && hostname.startsWith("127."));
 }

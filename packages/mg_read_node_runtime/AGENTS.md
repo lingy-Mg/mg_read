@@ -39,6 +39,8 @@
   `.batch-<id>.part` 由平台宿主拥有，Core 只消费一次目录 rename 发布的 `batch-<id>`；完整批次保留至安装结束，
   中断后幂等重放，坏批次消费后报错。覆盖同版本时，保留 artifact 必须与最终版本树同步替换。
 - Runtime-only 任务不修改主应用 UI、Reader、模板或真实数据源，除非用户把对应公开边界纳入同一任务。
+- 系统代理对字面量 loopback 目标的绕过由 HTTP dispatcher 逐跳保证；Undici 7 的 NO_PROXY 不支持 CIDR。
+  显式书源代理保持覆盖语义。连接排查见 `docs/plugin-http-routing.md`；独立探针不代表 App 现场状态。
 
 ## 固定工具链与验证
 
