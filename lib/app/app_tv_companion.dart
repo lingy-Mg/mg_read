@@ -1,5 +1,5 @@
 /// Composition-only navigation adapters for phone-assisted TV. All navigation
-/// remains inside MgRead. Security/settings/private routes reject remote keys.
+/// remains inside MgRead. Settings/private/local-content routes reject remote keys.
 library;
 
 import 'dart:async';
@@ -89,7 +89,7 @@ Future<void> navigateCompanion(Ref ref, String key) async {
   }
   final router = ref.read(appRouterProvider);
   final path = router.routerDelegate.currentConfiguration.uri.path;
-  if (path.startsWith('/profile') || path.startsWith('/private') || path.startsWith('/reader')) {
+  if (path.startsWith('/profile') || path.startsWith('/private') || path.startsWith('/reader') || path.startsWith('/local-')) {
     throw const CompanionFailure('navigation_unavailable');
   }
   final focus = FocusManager.instance.primaryFocus;
