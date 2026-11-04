@@ -292,6 +292,7 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
       result: displayedResult,
       tvNavigation: TvModeScope.isEnabled(context) && visualDepth == 0 ? controller.tvNavigation : null,
       tvPrimaryTarget: controller.tvPrimaryTarget,
+      paginationIdentity: (state.selectedSourceId, state.target, visualDepth),
       sourceName: selectedSource.displayName,
       onDestinationRequested: onDestinationRequested,
       onSearchRequested: onSearchRequested == null ? null : () => onSearchRequested!(state.selectedSourceId),

@@ -4,6 +4,7 @@
 /// - 维护不可变文档栈、请求世代和逐级返回。
 /// - 为一次文档加载记录唯一诊断终态，并丢弃过期结果。
 /// - 目录刷新失败必须结束被更新取消的加载状态，允许用户重试。
+/// - 分页串行并核对当前游标，重复或过期的列表请求不得取消在途请求。
 ///
 /// 注意：
 /// - 返回或新请求必须先让旧请求失效，不能让旧结果重开子页。
@@ -321,10 +322,20 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
   }
 
   Future<void> loadMore(PluginDiscoveryContentCollectionComponent collection) async {
+    if (state.loadingCollectionId != null || state.status == DiscoveryPageStatus.loadingContent) return;
+    final refreshing = _activeLoad;
+    if (refreshing != null) {
+      final generation = _latestGeneration;
+      await refreshing.finished.future;
+      if (_isCurrent(generation)) await loadMore(collection);
+      return;
+    }
     final continuation = collection.continuation;
     final pluginId = state.selectedSourceId;
     final entry = _stack.lastOrNull;
     if (continuation == null || pluginId == null || entry == null) return;
+    final current = _findCollection(entry.document.document.components, collection.id)?.continuation;
+    if (current?.target != continuation.target || current?.cursor != continuation.cursor) return;
     final generation = ++_latestGeneration;
     final cancellation = _replaceRequestCancellation();
     _endActiveLoad(DiagnosticOutcome.cancelled);
@@ -335,9 +346,8 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
         cancellation,
         () => _gateway.discover(pluginId: pluginId, target: continuation.target, cursor: continuation.cursor, collectionId: collection.id),
       );
-      if (!_isCurrent(generation) || result is! PluginDiscoveryAppendResult) {
-        return;
-      }
+      if (!_isCurrent(generation)) return;
+      if (result is! PluginDiscoveryAppendResult) throw StateError('Source returned a non-append discovery page.');
       if (result.collectionId != collection.id) {
         throw StateError('Source appended a different discovery collection.');
       }
@@ -615,6 +625,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
 
   void _endLoad(_ActiveDiscoveryLoad load, DiagnosticOutcome outcome, {int? itemCount, AppError? error, StackTrace? stackTrace}) {
     if (identical(_activeLoad, load)) _activeLoad = null;
+    if (!load.finished.isCompleted) load.finished.complete();
     if (load.span.isEnded) return;
     final fields = load.span.definition.fields;
     final attributes = DiagnosticObjectValue(<String, DiagnosticValue>{
@@ -656,7 +667,7 @@ DiagnosticOutcome _outcomeFor(AppError error) => switch (error.code) {
 };
 
 final class _ActiveDiscoveryLoad {
-  const _ActiveDiscoveryLoad({
+  _ActiveDiscoveryLoad({
     required this.span,
     required this.pluginId,
     required this.capability,
@@ -665,6 +676,7 @@ final class _ActiveDiscoveryLoad {
   });
 
   final DiagnosticSpanHandle span;
+  final finished = Completer<void>();
   final String pluginId;
   final String capability;
   final int requestGeneration;
@@ -708,6 +720,19 @@ int _componentItemCount(PluginDiscoveryComponent component) => switch (component
   PluginDiscoveryGroupComponent(:final children) => children.fold<int>(0, (count, child) => count + _componentItemCount(child)),
   _ => 0,
 };
+
+PluginDiscoveryContentCollectionComponent? _findCollection(Iterable<PluginDiscoveryComponent> components, String id) {
+  for (final component in components) {
+    if (component is PluginDiscoveryContentCollectionComponent && component.id == id) return component;
+    final children = switch (component) {
+      PluginDiscoverySectionComponent(:final children) || PluginDiscoveryGroupComponent(:final children) => children,
+      _ => const <PluginDiscoveryComponent>[],
+    };
+    final found = children.isEmpty ? null : _findCollection(children, id);
+    if (found != null) return found;
+  }
+  return null;
+}
 
 PluginDiscoveryDocumentResult _appendCollection(PluginDiscoveryDocumentResult result, PluginDiscoveryAppendResult append) =>
     PluginDiscoveryDocumentResult(

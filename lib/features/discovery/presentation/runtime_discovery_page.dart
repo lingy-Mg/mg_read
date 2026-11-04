@@ -17,12 +17,14 @@
 /// - TV 二级分类使用屏幕可用宽度；普通模式保留窄列表阅读宽度。
 /// - TV 一级标签由共享外栏显示；内容页只保留二级分类与筛选，按一级标签保存滚动位置。
 /// - TV 当前标签的重复标题隐藏，刷新由外栏标签的确认操作触发。
+/// - TV 列表接近集合末尾自动分页；分页保持内容焦点，失败只提供重试。
 ///
 library;
 
 import 'source_preview_page.dart';
 import '../application/tv_discovery_session.dart';
 import 'widgets/discovery_filters.dart';
+import 'widgets/discovery_tv_pagination.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -75,6 +77,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
     this.onCopyFailure = _copyDiscoveryFailure,
     this.tvNavigation,
     this.tvPrimaryTarget,
+    this.paginationIdentity,
     super.key,
   });
 
@@ -103,6 +106,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
   final DiscoveryFailureCopy onCopyFailure;
   final TvDiscoveryNavigation? tvNavigation;
   final String? tvPrimaryTarget;
+  final Object? paginationIdentity;
 
   @override
   Widget build(BuildContext context) {
@@ -167,7 +171,11 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                                   layoutBuilder: (current, previous) => Stack(
                                     alignment: Alignment.topCenter,
                                     children: [
-                                      for (final child in previous) ExcludeFocus(child: IgnorePointer(child: child)),
+                                      for (final child in previous)
+                                        TickerMode(
+                                          enabled: false,
+                                          child: ExcludeFocus(child: IgnorePointer(child: child)),
+                                        ),
                                       ?current,
                                     ],
                                   ),
@@ -177,52 +185,46 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                                   ),
                                   child: KeyedSubtree(
                                     key: ValueKey<String>('runtime-discovery-page-$navigationDepth'),
-                                    child: ListView(
-                                      key: tvNavigation == null
-                                          ? PageStorageKey<int>(navigationDepth)
-                                          : PageStorageKey<(String, String?)>((tvNavigation!.home.pluginId, tvPrimaryTarget)),
-                                      padding: EdgeInsets.fromLTRB(
-                                        pagePadding,
-                                        AppSpacing.pageHeaderTopPaddingFor(context),
-                                        pagePadding,
-                                        AppSpacing.bottomNavigationContentBottomPadding + MediaQuery.viewPaddingOf(context).bottom,
-                                      ),
-                                      children: <Widget>[
-                                        if (!tvContent || isNestedPage)
-                                          DiscoveryTopBar(
-                                            title: isNestedPage ? _nestedPageTitle(components) ?? '发现' : '发现',
-                                            sourceName: resolvedSourceName,
-                                            onSourcePressed: onSourcePressed,
-                                            onSearchPressed:
-                                                onSearchRequested ?? () => onDestinationRequested(AppNavigationDestination.search),
-                                            onToggleTheme: () => AppThemeModeScope.of(context).onToggleTheme(Theme.of(context).brightness),
-                                            onRefreshPressed: onRefreshRequested,
-                                            onBackPressed: isNestedPage ? onBackRequested : null,
-                                            barKey: isNestedPage ? const Key('runtime-discovery-nested-header') : null,
-                                            backButtonKey: isNestedPage ? const Key('runtime-discovery-back') : null,
-                                            showSourceSelector: !isNestedPage && !tvContent,
-                                            showSearchAction: !tvContent,
-                                            showThemeToggle: false,
-                                          ),
-                                        if (result != null && isContentLoading)
-                                          const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: LinearProgressIndicator()),
-                                        if (result != null && contentFailureMessage != null)
-                                          DiscoveryContentState(
-                                            isLoading: false,
-                                            isEmpty: false,
-                                            failureMessage: contentFailureMessage,
-                                            failureDetail: contentFailureDetail,
-                                            failureCode: contentFailureCode,
-                                            failureCopyPayload: contentFailureCopyPayload,
-                                            onCopy: onCopyFailure,
-                                            onRetry: onRefreshRequested,
-                                          ),
-                                        if (result == null)
-                                          Padding(
-                                            padding: const EdgeInsets.only(top: AppSpacing.section),
-                                            child: DiscoveryContentState(
-                                              isLoading: isContentLoading,
-                                              isEmpty: contentIsEmpty,
+                                    child: DiscoveryTvPaginationHost(
+                                      enabled: tv && !SourcePreviewScope.active(context),
+                                      identity: paginationIdentity ?? (result?.pluginId, tvPrimaryTarget, navigationDepth),
+                                      replacingContent: isContentLoading,
+                                      loadingCollectionId: loadingCollectionId,
+                                      onLoadMore: onLoadMore,
+                                      child: ListView(
+                                        key: tvNavigation == null
+                                            ? PageStorageKey<int>(navigationDepth)
+                                            : PageStorageKey<(String, String?)>((tvNavigation!.home.pluginId, tvPrimaryTarget)),
+                                        padding: EdgeInsets.fromLTRB(
+                                          pagePadding,
+                                          AppSpacing.pageHeaderTopPaddingFor(context),
+                                          pagePadding,
+                                          AppSpacing.bottomNavigationContentBottomPadding + MediaQuery.viewPaddingOf(context).bottom,
+                                        ),
+                                        children: <Widget>[
+                                          if (!tvContent || isNestedPage)
+                                            DiscoveryTopBar(
+                                              title: isNestedPage ? _nestedPageTitle(components) ?? '发现' : '发现',
+                                              sourceName: resolvedSourceName,
+                                              onSourcePressed: onSourcePressed,
+                                              onSearchPressed:
+                                                  onSearchRequested ?? () => onDestinationRequested(AppNavigationDestination.search),
+                                              onToggleTheme: () =>
+                                                  AppThemeModeScope.of(context).onToggleTheme(Theme.of(context).brightness),
+                                              onRefreshPressed: onRefreshRequested,
+                                              onBackPressed: isNestedPage ? onBackRequested : null,
+                                              barKey: isNestedPage ? const Key('runtime-discovery-nested-header') : null,
+                                              backButtonKey: isNestedPage ? const Key('runtime-discovery-back') : null,
+                                              showSourceSelector: !isNestedPage && !tvContent,
+                                              showSearchAction: !tvContent,
+                                              showThemeToggle: false,
+                                            ),
+                                          if (result != null && isContentLoading)
+                                            const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: LinearProgressIndicator()),
+                                          if (result != null && contentFailureMessage != null)
+                                            DiscoveryContentState(
+                                              isLoading: false,
+                                              isEmpty: false,
                                               failureMessage: contentFailureMessage,
                                               failureDetail: contentFailureDetail,
                                               failureCode: contentFailureCode,
@@ -230,26 +232,41 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                                               onCopy: onCopyFailure,
                                               onRetry: onRefreshRequested,
                                             ),
-                                          )
-                                        else
-                                          for (var index = 0; index < components.length; index++) ...<Widget>[
-                                            _DiscoveryComponentRenderer(
-                                              key: ValueKey(components[index].id),
-                                              pluginId: result.pluginId,
-                                              component: components[index],
-                                              hideSectionTitle:
-                                                  (isNestedPage && index == 0) ||
-                                                  (tvContent && _repeatsTvTitle(components[index], activeTvTitle)),
-                                              onTabSelected: onTabSelected,
-                                              onCategorySelected: onCategorySelected,
-                                              onContentPressed: onContentPressed,
-                                              onLoadMore: onLoadMore,
-                                              loadingCollectionId: loadingCollectionId,
-                                              isInBookshelf: isInBookshelf,
-                                            ),
-                                            if (index != components.length - 1) const SizedBox(height: AppSpacing.discoverySectionSpacing),
-                                          ],
-                                      ],
+                                          if (result == null)
+                                            Padding(
+                                              padding: const EdgeInsets.only(top: AppSpacing.section),
+                                              child: DiscoveryContentState(
+                                                isLoading: isContentLoading,
+                                                isEmpty: contentIsEmpty,
+                                                failureMessage: contentFailureMessage,
+                                                failureDetail: contentFailureDetail,
+                                                failureCode: contentFailureCode,
+                                                failureCopyPayload: contentFailureCopyPayload,
+                                                onCopy: onCopyFailure,
+                                                onRetry: onRefreshRequested,
+                                              ),
+                                            )
+                                          else
+                                            for (var index = 0; index < components.length; index++) ...<Widget>[
+                                              _DiscoveryComponentRenderer(
+                                                key: ValueKey(components[index].id),
+                                                pluginId: result.pluginId,
+                                                component: components[index],
+                                                hideSectionTitle:
+                                                    (isNestedPage && index == 0) ||
+                                                    (tvContent && _repeatsTvTitle(components[index], activeTvTitle)),
+                                                onTabSelected: onTabSelected,
+                                                onCategorySelected: onCategorySelected,
+                                                onContentPressed: onContentPressed,
+                                                onLoadMore: onLoadMore,
+                                                loadingCollectionId: loadingCollectionId,
+                                                isInBookshelf: isInBookshelf,
+                                              ),
+                                              if (index != components.length - 1)
+                                                const SizedBox(height: AppSpacing.discoverySectionSpacing),
+                                            ],
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -661,15 +678,18 @@ class _ContentCollection extends StatelessWidget {
         body,
         if (component.continuation != null) ...<Widget>[
           const SizedBox(height: AppSpacing.discoveryComponentGap),
-          OutlinedButton(
-            key: ValueKey<String>('runtime-discovery-load-more-${component.id}'),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(AppSpacing.discoveryLoadMoreHeight),
-              shape: const RoundedRectangleBorder(borderRadius: AppRadii.discoveryButton),
+          if (TvModeScope.isEnabled(context))
+            DiscoveryTvPaginationFooter(collection: component)
+          else
+            OutlinedButton(
+              key: ValueKey<String>('runtime-discovery-load-more-${component.id}'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(AppSpacing.discoveryLoadMoreHeight),
+                shape: const RoundedRectangleBorder(borderRadius: AppRadii.discoveryButton),
+              ),
+              onPressed: isLoading ? null : () => onLoadMore(component),
+              child: Text(isLoading ? '正在加载' : '加载更多'),
             ),
-            onPressed: isLoading ? null : () => onLoadMore(component),
-            child: Text(isLoading ? '正在加载' : '加载更多'),
-          ),
         ],
       ],
     );

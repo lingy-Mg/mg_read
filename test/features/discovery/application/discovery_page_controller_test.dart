@@ -3,6 +3,7 @@
 /// 职责：
 /// - 验证连续进入、逐级返回、失败重试和过期结果丢弃。
 /// - 验证导航加载诊断记录请求生命周期。
+/// - 验证分页并发、过期游标、返回取消和异常结果恢复。
 ///
 /// 注意：
 /// - 测试 gateway 仅产生受控不可变文档，不接入 Runtime。
@@ -115,6 +116,110 @@ void main() {
     state = container.read(discoveryPageControllerProvider);
     expect(state.canNavigateBack, isFalse);
     expect(_collection(state.result!).id, 'home-books');
+  });
+
+  test('serializes pagination and ignores an already consumed cursor', () async {
+    final gateway = _TreeGateway()..appendGate = Completer<void>();
+    final container = _container(gateway);
+    addTearDown(container.dispose);
+    final listener = container.listen(discoveryPageControllerProvider, (_, _) {}, fireImmediately: true);
+    addTearDown(listener.close);
+    await _waitUntil(() => _isLoaded(container));
+    final controller = container.read(discoveryPageControllerProvider.notifier);
+    await controller.openCategory('category:fantasy');
+    final collection = _collection(container.read(discoveryPageControllerProvider).result!);
+    final pending = controller.loadMore(collection);
+    await controller.loadMore(collection);
+    expect(gateway.appendRequestCount, 1);
+    expect(gateway.cancellations.last.isCancelled, isFalse);
+    expect(container.read(discoveryPageControllerProvider).loadingCollectionId, 'fantasy-books');
+    gateway.appendGate!.complete();
+    await pending;
+    await controller.loadMore(collection);
+    expect(gateway.appendRequestCount, 1);
+    expect(_collection(container.read(discoveryPageControllerProvider).result!).items, hasLength(2));
+  });
+
+  test('invalid append responses finish loading and permit explicit retry', () async {
+    final gateway = _TreeGateway()..invalidAppend = true;
+    final container = _container(gateway);
+    addTearDown(container.dispose);
+    final listener = container.listen(discoveryPageControllerProvider, (_, _) {}, fireImmediately: true);
+    addTearDown(listener.close);
+    await _waitUntil(() => _isLoaded(container));
+    final controller = container.read(discoveryPageControllerProvider.notifier);
+    await controller.openCategory('category:fantasy');
+    final collection = _collection(container.read(discoveryPageControllerProvider).result!);
+    await controller.loadMore(collection);
+    final failed = container.read(discoveryPageControllerProvider);
+    expect(failed.loadingCollectionId, isNull);
+    expect(_collection(failed.result!).items, hasLength(1));
+    gateway.invalidAppend = false;
+    await controller.loadMore(collection);
+    expect(gateway.appendRequestCount, 2);
+    expect(_collection(container.read(discoveryPageControllerProvider).result!).items, hasLength(2));
+  });
+
+  test('returning during pagination discards the late page', () async {
+    final gateway = _TreeGateway()..appendGate = Completer<void>();
+    final container = _container(gateway);
+    addTearDown(container.dispose);
+    final listener = container.listen(discoveryPageControllerProvider, (_, _) {}, fireImmediately: true);
+    addTearDown(listener.close);
+    await _waitUntil(() => _isLoaded(container));
+    final controller = container.read(discoveryPageControllerProvider.notifier);
+    await controller.openCategory('category:fantasy');
+    final pending = controller.loadMore(_collection(container.read(discoveryPageControllerProvider).result!));
+    controller.goBack();
+    expect(gateway.cancellations.last.isCancelled, isTrue);
+    gateway.appendGate!.complete();
+    await pending;
+    final state = container.read(discoveryPageControllerProvider);
+    expect(_collection(state.result!).id, 'home-books');
+    expect(state.loadingCollectionId, isNull);
+    expect(state.navigationDepth, 0);
+  });
+
+  test('pagination cannot cancel an in-flight category replacement', () async {
+    final gateway = _TreeGateway();
+    final container = _container(gateway);
+    addTearDown(container.dispose);
+    final listener = container.listen(discoveryPageControllerProvider, (_, _) {}, fireImmediately: true);
+    addTearDown(listener.close);
+    await _waitUntil(() => _isLoaded(container));
+    final controller = container.read(discoveryPageControllerProvider.notifier);
+    await controller.openCategory('category:fantasy');
+    final stale = _collection(container.read(discoveryPageControllerProvider).result!);
+    gateway.categoryGate = Completer<void>();
+    final pending = controller.openCategory('category:fantasy-other');
+    await controller.loadMore(stale);
+    expect(gateway.appendRequestCount, 0);
+    expect(gateway.cancellations.last.isCancelled, isFalse);
+    gateway.categoryGate!.complete();
+    await pending;
+    expect(container.read(discoveryPageControllerProvider).target, 'category:fantasy-other');
+  });
+
+  test('automatic pagination waits for a cached category refresh', () async {
+    final gateway = _TreeGateway();
+    final container = _container(gateway);
+    addTearDown(container.dispose);
+    final listener = container.listen(discoveryPageControllerProvider, (_, _) {}, fireImmediately: true);
+    addTearDown(listener.close);
+    await _waitUntil(() => _isLoaded(container));
+    final controller = container.read(discoveryPageControllerProvider.notifier);
+    await controller.openCategory('category:fantasy');
+    controller.goBack();
+    gateway.categoryGate = Completer<void>();
+    final refreshing = controller.openCategory('category:fantasy');
+    final pending = controller.loadMore(_collection(container.read(discoveryPageControllerProvider).result!));
+    expect(gateway.appendRequestCount, 0);
+    expect(gateway.cancellations.last.isCancelled, isFalse);
+    gateway.categoryGate!.complete();
+    await refreshing;
+    await pending;
+    expect(gateway.appendRequestCount, 1);
+    expect(_collection(container.read(discoveryPageControllerProvider).result!).items, hasLength(2));
   });
 
   test('returns to the parent while discarding a pending category request', () async {
@@ -458,6 +563,9 @@ final class _TreeGateway implements SourceContentGateway, CancellableSourceConte
   int documentRequestCount = 0;
   final List<String> documentPluginIds = <String>[];
   Completer<void>? categoryGate;
+  Completer<void>? appendGate;
+  int appendRequestCount = 0;
+  bool invalidAppend = false;
   bool failFirstBrokenCategory = false;
   AppError? brokenCategoryError;
   bool includePrimary = true;
@@ -495,9 +603,18 @@ final class _TreeGateway implements SourceContentGateway, CancellableSourceConte
     int pageSize = 20,
   }) async {
     if (collectionId != null) {
+      appendRequestCount++;
       expect(collectionId, 'fantasy-books');
       expect(target, 'category:fantasy');
       expect(cursor, 'page:2');
+      await appendGate?.future;
+      if (invalidAppend) {
+        return PluginDiscoveryDocumentResult(
+          pluginId: pluginId,
+          sourceName: '树测试数据源',
+          document: PluginDiscoveryDocument(components: const []),
+        );
+      }
       return PluginDiscoveryAppendResult(
         pluginId: pluginId,
         sourceName: '树测试数据源',
@@ -514,7 +631,7 @@ final class _TreeGateway implements SourceContentGateway, CancellableSourceConte
     }
     documentPluginIds.add(pluginId);
     final isCategory = target == 'category:fantasy';
-    if (isCategory) {
+    if (isCategory || target == 'category:fantasy-other') {
       await categoryGate?.future;
     }
     return PluginDiscoveryDocumentResult(
