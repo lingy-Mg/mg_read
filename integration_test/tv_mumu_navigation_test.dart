@@ -38,9 +38,11 @@ void main() {
     await bootstrapMgReadApp(televisionDetector: () async => true, appRunner: (widget) => app = widget);
     await tester.pumpWidget(RepaintBoundary(key: capture, child: app!));
     await _settle(tester);
-    expect(find.byType(TvLibraryShell), findsOneWidget);
     final container = ProviderScope.containerOf(tester.element(find.byType(MgReadApp)));
     final settings = container.read(appSettingsProvider);
+    await settings.set(AppSettingKeys.tvMode, true);
+    await _settle(tester);
+    expect(find.byType(TvLibraryShell), findsOneWidget);
     final router = container.read(appRouterProvider);
     final size = MediaQuery.sizeOf(tester.element(find.byType(TvLibraryShell)));
     expect(size.width, greaterThan(size.height));
@@ -75,6 +77,11 @@ void main() {
     await _capture(binding, capture, 'mumu-tv-search');
     await tester.binding.handlePopRoute();
     await _settle(tester);
+    expect(router.routeInformationProvider.value.uri.path, '/search');
+    expect(FocusManager.instance.primaryFocus, _focus(tester, find.byKey(const Key('app-nav-search'))));
+    for (var index = 0; index < 3; index++) {
+      await _press(tester, LogicalKeyboardKey.arrowLeft);
+    }
     expect(router.routeInformationProvider.value.uri.path, '/');
 
     _focus(tester, find.byKey(const Key('app-nav-profile'))).requestFocus();
@@ -95,6 +102,10 @@ void main() {
     expect(find.widgetWithText(FilledButton, '手机连接'), findsNothing);
     await tester.binding.handlePopRoute();
     await _settle(tester);
+    expect(router.routeInformationProvider.value.uri.path, '/profile');
+    expect(FocusManager.instance.primaryFocus, _focus(tester, find.byKey(const Key('app-nav-profile'))));
+    await _press(tester, LogicalKeyboardKey.arrowLeft);
+    await _press(tester, LogicalKeyboardKey.arrowLeft);
     expect(router.routeInformationProvider.value.uri.path, '/');
     await tester.binding.handlePopRoute();
     await _settle(tester);

@@ -33,7 +33,7 @@ final localImportControllerProvider = ChangeNotifierProvider<LocalImportControll
 });
 
 class LocalImportController extends ChangeNotifier {
-  LocalImportController(this._getLibrary, {VoidCallback? onLibraryChanged}) : _onLibraryChanged = onLibraryChanged {
+  LocalImportController(this._getLibrary, {this.onLibraryChanged}) {
     _ingressSubscription = LocalImportIngress.instance.pendingInputs.listen((inputs) => acceptInputs(inputs, openAsRequest: true));
     for (final inputs in LocalImportIngress.instance.takeBufferedInputs()) {
       acceptInputs(inputs, openAsRequest: true);
@@ -43,7 +43,9 @@ class LocalImportController extends ChangeNotifier {
   }
 
   final Future<ContentLibrary> Function() _getLibrary;
-  final VoidCallback? _onLibraryChanged;
+
+  /// Notifies the host after a durable change so shelf projections can reload.
+  final VoidCallback? onLibraryChanged;
   final List<LocalImportInput> _selected = <LocalImportInput>[];
   final Map<String, LocalImportInput> _retryInputs = <String, LocalImportInput>{};
   final Map<String, List<String>> _previews = <String, List<String>>{};
@@ -405,7 +407,7 @@ class LocalImportController extends ChangeNotifier {
           return before.id.value != after.id.value || before.revision != after.revision || before.state != after.state;
         });
     _documents = documents;
-    if (changed) _onLibraryChanged?.call();
+    if (changed) onLibraryChanged?.call();
   }
 
   void _upsertJob(LocalImportSnapshot job) {
