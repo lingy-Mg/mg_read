@@ -10,6 +10,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_svg: 2.3.2
   plugin_platform_interface: ^2.1.8
   screen_brightness: 2.1.11
   url_launcher: ^6.3.2

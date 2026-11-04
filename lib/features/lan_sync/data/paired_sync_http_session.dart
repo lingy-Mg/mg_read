@@ -44,8 +44,14 @@ final class _HttpExchange {
   final Completer<_AppliedSummary> serverApplied = Completer<_AppliedSummary>();
   final Completer<_AppliedSummary> clientApplied = Completer<_AppliedSummary>();
   final Set<String> receivedIds = <String>{};
+  final Set<String> receivedLocalDocumentIds = <String>{};
+  final Set<String> receivedLocalCoverIds = <String>{};
   final Map<String, LanSyncPluginDescriptor> uploadDescriptors = <String, LanSyncPluginDescriptor>{};
   final Map<String, Future<LanSyncHttpArtifact>> artifacts = <String, Future<LanSyncHttpArtifact>>{};
+  final Map<String, Future<LanSyncLocalDocumentHttpArtifact>> localDocumentArtifacts = <String, Future<LanSyncLocalDocumentHttpArtifact>>{};
+  final Map<String, Future<LanSyncLocalDocumentHttpArtifact>> localCoverArtifacts = <String, Future<LanSyncLocalDocumentHttpArtifact>>{};
+  final Map<String, Future<LanSyncLocalDocumentHttpArtifact>> incomingLocalCoverArtifacts =
+      <String, Future<LanSyncLocalDocumentHttpArtifact>>{};
   LanSyncGateway? gateway;
   LanSyncManifest? localManifest;
   _ImportPlan? plan;
@@ -113,6 +119,88 @@ final class _HttpExchange {
     });
   }
 
+  Future<void> acceptLocalDocumentUpload(String encodedId, HttpRequest request) async {
+    final id = Uri.decodeComponent(encodedId);
+    final selected = plan?.selection.localDocumentIds ?? const <String>{};
+    final document = remoteManifest.localDocuments.where((item) => item.documentId == id).firstOrNull;
+    if (receivedLocalDocumentIds.contains(id)) {
+      await request.drain<void>();
+      return;
+    }
+    if (document == null ||
+        !selected.contains(id) ||
+        request.headers.value('x-mgread-content-sha256') != document.rawSha256 ||
+        (request.contentLength >= 0 && request.contentLength != document.originalBytes)) {
+      throw const LanSyncTransportException('lan_sync_local_document_descriptor_invalid');
+    }
+    final gateway = this.gateway;
+    if (gateway is! LanSyncLocalDocumentGateway) throw const LanSyncTransportException('lan_sync_local_documents_unsupported');
+    final documentsGateway = gateway as LanSyncLocalDocumentGateway;
+    final coverArtifact = document.coverSha256 == null ? null : await incomingLocalCoverArtifacts[id];
+    if (document.coverSha256 != null && coverArtifact == null) throw const LanSyncTransportException('lan_sync_local_cover_incomplete');
+    final artifact = await LanSyncLocalDocumentHttpArtifact.materialize(document, request);
+    try {
+      await documentsGateway.importLocalDocument(
+        document,
+        artifact.openRead(),
+        useSenderMetadata: false,
+        coverBytes: coverArtifact?.openRead(),
+        coverMimeType: document.coverMimeType,
+      );
+      receivedLocalDocumentIds.add(id);
+    } finally {
+      await artifact.close();
+    }
+  }
+
+  Future<void> acceptLocalDocumentCoverUpload(String encodedId, HttpRequest request) async {
+    final id = Uri.decodeComponent(encodedId);
+    final selected = plan?.selection.localDocumentIds ?? const <String>{};
+    final document = remoteManifest.localDocuments.where((item) => item.documentId == id).firstOrNull;
+    if (receivedLocalCoverIds.contains(id)) {
+      await request.drain<void>();
+      return;
+    }
+    if (document == null ||
+        document.coverSha256 == null ||
+        !selected.contains(id) ||
+        request.headers.value('x-mgread-content-sha256') != document.coverSha256 ||
+        (request.contentLength >= 0 && request.contentLength != document.coverBytes)) {
+      throw const LanSyncTransportException('lan_sync_local_cover_descriptor_invalid');
+    }
+    incomingLocalCoverArtifacts[id] = Future<LanSyncLocalDocumentHttpArtifact>.value(
+      await LanSyncLocalDocumentHttpArtifact.materialize(document, request, cover: true),
+    );
+    receivedLocalCoverIds.add(id);
+  }
+
+  Future<LanSyncLocalDocumentHttpArtifact> localDocumentArtifact(String encodedId) {
+    final id = Uri.decodeComponent(encodedId);
+    final document = localManifest!.localDocuments.where((item) => item.documentId == id).firstOrNull;
+    if (document == null) throw const LanSyncTransportException('lan_sync_local_document_unexpected');
+    final gateway = this.gateway;
+    if (gateway is! LanSyncLocalDocumentGateway) throw const LanSyncTransportException('lan_sync_local_documents_unsupported');
+    final documentsGateway = gateway as LanSyncLocalDocumentGateway;
+    return localDocumentArtifacts.putIfAbsent(id, () async {
+      final bytes = await documentsGateway.openLocalDocumentOriginal(document);
+      return LanSyncLocalDocumentHttpArtifact.materialize(document, bytes);
+    });
+  }
+
+  Future<LanSyncLocalDocumentHttpArtifact> localDocumentCoverArtifact(String encodedId) {
+    final id = Uri.decodeComponent(encodedId);
+    final document = localManifest!.localDocuments.where((item) => item.documentId == id).firstOrNull;
+    if (document == null || document.coverSha256 == null) throw const LanSyncTransportException('lan_sync_local_cover_unexpected');
+    final gateway = this.gateway;
+    if (gateway is! LanSyncLocalDocumentGateway) throw const LanSyncTransportException('lan_sync_local_documents_unsupported');
+    final documentsGateway = gateway as LanSyncLocalDocumentGateway;
+    return localCoverArtifacts.putIfAbsent(id, () async {
+      final bytes = await documentsGateway.openLocalDocumentCover(document);
+      if (bytes == null) throw const LanSyncTransportException('lan_sync_local_cover_unavailable');
+      return LanSyncLocalDocumentHttpArtifact.materialize(document, bytes, cover: true);
+    });
+  }
+
   Future<void> rejectBusy() async {
     fail(
       const PairedSyncPeerFailureException(code: 'lan_sync_peer_busy', stage: 'request', errorText: 'lan_sync_peer_busy'),
@@ -147,27 +235,60 @@ final class _HttpExchange {
         // Session artifacts may already be gone after an interrupted request.
       }
     }
+    for (final future in localDocumentArtifacts.values) {
+      try {
+        await (await future).close();
+      } on Object {
+        // Session artifacts may already be gone after an interrupted request.
+      }
+    }
+    for (final future in localCoverArtifacts.values) {
+      try {
+        await (await future).close();
+      } on Object {
+        // Session artifacts may already be gone after an interrupted request.
+      }
+    }
+    for (final future in incomingLocalCoverArtifacts.values) {
+      try {
+        await (await future).close();
+      } on Object {
+        // Session artifacts may already be gone after an interrupted request.
+      }
+    }
   }
 }
 
 final class _Selection {
-  const _Selection(this.pluginIds, this.shelfItemIds);
+  const _Selection(this.pluginIds, this.shelfItemIds, [this.localDocumentIds = const <String>{}]);
 
   final Set<String> pluginIds;
   final Set<String> shelfItemIds;
+  final Set<String> localDocumentIds;
 
-  Map<String, Object?> toJson() => <String, Object?>{'pluginIds': pluginIds.toList(), 'shelfItemIds': shelfItemIds.toList()};
+  Map<String, Object?> toJson() => <String, Object?>{
+    'pluginIds': pluginIds.toList(),
+    'shelfItemIds': shelfItemIds.toList(),
+    'localDocumentIds': localDocumentIds.toList(),
+  };
 
   factory _Selection.fromJson(Object? raw, LanSyncManifest manifest) {
     if (raw is! Map) throw const LanSyncTransportException('lan_sync_selection_invalid');
     final plugins = raw['pluginIds'];
     final shelf = raw['shelfItemIds'];
-    if (plugins is! List || shelf is! List || plugins.any((value) => value is! String) || shelf.any((value) => value is! String)) {
+    final localDocuments = raw['localDocumentIds'] ?? const <Object?>[];
+    if (plugins is! List ||
+        shelf is! List ||
+        localDocuments is! List ||
+        plugins.any((value) => value is! String) ||
+        shelf.any((value) => value is! String) ||
+        localDocuments.any((value) => value is! String)) {
       throw const LanSyncTransportException('lan_sync_selection_invalid');
     }
-    final result = _Selection(plugins.cast<String>().toSet(), shelf.cast<String>().toSet());
+    final result = _Selection(plugins.cast<String>().toSet(), shelf.cast<String>().toSet(), localDocuments.cast<String>().toSet());
     if (!manifest.plugins.map((item) => item.id).toSet().containsAll(result.pluginIds) ||
-        !manifest.shelfItems.map((item) => item.identity).toSet().containsAll(result.shelfItemIds)) {
+        !manifest.shelfItems.map((item) => item.identity).toSet().containsAll(result.shelfItemIds) ||
+        !manifest.localDocuments.map((item) => item.documentId).toSet().containsAll(result.localDocumentIds)) {
       throw const LanSyncTransportException('lan_sync_selection_invalid');
     }
     return result;
@@ -224,24 +345,57 @@ final class _WirePolicy {
   };
 }
 
-Future<_ImportPlan> _planImport(LanSyncGateway gateway, LanSyncManifest manifest) async {
-  if (manifest.plugins.isEmpty && manifest.shelfItems.isEmpty) {
-    return const _ImportPlan(0, null, _Selection(<String>{}, <String>{}));
+Future<_ImportPlan> _planImport(LanSyncGateway gateway, LanSyncManifest manifest, {bool includeLocalDocuments = true}) async {
+  if (includeLocalDocuments && manifest.localDocuments.isNotEmpty && gateway is! LanSyncLocalDocumentGateway) {
+    throw const LanSyncTransportException('lan_sync_local_documents_unsupported');
+  }
+  if (manifest.plugins.isEmpty && manifest.shelfItems.isEmpty && manifest.localDocuments.isEmpty) {
+    return _ImportPlan(
+      0,
+      null,
+      _Selection(
+        <String>{},
+        <String>{},
+        includeLocalDocuments ? <String>{for (final item in manifest.localDocuments) item.documentId} : const <String>{},
+      ),
+    );
   }
   final preview = await gateway.previewImport(manifest, force: true);
+  final conflictingLocalIds = <String>{
+    for (final conflict in preview.localDocumentConflicts)
+      if (conflict.choice == LanSyncConflictChoice.keepLocal) conflict.documentId,
+  };
   return _ImportPlan(
     preview.pluginPlans.values.where((state) => state == LanSyncPluginPlanState.developmentConflict).length,
     preview,
-    _Selection(preview.recommendedPluginIds, preview.selectedShelfItemIds),
+    _Selection(
+      preview.recommendedPluginIds,
+      preview.selectedShelfItemIds,
+      includeLocalDocuments
+          ? <String>{
+              for (final item in manifest.localDocuments)
+                if (!conflictingLocalIds.contains(item.documentId)) item.documentId,
+            }
+          : const <String>{},
+    ),
   );
 }
 
 Future<LanSyncManifest> _createManifest(LanSyncGateway gateway, _WirePolicy policy) async {
+  final localDocuments = policy.canSend && policy.syncBookshelf && gateway is LanSyncLocalDocumentGateway
+      ? await (gateway as LanSyncLocalDocumentGateway).listLocalDocumentDescriptors()
+      : const <LanSyncLocalDocumentDescriptor>[];
   if (gateway is LanSyncPairedGateway) {
-    return (gateway as LanSyncPairedGateway).createPairedManifest(
+    final manifest = await (gateway as LanSyncPairedGateway).createPairedManifest(
       includePlugins: policy.canSend && policy.syncPlugins,
       includeShelf: policy.canSend && policy.syncBookshelf,
       deferPluginArtifacts: true,
+    );
+    return LanSyncManifest(
+      plugins: manifest.plugins,
+      shelfItems: manifest.shelfItems,
+      skippedShelfItems: manifest.skippedShelfItems,
+      localDocuments: localDocuments,
     );
   }
   final manifest = await gateway.createManifest();
@@ -249,6 +403,7 @@ Future<LanSyncManifest> _createManifest(LanSyncGateway gateway, _WirePolicy poli
     plugins: policy.canSend && policy.syncPlugins ? manifest.plugins : const <LanSyncPluginDescriptor>[],
     shelfItems: policy.canSend && policy.syncBookshelf ? manifest.shelfItems : const <LanSyncShelfItem>[],
     skippedShelfItems: policy.canSend && policy.syncBookshelf ? manifest.skippedShelfItems : 0,
+    localDocuments: localDocuments,
   );
 }
 
@@ -270,21 +425,42 @@ bool _sameLogical(LanSyncPluginDescriptor actual, LanSyncPluginDescriptor offere
     actual.transferable &&
     !actual.deferred;
 
-Future<_AppliedSummary> _finishApply(LanSyncGateway gateway, LanSyncManifest manifest, _ImportPlan plan, {Set<String>? receivedIds}) async {
+Future<_AppliedSummary> _finishApply(
+  LanSyncGateway gateway,
+  LanSyncManifest manifest,
+  _ImportPlan plan, {
+  Set<String>? receivedIds,
+  Set<String>? receivedLocalDocumentIds,
+  Set<String>? receivedLocalCoverIds,
+}) async {
   if (receivedIds != null && !receivedIds.containsAll(plan.selection.pluginIds)) {
     throw const LanSyncTransportException('lan_sync_transfer_incomplete');
   }
+  if (receivedLocalDocumentIds != null && !receivedLocalDocumentIds.containsAll(plan.selection.localDocumentIds)) {
+    throw const LanSyncTransportException('lan_sync_transfer_incomplete');
+  }
+  if (receivedLocalCoverIds != null) {
+    final expected = <String>{
+      for (final item in manifest.localDocuments)
+        if (plan.selection.localDocumentIds.contains(item.documentId) && item.coverSha256 != null) item.documentId,
+    };
+    if (!receivedLocalCoverIds.containsAll(expected)) throw const LanSyncTransportException('lan_sync_transfer_incomplete');
+  }
   final plugins = plan.selection.pluginIds.isEmpty ? const LanSyncPluginImportResult.empty() : await gateway.finishPluginImports();
   if (plugins.failed > 0) throw LanSyncGatewayException(plugins.failureCode ?? 'lan_sync_plugin_import_failed');
-  if (plan.preview == null) return _AppliedSummary(0, plan.developmentConflicts, 0);
+  if (plan.preview == null) return _AppliedSummary(plan.selection.localDocumentIds.length, plan.developmentConflicts, 0);
   final applied = await gateway.applyImport(
-    manifest: manifest.selectShelfItems(plan.selection.shelfItemIds),
+    manifest: manifest.selectShelfItems(plan.selection.shelfItemIds, selectedLocalDocumentIds: plan.selection.localDocumentIds),
     conflictChoices: {for (final conflict in plan.preview!.conflicts) conflict.identity: LanSyncConflictChoice.smartMerge},
     availablePluginIds: plugins.availablePluginIds,
     pluginResult: plugins,
     force: true,
   );
-  return _AppliedSummary(applied.added + applied.updated, plan.developmentConflicts, applied.pluginInstalled);
+  return _AppliedSummary(
+    applied.added + applied.updated + plan.selection.localDocumentIds.length,
+    plan.developmentConflicts,
+    applied.pluginInstalled,
+  );
 }
 
 LanSyncManifest _manifest(Object? raw) {
@@ -322,6 +498,7 @@ Future<Map<String, Object?>> _jsonRequest(
   bool allowEmpty = false,
 }) async {
   final bytes = value == null ? const <int>[] : utf8.encode(jsonEncode(value));
+  if (bytes.length > lanSyncMaxManifestBytes) throw const LanSyncTransportException('lan_sync_control_too_large');
   final request = await client.openUrl(method, uri);
   LanSyncHttpAuthentication.sign(
     request,

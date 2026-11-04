@@ -14,6 +14,8 @@ library;
 
 import 'dart:async';
 
+import 'package:crypto/crypto.dart' as crypto;
+
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
@@ -21,7 +23,7 @@ import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 
 /// Bridges the app-owned library and the path-free Runtime transfer facade.
-final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway {
+final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway, LanSyncLocalDocumentGateway {
   MgReadLanSyncGateway(this._library, this._runtime);
 
   final ContentLibrary _library;
@@ -98,6 +100,164 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
       shelfItems: shelf.items,
       skippedShelfItems: shelf.skipped,
     );
+  }
+
+  @override
+  Future<List<LanSyncLocalDocumentDescriptor>> listLocalDocumentDescriptors() async {
+    final items = await _library.listLocalDocuments(includeRetained: false);
+    final documents = <LanSyncLocalDocumentDescriptor>[];
+    for (final item in items) {
+      final details = await _library.localDocumentDetails(item.id);
+      if (details == null || details.originalBytes <= 0 || details.originalBytes > lanSyncMaxLocalDocumentBytes) continue;
+      final progress = await _library.loadProgress(item.id);
+      final bookmarks = await _library.loadBookmarks(item.id, ContentKind.novel);
+      final coverBytes = item.source.coverHash == null ? null : await _library.readLocalDocumentCover(item.id);
+      if (item.source.coverHash != null && coverBytes == null) throw const LanSyncGatewayException('lan_sync_local_cover_missing');
+      if (coverBytes != null && coverBytes.length > lanSyncMaxLocalCoverBytes) {
+        throw const LanSyncGatewayException('lan_sync_local_cover_too_large');
+      }
+      final coverMimeType = coverBytes == null ? null : _localCoverMimeType(coverBytes);
+      documents.add(
+        LanSyncLocalDocumentDescriptor(
+          documentId: details.documentId,
+          rawSha256: details.rawSha256,
+          originalBytes: details.originalBytes,
+          format: details.format.name,
+          title: item.title,
+          author: item.author,
+          options: details.options.toJson(),
+          coverSha256: coverBytes == null ? null : crypto.sha256.convert(coverBytes).toString(),
+          coverBytes: coverBytes?.length,
+          coverMimeType: coverMimeType,
+          progress: progress is LibraryReadingProgress ? _toLanReadingProgress(progress) : null,
+          bookmarks: <LanSyncLocalBookmark>[
+            for (final bookmark in bookmarks.whereType<LibraryBookmark>())
+              LanSyncLocalBookmark(
+                id: bookmark.id,
+                chapterId: bookmark.chapterId,
+                paragraphId: bookmark.paragraphId,
+                characterOffset: bookmark.characterOffset,
+                chapterTitle: bookmark.chapterTitle,
+                excerpt: bookmark.excerpt,
+                createdAtUtc: bookmark.createdAtUtc,
+              ),
+          ],
+        ),
+      );
+    }
+    return List<LanSyncLocalDocumentDescriptor>.unmodifiable(documents);
+  }
+
+  @override
+  Future<Stream<List<int>>> openLocalDocumentOriginal(LanSyncLocalDocumentDescriptor document) async {
+    final items = await _library.listLocalDocuments(includeRetained: false);
+    for (final item in items) {
+      final details = await _library.localDocumentDetails(item.id);
+      if (details?.documentId == document.documentId &&
+          details!.rawSha256 == document.rawSha256 &&
+          details.originalBytes == document.originalBytes) {
+        return _library.openLocalDocumentOriginal(item.id);
+      }
+    }
+    throw const LanSyncGatewayException('lan_sync_local_document_unavailable');
+  }
+
+  @override
+  Future<Stream<List<int>>?> openLocalDocumentCover(LanSyncLocalDocumentDescriptor document) async {
+    if (document.coverSha256 == null || document.coverBytes == null) return null;
+    final items = await _library.listLocalDocuments(includeRetained: false);
+    for (final item in items) {
+      if (item.source.documentId != document.documentId || item.source.coverHash == null) continue;
+      final bytes = await _library.readLocalDocumentCover(item.id);
+      if (bytes == null || bytes.length != document.coverBytes || crypto.sha256.convert(bytes).toString() != document.coverSha256) {
+        throw const LanSyncGatewayException('lan_sync_local_cover_changed');
+      }
+      return Stream<List<int>>.value(bytes);
+    }
+    throw const LanSyncGatewayException('lan_sync_local_cover_unavailable');
+  }
+
+  @override
+  Future<void> importLocalDocument(
+    LanSyncLocalDocumentDescriptor document,
+    Stream<List<int>> bytes, {
+    required bool useSenderMetadata,
+    Stream<List<int>>? coverBytes,
+    String? coverMimeType,
+  }) async {
+    if (!useSenderMetadata) {
+      for (final item in await _library.listLocalDocuments()) {
+        final details = await _library.localDocumentDetails(item.id);
+        if (item.source.matchesLocalDocument(document.documentId) || details?.rawSha256 == document.rawSha256) return;
+      }
+    }
+    List<int>? validatedCover;
+    if (document.coverSha256 != null) {
+      if (coverBytes == null || document.coverBytes == null || coverMimeType != document.coverMimeType) {
+        throw const LanSyncGatewayException('lan_sync_local_cover_missing');
+      }
+      validatedCover = <int>[];
+      await for (final chunk in coverBytes) {
+        validatedCover.addAll(chunk);
+        if (validatedCover.length > lanSyncMaxLocalCoverBytes || validatedCover.length > document.coverBytes!) {
+          throw const LanSyncGatewayException('lan_sync_local_cover_size_mismatch');
+        }
+      }
+      if (validatedCover.length != document.coverBytes || crypto.sha256.convert(validatedCover).toString() != document.coverSha256) {
+        throw const LanSyncGatewayException('lan_sync_local_cover_hash_mismatch');
+      }
+    }
+    LibraryItemId? replaceItemId;
+    if (useSenderMetadata) {
+      for (final item in await _library.listLocalDocuments()) {
+        if (item.source.matchesLocalDocument(document.documentId)) {
+          final details = await _library.localDocumentDetails(item.id);
+          if (details?.rawSha256 != document.rawSha256) replaceItemId = item.id;
+          break;
+        }
+      }
+    }
+    final snapshot = await _library.prepareLocalImport(
+      LocalImportInput(
+        fileName: 'transfer.${document.format}',
+        bytes: document.originalBytes,
+        expectedSha256: document.rawSha256,
+        openRead: () => bytes,
+      ),
+      options: LocalDocumentParseOptions.fromJson(document.options),
+      replaceItemId: replaceItemId,
+    );
+    if (snapshot.status != LocalImportStatus.awaitingConfirmation) {
+      throw LanSyncGatewayException(snapshot.errorCode ?? 'lan_sync_local_document_invalid');
+    }
+    final progress = document.progress == null ? null : _toLibraryReadingProgress(document.progress!, const LibraryItemId('transfer'));
+    final bookmarks = <LibraryBookmark>[
+      for (final bookmark in document.bookmarks)
+        LibraryBookmark(
+          id: bookmark.id,
+          itemId: const LibraryItemId('transfer'),
+          chapterId: bookmark.chapterId,
+          paragraphId: bookmark.paragraphId,
+          characterOffset: bookmark.characterOffset,
+          chapterTitle: bookmark.chapterTitle,
+          excerpt: bookmark.excerpt,
+          createdAtUtc: bookmark.createdAtUtc,
+        ),
+    ];
+    final committed = await _library.commitLocalImport(
+      snapshot.id,
+      title: document.title,
+      author: document.author,
+      documentId: document.documentId,
+      progress: progress,
+      bookmarks: bookmarks,
+      useSenderMetadata: useSenderMetadata,
+      coverBytes: validatedCover,
+      coverMimeType: document.coverMimeType ?? 'image/png',
+    );
+    if (committed.status != LocalImportStatus.succeeded) {
+      throw LanSyncGatewayException(committed.errorCode ?? 'lan_sync_local_document_commit_failed');
+    }
   }
 
   @override
@@ -193,6 +353,19 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
     }
     final snapshot = _toLibrarySnapshot(manifest);
     final preview = await _library.previewSyncSnapshot(snapshot, availablePluginIds: availableAfterTransfer);
+    final localItems = await _library.listLocalDocuments(includeRetained: false);
+    final localDocumentConflicts = <LanSyncLocalDocumentConflict>[];
+    for (final document in manifest.localDocuments) {
+      for (final localItem in localItems) {
+        final localDetails = await _library.localDocumentDetails(localItem.id);
+        if (localDetails?.rawSha256 == document.rawSha256 || localItem.source.matchesLocalDocument(document.documentId)) {
+          localDocumentConflicts.add(
+            LanSyncLocalDocumentConflict(documentId: document.documentId, senderTitle: document.title, localTitle: localItem.title),
+          );
+          break;
+        }
+      }
+    }
     _pendingManifest = manifest;
     _pendingSnapshot = snapshot;
     _pendingPreview = preview;
@@ -209,11 +382,13 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
       ),
       blockedItemCount: preview.blocked.length,
       pluginPlans: Map<String, LanSyncPluginPlanState>.unmodifiable(featurePlans),
+      localDocumentConflicts: List<LanSyncLocalDocumentConflict>.unmodifiable(localDocumentConflicts),
       selectedPluginIds: <String>{
         for (final entry in featurePlans.entries)
           if (entry.value == LanSyncPluginPlanState.missing || entry.value == LanSyncPluginPlanState.upgrade) entry.key,
       },
       selectedShelfItemIds: <String>{for (final item in manifest.shelfItems) item.identity},
+      selectedLocalDocumentIds: <String>{for (final item in manifest.localDocuments) item.documentId},
       forceUpgradePluginIds: forceUpgradePluginIds,
     );
   }
@@ -574,6 +749,41 @@ LanSyncReadingProgress _toLanProgress(LibrarySyncReadingProgress progress) => La
   updatedAtUtc: progress.updatedAtUtc,
   totalReadingSeconds: progress.totalReadingSeconds,
 );
+
+LanSyncReadingProgress _toLanReadingProgress(LibraryReadingProgress progress) => LanSyncReadingProgress(
+  chapterId: progress.chapterId,
+  paragraphId: progress.paragraphId,
+  characterOffset: progress.characterOffset,
+  chapterIndex: progress.chapterIndex,
+  chapterFraction: progress.chapterFraction,
+  bookFraction: progress.bookFraction,
+  updatedAtUtc: progress.updatedAtUtc,
+  totalReadingSeconds: progress.totalReadingSeconds,
+);
+
+LibraryReadingProgress _toLibraryReadingProgress(LanSyncReadingProgress value, LibraryItemId itemId) => LibraryReadingProgress(
+  itemId: itemId,
+  chapterId: value.chapterId,
+  paragraphId: value.paragraphId,
+  characterOffset: value.characterOffset,
+  chapterIndex: value.chapterIndex,
+  chapterFraction: value.chapterFraction,
+  bookFraction: value.bookFraction,
+  updatedAtUtc: value.updatedAtUtc,
+  totalReadingSeconds: value.totalReadingSeconds,
+);
+
+String _localCoverMimeType(List<int> bytes) {
+  if (bytes.length >= 8 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4e && bytes[3] == 0x47) return 'image/png';
+  if (bytes.length >= 3 && bytes[0] == 0xff && bytes[1] == 0xd8 && bytes[2] == 0xff) return 'image/jpeg';
+  if (bytes.length >= 12 && String.fromCharCodes(bytes.take(4)) == 'RIFF' && String.fromCharCodes(bytes.skip(8).take(4)) == 'WEBP') {
+    return 'image/webp';
+  }
+  if (bytes.length >= 6 && (String.fromCharCodes(bytes.take(6)) == 'GIF87a' || String.fromCharCodes(bytes.take(6)) == 'GIF89a')) {
+    return 'image/gif';
+  }
+  throw const LanSyncGatewayException('lan_sync_local_cover_invalid');
+}
 
 LibrarySyncSnapshot _toLibrarySnapshot(LanSyncManifest manifest) => LibrarySyncSnapshot(
   items: List<LibrarySyncItem>.unmodifiable(

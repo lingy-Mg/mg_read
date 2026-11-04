@@ -105,11 +105,30 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     _recordStage('manifest_prepare_started');
     try {
       final session = _session!;
-      final manifest = await session.run((gateway) => gateway.createManifest());
+      var manifest = await session.run((gateway) => gateway.createManifest());
+      final localGateway = session.gateway is LanSyncLocalDocumentGateway ? session.gateway as LanSyncLocalDocumentGateway : null;
+      if (localGateway != null) {
+        final documents = await session.run((_) => localGateway.listLocalDocumentDescriptors());
+        manifest = LanSyncManifest(
+          plugins: manifest.plugins,
+          shelfItems: manifest.shelfItems,
+          skippedShelfItems: manifest.skippedShelfItems,
+          localDocuments: documents,
+        );
+      }
       if (!_isCurrent(generation)) return;
       final sender = await LanSyncSenderService.start(
         manifest: manifest,
         openPlugin: (plugin) => session.run((gateway) => gateway.openPluginArchive(plugin)),
+        openLocalDocument: localGateway == null
+            ? null
+            : (document, {required cover}) => session.run((_) async {
+                final stream = cover
+                    ? await localGateway.openLocalDocumentCover(document)
+                    : await localGateway.openLocalDocumentOriginal(document);
+                if (stream == null) throw const LanSyncGatewayException('lan_sync_local_document_missing');
+                return stream;
+              }),
       );
       if (!_isCurrent(generation)) {
         await sender.close();
@@ -129,7 +148,9 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
         message: '等待接收设备连接',
         connectionOffer: connectionOffer,
         manifest: manifest,
-        totalBytes: manifest.plugins.where((item) => item.transferable).fold<int>(0, (sum, item) => sum + item.bytes),
+        totalBytes:
+            manifest.plugins.where((item) => item.transferable).fold<int>(0, (sum, item) => sum + item.bytes) +
+            manifest.localDocuments.fold<int>(0, (sum, item) => sum + item.originalBytes + (item.coverBytes ?? 0)),
       );
       _recordStage('sender_ready');
     } on Object catch (error, stackTrace) {
@@ -217,10 +238,12 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
         message: '将强制覆盖本机同名插件、书架和阅读进度',
         manifest: manifest,
         preview: preview,
-        totalBytes: preview.recommendedPluginIds.fold<int>(
-          0,
-          (sum, id) => sum + manifest.plugins.firstWhere((item) => item.id == id).bytes,
-        ),
+        totalBytes:
+            preview.recommendedPluginIds.fold<int>(0, (sum, id) => sum + manifest.plugins.firstWhere((item) => item.id == id).bytes) +
+            preview.selectedLocalDocumentIds.fold<int>(0, (sum, id) {
+              final document = manifest.localDocuments.firstWhere((item) => item.documentId == id);
+              return sum + document.originalBytes + (document.coverBytes ?? 0);
+            }),
       );
       _recordStage('manifest_preview_completed');
     } on Object catch (error, stackTrace) {
@@ -327,6 +350,7 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     final next = preview.withSelection(
       pluginIds: selected ? pluginIds : const <String>{},
       shelfItemIds: selected ? <String>{for (final item in manifest.shelfItems) item.identity} : const <String>{},
+      localDocumentIds: selected ? <String>{for (final item in manifest.localDocuments) item.documentId} : const <String>{},
       forceUpgradeIds: selected
           ? <String>{
               for (final id in pluginIds)
@@ -335,6 +359,37 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
           : const <String>{},
     );
     state = _withPreviewSelection(next, manifest);
+  }
+
+  void chooseAllLocalDocuments(bool selected) {
+    final manifest = state.manifest;
+    final preview = state.preview;
+    if (manifest == null || preview == null) return;
+    state = _withPreviewSelection(
+      preview.withSelection(
+        localDocumentIds: selected ? <String>{for (final item in manifest.localDocuments) item.documentId} : const <String>{},
+      ),
+      manifest,
+    );
+  }
+
+  void chooseLocalDocument(String id, bool selected) {
+    final manifest = state.manifest;
+    final preview = state.preview;
+    if (manifest == null || preview == null || !manifest.localDocuments.any((item) => item.documentId == id)) return;
+    final ids = <String>{...preview.selectedLocalDocumentIds};
+    if (selected) {
+      ids.add(id);
+    } else {
+      ids.remove(id);
+    }
+    state = _withPreviewSelection(preview.withSelection(localDocumentIds: ids), manifest);
+  }
+
+  void chooseLocalDocumentConflict(String id, LanSyncConflictChoice choice) {
+    final preview = state.preview;
+    if (preview == null) return;
+    state = _withPreviewSelection(preview.withLocalDocumentChoice(id, choice), state.manifest!);
   }
 
   LanSyncViewState _withPreviewSelection(LanSyncImportPreview preview, LanSyncManifest manifest) => LanSyncViewState(
@@ -346,7 +401,12 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     manifest: manifest,
     preview: preview,
     transferredBytes: state.transferredBytes,
-    totalBytes: _selectedPluginBytes(manifest, preview.selectedPluginIds),
+    totalBytes:
+        _selectedPluginBytes(manifest, preview.selectedPluginIds) +
+        preview.selectedLocalDocumentIds.fold<int>(0, (sum, id) {
+          final document = manifest.localDocuments.firstWhere((item) => item.documentId == id);
+          return sum + document.originalBytes + (document.coverBytes ?? 0);
+        }),
     result: state.result,
   );
 
@@ -361,8 +421,15 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
     final generation = ++_generation;
     final selectedPluginIds = preview.selectedPluginIds;
     final selectedShelfItemIds = preview.selectedShelfItemIds;
+    final selectedLocalDocumentIds = <String>{
+      for (final id in preview.selectedLocalDocumentIds)
+        if (preview.localDocumentConflicts.every(
+          (conflict) => conflict.documentId != id || conflict.choice != LanSyncConflictChoice.keepLocal,
+        ))
+          id,
+    };
     if (!preview.hasSelection) return;
-    final selectedManifest = manifest.selectShelfItems(selectedShelfItemIds);
+    final selectedManifest = manifest.selectShelfItems(selectedShelfItemIds, selectedLocalDocumentIds: selectedLocalDocumentIds);
     final progressClock = Stopwatch()..start();
     var lastProgressAtMicros = -100000;
     void updateTransferProgress(String message, int completed, int total) {
@@ -395,6 +462,7 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
       await receiver.receivePlugins(
         pluginIds: selectedPluginIds,
         shelfItemIds: selectedShelfItemIds,
+        localDocumentIds: selectedLocalDocumentIds,
         preparePlugins: (plugins) async {
           _recordStage('plugin_import_prepare_started');
           await session.run((gateway) => gateway.preparePluginImports(plugins, forceUpgradePluginIds: preview.forceUpgradePluginIds));
@@ -402,6 +470,19 @@ final class LanSyncController extends Notifier<LanSyncViewState> {
         importPlugin: (plugin, bytes) {
           updateTransferProgress('正在写入${plugin.displayName ?? plugin.id}数据源', state.transferredBytes, state.totalBytes);
           return session.run((gateway) => gateway.importPluginArchive(plugin, bytes));
+        },
+        importLocalDocument: (document, bytes, {coverBytes, coverMimeType}) {
+          return session.run((gateway) {
+            if (gateway is! LanSyncLocalDocumentGateway) throw const LanSyncGatewayException('lan_sync_local_document_unsupported');
+            final conflict = preview.localDocumentConflicts.where((item) => item.documentId == document.documentId).firstOrNull;
+            return (gateway as LanSyncLocalDocumentGateway).importLocalDocument(
+              document,
+              bytes,
+              useSenderMetadata: conflict?.choice == LanSyncConflictChoice.useSender,
+              coverBytes: coverBytes,
+              coverMimeType: coverMimeType,
+            );
+          });
         },
         onVerificationProgress: (plugin, completed, total) {
           updateTransferProgress('正在校验${plugin.displayName ?? plugin.id}数据源', completed, total);

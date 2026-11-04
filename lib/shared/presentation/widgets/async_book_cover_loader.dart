@@ -25,6 +25,13 @@ final class BookCoverRequest {
       assert(pluginVersion != ''),
       assert(remoteContentId != '');
 
+  BookCoverRequest.local({required String itemId, required String generation})
+    : pluginId = '',
+      pluginVersion = generation,
+      remoteContentId = itemId,
+      coverUrl = Uri(scheme: 'mgread-local', host: itemId, path: '/$generation/cover');
+  bool get isLocal => coverUrl.scheme == 'mgread-local';
+
   final String pluginId;
   final String pluginVersion;
   final String remoteContentId;

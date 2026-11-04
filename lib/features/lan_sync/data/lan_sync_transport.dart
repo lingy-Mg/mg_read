@@ -14,11 +14,14 @@ import 'dart:math';
 import 'package:mg_read/features/lan_sync/data/lan_sync_http_artifact.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_http_client.dart';
 import 'package:mg_read/features/lan_sync/data/native_platform_artifact.dart';
+import 'package:mg_read/features/lan_sync/data/local_document_http_artifact.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_endpoint_policy.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 
 typedef LanSyncPluginStreamOpener = Future<Stream<List<int>>> Function(LanSyncPluginDescriptor plugin);
+typedef LanSyncLocalDocumentStreamOpener =
+    Future<Stream<List<int>>> Function(LanSyncLocalDocumentDescriptor document, {required bool cover});
 
 sealed class LanSyncSenderEvent {
   const LanSyncSenderEvent();
@@ -69,18 +72,23 @@ final class LanSyncSenderService {
     required this.sessionId,
     required this.manifest,
     required this.openPlugin,
+    required this.openLocalDocument,
     required this._server,
     required this._addresses,
   });
   final String sessionId;
   final LanSyncManifest manifest;
   final LanSyncPluginStreamOpener openPlugin;
+  final LanSyncLocalDocumentStreamOpener? openLocalDocument;
   final HttpServer _server;
   final List<String> _addresses;
   final StreamController<LanSyncSenderEvent> _events = StreamController<LanSyncSenderEvent>.broadcast();
   final Map<String, LanSyncHttpArtifact> _artifacts = {};
+  final Map<String, LanSyncLocalDocumentHttpArtifact> _localArtifacts = {};
   final Set<String> _selectedPluginIds = <String>{};
   final Set<String> _servedPluginIds = <String>{};
+  final Set<String> _selectedLocalArtifactIds = <String>{};
+  final Set<String> _servedLocalArtifactIds = <String>{};
   Timer? _expiryTimer;
   String? _pairingCode;
   bool _closed = false, _active = false, _completionStarted = false;
@@ -88,12 +96,17 @@ final class LanSyncSenderService {
   Stream<LanSyncSenderEvent> get events => _events.stream;
   int get port => _server.port;
   List<String> get addresses => List.unmodifiable(_addresses);
-  static Future<LanSyncSenderService> start({required LanSyncManifest manifest, required LanSyncPluginStreamOpener openPlugin}) async {
+  static Future<LanSyncSenderService> start({
+    required LanSyncManifest manifest,
+    required LanSyncPluginStreamOpener openPlugin,
+    LanSyncLocalDocumentStreamOpener? openLocalDocument,
+  }) async {
     final server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
     final result = LanSyncSenderService._(
       sessionId: _randomToken(18),
       manifest: manifest,
       openPlugin: openPlugin,
+      openLocalDocument: openLocalDocument,
       server: server,
       addresses: await eligibleLanSyncAddresses(),
     );
@@ -110,6 +123,7 @@ final class LanSyncSenderService {
   Future<void> _handle(HttpRequest request) async {
     var authenticated = false;
     try {
+      final parts = request.uri.pathSegments;
       if (!_eligiblePeer(request.connectionInfo?.remoteAddress)) {
         return await _respond(request.response, HttpStatus.forbidden, {'error': 'not_private'});
       }
@@ -135,17 +149,26 @@ final class LanSyncSenderService {
         final body = await _jsonBody(request);
         final raw = body['pluginIds'];
         final shelf = body['shelfItemIds'];
+        final localDocumentsRaw = body['localDocumentIds'] ?? const <Object?>[];
         final platform = body['platform'];
         if (raw is! List ||
             shelf is! List ||
+            localDocumentsRaw is! List ||
             raw.any((e) => e is! String) ||
             shelf.any((e) => e is! String) ||
+            localDocumentsRaw.any((e) => e is! String) ||
             platform != null && platform != 'windows' && platform != 'android' && platform != 'macos') {
           throw const LanSyncTransportException('lan_sync_selection_invalid');
         }
         final ids = raw.cast<String>().toSet();
         final selected = manifest.plugins.where((p) => ids.contains(p.id)).toList();
         if (selected.length != ids.length) throw const LanSyncTransportException('lan_sync_selection_invalid');
+        final localIds = localDocumentsRaw.cast<String>().toSet();
+        final selectedDocuments = manifest.localDocuments.where((document) => localIds.contains(document.documentId)).toList();
+        final localOpener = openLocalDocument;
+        if (selectedDocuments.length != localIds.length || (localIds.isNotEmpty && localOpener == null)) {
+          throw const LanSyncTransportException('lan_sync_selection_invalid');
+        }
         _setActive(true);
         final prepared = <LanSyncPluginDescriptor>[];
         for (final plugin in selected) {
@@ -156,14 +179,55 @@ final class LanSyncSenderService {
           prepared.add(artifact.descriptor);
         }
         _total = prepared.fold(0, (n, p) => n + p.bytes);
+        for (final document in selectedDocuments) {
+          final original = await LanSyncLocalDocumentHttpArtifact.materialize(document, await localOpener!(document, cover: false));
+          _localArtifacts['${document.documentId}/original'] = original;
+          _total += document.originalBytes;
+          if (document.coverBytes case final coverBytes?) {
+            final cover = await LanSyncLocalDocumentHttpArtifact.materialize(
+              document,
+              await localOpener(document, cover: true),
+              cover: true,
+            );
+            _localArtifacts['${document.documentId}/cover'] = cover;
+            _total += coverBytes;
+          }
+        }
         _selectedPluginIds
           ..clear()
           ..addAll(selected.map((plugin) => plugin.id));
-        await _respond(request.response, HttpStatus.ok, {'plugins': prepared.map((p) => p.toJson()).toList()});
-        if (selected.isEmpty) await _finishSending();
+        _selectedLocalArtifactIds
+          ..clear()
+          ..addAll(_localArtifacts.keys);
+        await _respond(request.response, HttpStatus.ok, {
+          'plugins': prepared.map((p) => p.toJson()).toList(),
+          'localDocuments': selectedDocuments.map((document) => document.toJson()).toList(),
+        });
+        if (selected.isEmpty && _selectedLocalArtifactIds.isEmpty) await _finishSending();
         return;
       }
-      final parts = request.uri.pathSegments;
+      if ((request.method == 'GET' || request.method == 'HEAD') && parts.length == 4 && parts[0] == 'v3' && parts[1] == 'local-documents') {
+        final id = Uri.decodeComponent(parts[2]);
+        final kind = parts[3] == 'cover'
+            ? 'cover'
+            : parts[3] == 'original'
+            ? 'original'
+            : null;
+        final artifactId = kind == null ? '' : '$id/$kind';
+        final artifact = _localArtifacts[artifactId];
+        if (artifact == null) throw const LanSyncTransportException('lan_sync_local_document_unexpected');
+        await artifact.serve(request);
+        final range = request.headers.value(HttpHeaders.rangeHeader);
+        final covered = range == null || _requestCoversArtifact(request, artifact.bytes, artifact.etag);
+        if (request.method == 'GET' && covered && _servedLocalArtifactIds.add(artifactId)) {
+          _sent += artifact.bytes;
+          _events.add(LanSyncSenderProgress(_sent, _total));
+          if (_servedPluginIds.length == _selectedPluginIds.length && _servedLocalArtifactIds.length == _selectedLocalArtifactIds.length) {
+            await _finishSending();
+          }
+        }
+        return;
+      }
       if (request.method == 'GET' && parts.length == 3 && parts[0] == 'v3' && parts[1] == 'artifacts') {
         final artifact = _artifacts[Uri.decodeComponent(parts[2])];
         if (artifact == null) throw const LanSyncTransportException('lan_sync_plugin_unexpected');
@@ -172,7 +236,9 @@ final class LanSyncSenderService {
         if (completesArtifact && _servedPluginIds.add(artifact.descriptor.id)) {
           _sent += artifact.descriptor.bytes;
           _events.add(LanSyncSenderProgress(_sent, _total));
-          if (_servedPluginIds.length == _selectedPluginIds.length) await _finishSending();
+          if (_servedPluginIds.length == _selectedPluginIds.length && _servedLocalArtifactIds.length == _selectedLocalArtifactIds.length) {
+            await _finishSending();
+          }
         }
         return;
       }
@@ -216,6 +282,10 @@ final class LanSyncSenderService {
     for (final artifact in _artifacts.values) {
       await artifact.close();
     }
+    for (final artifact in _localArtifacts.values) {
+      await artifact.close();
+    }
+    _localArtifacts.clear();
     _artifacts.clear();
     await _server.close(force: true);
     await _events.close();
@@ -275,6 +345,10 @@ final class LanSyncReceiverConnection {
   Future<void> receivePlugins({
     required Set<String> pluginIds,
     Set<String>? shelfItemIds,
+    Set<String> localDocumentIds = const <String>{},
+    Future<void> Function(LanSyncLocalDocumentDescriptor, Stream<List<int>>, {Stream<List<int>>? coverBytes, String? coverMimeType})?
+    importLocalDocument,
+    bool useSenderLocalMetadata = false,
     Future<void> Function(List<LanSyncPluginDescriptor>)? preparePlugins,
     required Future<void> Function(LanSyncPluginDescriptor, Stream<List<int>>) importPlugin,
     void Function(int, int)? onProgress,
@@ -288,6 +362,7 @@ final class LanSyncReceiverConnection {
     final result = await _request(_client, _base.resolve('/v3/selection'), {
       'pluginIds': pluginIds.toList(),
       'shelfItemIds': shelf.toList(),
+      'localDocumentIds': localDocumentIds.toList(),
       'platform': Platform.isAndroid
           ? 'android'
           : Platform.isWindows
@@ -299,6 +374,24 @@ final class LanSyncReceiverConnection {
     final plugins = raw
         .map((e) => LanSyncPluginDescriptor.fromJson((e as Map).map<String, Object?>((k, v) => MapEntry(k as String, v))))
         .toList();
+    final rawLocalDocuments = result['localDocuments'] ?? const <Object?>[];
+    if (rawLocalDocuments is! List) throw const LanSyncTransportException('lan_sync_selection_invalid');
+    final localDocuments = rawLocalDocuments
+        .map((e) => LanSyncLocalDocumentDescriptor.fromJson((e as Map).map<String, Object?>((k, v) => MapEntry(k as String, v))))
+        .toList();
+    final manifestDocuments = manifest.localDocuments.where((document) => localDocumentIds.contains(document.documentId)).toList();
+    if (localDocuments.length != localDocumentIds.length ||
+        !localDocuments.map((document) => document.documentId).toSet().containsAll(localDocumentIds) ||
+        localDocuments.any(
+          (document) => !manifestDocuments.any(
+            (offered) =>
+                offered.documentId == document.documentId &&
+                offered.rawSha256 == document.rawSha256 &&
+                offered.originalBytes == document.originalBytes,
+          ),
+        )) {
+      throw const LanSyncTransportException('lan_sync_selection_invalid');
+    }
     if (plugins.length != pluginIds.length ||
         !plugins.map((plugin) => plugin.id).toSet().containsAll(pluginIds) ||
         plugins.any((plugin) {
@@ -312,7 +405,9 @@ final class LanSyncReceiverConnection {
     }
     await preparePlugins?.call(plugins);
     var done = 0;
-    final total = plugins.fold(0, (n, p) => n + p.bytes);
+    final total =
+        plugins.fold(0, (n, p) => n + p.bytes) +
+        localDocuments.fold<int>(0, (n, document) => n + document.originalBytes + (document.coverBytes ?? 0));
     for (final plugin in plugins) {
       final completedBeforePlugin = done;
       final stream = await const LanSyncHttpArtifactClient().download(
@@ -329,6 +424,42 @@ final class LanSyncReceiverConnection {
       onProgress?.call(done, total);
       onPluginBytesReceived?.call();
     }
+    for (final document in localDocuments) {
+      final completedBeforeDocument = done;
+      Stream<List<int>>? coverStream;
+      if (document.coverBytes != null) {
+        coverStream = await const LanSyncLocalDocumentHttpClient().download(
+          _base.resolve('/v3/local-documents/${Uri.encodeComponent(document.documentId)}/cover'),
+          document,
+          client: _client,
+          authenticate: (request, _) => request.headers.set('x-mgread-session', pairingCode),
+          cover: true,
+        );
+      }
+      final original = await const LanSyncLocalDocumentHttpClient().download(
+        _base.resolve('/v3/local-documents/${Uri.encodeComponent(document.documentId)}/original'),
+        document,
+        client: _client,
+        authenticate: (request, _) => request.headers.set('x-mgread-session', pairingCode),
+      );
+      if (importLocalDocument == null) throw const LanSyncTransportException('lan_sync_local_document_unsupported');
+      try {
+        await importLocalDocument(
+          document,
+          _reportLocalProgress(original, completedBeforeDocument, total, onProgress),
+          coverBytes: coverStream == null
+              ? null
+              : _reportLocalProgress(coverStream, completedBeforeDocument + document.originalBytes, total, onProgress),
+          coverMimeType: document.coverMimeType,
+        );
+      } on Object {
+        await _discardStream(original);
+        if (coverStream != null) await _discardStream(coverStream);
+        rethrow;
+      }
+      done += document.originalBytes + (document.coverBytes ?? 0);
+      onProgress?.call(done, total);
+    }
     await close();
   }
 
@@ -337,6 +468,19 @@ final class LanSyncReceiverConnection {
     _closed = true;
     _client.close(force: true);
   }
+}
+
+Stream<List<int>> _reportLocalProgress(Stream<List<int>> source, int before, int total, void Function(int, int)? onProgress) async* {
+  var completed = 0;
+  await for (final chunk in source) {
+    completed += chunk.length;
+    onProgress?.call(before + completed, total);
+    yield chunk;
+  }
+}
+
+Future<void> _discardStream(Stream<List<int>> stream) async {
+  await for (final _ in stream) {}
 }
 
 Stream<List<int>> _reportImportProgress(

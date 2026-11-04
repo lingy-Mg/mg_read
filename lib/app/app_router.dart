@@ -10,6 +10,8 @@
 ///
 library;
 
+import 'package:mg_read/features/local_import/presentation/local_import_page.dart';
+import 'package:mg_read/features/local_import/presentation/local_document_detail_page.dart';
 import 'dart:async';
 import 'app_navigation_activity.dart';
 
@@ -36,6 +38,7 @@ import 'package:mg_read/features/library/presentation/private_library_page.dart'
 import 'package:mg_read/features/library/presentation/reading_history_page.dart';
 import 'package:mg_read/features/import_export/presentation/import_export_page.dart';
 import 'package:mg_read/features/lan_sync/presentation/lan_sync_page.dart';
+import 'package:mg_read/features/tv_companion/presentation/companion_page.dart';
 
 import 'package:mg_read/features/notifications/application/notification_center.dart';
 import 'package:mg_read/features/notifications/presentation/notifications_page.dart';
@@ -199,6 +202,8 @@ class LibraryRoute extends GoRouteData with $LibraryRoute {
         onManageSourcesRequested: () {
           const PluginCenterRoute().push(context);
         },
+        onImportLocalRequested: () => const LocalImportRoute().push(context),
+        onLocalDocumentRequested: (id) => LocalDocumentDetailRoute(itemId: id).push(context),
       ),
     );
   }
@@ -618,6 +623,7 @@ class ProfileSettingPlaceholderRoute extends GoRouteData with $ProfileSettingPla
         },
       );
     }
+    if (settingId == 'tv-companion') return const CompanionPage();
     return ProfileSettingPlaceholderPage(
       settingId: settingId,
       onBackRequested: () => _returnToProfile(context),
@@ -693,5 +699,24 @@ Future<void> _openSourcePreview(BuildContext context, String pluginId, {required
         searchBuilder: (previewContext) => SearchRoute(sourceId: pluginId).buildContent(previewContext),
       ),
     ),
+  );
+}
+
+@TypedGoRoute<LocalImportRoute>(path: '/local-import')
+class LocalImportRoute extends GoRouteData with $LocalImportRoute {
+  const LocalImportRoute();
+  @override
+  Widget build(BuildContext context, GoRouterState state) =>
+      LocalImportPage(onReaderRequested: (id) => ReaderRoute(bookId: id).push(context));
+}
+
+@TypedGoRoute<LocalDocumentDetailRoute>(path: '/local-document/:itemId')
+class LocalDocumentDetailRoute extends GoRouteData with $LocalDocumentDetailRoute {
+  const LocalDocumentDetailRoute({required this.itemId});
+  final String itemId;
+  @override
+  Widget build(BuildContext context, GoRouterState state) => LocalDocumentDetailPage(
+    itemId: itemId,
+    onReaderRequested: (id) => ReaderRoute(bookId: id).push(context),
   );
 }

@@ -19,7 +19,7 @@ import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 
 typedef LanSyncGatewayFactory = Future<LanSyncGateway> Function();
 
-final class DeferredLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway {
+final class DeferredLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway, LanSyncLocalDocumentGateway {
   // The public callback parameter cannot use the private field's name across libraries.
   // ignore: prefer_initializing_formals
   DeferredLanSyncGateway(this._factory, {void Function()? onPluginCatalogChanged}) : _onPluginCatalogChanged = onPluginCatalogChanged;
@@ -62,10 +62,54 @@ final class DeferredLanSyncGateway implements LanSyncGateway, LanSyncPairedGatew
       );
     }
     final manifest = await delegate.createManifest();
+    final localDocuments = delegate is LanSyncLocalDocumentGateway
+        ? await (delegate as LanSyncLocalDocumentGateway).listLocalDocumentDescriptors()
+        : const <LanSyncLocalDocumentDescriptor>[];
     return LanSyncManifest(
       plugins: includePlugins ? manifest.plugins : const <LanSyncPluginDescriptor>[],
       shelfItems: includeShelf ? manifest.shelfItems : const <LanSyncShelfItem>[],
       skippedShelfItems: includeShelf ? manifest.skippedShelfItems : 0,
+      localDocuments: includeShelf ? localDocuments : const <LanSyncLocalDocumentDescriptor>[],
+    );
+  }
+
+  @override
+  Future<List<LanSyncLocalDocumentDescriptor>> listLocalDocumentDescriptors() async {
+    final delegate = await _delegate();
+    if (delegate is! LanSyncLocalDocumentGateway) return const <LanSyncLocalDocumentDescriptor>[];
+    return (delegate as LanSyncLocalDocumentGateway).listLocalDocumentDescriptors();
+  }
+
+  @override
+  Future<Stream<List<int>>> openLocalDocumentOriginal(LanSyncLocalDocumentDescriptor document) async {
+    final delegate = await _delegate();
+    if (delegate is! LanSyncLocalDocumentGateway) throw const LanSyncGatewayException('lan_sync_local_documents_unsupported');
+    return (delegate as LanSyncLocalDocumentGateway).openLocalDocumentOriginal(document);
+  }
+
+  @override
+  Future<Stream<List<int>>?> openLocalDocumentCover(LanSyncLocalDocumentDescriptor document) async {
+    final delegate = await _delegate();
+    if (delegate is! LanSyncLocalDocumentGateway) throw const LanSyncGatewayException('lan_sync_local_documents_unsupported');
+    return (delegate as LanSyncLocalDocumentGateway).openLocalDocumentCover(document);
+  }
+
+  @override
+  Future<void> importLocalDocument(
+    LanSyncLocalDocumentDescriptor document,
+    Stream<List<int>> bytes, {
+    required bool useSenderMetadata,
+    Stream<List<int>>? coverBytes,
+    String? coverMimeType,
+  }) async {
+    final delegate = await _delegate();
+    if (delegate is! LanSyncLocalDocumentGateway) throw const LanSyncGatewayException('lan_sync_local_documents_unsupported');
+    await (delegate as LanSyncLocalDocumentGateway).importLocalDocument(
+      document,
+      bytes,
+      useSenderMetadata: useSenderMetadata,
+      coverBytes: coverBytes,
+      coverMimeType: coverMimeType,
     );
   }
 

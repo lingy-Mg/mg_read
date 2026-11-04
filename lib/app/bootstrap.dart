@@ -13,6 +13,7 @@
 library;
 
 import 'dart:async';
+import 'package:mg_read/features/local_import/application/local_import_controller.dart';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -67,6 +68,11 @@ import 'package:mg_read/features/discovery/application/discovery_bookshelf_saver
 import 'package:mg_read/features/discovery/application/discovery_bookshelf_remover.dart';
 import 'package:mg_read/features/diagnostics/application/diagnostics_activation.dart';
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
+import 'package:mg_read/features/lan_sync/application/lan_peer_service.dart';
+import 'package:mg_read/features/tv_companion/application/companion_controller.dart';
+import 'package:mg_read/features/tv_companion/data/companion_repository.dart';
+import 'app_tv_companion.dart';
+import 'app_tv_companion_video.dart';
 
 typedef SettingsDataRootResolver = Future<Directory> Function();
 typedef MgReadAppRunner = void Function(Widget app);
@@ -298,6 +304,30 @@ Future<void> bootstrapMgReadApp({
         deviceIdentityStoreProvider.overrideWithValue(DeferredPersistentDeviceIdentityStore(getPersistence)),
         lanSyncNetworkEnvironmentProvider.overrideWithValue(PlatformLanSyncNetworkEnvironment()),
         pairedDeviceRepositoryProvider.overrideWithValue(DeferredPairedDeviceRepository(getPersistence)),
+        companionRepositoryProvider.overrideWithValue(PersistentCompanionRepository(() async => (await getPersistence()).metadataRecords)),
+        companionLibraryProvider.overrideWithValue(getLibrary),
+        localContentLibraryProvider.overrideWithValue(getLibrary),
+        lanPeerServiceProvider.overrideWith((ref) => ref.read(companionControllerProvider)),
+        companionHandoffLauncherProvider.overrideWith(
+          (ref) =>
+              (content, execution) => launchCompanionSourceVideo(ref, content, execution),
+        ),
+        companionOpenSearchProvider.overrideWith(
+          (ref) =>
+              () => openCompanionSearch(ref),
+        ),
+        companionNavigateProvider.overrideWith(
+          (ref) =>
+              (key) => navigateCompanion(ref, key),
+        ),
+        companionLocalResumeLauncherProvider.overrideWith(
+          (ref) =>
+              (checkpoint) => resumeCompanionHistoryLocally(ref, checkpoint),
+        ),
+        companionOpenDeviceSyncProvider.overrideWith(
+          (ref) =>
+              () => openCompanionDeviceSync(ref),
+        ),
         diagnosticsQueryProvider.overrideWithValue(diagnosticsService ?? diagnosticsPorts),
         diagnosticsCaptureProvider.overrideWithValue(diagnosticsService ?? diagnosticsPorts),
         diagnosticsMaintenanceProvider.overrideWithValue(diagnosticsService ?? diagnosticsPorts),
@@ -509,6 +539,7 @@ Future<AppPersistence> _openDefaultAppPersistence(Directory dataRoot, Diagnostic
     ...contentLibraryRecordDocumentCodecs,
     ...deviceIdentityRecordDocumentCodecs,
     pairedDeviceRecordDocumentCodec,
+    companionPolicyCodec,
     ...settingsRecordDocumentCodecs(AppSettingKeys.registry, scopeKind: 'app'),
   ]),
   diagnostics: diagnostics,

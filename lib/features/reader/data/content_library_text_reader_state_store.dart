@@ -13,6 +13,7 @@ final class ContentLibraryTextReaderStateStore implements TextReaderStateStore {
     this._library, {
     required this.itemId,
     this.settings,
+    this.localGeneration,
     LibraryReadingProgress? initialProgress,
     bool progressAlreadyLoaded = false,
   }) {
@@ -25,6 +26,7 @@ final class ContentLibraryTextReaderStateStore implements TextReaderStateStore {
   final ContentLibrary _library;
   final LibraryItemId itemId;
   final AppSettingsManager? settings;
+  final String? localGeneration;
   TextReaderPreferences? _preferences;
   final Map<String, ReaderBookmark> _bookmarks = <String, ReaderBookmark>{};
   Future<void>? _bookmarksLoaded;
@@ -51,19 +53,22 @@ final class ContentLibraryTextReaderStateStore implements TextReaderStateStore {
   Future<void> saveProgress(String bookId, ReaderProgress progress) async {
     _requireBook(bookId);
     await _loadDurableProgress();
-    await _library.saveProgress(
-      LibraryReadingProgress(
-        itemId: itemId,
-        chapterId: progress.chapterId,
-        paragraphId: progress.paragraphId,
-        characterOffset: progress.characterOffset,
-        chapterIndex: progress.chapterIndex,
-        chapterFraction: progress.chapterFraction,
-        bookFraction: progress.bookFraction,
-        updatedAtUtc: DateTime.now().toUtc(),
-        totalReadingSeconds: _initialReadingSeconds + _foregroundReading.elapsed.inSeconds,
-      ),
+    final value = LibraryReadingProgress(
+      itemId: itemId,
+      chapterId: progress.chapterId,
+      paragraphId: progress.paragraphId,
+      characterOffset: progress.characterOffset,
+      chapterIndex: progress.chapterIndex,
+      chapterFraction: progress.chapterFraction,
+      bookFraction: progress.bookFraction,
+      updatedAtUtc: DateTime.now().toUtc(),
+      totalReadingSeconds: _initialReadingSeconds + _foregroundReading.elapsed.inSeconds,
     );
+    if (localGeneration case final String generation) {
+      await _library.saveLocalReadingProgress(value, generation);
+    } else {
+      await _library.saveProgress(value);
+    }
   }
 
   /// Counts only time while the reader is in the foreground.
@@ -111,7 +116,11 @@ final class ContentLibraryTextReaderStateStore implements TextReaderStateStore {
   Future<void> addBookmark(ReaderBookmark bookmark) async {
     _requireBook(bookmark.bookId);
     await (_bookmarksLoaded ??= _loadBookmarks());
-    await _library.saveBookmark(_toLibraryBookmark(bookmark));
+    if (localGeneration case final String generation) {
+      if (!await _library.saveLocalReadingBookmark(_toLibraryBookmark(bookmark), generation)) return;
+    } else {
+      await _library.saveBookmark(_toLibraryBookmark(bookmark));
+    }
     _bookmarks[bookmark.id] = bookmark;
   }
 
@@ -119,7 +128,11 @@ final class ContentLibraryTextReaderStateStore implements TextReaderStateStore {
   Future<void> removeBookmark(String bookId, String bookmarkId) async {
     _requireBook(bookId);
     await (_bookmarksLoaded ??= _loadBookmarks());
-    await _library.deleteBookmark(itemId, bookmarkId);
+    if (localGeneration case final String generation) {
+      if (!await _library.deleteLocalReadingBookmark(itemId, bookmarkId, generation)) return;
+    } else {
+      await _library.deleteBookmark(itemId, bookmarkId);
+    }
     _bookmarks.remove(bookmarkId);
   }
 

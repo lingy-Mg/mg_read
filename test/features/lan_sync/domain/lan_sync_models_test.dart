@@ -111,13 +111,58 @@ void main() {
     final progressTask = (wire['progress']! as List<Object?>).single as Map<String, Object?>;
     final decoded = LanSyncManifest.fromPairedTasksJson(wire);
 
-    expect(wire['schemaVersion'], 3);
+    expect(wire['schemaVersion'], 4);
     expect(shelfItem, isNot(contains('progress')));
     expect(shelfItem, isNot(contains('catalog')));
     expect(shelfItem, isNot(contains('content')));
     expect(shelfItem, isNot(contains('coverBytes')));
     expect(progressTask.keys, containsAll(<String>['pluginId', 'remoteContentId', 'value']));
     expect(decoded.shelfItems.single.progress?.chapterId, progress.chapterId);
+  });
+
+  test('paired local document descriptors round trip metadata, state and bounded custom covers', () {
+    final document = LanSyncLocalDocumentDescriptor(
+      documentId: 'local_document_123456',
+      rawSha256: 'a'.padRight(64, 'a'),
+      originalBytes: 4,
+      format: 'txt',
+      title: '本地书',
+      options: const <String, Object?>{'chapterRule': 'auto'},
+      coverSha256: 'b'.padRight(64, 'b'),
+      coverBytes: 12,
+      coverMimeType: 'image/png',
+      bookmarks: <LanSyncLocalBookmark>[
+        LanSyncLocalBookmark(
+          id: 'bookmark-1',
+          chapterId: 'chapter-1',
+          paragraphId: 'paragraph-1',
+          characterOffset: 2,
+          chapterTitle: '第一章',
+          excerpt: '原文',
+          createdAtUtc: DateTime.utc(2026, 11, 4),
+        ),
+      ],
+    );
+    final manifest = LanSyncManifest(
+      plugins: const <LanSyncPluginDescriptor>[],
+      shelfItems: const <LanSyncShelfItem>[],
+      skippedShelfItems: 0,
+      localDocuments: <LanSyncLocalDocumentDescriptor>[document],
+    );
+    final decoded = LanSyncManifest.fromPairedTasksJson(manifest.toPairedTasksJson());
+    expect(decoded.localDocuments.single.documentId, document.documentId);
+    expect(decoded.localDocuments.single.coverSha256, document.coverSha256);
+    expect(decoded.localDocuments.single.bookmarks.single.excerpt, '原文');
+  });
+
+  test('paired task schema v3 remains readable as a remote with no local-document support', () {
+    final legacy = LanSyncManifest.fromPairedTasksJson(<String, Object?>{
+      'schemaVersion': 3,
+      'plugins': <Object?>[],
+      'bookshelf': <String, Object?>{'items': <Object?>[], 'skippedItems': 0},
+      'progress': <Object?>[],
+    });
+    expect(legacy.localDocuments, isEmpty);
   });
 
   test('paired task schema rejects progress without matching bookshelf metadata', () {

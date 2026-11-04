@@ -29,6 +29,8 @@ final class ContentLibraryOverviewLoader implements LibraryOverviewLoader {
       return LibraryItemSummary(
         id: item.itemId.value,
         title: item.title,
+        isLocalDocument: source.isLocal,
+        localGeneration: source.isLocal ? '${source.generation}-${source.coverHash ?? 'default'}' : null,
         contentKind: item.kind,
         author: item.author,
         coverUrl: item.coverUrl,

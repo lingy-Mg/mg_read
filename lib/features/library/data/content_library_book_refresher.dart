@@ -82,6 +82,7 @@ final class ContentLibraryBookRefresher implements LibraryBookRefresher, Library
   Future<bool> _refreshCatalogOnly(String bookId) async {
     final item = await _library.getLibraryItem(LibraryItemId(bookId));
     if (item == null) throw StateError('The bookshelf item no longer exists.');
+    if (item.source.isLocal) return true;
     final source = item.source;
     final gateway = _gateway;
     if (gateway is SourceChapterGroupGateway) {
@@ -94,6 +95,7 @@ final class ContentLibraryBookRefresher implements LibraryBookRefresher, Library
   Future<bool> _refresh(String bookId) async {
     final item = await _library.getLibraryItem(LibraryItemId(bookId));
     if (item == null) throw StateError('The bookshelf item no longer exists.');
+    if (item.source.isLocal) return true;
     final source = item.source;
     final gateway = _gateway;
     if (gateway is SourceChapterGroupGateway) {

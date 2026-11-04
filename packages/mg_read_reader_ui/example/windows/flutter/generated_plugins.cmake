@@ -4,6 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   novel_reader_ui
+  screen_brightness_windows
   url_launcher_windows
 )
 

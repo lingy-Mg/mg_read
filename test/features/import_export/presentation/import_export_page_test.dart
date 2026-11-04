@@ -86,7 +86,12 @@ final class _FakeCoordinator implements ImportExportCoordinator {
   );
 
   @override
-  Future<bool> exportSelection(ImportExportExportPlan plan, {required Set<String> pluginIds, required Set<String> shelfItemIds}) async {
+  Future<bool> exportSelection(
+    ImportExportExportPlan plan, {
+    required Set<String> pluginIds,
+    required Set<String> shelfItemIds,
+    Set<String> localDocumentIds = const {},
+  }) async {
     exportedPluginIds = Set<String>.from(pluginIds);
     exportedShelfIds = Set<String>.from(shelfItemIds);
     return true;
@@ -100,6 +105,7 @@ final class _FakeCoordinator implements ImportExportCoordinator {
     ImportExportImportPlan plan, {
     required Set<String> pluginIds,
     required Set<String> shelfItemIds,
+    Set<String> localDocumentIds = const {},
     required Map<String, LanSyncConflictChoice> conflictChoices,
   }) async => throw UnimplementedError();
 }

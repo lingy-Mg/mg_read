@@ -17,6 +17,15 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
+import 'package:crypto/crypto.dart' as document_crypto;
+import 'package:mg_read/core/persistence/src/local_document_object_store.dart';
+import 'package:mg_read/core/local_documents/local_document_models.dart';
+import 'package:mg_read/core/local_documents/txt_local_document_parser.dart';
+import 'package:mg_read/core/local_documents/epub_local_document_parser.dart';
+import 'package:mg_read/core/local_documents/local_document_disk_space.dart';
+import 'local_document_models.dart';
+import 'video_history_models.dart';
 import 'dart:math';
 
 import 'package:mg_read/core/content_library/src/models.dart';
@@ -31,6 +40,13 @@ part 'content_library_catalog.dart';
 part 'content_library_content.dart';
 part 'content_library_maintenance.dart';
 part 'content_library_notifications.dart';
+part 'content_library_local_documents.dart';
+part 'content_library_local_tasks.dart';
+part 'content_library_local_journal.dart';
+part 'content_library_local_sessions.dart';
+part 'content_library_local_management.dart';
+part 'content_library_local_anchor_migration.dart';
+part 'content_library_video_history.dart';
 
 const _scope = ScopeKey(kind: 'content_library', id: 'default');
 const _notificationKind = 'content_library_notification';
@@ -44,6 +60,8 @@ const _metadataInlinePreparationPolicy = JsonInlinePreparationPolicy(
 );
 
 Iterable<RecordDocumentCodec> get contentLibraryRecordDocumentCodecs sync* {
+  yield* videoHistoryRecordDocumentCodecs;
+  yield RecordDocumentCodec(recordKind: 'local_import_job', scopeKind: _scope.kind, currentVersion: 1, validators: {1: _validateLocalJob});
   yield RecordDocumentCodec(
     recordKind: _notificationKind,
     scopeKind: _scope.kind,
@@ -63,6 +81,11 @@ final class ContentLibrary {
   final bool _closePersistenceOnClose;
   final _ContentLibraryMaintenanceBarrier _maintenanceBarrier = _ContentLibraryMaintenanceBarrier();
   Future<void> _notificationWriteTail = Future<void>.value();
+  late final LocalDocumentObjectStore _localFiles = LocalDocumentObjectStore(_persistence.dataRoot);
+  final Map<String, _LocalImportOperation> _localImports = {};
+  final StreamController<LocalImportSnapshot> _localImportEvents = StreamController.broadcast();
+  Future<void>? _localRecovery;
+  Future<void> _localJournalTail = Future.value();
   Future<void>? _closeFuture;
   bool _closing = false;
   late final _BookshelfOperations _bookshelf = _BookshelfOperations(this);
@@ -89,6 +112,12 @@ final class ContentLibrary {
   Future<void> close() => _closeFuture ??= _beginClose();
   Future<void> _beginClose() async {
     _closing = true;
+    for (final operation in _localImports.values.toList()) {
+      operation.cancel();
+    }
+    await Future.wait(_localImports.values.map((operation) => operation.done.future));
+    await _localImportEvents.close();
+    await _localJournalTail;
     await _notificationWriteTail;
     if (_closePersistenceOnClose) await _persistence.close();
   }

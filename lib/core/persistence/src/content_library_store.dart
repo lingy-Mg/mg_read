@@ -23,9 +23,14 @@ CREATE TABLE IF NOT EXISTS library_items (
   author TEXT,
   cover_url TEXT,
   source_name TEXT,
-  source_plugin_id TEXT NOT NULL CHECK (length(source_plugin_id) > 0),
-  source_plugin_version TEXT NOT NULL CHECK (length(source_plugin_version) > 0),
-  remote_item_id TEXT NOT NULL CHECK (length(remote_item_id) > 0),
+  origin_kind TEXT NOT NULL DEFAULT 'remote' CHECK (origin_kind IN ('remote', 'local')),
+  local_document_id TEXT UNIQUE,
+  local_format TEXT,
+  raw_sha256 TEXT,
+  active_generation TEXT NOT NULL DEFAULT '0',
+  source_plugin_id TEXT CHECK (source_plugin_id IS NULL OR length(source_plugin_id) > 0),
+  source_plugin_version TEXT CHECK (source_plugin_version IS NULL OR length(source_plugin_version) > 0),
+  remote_item_id TEXT CHECK (remote_item_id IS NULL OR length(remote_item_id) > 0),
   source_chapter_count INTEGER CHECK (source_chapter_count IS NULL OR source_chapter_count >= 0),
   catalog_count INTEGER NOT NULL DEFAULT 0 CHECK (catalog_count >= 0),
   catalog_revision INTEGER NOT NULL DEFAULT 0 CHECK (catalog_revision >= 0),
@@ -33,6 +38,7 @@ CREATE TABLE IF NOT EXISTS library_items (
   details_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(details_json)),
   created_at_utc INTEGER NOT NULL,
   updated_at_utc INTEGER NOT NULL,
+  CHECK ((origin_kind = 'remote' AND source_plugin_id IS NOT NULL AND source_plugin_version IS NOT NULL AND remote_item_id IS NOT NULL) OR (origin_kind = 'local' AND local_document_id IS NOT NULL AND raw_sha256 IS NOT NULL AND local_format IN ('txt','epub'))),
   UNIQUE(source_plugin_id, remote_item_id)
 )''';
 
@@ -41,6 +47,7 @@ CREATE TABLE IF NOT EXISTS catalog_chapters (
   chapter_pk INTEGER PRIMARY KEY,
   chapter_id TEXT NOT NULL UNIQUE CHECK (length(chapter_id) > 0),
   item_pk INTEGER NOT NULL REFERENCES library_items(item_pk) ON DELETE CASCADE,
+  catalog_generation TEXT NOT NULL DEFAULT '0',
   remote_identity TEXT NOT NULL CHECK (length(remote_identity) > 0),
   position INTEGER NOT NULL CHECK (position >= 0),
   source_index INTEGER CHECK (source_index IS NULL OR source_index >= 0),
@@ -123,6 +130,7 @@ CREATE TABLE IF NOT EXISTS bookmarks (
 )''';
 
 Future<void> _createContentLibrarySchema(_PersistenceDatabase database) async {
+  await _upgradeLocalDocumentSchema(database);
   await database.customStatement(_createLibraryItemsSql);
   await database.customStatement(_createCatalogChaptersSql);
   await database.customStatement(_createReadingProgressSql);
@@ -131,9 +139,11 @@ Future<void> _createContentLibrarySchema(_PersistenceDatabase database) async {
     "CREATE INDEX IF NOT EXISTS library_items_active_order ON library_items(visibility, sort_order, item_pk) WHERE shelf_state = 'active'",
   );
   await database.customStatement(
-    'CREATE UNIQUE INDEX IF NOT EXISTS catalog_chapters_item_remote ON catalog_chapters(item_pk, remote_identity)',
+    'CREATE UNIQUE INDEX IF NOT EXISTS catalog_chapters_item_remote ON catalog_chapters(item_pk, catalog_generation, remote_identity)',
   );
-  await database.customStatement('CREATE UNIQUE INDEX IF NOT EXISTS catalog_chapters_item_position ON catalog_chapters(item_pk, position)');
+  await database.customStatement(
+    'CREATE UNIQUE INDEX IF NOT EXISTS catalog_chapters_item_position ON catalog_chapters(item_pk, catalog_generation, position)',
+  );
   await database.customStatement(
     'CREATE INDEX IF NOT EXISTS bookmarks_item_created ON bookmarks(item_pk, created_at_utc DESC, bookmark_pk DESC)',
   );
@@ -362,6 +372,7 @@ final class ContentLibraryMetadataStore {
     _owner._ensureOpen();
     final rows = await _select(
       '''SELECT i.item_pk, i.item_id, i.content_kind, i.title, i.author, i.cover_url, i.source_name, i.details_json,
+        i.origin_kind, i.local_document_id, i.local_format, i.raw_sha256, i.active_generation,
         i.source_plugin_id, i.source_plugin_version, i.remote_item_id, i.source_chapter_count,
         i.catalog_count, i.summary_excerpt, p.progress_kind, p.chapter_position, p.book_fraction,
         p.total_reading_seconds, p.updated_at_utc AS progress_updated_at_utc
@@ -398,13 +409,13 @@ final class ContentLibraryMetadataStore {
       LEFT JOIN reading_progress p ON p.item_pk = i.item_pk
       LEFT JOIN catalog_chapters c ON c.chapter_pk = COALESCE(
         (SELECT by_id.chapter_pk FROM catalog_chapters by_id
-          WHERE by_id.item_pk = i.item_pk AND by_id.remote_identity = p.chapter_id
+          WHERE by_id.item_pk = i.item_pk AND by_id.catalog_generation = i.active_generation AND by_id.remote_identity = p.chapter_id
             AND by_id.position < i.catalog_count LIMIT 1),
         (SELECT by_position.chapter_pk FROM catalog_chapters by_position
-          WHERE by_position.item_pk = i.item_pk AND by_position.position = p.chapter_position
+          WHERE by_position.item_pk = i.item_pk AND by_position.catalog_generation = i.active_generation AND by_position.position = p.chapter_position
             AND by_position.position < i.catalog_count LIMIT 1),
         (SELECT first_chapter.chapter_pk FROM catalog_chapters first_chapter
-          WHERE first_chapter.item_pk = i.item_pk AND first_chapter.position = 0
+          WHERE first_chapter.item_pk = i.item_pk AND first_chapter.catalog_generation = i.active_generation AND first_chapter.position = 0
             AND first_chapter.position < i.catalog_count LIMIT 1)
       )
       WHERE i.item_id = ? AND i.content_kind = ? LIMIT 1''',
@@ -483,7 +494,7 @@ final class ContentLibraryMetadataStore {
           SELECT 1 FROM catalog_chapters c WHERE c.item_pk = ? AND c.remote_identity = s.remote_identity
         )
         ORDER BY s.input_order
-        ON CONFLICT(item_pk, remote_identity) DO NOTHING''',
+        ON CONFLICT(item_pk, catalog_generation, remote_identity) DO NOTHING''',
             <Object?>[itemPk, base, itemPk],
           );
           final changedRow = await _owner._database.customSelect('SELECT changes() AS value').getSingle();
@@ -511,7 +522,7 @@ final class ContentLibraryMetadataStore {
       '''SELECT c.chapter_pk, c.chapter_id, c.item_pk, c.remote_identity, c.position, c.source_index,
         c.title, c.chapter_url, c.word_count, c.content_status, c.content_ref, c.content_version, i.content_kind
       FROM catalog_chapters c JOIN library_items i ON i.item_pk = c.item_pk
-      WHERE i.item_id = ? AND c.position > ? AND c.position < ?
+      WHERE i.item_id = ? AND c.catalog_generation = i.active_generation AND c.position > ? AND c.position < ?
       ORDER BY c.position LIMIT ?''',
       <Variable<Object>>[
         Variable.withString(itemId),
@@ -555,7 +566,7 @@ final class ContentLibraryMetadataStore {
           '''SELECT c.chapter_pk, c.chapter_id, c.item_pk, c.remote_identity, c.position, c.source_index,
             c.title, c.chapter_url, c.word_count, c.content_status, c.content_ref, c.content_version, i.content_kind
           FROM catalog_chapters c JOIN library_items i ON i.item_pk = c.item_pk
-          WHERE i.item_id = ? AND $where LIMIT 1''',
+          WHERE i.item_id = ? AND c.catalog_generation = i.active_generation AND $where LIMIT 1''',
           <Variable<Object>>[Variable.withString(itemId), ...variables],
         );
         return rows.isEmpty ? null : StoredCatalogChapter(rows.single);
@@ -570,7 +581,7 @@ final class ContentLibraryMetadataStore {
           '''SELECT c.chapter_pk, c.chapter_id, c.item_pk, c.remote_identity, c.position, c.source_index,
             c.title, c.chapter_url, c.word_count, c.content_status, c.content_ref, c.content_version, i.content_kind
           FROM catalog_chapters c JOIN library_items i ON i.item_pk = c.item_pk
-          WHERE i.item_id = ? AND c.position < ? AND c.remote_identity IN ($placeholders)
+          WHERE i.item_id = ? AND c.catalog_generation = i.active_generation AND c.position < ? AND c.remote_identity IN ($placeholders)
           ORDER BY c.position''',
           <Variable<Object>>[
             Variable.withString(itemId),

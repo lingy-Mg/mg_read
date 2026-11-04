@@ -49,6 +49,12 @@ extension _TextReaderLibraryCatalog on _TextReaderViewState {
       valueListenable: _catalogRevision,
       builder: (BuildContext context, int revision, Widget? child) {
         final String? currentChapterId = _content?.chapterId;
+        final List<ReaderChapterInfo> visibleCatalog = _catalog
+            .where((chapter) => !chapter.isContinuation)
+            .toList(growable: false);
+        final String? currentLogicalChapterId = _logicalCatalogChapterId(
+          currentChapterId,
+        );
         if (!catalogCompletionStarted) {
           catalogCompletionStarted = true;
           WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -128,9 +134,9 @@ extension _TextReaderLibraryCatalog on _TextReaderViewState {
                 20,
               ),
               itemExtent: _catalogChapterItemExtent,
-              itemCount: _catalog.length + (_catalogHasMore ? 1 : 0),
+              itemCount: visibleCatalog.length + (_catalogHasMore ? 1 : 0),
               itemBuilder: (BuildContext context, int index) {
-                if (index == _catalog.length) {
+                if (index == visibleCatalog.length) {
                   return Padding(
                     padding: const EdgeInsets.all(16),
                     child: OutlinedButton(
@@ -162,8 +168,9 @@ extension _TextReaderLibraryCatalog on _TextReaderViewState {
                     ),
                   );
                 }
-                final ReaderChapterInfo chapter = _catalog[index];
-                final bool isCurrentChapter = chapter.id == currentChapterId;
+                final ReaderChapterInfo chapter = visibleCatalog[index];
+                final bool isCurrentChapter =
+                    chapter.id == currentLogicalChapterId;
                 final ReaderChapterState? refreshedState =
                     _chapterAccessCoordinator?.snapshot.states[chapter.id];
                 final ReaderChapterAvailability availability =
@@ -214,7 +221,7 @@ extension _TextReaderLibraryCatalog on _TextReaderViewState {
                     leading: SizedBox(
                       width: 30,
                       child: Text(
-                        '${chapter.index + 1}',
+                        '${index + 1}',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: chapterTextColor,
@@ -368,13 +375,15 @@ extension _TextReaderLibraryCatalog on _TextReaderViewState {
     if (!_isRouteSessionCurrent(routeSession, routeBookId, store: routeStore)) {
       return;
     }
-    final String? chapterId = _content?.chapterId;
+    final String? currentChapterId = _content?.chapterId;
+    final String? chapterId = _logicalCatalogChapterId(currentChapterId);
     if (chapterId == null || chapterId == _centeredCatalogChapterId) {
       return;
     }
-    final int chapterIndex = _catalog.indexWhere(
-      (ReaderChapterInfo chapter) => chapter.id == chapterId,
-    );
+    final int chapterIndex = _catalog
+        .where((chapter) => !chapter.isContinuation)
+        .toList(growable: false)
+        .indexWhere((ReaderChapterInfo chapter) => chapter.id == chapterId);
     if (_catalogLoading ||
         chapterIndex < 0 ||
         !sheetContext.mounted ||
@@ -411,5 +420,19 @@ extension _TextReaderLibraryCatalog on _TextReaderViewState {
       centeredOffset.clamp(0, position.maxScrollExtent),
     );
     _centeredCatalogChapterId = chapterId;
+  }
+
+  String? _logicalCatalogChapterId(String? currentChapterId) {
+    if (currentChapterId == null) return null;
+    final int physicalIndex = _catalog.indexWhere(
+      (chapter) => chapter.id == currentChapterId,
+    );
+    if (physicalIndex < 0 || !_catalog[physicalIndex].isContinuation) {
+      return currentChapterId;
+    }
+    for (var index = physicalIndex - 1; index >= 0; index--) {
+      if (!_catalog[index].isContinuation) return _catalog[index].id;
+    }
+    return _catalog.where((chapter) => !chapter.isContinuation).firstOrNull?.id;
   }
 }

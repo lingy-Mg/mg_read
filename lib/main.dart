@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:mg_read/features/local_import/data/local_import_ingress.dart';
 
 import 'package:flutter/widgets.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'package:mg_read/app/bootstrap.dart';
+import 'package:mg_read/app/local_content_licenses.dart';
 import 'package:mg_read/app/source_verification_command.dart';
 import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
 import 'package:mg_read/features/plugins/application/source_verification.dart';
@@ -12,6 +14,8 @@ import 'package:mg_read/features/plugins/application/source_verification.dart';
 Future<void> main(List<String> arguments) async {
   // debugRepaintRainbowEnabled = true;
   WidgetsFlutterBinding.ensureInitialized();
+  registerLocalContentLicenses();
+  LocalImportIngress.instance.queuePaths(arguments.where((argument) => !argument.startsWith('--')).toList());
   if (Platform.isWindows) await windowManager.ensureInitialized();
   SourceVerificationCommand? verificationCommand;
   try {

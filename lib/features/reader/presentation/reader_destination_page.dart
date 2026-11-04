@@ -130,6 +130,7 @@ class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
   void _installRequest(ReaderLaunchRequest request, _ReaderLaunchStageReporter stageReporter) {
     _readerMode = switch (request) {
       NovelReaderLaunchRequest() => 'text',
+      DocumentReaderLaunchRequest() => 'document',
       ComicReaderLaunchRequest() => 'comic',
     };
     final coordinator = _shelfCoordinator;
@@ -154,6 +155,13 @@ class _ReaderDestinationPageState extends ConsumerState<ReaderDestinationPage> {
         estimatedWarmBytes: novel.estimatedWarmBytes,
         preparationKind: novel.preparationKind,
         networkPreparationElapsed: novel.networkPreparationElapsed,
+      ),
+      DocumentReaderLaunchRequest document => document.withObserver(
+        _ReaderObserverChain(<ReaderObserver>[
+          ?document.observer,
+          _ReaderChapterPerformanceObserver(_diagnostics),
+          _ReaderExitObserver(_leaveReader),
+        ]),
       ),
       ComicReaderLaunchRequest comic => ComicReaderLaunchRequest(
         bookId: comic.bookId,

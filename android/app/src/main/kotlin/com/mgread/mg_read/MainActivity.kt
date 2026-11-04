@@ -6,6 +6,7 @@ import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -31,6 +32,38 @@ import java.io.File
  * saving a mode never reconfigures the engine already attached to this Activity.
  */
 class MainActivity : AudioServiceActivity() {
+    private var localNetworkPermissionResult: MethodChannel.Result? = null
+
+    private fun hasLocalNetworkPermission(): Boolean =
+        Build.VERSION.SDK_INT < 37 || applicationInfo.targetSdkVersion < 37 ||
+            checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK") == PackageManager.PERMISSION_GRANTED
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == LOCAL_NETWORK_PERMISSION_REQUEST) {
+            val pending = localNetworkPermissionResult
+            localNetworkPermissionResult = null
+            pending?.success(hasLocalNetworkPermission())
+        }
+    }
+
+    override fun onDestroy() {
+        LocalImportBridge.shutdown(this)
+        localNetworkPermissionResult?.error("activity_closed", "Activity closed during permission request", null)
+        localNetworkPermissionResult = null
+        super.onDestroy()
+    }
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        LocalImportBridge.forwardNewIntent(intent)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (!LocalImportBridge.forwardActivityResult(requestCode, resultCode, data)) {
+            super.onActivityResult(requestCode, resultCode, data)
+        }
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (com.example.novel_reader_ui.NovelReaderUiPlugin.dispatchVolumeKey(
                 event.keyCode,
@@ -45,6 +78,8 @@ class MainActivity : AudioServiceActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        LocalImportBridge.install(this, flutterEngine.dartExecutor.binaryMessenger)
+        LocalImportBridge.forwardInitialIntent(intent)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mgread/rendering_settings")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -105,6 +140,24 @@ class MainActivity : AudioServiceActivity() {
         ).setMethodCallHandler { call, result ->
             when (call.method) {
                 "isWifiConnected" -> result.success(isWifiConnected())
+                "isLanConnected" -> {
+                    val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                    val available = connectivity.allNetworks.any { network ->
+                        val capabilities = connectivity.getNetworkCapabilities(network)
+                        capabilities != null && !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) &&
+                            (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET))
+                    }
+                    result.success(available && hasLocalNetworkPermission())
+                }
+                "requestLocalNetworkPermission" -> {
+                    if (hasLocalNetworkPermission()) result.success(true)
+                    else if (localNetworkPermissionResult != null) result.error("permission_busy", "Permission request is active", null)
+                    else {
+                        localNetworkPermissionResult = result
+                        requestPermissions(arrayOf("android.permission.ACCESS_LOCAL_NETWORK"), LOCAL_NETWORK_PERMISSION_REQUEST)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
@@ -125,6 +178,7 @@ class MainActivity : AudioServiceActivity() {
         ).setMethodCallHandler { call, result ->
             val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
             when (call.method) {
+                "isSystemVolumeFixed" -> result.success(audioManager.isVolumeFixed)
                 "getSystemVolume" -> {
                     val maximum = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
                     val current = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
@@ -262,6 +316,7 @@ class MainActivity : AudioServiceActivity() {
     }
 
     private companion object {
+        const val LOCAL_NETWORK_PERMISSION_REQUEST = 47234
         const val DEVICE_IDENTITY_CHANNEL = "mgread/device_identity"
         const val NETWORK_ENVIRONMENT_CHANNEL = "mgread/network_environment"
         const val APP_UPDATE_CHANNEL = "mgread/app_update"

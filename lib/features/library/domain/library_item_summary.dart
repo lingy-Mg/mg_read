@@ -19,6 +19,8 @@ final class LibraryItemSummary {
     required this.title,
     this.contentKind = ContentKind.novel,
     this.author,
+    this.isLocalDocument = false,
+    this.localGeneration,
     this.coverUrl,
     this.coverOrientation = CoverOrientation.portrait,
     this.coverBytes,
@@ -58,6 +60,8 @@ final class LibraryItemSummary {
   /// User-visible title from the current local projection.
   final String title;
   final String? author;
+  final bool isLocalDocument;
+  final String? localGeneration;
   final Uri? coverUrl;
   final CoverOrientation coverOrientation;
 

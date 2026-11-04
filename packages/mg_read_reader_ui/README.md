@@ -20,3 +20,9 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 - 当前首要平台是 Android，Windows 为第二平台；其他平台能力以公开类型和实际测试为准。
 
 开发和 AI 规则只在 [AGENTS.md](AGENTS.md) 维护。
+
+## EPUB 文档阅读器
+
+通过 `DocumentReaderView` 接入连续滚动、可重排的 EPUB 文档阅读；宿主实现公开的
+`ReaderDocumentDataSource`，并提供 `ReaderDocumentChapter`、`ReaderDocumentBlock` 和资源读取，负责解析、存储与链接解析。
+阅读器只接收宿主提供的章节和资源，不自行访问网络、文件系统或数据库。为限制单次布局与图片解码开销，宿主应将章节分段到每段最多 16 Ki UTF-16 字符、128 个块、512 个渲染节点和 4 张图片；资源通过不透明 `resourceId` 按需读取。

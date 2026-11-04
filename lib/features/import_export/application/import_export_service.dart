@@ -13,6 +13,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
@@ -31,7 +32,12 @@ final importExportCoordinatorProvider = Provider<ImportExportCoordinator>((Ref r
 abstract interface class ImportExportCoordinator {
   Future<ImportExportExportPlan> prepareExport();
 
-  Future<bool> exportSelection(ImportExportExportPlan plan, {required Set<String> pluginIds, required Set<String> shelfItemIds});
+  Future<bool> exportSelection(
+    ImportExportExportPlan plan, {
+    required Set<String> pluginIds,
+    required Set<String> shelfItemIds,
+    Set<String> localDocumentIds = const <String>{},
+  });
 
   Future<ImportExportImportPlan?> pickImport();
 
@@ -39,6 +45,7 @@ abstract interface class ImportExportCoordinator {
     ImportExportImportPlan plan, {
     required Set<String> pluginIds,
     required Set<String> shelfItemIds,
+    Set<String> localDocumentIds = const <String>{},
     required Map<String, LanSyncConflictChoice> conflictChoices,
   });
 }
@@ -55,6 +62,7 @@ final class ImportExportExportPlan {
   };
 
   Set<String> get defaultShelfItemIds => <String>{for (final item in manifest.shelfItems) item.identity};
+  Set<String> get defaultLocalDocumentIds => <String>{for (final item in manifest.localDocuments) item.documentId};
 }
 
 @immutable
@@ -128,11 +136,27 @@ final class ImportExportService implements ImportExportCoordinator {
   Future<ImportExportExportPlan> prepareExport() async {
     // Runtime listExportableArtifacts builds a temporary artifact for every
     // Windows desktop development source. Only the resulting bytes reach here.
-    return ImportExportExportPlan(await _gateway.createManifest());
+    final manifest = await _gateway.createManifest();
+    final localDocuments = _gateway is LanSyncLocalDocumentGateway
+        ? await (_gateway as LanSyncLocalDocumentGateway).listLocalDocumentDescriptors()
+        : const <LanSyncLocalDocumentDescriptor>[];
+    return ImportExportExportPlan(
+      LanSyncManifest(
+        plugins: manifest.plugins,
+        shelfItems: manifest.shelfItems,
+        skippedShelfItems: manifest.skippedShelfItems,
+        localDocuments: localDocuments,
+      ),
+    );
   }
 
   @override
-  Future<bool> exportSelection(ImportExportExportPlan plan, {required Set<String> pluginIds, required Set<String> shelfItemIds}) async {
+  Future<bool> exportSelection(
+    ImportExportExportPlan plan, {
+    required Set<String> pluginIds,
+    required Set<String> shelfItemIds,
+    Set<String> localDocumentIds = const <String>{},
+  }) async {
     final plugins = <LanSyncPluginDescriptor>[
       for (final plugin in plan.manifest.plugins)
         if (pluginIds.contains(plugin.id) && plugin.transferable) plugin,
@@ -141,11 +165,16 @@ final class ImportExportService implements ImportExportCoordinator {
       for (final item in plan.manifest.shelfItems)
         if (shelfItemIds.contains(item.identity)) item,
     ];
-    if (plugins.isEmpty && shelfItems.isEmpty) throw const ImportExportException('empty_selection');
+    final localDocuments = <LanSyncLocalDocumentDescriptor>[
+      for (final document in plan.manifest.localDocuments)
+        if (localDocumentIds.contains(document.documentId)) document,
+    ];
+    if (plugins.isEmpty && shelfItems.isEmpty && localDocuments.isEmpty) throw const ImportExportException('empty_selection');
     final manifest = LanSyncManifest(
       plugins: List<LanSyncPluginDescriptor>.unmodifiable(plugins),
       shelfItems: List<LanSyncShelfItem>.unmodifiable(shelfItems),
       skippedShelfItems: plan.manifest.skippedShelfItems,
+      localDocuments: List<LanSyncLocalDocumentDescriptor>.unmodifiable(localDocuments),
     );
     final path = await _filePicker.chooseExportPath(_suggestedFileName(DateTime.now()));
     if (path == null || path.isEmpty) return false;
@@ -167,9 +196,15 @@ final class ImportExportService implements ImportExportCoordinator {
     ImportExportImportPlan plan, {
     required Set<String> pluginIds,
     required Set<String> shelfItemIds,
+    Set<String> localDocumentIds = const <String>{},
     required Map<String, LanSyncConflictChoice> conflictChoices,
   }) async {
     final allowedPluginIds = plan.preview.recommendedPluginIds;
+    final keptLocalIds = <String>{
+      for (final conflict in plan.preview.localDocumentConflicts)
+        if (localDocumentIds.contains(conflict.documentId) && conflictChoices[conflict.documentId] != LanSyncConflictChoice.useSender)
+          conflict.documentId,
+    };
     final plugins = <LanSyncPluginDescriptor>[
       for (final plugin in plan.manifest.plugins)
         if (pluginIds.contains(plugin.id) && allowedPluginIds.contains(plugin.id)) plugin,
@@ -178,11 +213,18 @@ final class ImportExportService implements ImportExportCoordinator {
       for (final item in plan.manifest.shelfItems)
         if (shelfItemIds.contains(item.identity)) item,
     ];
-    if (plugins.isEmpty && shelfItems.isEmpty) throw const ImportExportException('empty_selection');
+    final localDocuments = <LanSyncLocalDocumentDescriptor>[
+      for (final document in plan.manifest.localDocuments)
+        if (localDocumentIds.contains(document.documentId) && !keptLocalIds.contains(document.documentId)) document,
+    ];
+    if (plugins.isEmpty && shelfItems.isEmpty && localDocuments.isEmpty && keptLocalIds.isEmpty) {
+      throw const ImportExportException('empty_selection');
+    }
     final manifest = LanSyncManifest(
       plugins: List<LanSyncPluginDescriptor>.unmodifiable(plugins),
       shelfItems: List<LanSyncShelfItem>.unmodifiable(shelfItems),
       skippedShelfItems: plan.manifest.skippedShelfItems,
+      localDocuments: List<LanSyncLocalDocumentDescriptor>.unmodifiable(localDocuments),
     );
     try {
       await _gateway.previewImport(manifest);
@@ -192,12 +234,40 @@ final class ImportExportService implements ImportExportCoordinator {
         if (segment == null) throw const ImportExportException('invalid_bundle');
         await _gateway.importPluginArchive(plugin, File(plan._bundle.path).openRead(segment.start, segment.end));
       }
+      if (localDocuments.isNotEmpty) {
+        final localGateway = _gateway;
+        if (localGateway is! LanSyncLocalDocumentGateway) throw const ImportExportException('local_documents_unavailable');
+        final documentsGateway = localGateway as LanSyncLocalDocumentGateway;
+        for (final document in localDocuments) {
+          final segment = plan._bundle.segments['local:${document.documentId}'];
+          if (segment == null) throw const ImportExportException('invalid_bundle');
+          final coverSegment = plan._bundle.segments['cover:${document.documentId}'];
+          if (document.coverSha256 != null && coverSegment == null) throw const ImportExportException('invalid_bundle');
+          await documentsGateway.importLocalDocument(
+            document,
+            _verifiedLocalSegment(plan._bundle.path, segment, document),
+            useSenderMetadata: conflictChoices[document.documentId] == LanSyncConflictChoice.useSender,
+            coverBytes: coverSegment == null ? null : _verifiedLocalCoverSegment(plan._bundle.path, coverSegment, document),
+            coverMimeType: document.coverMimeType,
+          );
+        }
+      }
       final pluginResult = await _gateway.finishPluginImports();
-      return await _gateway.applyImport(
+      final result = await _gateway.applyImport(
         manifest: manifest,
         conflictChoices: conflictChoices,
         availablePluginIds: pluginResult.availablePluginIds,
         pluginResult: pluginResult,
+      );
+      return LanSyncApplyResult(
+        added: result.added,
+        updated: result.updated,
+        keptLocal: result.keptLocal + keptLocalIds.length,
+        blocked: result.blocked,
+        pluginInstalled: result.pluginInstalled,
+        pluginSkipped: result.pluginSkipped,
+        pluginFailed: result.pluginFailed,
+        localDocumentsImported: localDocuments.length,
       );
     } on Object {
       await _gateway.cancelPluginImports();
@@ -207,7 +277,7 @@ final class ImportExportService implements ImportExportCoordinator {
 
   Future<String> _writeBundle(String selectedPath, LanSyncManifest manifest) async {
     final path = selectedPath.toLowerCase().endsWith('.mgread') ? selectedPath : '$selectedPath.mgread';
-    final header = utf8.encode(jsonEncode(<String, Object?>{'schemaVersion': 1, 'manifest': manifest.toJson()}));
+    final header = utf8.encode(jsonEncode(<String, Object?>{'schemaVersion': 2, 'manifest': manifest.toJson()}));
     if (header.length > _bundleHeaderLimit) throw const ImportExportException('bundle_too_large');
     final headerSize = ByteData(4)..setUint32(0, header.length, Endian.big);
     final temporary = File('$path.part');
@@ -232,6 +302,20 @@ final class ImportExportService implements ImportExportCoordinator {
           }),
         );
         if (written != plugin.bytes) throw const ImportExportException('invalid_artifact_length');
+      }
+      if (manifest.localDocuments.isNotEmpty) {
+        final localGateway = _gateway;
+        if (localGateway is! LanSyncLocalDocumentGateway) throw const ImportExportException('local_documents_unavailable');
+        final documentsGateway = localGateway as LanSyncLocalDocumentGateway;
+        for (final document in manifest.localDocuments) {
+          final stream = await documentsGateway.openLocalDocumentOriginal(document);
+          await sink.addStream(_checkedLocalDocumentBytes(stream, document));
+          if (document.coverSha256 != null) {
+            final coverStream = await documentsGateway.openLocalDocumentCover(document);
+            if (coverStream == null) throw const ImportExportException('invalid_local_document_cover');
+            await sink.addStream(_checkedLocalCoverBytes(coverStream, document));
+          }
+        }
       }
       await sink.flush();
       await sink.close();
@@ -274,7 +358,7 @@ Future<_ParsedBundle> _readBundle(String path) async {
     final headerLength = ByteData.sublistView(Uint8List.fromList(lengthBytes)).getUint32(0, Endian.big);
     if (headerLength <= 0 || headerLength > _bundleHeaderLimit) throw const ImportExportException('invalid_bundle');
     final decoded = jsonDecode(utf8.decode(await _readExactly(handle, headerLength)));
-    if (decoded is! Map || decoded['schemaVersion'] != 1 || decoded['manifest'] is! Map) {
+    if (decoded is! Map || (decoded['schemaVersion'] != 1 && decoded['schemaVersion'] != 2) || decoded['manifest'] is! Map) {
       throw const ImportExportException('invalid_bundle');
     }
     final manifest = LanSyncManifest.fromJson(Map<String, Object?>.from(decoded['manifest'] as Map));
@@ -287,6 +371,18 @@ Future<_ParsedBundle> _readBundle(String path) async {
       segments[plugin.id] = _BundleSegment(offset, end);
       offset = end;
     }
+    for (final document in manifest.localDocuments) {
+      final end = offset + document.originalBytes;
+      if (end > metadata.size) throw const ImportExportException('invalid_bundle');
+      segments['local:${document.documentId}'] = _BundleSegment(offset, end);
+      offset = end;
+      if (document.coverBytes != null) {
+        final coverEnd = offset + document.coverBytes!;
+        if (coverEnd > metadata.size) throw const ImportExportException('invalid_bundle');
+        segments['cover:${document.documentId}'] = _BundleSegment(offset, coverEnd);
+        offset = coverEnd;
+      }
+    }
     if (offset != metadata.size) throw const ImportExportException('invalid_bundle');
     return _ParsedBundle(path: path, manifest: manifest, segments: Map<String, _BundleSegment>.unmodifiable(segments));
   } on FormatException {
@@ -295,6 +391,65 @@ Future<_ParsedBundle> _readBundle(String path) async {
     await handle.close();
   }
 }
+
+Stream<List<int>> _checkedLocalDocumentBytes(Stream<List<int>> source, LanSyncLocalDocumentDescriptor document) async* {
+  var bytes = 0;
+  final digestSink = _DigestSink();
+  var hasherClosed = false;
+  final hasher = crypto.sha256.startChunkedConversion(digestSink);
+  try {
+    await for (final chunk in source) {
+      bytes += chunk.length;
+      if (bytes > document.originalBytes) throw const ImportExportException('invalid_local_document_length');
+      hasher.add(chunk);
+      yield chunk;
+    }
+    hasher.close();
+    hasherClosed = true;
+    if (bytes != document.originalBytes) throw const ImportExportException('invalid_local_document_length');
+    if (digestSink.value?.toString() != document.rawSha256) throw const ImportExportException('invalid_local_document_hash');
+  } finally {
+    if (!hasherClosed) hasher.close();
+  }
+}
+
+final class _DigestSink implements Sink<crypto.Digest> {
+  crypto.Digest? value;
+  @override
+  void add(crypto.Digest data) => value = data;
+  @override
+  void close() {}
+}
+
+Stream<List<int>> _verifiedLocalSegment(String path, _BundleSegment segment, LanSyncLocalDocumentDescriptor document) =>
+    _checkedLocalDocumentBytes(File(path).openRead(segment.start, segment.end), document);
+
+Stream<List<int>> _checkedLocalCoverBytes(Stream<List<int>> source, LanSyncLocalDocumentDescriptor document) async* {
+  final expectedBytes = document.coverBytes;
+  final expectedHash = document.coverSha256;
+  if (expectedBytes == null || expectedHash == null) throw const ImportExportException('invalid_local_document_cover');
+  var bytes = 0;
+  final digestSink = _DigestSink();
+  var hasherClosed = false;
+  final hasher = crypto.sha256.startChunkedConversion(digestSink);
+  try {
+    await for (final chunk in source) {
+      bytes += chunk.length;
+      if (bytes > expectedBytes || bytes > lanSyncMaxLocalCoverBytes) throw const ImportExportException('invalid_local_cover_length');
+      hasher.add(chunk);
+      yield chunk;
+    }
+    hasher.close();
+    hasherClosed = true;
+    if (bytes != expectedBytes) throw const ImportExportException('invalid_local_cover_length');
+    if (digestSink.value?.toString() != expectedHash) throw const ImportExportException('invalid_local_cover_hash');
+  } finally {
+    if (!hasherClosed) hasher.close();
+  }
+}
+
+Stream<List<int>> _verifiedLocalCoverSegment(String path, _BundleSegment segment, LanSyncLocalDocumentDescriptor document) =>
+    _checkedLocalCoverBytes(File(path).openRead(segment.start, segment.end), document);
 
 Future<List<int>> _readExactly(RandomAccessFile file, int length) async {
   final bytes = <int>[];

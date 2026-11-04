@@ -121,6 +121,7 @@ class ReaderChapterInfo {
     this.availability = ReaderChapterAvailability.unknown,
     this.wordCount,
     this.hasBeenRead = false,
+    this.isContinuation = false,
   });
 
   /// Stable chapter identifier supplied by the host.
@@ -140,6 +141,10 @@ class ReaderChapterInfo {
 
   /// Whether the host considers this chapter read.
   final bool hasBeenRead;
+
+  /// Whether this physical reader segment continues the preceding logical
+  /// chapter and should be omitted from the table of contents.
+  final bool isContinuation;
 }
 
 @immutable

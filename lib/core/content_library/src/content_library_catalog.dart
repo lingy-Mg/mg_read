@@ -266,11 +266,19 @@ LibraryItem _storedItem(StoredLibraryItem row) {
     attributes: _storedAttributes(details['attributes']),
     sourceDetail: _stringObjectMap(details['sourceDetail']),
     labels: _stringList(details['labels']),
-    source: LibraryItemSource(
-      pluginId: values['source_plugin_id']! as String,
-      pluginVersion: values['source_plugin_version']! as String,
-      remoteContentId: values['remote_item_id']! as String,
-    ),
+    source: values['origin_kind'] == 'local'
+        ? LibraryItemSource.local(
+            documentId: values['local_document_id']! as String,
+            format: values['local_format']! as String,
+            generation: values['active_generation'] as String?,
+            coverHash: (details['local'] as Map?)?['coverHash'] as String?,
+            documentAliases: List<String>.from((details['local'] as Map?)?['documentAliases'] as List? ?? const []),
+          )
+        : LibraryItemSource(
+            pluginId: values['source_plugin_id']! as String,
+            pluginVersion: values['source_plugin_version']! as String,
+            remoteContentId: values['remote_item_id']! as String,
+          ),
   );
 }
 
@@ -291,11 +299,19 @@ LibraryShelfProjection _storedShelfProjection(StoredShelfItem row) {
     coverUrl: _uriFromValue(values['cover_url']),
     coverOrientation: _coverOrientationFromDetails(details, kind),
     sourceName: values['source_name'] as String?,
-    source: LibraryItemSource(
-      pluginId: values['source_plugin_id']! as String,
-      pluginVersion: values['source_plugin_version']! as String,
-      remoteContentId: values['remote_item_id']! as String,
-    ),
+    source: values['origin_kind'] == 'local'
+        ? LibraryItemSource.local(
+            documentId: values['local_document_id']! as String,
+            format: values['local_format']! as String,
+            generation: values['active_generation'] as String?,
+            coverHash: (details['local'] as Map?)?['coverHash'] as String?,
+            documentAliases: List<String>.from((details['local'] as Map?)?['documentAliases'] as List? ?? const []),
+          )
+        : LibraryItemSource(
+            pluginId: values['source_plugin_id']! as String,
+            pluginVersion: values['source_plugin_version']! as String,
+            remoteContentId: values['remote_item_id']! as String,
+          ),
     sourceChapterCount: values['source_chapter_count'] as int?,
     catalogCount: values['catalog_count']! as int,
     summaryExcerpt: values['summary_excerpt'] as String?,

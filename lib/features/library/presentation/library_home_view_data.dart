@@ -82,7 +82,7 @@ final class LibraryHomeViewData {
           coverRequest: _coverRequest(entry.value),
           coverVariant: LibraryCoverVariant.values[entry.key % LibraryCoverVariant.values.length],
           coverOrientation: entry.value.coverOrientation,
-          status: LibraryBookStatus.local,
+          status: entry.value.isLocalDocument ? LibraryBookStatus.local : LibraryBookStatus.ongoing,
           unreadChapterCount: showUnreadBadges ? _unreadChapterCount(entry.value) : 0,
           isCoverBlurred: blurredIds.contains(entry.value.id),
         ),
@@ -118,7 +118,7 @@ final class LibraryHomeViewData {
           coverRequest: _coverRequest(item),
           coverVariant: LibraryCoverVariant.values[entry.key % LibraryCoverVariant.values.length],
           coverOrientation: item.coverOrientation,
-          status: LibraryBookStatus.local,
+          status: item.isLocalDocument ? LibraryBookStatus.local : LibraryBookStatus.ongoing,
         );
       }),
     );
@@ -150,6 +150,9 @@ int _unreadChapterCount(LibraryItemSummary item) {
 }
 
 BookCoverRequest? _coverRequest(LibraryItemSummary item) {
+  if (item.isLocalDocument && item.localGeneration != null) {
+    return BookCoverRequest.local(itemId: item.id, generation: item.localGeneration!);
+  }
   final pluginId = item.coverPluginId;
   final pluginVersion = item.coverPluginVersion;
   final remoteContentId = item.coverRemoteContentId;

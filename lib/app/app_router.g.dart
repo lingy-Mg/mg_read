@@ -14,6 +14,8 @@ List<RouteBase> get $appRoutes => [
   $discoveryRoute,
   $profileRoute,
   $readerRoute,
+  $localImportRoute,
+  $localDocumentDetailRoute,
 ];
 
 RouteBase get $libraryRoute => GoRouteData.$route(path: '/', hasOverriddenOnExit: false, factory: $LibraryRoute._fromState);
@@ -436,6 +438,52 @@ mixin $ReaderRoute on GoRouteData {
 
   @override
   String get location => GoRouteData.$location('/reader/${Uri.encodeComponent(_self.bookId)}');
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) => context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
+RouteBase get $localImportRoute =>
+    GoRouteData.$route(path: '/local-import', hasOverriddenOnExit: false, factory: $LocalImportRoute._fromState);
+
+mixin $LocalImportRoute on GoRouteData {
+  static LocalImportRoute _fromState(GoRouterState state) => const LocalImportRoute();
+
+  @override
+  String get location => GoRouteData.$location('/local-import');
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) => context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
+RouteBase get $localDocumentDetailRoute =>
+    GoRouteData.$route(path: '/local-document/:itemId', hasOverriddenOnExit: false, factory: $LocalDocumentDetailRoute._fromState);
+
+mixin $LocalDocumentDetailRoute on GoRouteData {
+  static LocalDocumentDetailRoute _fromState(GoRouterState state) => LocalDocumentDetailRoute(itemId: state.pathParameters['itemId']!);
+
+  LocalDocumentDetailRoute get _self => this as LocalDocumentDetailRoute;
+
+  @override
+  String get location => GoRouteData.$location('/local-document/${Uri.encodeComponent(_self.itemId)}');
 
   @override
   void go(BuildContext context) => context.go(location);

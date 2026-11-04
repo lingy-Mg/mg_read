@@ -1,7 +1,7 @@
 /// 已配对设备的 HTTP 发现、请求认证和双向同步。
 ///
-/// HTTP v4 业务接口把书架元信息、阅读进度、单插件制品与用户主动触发的 App 包
-/// 建模为独立任务；插件任务最多三个并发，GET 支持标准 Range/ETag/If-Range。
+/// HTTP v4 业务接口把书架元信息、阅读进度、本地 TXT/EPUB 原件、单插件制品与
+/// 用户主动触发的 App 包建模为独立任务；文件任务最多三个并发，GET 支持 Range。
 /// 逐设备配对密钥只用于 HMAC 请求与 UDP 唤醒认证。
 /// 原生来源导出按已配对接收端平台裁剪归档，制品描述符记录裁剪后大小和摘要。
 library;
@@ -15,6 +15,7 @@ import 'package:cryptography/cryptography.dart';
 
 import 'package:mg_read/features/lan_sync/application/app_update_service.dart';
 import 'package:mg_read/features/lan_sync/application/device_identity_store.dart';
+import 'package:mg_read/features/lan_sync/application/lan_peer_service.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/application/paired_device_repository.dart';
 import 'package:mg_read/features/lan_sync/data/app_transfer_transport.dart';
@@ -22,6 +23,7 @@ import 'package:mg_read/features/lan_sync/data/lan_sync_http_artifact.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_http_client.dart';
 import 'package:mg_read/features/lan_sync/data/lan_sync_transport.dart';
 import 'package:mg_read/features/lan_sync/data/native_platform_artifact.dart';
+import 'local_document_http_artifact.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_endpoint_policy.dart';
 import 'package:mg_read/features/lan_sync/domain/app_update_models.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
@@ -52,6 +54,7 @@ final class PairedSyncHost {
     required this._advertisedPeerLifetime,
     required this._canAnnounce,
     required this._appUpdates,
+    required this._peerService,
   });
 
   final LocalDeviceIdentity identity;
@@ -67,6 +70,7 @@ final class PairedSyncHost {
   final Duration _advertisedPeerLifetime;
   final Future<bool> Function()? _canAnnounce;
   final AppUpdateService? _appUpdates;
+  final LanPeerService? _peerService;
   final StreamController<PairedSyncEndpoint> _endpoints = StreamController<PairedSyncEndpoint>.broadcast();
   final Map<String, _HttpExchange> _sessions = <String, _HttpExchange>{};
   final Map<String, _HostedAppPackage> _appPackages = <String, _HostedAppPackage>{};
@@ -91,6 +95,7 @@ final class PairedSyncHost {
     Future<bool> Function()? canAnnounce,
     int discoveryPort = pairedSyncDiscoveryPort,
     AppUpdateService? appUpdates,
+    LanPeerService? peerService,
   }) async {
     final server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
     RawDatagramSocket? socket;
@@ -111,8 +116,10 @@ final class PairedSyncHost {
         advertisedPeerLifetime: advertisedPeerLifetime,
         canAnnounce: canAnnounce,
         appUpdates: appUpdates,
+        peerService: peerService,
       );
       host._start();
+      peerService?.hostChanged(server.port);
       return host;
     } on Object {
       socket?.close();
@@ -149,6 +156,7 @@ final class PairedSyncHost {
           'port': port,
           'ttlSeconds': _advertisedPeerLifetime.inSeconds,
           'appOffers': <Object?>[for (final offer in appOffers) offer.toJson()],
+          if (_peerService != null) 'services': _peerService.advertisement,
         }),
       );
       _socket.send(bytes, InternetAddress('255.255.255.255'), discoveryPort);
@@ -213,6 +221,17 @@ final class PairedSyncHost {
             appOffers: List<AppPackageOffer>.unmodifiable(appOffers),
           ),
         );
+        final services = raw['services'];
+        if (services is Map && services.length <= 8) {
+          _peerService?.discovered(
+            deviceId: deviceId,
+            label: label,
+            address: packet.address.address,
+            port: advertisedPort,
+            lifetime: Duration(seconds: ttl),
+            services: Map<String, Object?>.from(services),
+          );
+        }
       } on Object {
         // Discovery data is untrusted.
       }
@@ -224,6 +243,7 @@ final class PairedSyncHost {
       if (!_eligiblePeer(request.connectionInfo?.remoteAddress)) {
         return await _respond(request.response, HttpStatus.forbidden, <String, Object?>{'error': 'not_private'});
       }
+      if (_peerService != null && await _peerService.handleRequest(request)) return;
       final deviceId = request.headers.value(LanSyncHttpAuthentication.deviceHeader);
       final peer = deviceId == null ? null : await _devices.read(deviceId);
       final secret = deviceId == null ? null : await _identityStore.readPeerSecret(deviceId);
@@ -285,6 +305,14 @@ final class PairedSyncHost {
         await exchange.acceptUpload(segments[4], request);
         return await _respond(request.response, HttpStatus.noContent, null);
       }
+      if (request.method == 'PUT' && segments.length == 5 && segments[3] == 'local-documents') {
+        await exchange.acceptLocalDocumentUpload(segments[4], request);
+        return await _respond(request.response, HttpStatus.noContent, null);
+      }
+      if (request.method == 'PUT' && segments.length == 6 && segments[3] == 'local-documents' && segments[5] == 'cover') {
+        await exchange.acceptLocalDocumentCoverUpload(segments[4], request);
+        return await _respond(request.response, HttpStatus.noContent, null);
+      }
       if (request.method == 'POST' && segments.length == 4 && segments[3] == 'prepare-uploads') {
         final body = await _readAuthenticatedJson(request);
         exchange.acceptUploadDescriptors(body['plugins']);
@@ -302,6 +330,17 @@ final class PairedSyncHost {
       }
       if (request.method == 'GET' && segments.length == 5 && segments[3] == 'artifacts') {
         final artifact = await exchange.artifact(segments[4]);
+        return await artifact.serve(request);
+      }
+      if ((request.method == 'GET' || request.method == 'HEAD') && segments.length == 5 && segments[3] == 'local-documents') {
+        final artifact = await exchange.localDocumentArtifact(segments[4]);
+        return await artifact.serve(request);
+      }
+      if ((request.method == 'GET' || request.method == 'HEAD') &&
+          segments.length == 6 &&
+          segments[3] == 'local-documents' &&
+          segments[5] == 'cover') {
+        final artifact = await exchange.localDocumentCoverArtifact(segments[4]);
         return await artifact.serve(request);
       }
       if (request.method == 'POST' && segments.length == 4 && segments[3] == 'finish') {
@@ -355,6 +394,7 @@ final class PairedSyncHost {
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
+    _peerService?.hostChanged(null);
     _announcer?.cancel();
     _socket.close();
     await _endpoints.close();
@@ -463,7 +503,7 @@ final class PairedSyncClientSession {
       _WirePolicy.fromJson(negotiation);
       final sendSelection = _Selection.fromJson(negotiation['selection'], localManifest);
       enter('import_plan');
-      final receivePlan = await _planImport(gateway, remoteManifest);
+      final receivePlan = await _planImport(gateway, remoteManifest, includeLocalDocuments: policy.canReceive && policy.syncBookshelf);
       enter('send_payload');
       await _upload(gateway, localManifest, sendSelection, sessionId);
       final remoteApplied = _AppliedSummary.fromJson(
@@ -477,8 +517,14 @@ final class PairedSyncClientSession {
         ),
       );
       enter('receive_payload');
-      final received = await _downloadAndApply(gateway, remoteManifest, receivePlan, sessionId);
-      committed = received.books > 0 || received.plugins > 0;
+      final received = await _downloadAndApply(
+        gateway,
+        remoteManifest,
+        receivePlan,
+        sessionId,
+        onLocalDocumentCommitted: () => committed = true,
+      );
+      committed = committed || received.books > 0 || received.plugins > 0;
       enter('complete');
       await _jsonRequest(
         _client,
@@ -522,7 +568,12 @@ final class PairedSyncClientSession {
 
   Future<void> _upload(LanSyncGateway gateway, LanSyncManifest manifest, _Selection selection, String sessionId) async {
     final offers = manifest.plugins.where((item) => selection.pluginIds.contains(item.id)).toList(growable: false);
+    final localOffers = manifest.localDocuments
+        .where((item) => selection.localDocumentIds.contains(item.documentId))
+        .toList(growable: false);
     final prepared = List<LanSyncHttpArtifact?>.filled(offers.length, null);
+    final preparedLocal = List<LanSyncLocalDocumentHttpArtifact?>.filled(localOffers.length, null);
+    final preparedCovers = List<LanSyncLocalDocumentHttpArtifact?>.filled(localOffers.length, null);
     try {
       await _runBoundedPluginTasks(offers.length, (index) async {
         final offer = offers[index];
@@ -533,22 +584,91 @@ final class PairedSyncClientSession {
         prepared[index] = await LanSyncHttpArtifact.materialize(item.descriptor, item.bytes);
       });
       final artifacts = prepared.cast<LanSyncHttpArtifact>();
-      if (artifacts.isEmpty) return;
-      await _jsonRequest(
-        _client,
-        _base.resolve('/v4/sessions/$sessionId/prepare-uploads'),
-        'POST',
-        <String, Object?>{'plugins': artifacts.map((item) => item.descriptor.toJson()).toList()},
-        _identity.deviceId,
-        _secret,
-        allowEmpty: true,
-      );
-      await _runBoundedPluginTasks(artifacts.length, (index) => _uploadArtifact(artifacts[index], sessionId));
+      if (artifacts.isNotEmpty) {
+        await _jsonRequest(
+          _client,
+          _base.resolve('/v4/sessions/$sessionId/prepare-uploads'),
+          'POST',
+          <String, Object?>{'plugins': artifacts.map((item) => item.descriptor.toJson()).toList()},
+          _identity.deviceId,
+          _secret,
+          allowEmpty: true,
+        );
+        await _runBoundedPluginTasks(artifacts.length, (index) => _uploadArtifact(artifacts[index], sessionId));
+      }
+      if (localOffers.isNotEmpty) {
+        final localGateway = gateway;
+        if (localGateway is! LanSyncLocalDocumentGateway) throw const LanSyncTransportException('lan_sync_local_documents_unsupported');
+        await _runBoundedPluginTasks(localOffers.length, (index) async {
+          final source = await (localGateway as LanSyncLocalDocumentGateway).openLocalDocumentOriginal(localOffers[index]);
+          preparedLocal[index] = await LanSyncLocalDocumentHttpArtifact.materialize(localOffers[index], source);
+          if (localOffers[index].coverSha256 != null) {
+            final cover = await (localGateway as LanSyncLocalDocumentGateway).openLocalDocumentCover(localOffers[index]);
+            if (cover == null) throw const LanSyncTransportException('lan_sync_local_cover_unavailable');
+            preparedCovers[index] = await LanSyncLocalDocumentHttpArtifact.materialize(localOffers[index], cover, cover: true);
+          }
+        });
+        await _runBoundedPluginTasks(localOffers.length, (index) {
+          final cover = preparedCovers[index];
+          return cover == null ? Future<void>.value() : _uploadLocalPayload(cover, sessionId, cover: true);
+        });
+        await _runBoundedPluginTasks(localOffers.length, (index) => _uploadLocalDocument(preparedLocal[index]!, sessionId));
+      }
     } finally {
       for (final artifact in prepared) {
         await artifact?.close();
       }
+      for (final artifact in preparedLocal) {
+        await artifact?.close();
+      }
+      for (final artifact in preparedCovers) {
+        await artifact?.close();
+      }
     }
+  }
+
+  Future<void> _uploadLocalDocument(LanSyncLocalDocumentHttpArtifact artifact, String sessionId) =>
+      _uploadLocalPayload(artifact, sessionId);
+
+  Future<void> _uploadLocalPayload(LanSyncLocalDocumentHttpArtifact artifact, String sessionId, {bool cover = false}) async {
+    final document = artifact.descriptor;
+    final uri = _base.resolve(
+      '/v4/sessions/$sessionId/local-documents/${Uri.encodeComponent(document.documentId)}${cover ? '/cover' : ''}',
+    );
+    final bytes = artifact.bytes;
+    final checksum = artifact.sha256;
+    Object? lastError;
+    StackTrace? lastStackTrace;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        final request = await _client.putUrl(uri);
+        LanSyncHttpAuthentication.sign(
+          request,
+          deviceId: _identity.deviceId,
+          sharedSecret: _secret,
+          contentChecksum: LanSyncHttpAuthentication.bodyHash(const <int>[]),
+        );
+        request.headers
+          ..set('x-mgread-content-sha256', checksum)
+          ..contentType = ContentType.binary;
+        request.contentLength = bytes;
+        await request.addStream(artifact.openRead());
+        final response = await request.close();
+        final responseBytes = await response.fold<List<int>>(<int>[], (buffer, chunk) => buffer..addAll(chunk));
+        if (response.statusCode == HttpStatus.noContent) return;
+        if (response.statusCode < HttpStatus.internalServerError) throw _httpFailure(response.statusCode, responseBytes);
+        lastError = _httpFailure(response.statusCode, responseBytes);
+        lastStackTrace = StackTrace.current;
+      } on PairedSyncPeerFailureException {
+        rethrow;
+      } on LanSyncTransportException {
+        rethrow;
+      } on Object catch (error, stackTrace) {
+        lastError = error;
+        lastStackTrace = stackTrace;
+      }
+    }
+    Error.throwWithStackTrace(lastError!, lastStackTrace!);
   }
 
   Future<void> _uploadArtifact(LanSyncHttpArtifact artifact, String sessionId) async {
@@ -583,7 +703,13 @@ final class PairedSyncClientSession {
     Error.throwWithStackTrace(lastError!, lastStackTrace!);
   }
 
-  Future<_AppliedSummary> _downloadAndApply(LanSyncGateway gateway, LanSyncManifest manifest, _ImportPlan plan, String sessionId) async {
+  Future<_AppliedSummary> _downloadAndApply(
+    LanSyncGateway gateway,
+    LanSyncManifest manifest,
+    _ImportPlan plan,
+    String sessionId, {
+    void Function()? onLocalDocumentCommitted,
+  }) async {
     final offered = manifest.plugins.where((item) => plan.selection.pluginIds.contains(item.id)).toList(growable: false);
     final plugins = List<LanSyncPluginDescriptor?>.filled(offered.length, null);
     await _runBoundedPluginTasks(offered.length, (index) async {
@@ -603,6 +729,11 @@ final class PairedSyncClientSession {
       plugins[index] = plugin;
     });
     final preparedPlugins = plugins.cast<LanSyncPluginDescriptor>();
+    final localDocuments = manifest.localDocuments
+        .where((item) => plan.selection.localDocumentIds.contains(item.documentId))
+        .toList(growable: false);
+    final receivedLocalDocumentIds = <String>{};
+    final receivedLocalCoverIds = <String>{};
     if (preparedPlugins.isNotEmpty) {
       await gateway.preparePluginImports(preparedPlugins, forceUpgradePluginIds: plan.selection.pluginIds);
     }
@@ -619,7 +750,54 @@ final class PairedSyncClientSession {
         );
         await gateway.importPluginArchive(plugin, stream);
       });
-      return await _finishApply(gateway, manifest, plan);
+      if (localDocuments.isNotEmpty) {
+        final localGateway = gateway;
+        if (localGateway is! LanSyncLocalDocumentGateway) throw const LanSyncTransportException('lan_sync_local_documents_unsupported');
+        await _runBoundedPluginTasks(localDocuments.length, (index) async {
+          final document = localDocuments[index];
+          Stream<List<int>>? coverStream;
+          if (document.coverSha256 != null) {
+            final coverUri = _base.resolve('/v4/sessions/$sessionId/local-documents/${Uri.encodeComponent(document.documentId)}/cover');
+            coverStream = await const LanSyncLocalDocumentHttpClient().download(
+              coverUri,
+              document,
+              client: _client,
+              cover: true,
+              authenticate: (request, hash) =>
+                  LanSyncHttpAuthentication.sign(request, deviceId: _identity.deviceId, sharedSecret: _secret, contentChecksum: hash),
+            );
+            receivedLocalCoverIds.add(document.documentId);
+          }
+          try {
+            final uri = _base.resolve('/v4/sessions/$sessionId/local-documents/${Uri.encodeComponent(document.documentId)}');
+            final stream = await const LanSyncLocalDocumentHttpClient().download(
+              uri,
+              document,
+              client: _client,
+              authenticate: (request, hash) =>
+                  LanSyncHttpAuthentication.sign(request, deviceId: _identity.deviceId, sharedSecret: _secret, contentChecksum: hash),
+            );
+            await (localGateway as LanSyncLocalDocumentGateway).importLocalDocument(
+              document,
+              stream,
+              useSenderMetadata: false,
+              coverBytes: coverStream,
+              coverMimeType: document.coverMimeType,
+            );
+          } finally {
+            await discardLocalDocumentStream(coverStream);
+          }
+          receivedLocalDocumentIds.add(document.documentId);
+          onLocalDocumentCommitted?.call();
+        });
+      }
+      return await _finishApply(
+        gateway,
+        manifest,
+        plan,
+        receivedLocalDocumentIds: receivedLocalDocumentIds,
+        receivedLocalCoverIds: receivedLocalCoverIds,
+      );
     } on Object {
       try {
         await gateway.cancelPluginImports();
@@ -656,7 +834,7 @@ final class PairedSyncServerSession {
       final remoteManifest = _exchange.remoteManifest;
       _exchange.stage = 'import_plan';
       onStage?.call(_exchange.stage);
-      final plan = await _planImport(gateway, remoteManifest);
+      final plan = await _planImport(gateway, remoteManifest, includeLocalDocuments: localPolicy.canReceive && localPolicy.syncBookshelf);
       _exchange.configure(gateway, localManifest, plan);
       _exchange.negotiation.complete(<String, Object?>{
         'sessionId': _exchange.id,
@@ -672,7 +850,14 @@ final class PairedSyncServerSession {
       _exchange.stage = 'receive_payload';
       onStage?.call(_exchange.stage);
       await _exchange.uploadsDone.future;
-      final received = await _finishApply(gateway, remoteManifest, plan, receivedIds: _exchange.receivedIds);
+      final received = await _finishApply(
+        gateway,
+        remoteManifest,
+        plan,
+        receivedIds: _exchange.receivedIds,
+        receivedLocalDocumentIds: _exchange.receivedLocalDocumentIds,
+        receivedLocalCoverIds: _exchange.receivedLocalCoverIds,
+      );
       _exchange.serverApplied.completeIfPending(received);
       _exchange.stage = 'send_payload';
       onStage?.call(_exchange.stage);

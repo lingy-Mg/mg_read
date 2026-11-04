@@ -7,6 +7,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart';
@@ -19,6 +20,8 @@ import 'record.dart';
 
 part 'record_store_codec.dart';
 part 'content_library_store.dart';
+part 'local_document_schema.dart';
+part 'local_document_metadata.dart';
 part 'record_store_maintenance.dart';
 part 'record_store_transaction_queue.dart';
 

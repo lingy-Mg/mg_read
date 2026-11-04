@@ -4,6 +4,8 @@
 library;
 
 import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/features/import_export/application/import_export_service.dart';
@@ -64,6 +66,38 @@ void main() {
     expect(plan!.manifest.plugins, isEmpty);
     expect(plan.manifest.shelfItems.single.identity, _book.identity);
     expect(sender.openedPluginIds, isEmpty);
+  });
+
+  test('reads the previous v1 backup container and v2 manifest', () async {
+    final directory = await Directory.systemTemp.createTemp('mgread-import-export-v1-');
+    addTearDown(() => directory.delete(recursive: true));
+    final path = '${directory.path}${Platform.pathSeparator}legacy.mgread';
+    final legacyManifest = <String, Object?>{
+      'schemaVersion': 2,
+      'plugins': <Object?>[_plugin.toJson()],
+      'shelfItems': <Object?>[],
+      'skippedShelfItems': 0,
+    };
+    final header = utf8.encode(jsonEncode(<String, Object?>{'schemaVersion': 1, 'manifest': legacyManifest}));
+    final length = ByteData(4)..setUint32(0, header.length, Endian.big);
+    await File(
+      path,
+    ).writeAsBytes(<int>[0x4d, 0x47, 0x52, 0x45, 0x41, 0x44, 0x31, 0x0a, ...length.buffer.asUint8List(), ...header, 1, 3, 5, 7, 9]);
+    final gateway = _FakeGateway(
+      const LanSyncManifest(plugins: <LanSyncPluginDescriptor>[], shelfItems: <LanSyncShelfItem>[], skippedShelfItems: 0),
+    );
+    final service = ImportExportService(gateway, _FakeFilePicker(path));
+
+    final plan = (await service.pickImport())!;
+    expect(plan.manifest.localDocuments, isEmpty);
+    expect(plan.manifest.plugins.single.id, _plugin.id);
+    await service.importSelection(
+      plan,
+      pluginIds: <String>{_plugin.id},
+      shelfItemIds: const <String>{},
+      conflictChoices: const <String, LanSyncConflictChoice>{},
+    );
+    expect(gateway.importedBytes[_plugin.id], <int>[1, 3, 5, 7, 9]);
   });
 }
 

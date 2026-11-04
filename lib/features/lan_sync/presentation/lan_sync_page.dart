@@ -205,11 +205,18 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
           onSelectAll: (selected) => ref.read(lanSyncControllerProvider.notifier).chooseAllContent(selected),
           onSelectAllShelfItems: (selected) => ref.read(lanSyncControllerProvider.notifier).chooseAllShelfItems(selected),
           onSelectAllPlugins: (selected) => ref.read(lanSyncControllerProvider.notifier).chooseAllPlugins(selected),
+          onSelectAllLocalDocuments: (selected) => ref.read(lanSyncControllerProvider.notifier).chooseAllLocalDocuments(selected),
           onPluginChanged: (pluginId, selected) => ref.read(lanSyncControllerProvider.notifier).choosePlugin(pluginId, selected),
           onShelfItemChanged: (identity, selected) => ref.read(lanSyncControllerProvider.notifier).chooseShelfItem(identity, selected),
+          onLocalDocumentChanged: (id, selected) => ref.read(lanSyncControllerProvider.notifier).chooseLocalDocument(id, selected),
         ),
         const SizedBox(height: AppSpacing.regular),
         for (final conflict in state.preview!.conflicts) _ConflictCard(conflict: conflict),
+        for (final conflict in state.preview!.localDocumentConflicts)
+          _LocalDocumentConflictCard(
+            conflict: conflict,
+            onChanged: (choice) => ref.read(lanSyncControllerProvider.notifier).chooseLocalDocumentConflict(conflict.documentId, choice),
+          ),
         FilledButton.icon(
           key: const Key('lan-sync-begin-import'),
           onPressed: state.preview!.hasSelection ? () => ref.read(lanSyncControllerProvider.notifier).beginImport() : null,
@@ -387,6 +394,7 @@ class _PreviewSummary extends StatelessWidget {
             Text('需要确认：${preview.conflicts.length} 本'),
             Text('缺少可用数据源：${preview.blockedItemCount} 本'),
             Text('已选择：${preview.selectedShelfItemIds.length} 本书，${preview.selectedPluginIds.length} 个数据源'),
+            Text('已选择本地书籍：${preview.selectedLocalDocumentIds.length} 本'),
           ],
         ),
       ),
@@ -404,8 +412,10 @@ class LanSyncContentSelection extends StatelessWidget {
     required this.onSelectAll,
     required this.onSelectAllShelfItems,
     required this.onSelectAllPlugins,
+    required this.onSelectAllLocalDocuments,
     required this.onPluginChanged,
     required this.onShelfItemChanged,
+    required this.onLocalDocumentChanged,
     super.key,
   });
 
@@ -414,14 +424,16 @@ class LanSyncContentSelection extends StatelessWidget {
   final ValueChanged<bool> onSelectAll;
   final ValueChanged<bool> onSelectAllShelfItems;
   final ValueChanged<bool> onSelectAllPlugins;
+  final ValueChanged<bool> onSelectAllLocalDocuments;
   final void Function(String pluginId, bool selected) onPluginChanged;
   final void Function(String identity, bool selected) onShelfItemChanged;
+  final void Function(String documentId, bool selected) onLocalDocumentChanged;
 
   @override
   Widget build(BuildContext context) {
     final selectablePluginCount = manifest.plugins.where((plugin) => _isSelectablePlugin(plugin, preview)).length;
-    final selectedCount = preview.selectedPluginIds.length + preview.selectedShelfItemIds.length;
-    final totalCount = selectablePluginCount + manifest.shelfItems.length;
+    final selectedCount = preview.selectedPluginIds.length + preview.selectedShelfItemIds.length + preview.selectedLocalDocumentIds.length;
+    final totalCount = selectablePluginCount + manifest.shelfItems.length + manifest.localDocuments.length;
     final allSelected = totalCount > 0 && selectedCount == totalCount;
     final noneSelected = selectedCount == 0;
     final selectableShelfIds = <String>{for (final item in manifest.shelfItems) item.identity};
@@ -488,11 +500,64 @@ class LanSyncContentSelection extends StatelessWidget {
                   onChanged: _isSelectablePlugin(plugin, preview) ? (selected) => onPluginChanged(plugin.id, selected) : null,
                 ),
             ],
+            if (manifest.localDocuments.isNotEmpty) ...<Widget>[
+              const Divider(height: 1),
+              _SelectionSectionTitle(
+                key: const Key('lan-sync-select-all-local-documents'),
+                label: '本地 TXT/EPUB 原书',
+                selectedCount: preview.selectedLocalDocumentIds.length,
+                totalCount: manifest.localDocuments.length,
+                value: _selectionValue(preview.selectedLocalDocumentIds, <String>{
+                  for (final item in manifest.localDocuments) item.documentId,
+                }),
+                onChanged: onSelectAllLocalDocuments,
+              ),
+              for (final document in manifest.localDocuments)
+                CheckboxListTile(
+                  key: Key('lan-sync-local-document-${document.documentId}'),
+                  value: preview.selectedLocalDocumentIds.contains(document.documentId),
+                  onChanged: (value) => onLocalDocumentChanged(document.documentId, value ?? false),
+                  title: Text(document.title),
+                  subtitle: Text('${document.format.toUpperCase()} · ${(document.originalBytes / (1024 * 1024)).toStringAsFixed(1)} MB'),
+                  controlAffinity: ListTileControlAffinity.leading,
+                ),
+            ],
           ],
         ),
       ),
     );
   }
+}
+
+class _LocalDocumentConflictCard extends StatelessWidget {
+  const _LocalDocumentConflictCard({required this.conflict, required this.onChanged});
+  final LanSyncLocalDocumentConflict conflict;
+  final ValueChanged<LanSyncConflictChoice> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(AppSpacing.regular),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text('本地原书已存在：${conflict.senderTitle}', style: Theme.of(context).textTheme.titleSmall),
+          Text('本机书名：${conflict.localTitle}'),
+          DropdownButton<LanSyncConflictChoice>(
+            value: conflict.choice,
+            isExpanded: true,
+            onChanged: (choice) {
+              if (choice != null) onChanged(choice);
+            },
+            items: const <DropdownMenuItem<LanSyncConflictChoice>>[
+              DropdownMenuItem(value: LanSyncConflictChoice.keepLocal, child: Text('保留本机版本')),
+              DropdownMenuItem(value: LanSyncConflictChoice.useSender, child: Text('使用发送方版本')),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _SelectionSectionTitle extends StatelessWidget {

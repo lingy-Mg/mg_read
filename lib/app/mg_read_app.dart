@@ -4,7 +4,12 @@
 /// TV 根页面始终接管 Android 返回，防止关闭详情后系统直接退出 Activity。
 library;
 
+import 'package:mg_read/features/local_import/application/local_import_controller.dart';
 import 'dart:async';
+import 'dart:io';
+import 'package:mg_read/features/tv_companion/application/companion_controller.dart';
+import 'package:mg_read/features/tv_companion/presentation/companion_entry.dart';
+import 'package:mg_read/features/tv_companion/presentation/companion_page.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -50,6 +55,10 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
   StreamSubscription<RuntimeInitializationProgress>? _runtimeInitializationSubscription;
   bool _tvMode = false;
   bool _navigatorCanHandlePop = false;
+  bool _companionKey(KeyEvent event) {
+    if (_tvMode && (event is KeyDownEvent || event is KeyRepeatEvent)) ref.read(companionControllerProvider).localInteraction();
+    return false;
+  }
 
   bool _handleNavigationNotification(NavigationNotification notification) {
     _navigatorCanHandlePop = notification.canHandlePop;
@@ -66,7 +75,9 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
   @override
   void initState() {
     super.initState();
+    ref.read(localImportControllerProvider);
     WidgetsBinding.instance.addObserver(this);
+    HardwareKeyboard.instance.addHandler(_companionKey);
     // Subscribe before warmup so a Runtime startup failure and later Node
     // lifecycle diagnostics both reach the same root-level fatal boundary.
     ref.read(runtimeFatalErrorObserverProvider);
@@ -108,6 +119,8 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
       startup.recordStage('runtimeReady', resultState: runtimeReady ? 'ready' : 'failure');
       final lifecycle = WidgetsBinding.instance.lifecycleState;
       if (mounted && (lifecycle == null || lifecycle == AppLifecycleState.resumed)) {
+        await ref.read(companionControllerProvider).initialize();
+        if (!mounted) return;
         await ref.read(deviceSyncControllerProvider.notifier).start();
         startup.recordStage('deviceSyncReady', resultState: ref.read(deviceSyncControllerProvider).started ? 'ready' : 'failure');
       }
@@ -181,12 +194,20 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
+        ref.read(companionControllerProvider).setForeground(true);
         if (ref.read(appStartupControllerProvider).isInteractive) {
           unawaited(ref.read(deviceSyncControllerProvider.notifier).start());
         }
         break;
       case AppLifecycleState.hidden || AppLifecycleState.paused || AppLifecycleState.detached:
-        unawaited(ref.read(deviceSyncControllerProvider.notifier).stop());
+        final companion = ref.read(companionControllerProvider);
+        final keepReceiving = state != AppLifecycleState.detached && (Platform.isWindows || Platform.isMacOS) && companion.receiverEnabled;
+        companion.setForeground(keepReceiving);
+        if (keepReceiving) {
+          ref.read(deviceSyncControllerProvider.notifier).pauseSyncKeepingPeerServices();
+        } else {
+          unawaited(ref.read(deviceSyncControllerProvider.notifier).stop());
+        }
         break;
       case AppLifecycleState.inactive:
         break;
@@ -198,11 +219,20 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
     _developmentSyncDebounce?.cancel();
     unawaited(_runtimeInitializationSubscription?.cancel());
     WidgetsBinding.instance.removeObserver(this);
+    HardwareKeyboard.instance.removeHandler(_companionKey);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(localImportControllerProvider, (_, controller) {
+      if (!controller.takePendingOpenRequest()) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final router = ref.read(appRouterProvider);
+        if (router.routeInformationProvider.value.uri.path != '/local-import') router.push('/local-import');
+      });
+    });
     // SettingsManager keeps a stable identity, so watch its status stream to
     // rebuild the root when an appearance setting changes.
     ref.watch(appSettingsStatusProvider);
@@ -266,7 +296,10 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
                               child: AppTvSourceNavigation(
                                 enabled: tvMode,
                                 router: router,
-                                child: TvRemoteShortcuts(enabled: tvMode, child: child ?? const SizedBox.shrink()),
+                                child: Listener(
+                                  onPointerDown: tvMode ? (_) => ref.read(companionControllerProvider).localInteraction() : null,
+                                  child: TvRemoteShortcuts(enabled: tvMode, child: child ?? const SizedBox.shrink()),
+                                ),
                               ),
                             ),
                           ),
@@ -279,6 +312,14 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
               const AppBackgroundTasks(),
               const ChapterCacheTaskBar(),
               SourceAudioPlaybackNavigator(backButtonDispatcher: router.backButtonDispatcher),
+              CompanionEntry(
+                tvMode: tvMode,
+                overlayContext: () => appRootNavigatorKey.currentContext,
+                onOpen: () {
+                  final navigator = appRootNavigatorKey.currentState;
+                  if (navigator != null) unawaited(openCompanionPage(navigator.context));
+                },
+              ),
             ],
           ),
         );

@@ -85,6 +85,8 @@ class LibraryPage extends ConsumerWidget {
     this.onPrivacyLibraryRequested,
     this.onReadingHistoryRequested,
     this.onManageSourcesRequested,
+    this.onImportLocalRequested,
+    this.onLocalDocumentRequested,
     super.key,
   });
 
@@ -114,6 +116,8 @@ class LibraryPage extends ConsumerWidget {
 
   /// Lets the app route own navigation to data-source management.
   final VoidCallback? onManageSourcesRequested;
+  final VoidCallback? onImportLocalRequested;
+  final ValueChanged<String>? onLocalDocumentRequested;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -329,6 +333,10 @@ class LibraryPage extends ConsumerWidget {
     }
 
     void requestBookDetail(LibraryBookListItemViewData book) {
+      if (state.overview?.items.any((item) => item.id == book.id && item.isLocalDocument) == true) {
+        onLocalDocumentRequested?.call(book.id);
+        return;
+      }
       final externalCallback = bookDetailRequested;
       if (externalCallback != null) {
         externalCallback(book.id);
@@ -521,6 +529,7 @@ class LibraryPage extends ConsumerWidget {
               callbacks.onReadingHistory?.call();
               onReadingHistoryRequested!();
             },
+      onImportLocal: onImportLocalRequested ?? callbacks.onImportLocal,
       onManageSources: onManageSourcesRequested == null
           ? callbacks.onManageSources
           : () {

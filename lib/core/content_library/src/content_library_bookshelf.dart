@@ -116,6 +116,7 @@ final class _BookshelfOperations {
     }
     await _library._persistence.metadataRecords.contentLibrary.deleteItem(id.value);
     await _library._storageMaintenance.clearLocked();
+    if (removedItem.source.isLocal) await _library.collectLocalDocumentGarbage();
     try {
       if (removedItem.kind == ContentKind.manga) {
         await _library._persistence.fileObjects.deleteMangaAssets(id.value);
@@ -157,6 +158,7 @@ final class _LibrarySyncOperations {
     final items = <LibrarySyncItem>[];
     for (final item in page.items) {
       final source = item.source;
+      if (source.isLocal) continue;
       final localProgress = switch (await _library.loadProgress(item.id)) {
         final LibraryReadingProgress value => value,
         _ => null,

@@ -37,6 +37,7 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
   ImportExportImportPlan? _importPlan;
   Set<String> _selectedPluginIds = <String>{};
   Set<String> _selectedShelfItemIds = <String>{};
+  Set<String> _selectedLocalDocumentIds = <String>{};
   Map<String, LanSyncConflictChoice> _conflictChoices = <String, LanSyncConflictChoice>{};
   bool _busy = false;
   String? _feedback;
@@ -78,7 +79,7 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
                         key: const Key('prepare-export'),
                         icon: Icons.upload_file_rounded,
                         title: '导出到文件',
-                        description: '预览本机项目，然后选择要写入备份的数据源、书架和阅读进度。',
+                        description: '预览本机项目，然后选择要写入备份的数据源、书架进度和本地 TXT / EPUB 原文件。',
                         onTap: _busy ? null : _prepareExport,
                       ),
                       const SizedBox(height: AppSpacing.regular),
@@ -130,15 +131,31 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
             subtitle: Text(item.progress == null ? '书架项目' : '书架项目 · 包含阅读进度'),
           ),
       ],
+      localDocumentRows: <Widget>[
+        for (final document in plan.manifest.localDocuments) ...<Widget>[
+          CheckboxListTile(
+            key: Key('export-local-document-${document.documentId}'),
+            value: _selectedLocalDocumentIds.contains(document.documentId),
+            onChanged: _busy ? null : (value) => _toggleLocalDocument(document.documentId, value),
+            title: Text(document.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: Text(
+              '${document.format.toUpperCase()} 原文件 · ${_formatBytes(document.originalBytes)} · ${document.bookmarks.length} 个书签',
+            ),
+          ),
+        ],
+      ],
       selectedPlugins: _selectedPluginIds.length,
       selectedShelfItems: _selectedShelfItemIds.length,
+      selectedLocalDocuments: _selectedLocalDocumentIds.length,
       onSelectAllPlugins: _busy ? null : (selected) => _selectExportPlugins(plan, selected),
       onSelectAllShelfItems: _busy ? null : (selected) => _selectShelfItems(plan.manifest.shelfItems, selected),
+      onSelectAllLocalDocuments: _busy ? null : (selected) => _selectLocalDocuments(plan.manifest.localDocuments, selected),
       footer: _SelectionActions(
         primaryKey: const Key('export-selected'),
         primaryLabel: '导出所选项目',
         primaryIcon: Icons.save_alt_rounded,
-        primaryEnabled: !_busy && (_selectedPluginIds.isNotEmpty || _selectedShelfItemIds.isNotEmpty),
+        primaryEnabled:
+            !_busy && (_selectedPluginIds.isNotEmpty || _selectedShelfItemIds.isNotEmpty || _selectedLocalDocumentIds.isNotEmpty),
         onPrimary: _exportSelected,
         onCancel: _reset,
       ),
@@ -186,15 +203,46 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
               ),
         ],
       ],
+      localDocumentRows: <Widget>[
+        for (final document in plan.manifest.localDocuments) ...<Widget>[
+          CheckboxListTile(
+            key: Key('import-local-document-${document.documentId}'),
+            value: _selectedLocalDocumentIds.contains(document.documentId),
+            onChanged: _busy ? null : (value) => _toggleLocalDocument(document.documentId, value),
+            title: Text(document.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: Text(
+              '${document.format.toUpperCase()} 原文件 · ${_formatBytes(document.originalBytes)} · ${document.bookmarks.length} 个书签',
+            ),
+          ),
+          if (_selectedLocalDocumentIds.contains(document.documentId))
+            if (_localConflictFor(plan, document.documentId) case final conflict?)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(AppSpacing.section, 0, AppSpacing.section, AppSpacing.compact),
+                child: DropdownButtonFormField<LanSyncConflictChoice>(
+                  key: Key('import-local-document-conflict-${document.documentId}'),
+                  initialValue: _conflictChoices[document.documentId] ?? LanSyncConflictChoice.keepLocal,
+                  decoration: const InputDecoration(labelText: '本地书籍版本冲突'),
+                  items: const <DropdownMenuItem<LanSyncConflictChoice>>[
+                    DropdownMenuItem(value: LanSyncConflictChoice.keepLocal, child: Text('保留本机版本和阅读状态')),
+                    DropdownMenuItem(value: LanSyncConflictChoice.useSender, child: Text('采用备份版本和阅读状态')),
+                  ],
+                  onChanged: _busy ? null : (value) => _setConflictChoice(conflict.documentId, value),
+                ),
+              ),
+        ],
+      ],
       selectedPlugins: _selectedPluginIds.length,
       selectedShelfItems: _selectedShelfItemIds.length,
+      selectedLocalDocuments: _selectedLocalDocumentIds.length,
       onSelectAllPlugins: _busy ? null : (selected) => _selectImportPlugins(plan, selected),
       onSelectAllShelfItems: _busy ? null : (selected) => _selectShelfItems(plan.manifest.shelfItems, selected),
+      onSelectAllLocalDocuments: _busy ? null : (selected) => _selectLocalDocuments(plan.manifest.localDocuments, selected),
       footer: _SelectionActions(
         primaryKey: const Key('import-selected'),
         primaryLabel: '导入所选项目',
         primaryIcon: Icons.download_done_rounded,
-        primaryEnabled: !_busy && (_selectedPluginIds.isNotEmpty || _selectedShelfItemIds.isNotEmpty),
+        primaryEnabled:
+            !_busy && (_selectedPluginIds.isNotEmpty || _selectedShelfItemIds.isNotEmpty || _selectedLocalDocumentIds.isNotEmpty),
         onPrimary: _importSelected,
         onCancel: _reset,
       ),
@@ -209,6 +257,7 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
         _exportPlan = plan;
         _selectedPluginIds = plan.defaultPluginIds;
         _selectedShelfItemIds = plan.defaultShelfItemIds;
+        _selectedLocalDocumentIds = plan.defaultLocalDocumentIds;
         _feedback = null;
       });
     }, failureMessage: '无法读取可导出的项目，请确认数据源运行环境可用。');
@@ -222,8 +271,10 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
         _importPlan = plan;
         _selectedPluginIds = Set<String>.from(plan.preview.recommendedPluginIds);
         _selectedShelfItemIds = Set<String>.from(plan.preview.selectedShelfItemIds);
+        _selectedLocalDocumentIds = <String>{for (final document in plan.manifest.localDocuments) document.documentId};
         _conflictChoices = <String, LanSyncConflictChoice>{
           for (final conflict in plan.preview.conflicts) conflict.identity: conflict.choice,
+          for (final conflict in plan.preview.localDocumentConflicts) conflict.documentId: conflict.choice,
         };
         _feedback = null;
       });
@@ -234,11 +285,16 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
     final plan = _exportPlan;
     if (plan == null) return;
     await _run(() async {
-      final saved = await _coordinator.exportSelection(plan, pluginIds: _selectedPluginIds, shelfItemIds: _selectedShelfItemIds);
+      final saved = await _coordinator.exportSelection(
+        plan,
+        pluginIds: _selectedPluginIds,
+        shelfItemIds: _selectedShelfItemIds,
+        localDocumentIds: _selectedLocalDocumentIds,
+      );
       if (!mounted || !saved) return;
       setState(() {
         _exportPlan = null;
-        _feedback = '导出完成。文件只包含所选项目和打包后的数据源 artifact。';
+        _feedback = '导出完成。文件只包含所选项目、数据源 artifact 和本地原文件。';
         _feedbackIsError = false;
       });
     }, failureMessage: '导出失败，原有目标文件不会被不完整内容替换。');
@@ -252,6 +308,7 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
         plan,
         pluginIds: _selectedPluginIds,
         shelfItemIds: _selectedShelfItemIds,
+        localDocumentIds: _selectedLocalDocumentIds,
         conflictChoices: _conflictChoices,
       );
       if (!mounted) return;
@@ -259,7 +316,8 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
       ref.invalidate(profileReadingStatsProvider);
       setState(() {
         _importPlan = null;
-        _feedback = '导入完成：数据源 ${result.pluginInstalled} 个，新增书架 ${result.added} 项，更新 ${result.updated} 项，阻止 ${result.blocked} 项。';
+        _feedback =
+            '导入完成：数据源 ${result.pluginInstalled} 个，本地文档 ${result.localDocumentsImported} 本，新增书架 ${result.added} 项，更新 ${result.updated} 项，阻止 ${result.blocked} 项。';
         _feedbackIsError = result.pluginFailed > 0 || result.blocked > 0;
       });
     }, failureMessage: '导入未完成；已安装版本和未选项目保持不变，可重新选择文件后重试。');
@@ -293,6 +351,10 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
     selected == true ? _selectedShelfItemIds.add(id) : _selectedShelfItemIds.remove(id);
   });
 
+  void _toggleLocalDocument(String id, bool? selected) => setState(() {
+    selected == true ? _selectedLocalDocumentIds.add(id) : _selectedLocalDocumentIds.remove(id);
+  });
+
   void _selectExportPlugins(ImportExportExportPlan plan, bool selected) => setState(() {
     _selectedPluginIds = selected ? plan.defaultPluginIds : <String>{};
   });
@@ -305,6 +367,10 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
     _selectedShelfItemIds = selected ? <String>{for (final item in items) item.identity} : <String>{};
   });
 
+  void _selectLocalDocuments(List<LanSyncLocalDocumentDescriptor> items, bool selected) => setState(() {
+    _selectedLocalDocumentIds = selected ? <String>{for (final item in items) item.documentId} : <String>{};
+  });
+
   void _setConflictChoice(String id, LanSyncConflictChoice? choice) {
     if (choice != null) setState(() => _conflictChoices[id] = choice);
   }
@@ -314,6 +380,7 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
     _importPlan = null;
     _selectedPluginIds = <String>{};
     _selectedShelfItemIds = <String>{};
+    _selectedLocalDocumentIds = <String>{};
     _conflictChoices = <String, LanSyncConflictChoice>{};
     _feedback = null;
   });
@@ -445,20 +512,26 @@ class _SelectionPanel extends StatelessWidget {
     required this.description,
     required this.pluginRows,
     required this.shelfRows,
+    required this.localDocumentRows,
     required this.selectedPlugins,
     required this.selectedShelfItems,
+    required this.selectedLocalDocuments,
     required this.onSelectAllPlugins,
     required this.onSelectAllShelfItems,
+    required this.onSelectAllLocalDocuments,
     required this.footer,
   });
   final String title;
   final String description;
   final List<Widget> pluginRows;
   final List<Widget> shelfRows;
+  final List<Widget> localDocumentRows;
   final int selectedPlugins;
   final int selectedShelfItems;
+  final int selectedLocalDocuments;
   final ValueChanged<bool>? onSelectAllPlugins;
   final ValueChanged<bool>? onSelectAllShelfItems;
+  final ValueChanged<bool>? onSelectAllLocalDocuments;
   final Widget footer;
 
   @override
@@ -477,6 +550,14 @@ class _SelectionPanel extends StatelessWidget {
         rows: shelfRows,
         emptyText: '书架中没有可处理的项目',
         onSelectAll: onSelectAllShelfItems,
+      ),
+      const SizedBox(height: AppSpacing.regular),
+      _GroupCard(
+        title: '本地 TXT / EPUB 原文件',
+        count: selectedLocalDocuments,
+        rows: localDocumentRows,
+        emptyText: '没有可处理的本地文档',
+        onSelectAll: onSelectAllLocalDocuments,
       ),
       const SizedBox(height: AppSpacing.regular),
       footer,
@@ -569,6 +650,13 @@ class _FeedbackCard extends StatelessWidget {
 LanSyncBookConflict? _conflictFor(ImportExportImportPlan plan, String identity) {
   for (final conflict in plan.preview.conflicts) {
     if (conflict.identity == identity) return conflict;
+  }
+  return null;
+}
+
+LanSyncLocalDocumentConflict? _localConflictFor(ImportExportImportPlan plan, String documentId) {
+  for (final conflict in plan.preview.localDocumentConflicts) {
+    if (conflict.documentId == documentId) return conflict;
   }
   return null;
 }

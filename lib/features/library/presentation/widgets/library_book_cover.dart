@@ -22,6 +22,7 @@ import 'package:mg_read/features/library/presentation/library_book_list_view_dat
 import 'package:mg_read/features/library/presentation/widgets/library_first_frame.dart';
 import 'package:mg_read/shared/presentation/widgets/default_content_cover_artwork.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
+import 'package:mg_read/shared/presentation/widgets/local_document_image.dart';
 
 /// 独立于书架概览加载的本地书籍封面。
 class LibraryBookCover extends ConsumerWidget {
@@ -93,7 +94,10 @@ class LibraryBookCover extends ConsumerWidget {
         : useIntrinsicAspectRatio
         ? BoxFit.fitWidth
         : fit;
-    final ImageProvider? originalImage = bytes != null && bytes.isNotEmpty
+    final isSvg = bytes != null && isLocalSvgImage(bytes);
+    final ImageProvider? originalImage = isSvg
+        ? null
+        : bytes != null && bytes.isNotEmpty
         ? MemoryImage(normalizeBookCoverBytes(bytes))
         : assetPath == null
         ? null
@@ -118,7 +122,18 @@ class LibraryBookCover extends ConsumerWidget {
             child: Stack(
               fit: useIntrinsicAspectRatio && hasImage ? StackFit.loose : StackFit.expand,
               children: <Widget>[
-                image != null
+                isSvg
+                    ? _imageFrame(
+                        LocalDocumentImage(
+                          bytes,
+                          width: imageWidth,
+                          height: imageHeight,
+                          fit: imageFit,
+                          fallback: _sizedPlaceholder(tokens, start, end),
+                        ),
+                        backgroundColor: showLetterboxBackground ? letterboxColor : null,
+                      )
+                    : image != null
                     ? _imageFrame(
                         Image(
                           image: image,

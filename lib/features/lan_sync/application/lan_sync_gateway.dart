@@ -35,6 +35,24 @@ abstract interface class LanSyncPairedGateway {
   Future<LanSyncMaterializedPlugin> materializePluginArchive(LanSyncPluginDescriptor plugin);
 }
 
+/// Optional transfer boundary for app-owned TXT/EPUB originals. Kept separate
+/// from plugin artifacts because local books have larger, distinct limits.
+abstract interface class LanSyncLocalDocumentGateway {
+  Future<List<LanSyncLocalDocumentDescriptor>> listLocalDocumentDescriptors();
+
+  Future<Stream<List<int>>> openLocalDocumentOriginal(LanSyncLocalDocumentDescriptor document);
+
+  Future<Stream<List<int>>?> openLocalDocumentCover(LanSyncLocalDocumentDescriptor document);
+
+  Future<void> importLocalDocument(
+    LanSyncLocalDocumentDescriptor document,
+    Stream<List<int>> bytes, {
+    required bool useSenderMetadata,
+    Stream<List<int>>? coverBytes,
+    String? coverMimeType,
+  });
+}
+
 final class LanSyncMaterializedPlugin {
   const LanSyncMaterializedPlugin({required this.descriptor, required this.bytes});
 

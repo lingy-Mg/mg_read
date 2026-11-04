@@ -27,10 +27,12 @@ class LibraryHomeTopBar extends StatelessWidget {
     required this.layoutMode,
     required this.onLayoutModeToggle,
     this.onToggleTheme,
+    this.onImportLocal,
     super.key,
   });
 
   final VoidCallback onRefresh;
+  final VoidCallback? onImportLocal;
   final VoidCallback? onToggleTheme;
   final VoidCallback onReadingHistory;
   final VoidCallback onManageSources;
@@ -46,6 +48,7 @@ class LibraryHomeTopBar extends StatelessWidget {
       height: AppSpacing.minimumTouchTarget,
       child: Row(
         children: <Widget>[
+          if (onImportLocal != null) _LibraryTopBarAction(tooltip: '导入本地书籍', onPressed: onImportLocal!, icon: Icons.file_open_outlined),
           const Spacer(),
           if (AppTheme.darkModeEnabled && toggleTheme != null)
             Padding(

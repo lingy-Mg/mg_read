@@ -345,7 +345,7 @@ SourceCollection parseSourceCollection(List<int> input) {
   final decoder = ZipDecoder();
   late final Archive archive;
   try {
-    archive = decoder.decodeBytes(input);
+    archive = decoder.decodeBytes(input, verify: true, throwOnError: true);
   } on Object {
     throw const SourceCollectionImportException('合集 ZIP 目录或压缩内容损坏。');
   }
@@ -460,7 +460,7 @@ SourceCollection parseSourceCollection(List<int> input) {
 
 Stream<List<int>> _openVerifiedEntry(List<int> archiveBytes, String path, int expectedBytes, String expectedSha256) async* {
   try {
-    final archive = ZipDecoder().decodeBytes(archiveBytes);
+    final archive = ZipDecoder().decodeBytes(archiveBytes, verify: true, throwOnError: true);
     final file = archive.findFile(path);
     final bytes = file?.readBytes();
     if (bytes == null || bytes.length != expectedBytes || sha256.convert(bytes).toString() != expectedSha256) {

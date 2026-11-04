@@ -1,7 +1,7 @@
 /// 局域网同步领域模型与有界协议常量。
 ///
 /// 职责：
-/// - 定义 HTTP v3 会话、manifest、插件 artifact 和导入预览类型。
+/// - 定义 HTTP 会话、manifest、插件 artifact、本地文档和导入预览类型。
 /// - 校验跨设备 JSON 的字段、枚举和大小上限。
 ///
 /// 注意：
@@ -17,6 +17,9 @@ import 'package:mg_read/core/content_library/content_library.dart';
 const int lanSyncProtocolVersion = 3;
 const int lanSyncMaxManifestBytes = 1024 * 1024;
 const int lanSyncMaxPluginBytes = 32 * 1024 * 1024;
+const int lanSyncMaxLocalDocumentBytes = 256 * 1024 * 1024;
+const int lanSyncMaxLocalCoverBytes = 8 * 1024 * 1024;
+const int lanSyncMaxLocalDocumentCount = 1000;
 const int lanSyncMaxShelfItemCount = bookshelfMaxItemCount;
 const int lanSyncMaxBatchBytes = 512 * 1024 * 1024;
 const Duration lanSyncSessionLifetime = Duration(minutes: 10);
@@ -67,25 +70,45 @@ final class LanSyncBookConflict {
 }
 
 @immutable
+final class LanSyncLocalDocumentConflict {
+  const LanSyncLocalDocumentConflict({
+    required this.documentId,
+    required this.senderTitle,
+    required this.localTitle,
+    this.choice = LanSyncConflictChoice.keepLocal,
+  });
+  final String documentId, senderTitle, localTitle;
+  final LanSyncConflictChoice choice;
+  LanSyncLocalDocumentConflict withChoice(LanSyncConflictChoice value) =>
+      LanSyncLocalDocumentConflict(documentId: documentId, senderTitle: senderTitle, localTitle: localTitle, choice: value);
+}
+
+@immutable
 final class LanSyncImportPreview {
   LanSyncImportPreview({
     required this.newItemCount,
     required this.conflicts,
     required this.blockedItemCount,
     required this.pluginPlans,
+    List<LanSyncLocalDocumentConflict> localDocumentConflicts = const <LanSyncLocalDocumentConflict>[],
     Set<String> selectedPluginIds = const <String>{},
     Set<String> selectedShelfItemIds = const <String>{},
+    Set<String> selectedLocalDocumentIds = const <String>{},
     Set<String> forceUpgradePluginIds = const <String>{},
-  }) : selectedPluginIds = Set<String>.unmodifiable(selectedPluginIds),
+  }) : localDocumentConflicts = List<LanSyncLocalDocumentConflict>.unmodifiable(localDocumentConflicts),
+       selectedPluginIds = Set<String>.unmodifiable(selectedPluginIds),
        selectedShelfItemIds = Set<String>.unmodifiable(selectedShelfItemIds),
+       selectedLocalDocumentIds = Set<String>.unmodifiable(selectedLocalDocumentIds),
        forceUpgradePluginIds = Set<String>.unmodifiable(forceUpgradePluginIds);
 
   final int newItemCount;
   final List<LanSyncBookConflict> conflicts;
   final int blockedItemCount;
   final Map<String, LanSyncPluginPlanState> pluginPlans;
+  final List<LanSyncLocalDocumentConflict> localDocumentConflicts;
   final Set<String> selectedPluginIds;
   final Set<String> selectedShelfItemIds;
+  final Set<String> selectedLocalDocumentIds;
 
   /// Plugin IDs selected for an explicit sender-to-receiver replacement.
   final Set<String> forceUpgradePluginIds;
@@ -95,18 +118,24 @@ final class LanSyncImportPreview {
       if (entry.value == LanSyncPluginPlanState.missing || entry.value == LanSyncPluginPlanState.upgrade) entry.key,
   };
 
-  bool get hasSelection => selectedPluginIds.isNotEmpty || selectedShelfItemIds.isNotEmpty;
+  bool get hasSelection => selectedPluginIds.isNotEmpty || selectedShelfItemIds.isNotEmpty || selectedLocalDocumentIds.isNotEmpty;
 
-  LanSyncImportPreview withSelection({Set<String>? pluginIds, Set<String>? shelfItemIds, Set<String>? forceUpgradeIds}) =>
-      LanSyncImportPreview(
-        newItemCount: newItemCount,
-        conflicts: conflicts,
-        blockedItemCount: blockedItemCount,
-        pluginPlans: pluginPlans,
-        selectedPluginIds: pluginIds ?? selectedPluginIds,
-        selectedShelfItemIds: shelfItemIds ?? selectedShelfItemIds,
-        forceUpgradePluginIds: forceUpgradeIds ?? forceUpgradePluginIds,
-      );
+  LanSyncImportPreview withSelection({
+    Set<String>? pluginIds,
+    Set<String>? shelfItemIds,
+    Set<String>? localDocumentIds,
+    Set<String>? forceUpgradeIds,
+  }) => LanSyncImportPreview(
+    newItemCount: newItemCount,
+    conflicts: conflicts,
+    blockedItemCount: blockedItemCount,
+    pluginPlans: pluginPlans,
+    localDocumentConflicts: localDocumentConflicts,
+    selectedPluginIds: pluginIds ?? selectedPluginIds,
+    selectedShelfItemIds: shelfItemIds ?? selectedShelfItemIds,
+    selectedLocalDocumentIds: localDocumentIds ?? selectedLocalDocumentIds,
+    forceUpgradePluginIds: forceUpgradeIds ?? forceUpgradePluginIds,
+  );
 
   LanSyncImportPreview withConflictChoice(String identity, LanSyncConflictChoice choice) => LanSyncImportPreview(
     newItemCount: newItemCount,
@@ -115,8 +144,24 @@ final class LanSyncImportPreview {
     ],
     blockedItemCount: blockedItemCount,
     pluginPlans: pluginPlans,
+    localDocumentConflicts: localDocumentConflicts,
     selectedPluginIds: selectedPluginIds,
     selectedShelfItemIds: selectedShelfItemIds,
+    selectedLocalDocumentIds: selectedLocalDocumentIds,
+    forceUpgradePluginIds: forceUpgradePluginIds,
+  );
+
+  LanSyncImportPreview withLocalDocumentChoice(String documentId, LanSyncConflictChoice choice) => LanSyncImportPreview(
+    newItemCount: newItemCount,
+    conflicts: conflicts,
+    blockedItemCount: blockedItemCount,
+    pluginPlans: pluginPlans,
+    localDocumentConflicts: <LanSyncLocalDocumentConflict>[
+      for (final conflict in localDocumentConflicts) conflict.documentId == documentId ? conflict.withChoice(choice) : conflict,
+    ],
+    selectedPluginIds: selectedPluginIds,
+    selectedShelfItemIds: selectedShelfItemIds,
+    selectedLocalDocumentIds: selectedLocalDocumentIds,
     forceUpgradePluginIds: forceUpgradePluginIds,
   );
 }
@@ -131,6 +176,7 @@ final class LanSyncApplyResult {
     required this.pluginInstalled,
     required this.pluginSkipped,
     required this.pluginFailed,
+    this.localDocumentsImported = 0,
   });
 
   final int added;
@@ -140,6 +186,7 @@ final class LanSyncApplyResult {
   final int pluginInstalled;
   final int pluginSkipped;
   final int pluginFailed;
+  final int localDocumentsImported;
 }
 
 @immutable
@@ -301,6 +348,129 @@ final class LanSyncReadingProgress {
   }
 }
 
+/// A semantic local-bookmark payload. Item IDs are receiver-local and never
+/// cross the wire; the receiving Content Library remaps anchors on commit.
+@immutable
+final class LanSyncLocalBookmark {
+  const LanSyncLocalBookmark({
+    required this.id,
+    required this.chapterId,
+    required this.paragraphId,
+    required this.characterOffset,
+    required this.chapterTitle,
+    required this.excerpt,
+    required this.createdAtUtc,
+  });
+
+  final String id, chapterId, paragraphId, chapterTitle, excerpt;
+  final int characterOffset;
+  final DateTime createdAtUtc;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'id': id,
+    'chapterId': chapterId,
+    'paragraphId': paragraphId,
+    'characterOffset': characterOffset,
+    'chapterTitle': chapterTitle,
+    'excerpt': excerpt,
+    'createdAtUtc': createdAtUtc.toUtc().toIso8601String(),
+  };
+
+  factory LanSyncLocalBookmark.fromJson(Map<String, Object?> json) {
+    final createdAt = DateTime.tryParse(_requiredString(json, 'createdAtUtc', maxLength: 64));
+    if (createdAt == null) throw const FormatException('invalid_bookmark_date');
+    return LanSyncLocalBookmark(
+      id: _requiredString(json, 'id', maxLength: 256),
+      chapterId: _requiredString(json, 'chapterId', maxLength: 2048),
+      paragraphId: _requiredString(json, 'paragraphId', maxLength: 2048),
+      characterOffset: _requiredInt(json, 'characterOffset', min: 0, max: 10000000),
+      chapterTitle: _requiredString(json, 'chapterTitle', maxLength: 4096),
+      excerpt: _requiredString(json, 'excerpt', maxLength: 8192),
+      createdAtUtc: createdAt.toUtc(),
+    );
+  }
+}
+
+/// Path-free offer for one imported TXT/EPUB original and its reading state.
+@immutable
+final class LanSyncLocalDocumentDescriptor {
+  LanSyncLocalDocumentDescriptor({
+    required this.documentId,
+    required this.rawSha256,
+    required this.originalBytes,
+    required this.format,
+    required this.title,
+    required Map<String, Object?> options,
+    this.author,
+    this.progress,
+    this.coverSha256,
+    this.coverBytes,
+    this.coverMimeType,
+    List<LanSyncLocalBookmark> bookmarks = const <LanSyncLocalBookmark>[],
+  }) : bookmarks = List<LanSyncLocalBookmark>.unmodifiable(bookmarks),
+       options = Map<String, Object?>.unmodifiable(options);
+
+  final String documentId, rawSha256, format, title;
+  final int originalBytes;
+  final String? author;
+  final String? coverSha256, coverMimeType;
+  final int? coverBytes;
+  final Map<String, Object?> options;
+  final LanSyncReadingProgress? progress;
+  final List<LanSyncLocalBookmark> bookmarks;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'documentId': documentId,
+    'rawSha256': rawSha256,
+    'originalBytes': originalBytes,
+    'format': format,
+    'title': title,
+    if (author != null) 'author': author,
+    if (coverSha256 != null) 'coverSha256': coverSha256,
+    if (coverBytes != null) 'coverBytes': coverBytes,
+    if (coverMimeType != null) 'coverMimeType': coverMimeType,
+    'options': options,
+    if (progress != null) 'progress': progress!.toJson(),
+    'bookmarks': <Object?>[for (final bookmark in bookmarks) bookmark.toJson()],
+  };
+
+  factory LanSyncLocalDocumentDescriptor.fromJson(Map<String, Object?> json) {
+    final format = _requiredString(json, 'format', maxLength: 8);
+    if (format != 'txt' && format != 'epub') throw const FormatException('invalid_local_document');
+    final hash = _requiredString(json, 'rawSha256', maxLength: 64);
+    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(hash)) throw const FormatException('invalid_local_document');
+    final rawOptions = _requiredMap(json['options']);
+    if (rawOptions.length > 16) throw const FormatException('invalid_local_document');
+    final rawBookmarks = json['bookmarks'] ?? const <Object?>[];
+    if (rawBookmarks is! List || rawBookmarks.length > 10000) throw const FormatException('invalid_local_document');
+    final rawProgress = json['progress'];
+    final originalBytes = _requiredInt(json, 'originalBytes', min: 1, max: lanSyncMaxLocalDocumentBytes);
+    final coverSha256 = _optionalString(json, 'coverSha256', maxLength: 64);
+    final coverBytes = json.containsKey('coverBytes') ? _requiredInt(json, 'coverBytes', min: 1, max: lanSyncMaxLocalCoverBytes) : null;
+    final coverMimeType = _optionalString(json, 'coverMimeType', maxLength: 64);
+    if ((coverSha256 == null) != (coverBytes == null) ||
+        (coverSha256 == null) != (coverMimeType == null) ||
+        (coverSha256 != null && !RegExp(r'^[0-9a-f]{64}$').hasMatch(coverSha256)) ||
+        (coverMimeType != null && !const <String>{'image/png', 'image/jpeg', 'image/webp', 'image/gif'}.contains(coverMimeType))) {
+      throw const FormatException('invalid_local_cover');
+    }
+    return LanSyncLocalDocumentDescriptor(
+      documentId: _requiredString(json, 'documentId', maxLength: 128),
+      rawSha256: hash,
+      originalBytes: originalBytes,
+      format: format,
+      title: _requiredString(json, 'title', maxLength: 1024),
+      author: _optionalString(json, 'author', maxLength: 1024),
+      coverSha256: coverSha256,
+      coverBytes: coverBytes,
+      coverMimeType: coverMimeType,
+      options: Map<String, Object?>.from(rawOptions),
+      progress: rawProgress == null ? null : LanSyncReadingProgress.fromJson(_requiredMap(rawProgress)),
+      bookmarks: <LanSyncLocalBookmark>[for (final raw in rawBookmarks) LanSyncLocalBookmark.fromJson(_requiredMap(raw))],
+    );
+  }
+}
+
 @immutable
 final class LanSyncShelfItem {
   const LanSyncShelfItem({
@@ -382,33 +552,44 @@ final class LanSyncShelfItem {
 
 @immutable
 final class LanSyncManifest {
-  const LanSyncManifest({required this.plugins, required this.shelfItems, required this.skippedShelfItems});
+  const LanSyncManifest({
+    required this.plugins,
+    required this.shelfItems,
+    required this.skippedShelfItems,
+    this.localDocuments = const <LanSyncLocalDocumentDescriptor>[],
+  });
 
   final List<LanSyncPluginDescriptor> plugins;
   final List<LanSyncShelfItem> shelfItems;
   final int skippedShelfItems;
+  final List<LanSyncLocalDocumentDescriptor> localDocuments;
 
-  LanSyncManifest selectShelfItems(Set<String> selectedIdentities) => LanSyncManifest(
+  LanSyncManifest selectShelfItems(Set<String> selectedIdentities, {Set<String>? selectedLocalDocumentIds}) => LanSyncManifest(
     plugins: plugins,
     shelfItems: <LanSyncShelfItem>[
       for (final item in shelfItems)
         if (selectedIdentities.contains(item.identity)) item,
     ],
     skippedShelfItems: skippedShelfItems,
+    localDocuments: <LanSyncLocalDocumentDescriptor>[
+      for (final document in localDocuments)
+        if (selectedLocalDocumentIds?.contains(document.documentId) ?? false) document,
+    ],
   );
 
   Map<String, Object?> toJson() => <String, Object?>{
-    'schemaVersion': 2,
+    'schemaVersion': 3,
     'plugins': <Object?>[for (final plugin in plugins) plugin.toJson()],
     'shelfItems': <Object?>[for (final item in shelfItems) item.toJson()],
     'skippedShelfItems': skippedShelfItems,
+    'localDocuments': <Object?>[for (final document in localDocuments) document.toJson()],
   };
 
   /// Paired HTTP sessions keep the small bookshelf-metadata and progress tasks
   /// separate. Plugin descriptors are task offers; each selected artifact is
   /// transferred independently by the transport.
   Map<String, Object?> toPairedTasksJson() => <String, Object?>{
-    'schemaVersion': 3,
+    'schemaVersion': 4,
     'plugins': <Object?>[for (final plugin in plugins) plugin.toJson()],
     'bookshelf': <String, Object?>{
       'items': <Object?>[for (final item in shelfItems) item.withProgress(null).toJson()],
@@ -419,10 +600,12 @@ final class LanSyncManifest {
         if (item.progress case final progress?)
           <String, Object?>{'pluginId': item.pluginId, 'remoteContentId': item.remoteContentId, 'value': progress.toJson()},
     ],
+    'localDocuments': <Object?>[for (final document in localDocuments) document.toJson()],
   };
 
   factory LanSyncManifest.fromPairedTasksJson(Map<String, Object?> json) {
-    if (json['schemaVersion'] != 3) throw const FormatException('unsupported_manifest');
+    final schemaVersion = json['schemaVersion'];
+    if (schemaVersion != 3 && schemaVersion != 4) throw const FormatException('unsupported_manifest');
     final rawBookshelf = _requiredMap(json['bookshelf']);
     final rawItems = _requiredList(rawBookshelf['items']);
     final rawProgress = _requiredList(json['progress']);
@@ -445,16 +628,19 @@ final class LanSyncManifest {
       }
       progressByIdentity[identity] = LanSyncReadingProgress.fromJson(_requiredMap(value['value']));
     }
+    final rawLocalDocuments = schemaVersion == 4 ? _requiredList(json['localDocuments']) : const <Object?>[];
     return LanSyncManifest.fromJson(<String, Object?>{
-      'schemaVersion': 2,
+      'schemaVersion': 3,
       'plugins': _requiredList(json['plugins']),
       'shelfItems': <Object?>[for (final item in metadata) item.withProgress(progressByIdentity[item.identity]).toJson()],
       'skippedShelfItems': _requiredInt(rawBookshelf, 'skippedItems', min: 0, max: lanSyncMaxShelfItemCount),
+      'localDocuments': rawLocalDocuments,
     });
   }
 
   factory LanSyncManifest.fromJson(Map<String, Object?> json) {
-    if (json['schemaVersion'] != 2) {
+    final schemaVersion = json['schemaVersion'];
+    if (schemaVersion != 2 && schemaVersion != 3) {
       throw const FormatException('unsupported_manifest');
     }
     final rawPlugins = _requiredList(json['plugins']);
@@ -470,10 +656,21 @@ final class LanSyncManifest {
     if (totalBytes > lanSyncMaxBatchBytes) {
       throw const FormatException('manifest_limit_exceeded');
     }
+    final rawLocalDocuments = schemaVersion == 3 ? _requiredList(json['localDocuments']) : const <Object?>[];
+    if (rawLocalDocuments.length > lanSyncMaxLocalDocumentCount) throw const FormatException('manifest_limit_exceeded');
+    final localDocuments = <LanSyncLocalDocumentDescriptor>[
+      for (final raw in rawLocalDocuments) LanSyncLocalDocumentDescriptor.fromJson(_requiredMap(raw)),
+    ];
+    final totalLocalBytes = localDocuments.fold<int>(0, (sum, document) => sum + document.originalBytes + (document.coverBytes ?? 0));
+    if (totalLocalBytes + totalBytes > lanSyncMaxBatchBytes ||
+        localDocuments.map((document) => document.documentId).toSet().length != localDocuments.length) {
+      throw const FormatException('manifest_limit_exceeded');
+    }
     return LanSyncManifest(
       plugins: List.unmodifiable(plugins),
       shelfItems: List.unmodifiable(<LanSyncShelfItem>[for (final raw in rawItems) LanSyncShelfItem.fromJson(_requiredMap(raw))]),
       skippedShelfItems: _requiredInt(json, 'skippedShelfItems', min: 0, max: lanSyncMaxShelfItemCount),
+      localDocuments: List<LanSyncLocalDocumentDescriptor>.unmodifiable(localDocuments),
     );
   }
 }

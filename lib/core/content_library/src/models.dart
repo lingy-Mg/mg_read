@@ -207,7 +207,32 @@ final class LibraryItemSource {
   const LibraryItemSource({required this.pluginId, required this.pluginVersion, required this.remoteContentId})
     : assert(pluginId != ''),
       assert(pluginVersion != ''),
-      assert(remoteContentId != '');
+      assert(remoteContentId != ''),
+      documentId = null,
+      localFormat = null,
+      generation = null,
+      documentAliases = const [],
+      coverHash = null;
+
+  const LibraryItemSource.local({
+    required String documentId,
+    required String format,
+    this.generation,
+    this.coverHash,
+    this.documentAliases = const [],
+  }) : documentId = documentId,
+       localFormat = format,
+       pluginId = '',
+       pluginVersion = '',
+       remoteContentId = documentId;
+
+  final String? documentId;
+  final String? localFormat;
+  final String? generation;
+  final String? coverHash;
+  final List<String> documentAliases;
+  bool matchesLocalDocument(String id) => isLocal && (documentId == id || documentAliases.contains(id));
+  bool get isLocal => documentId != null;
 
   final String pluginId;
   final String pluginVersion;

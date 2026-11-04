@@ -4,3 +4,6 @@ library;
 
 export 'src/content_library.dart';
 export 'src/models.dart';
+
+export 'src/local_document_models.dart';
+export 'src/video_history_models.dart';

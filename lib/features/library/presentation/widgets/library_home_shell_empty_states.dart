@@ -88,9 +88,10 @@ class _NoReadingProgressCard extends StatelessWidget {
 }
 
 class _FirstRunWelcomeCard extends StatelessWidget {
-  const _FirstRunWelcomeCard({required this.onDiscover, required this.onManageSources});
+  const _FirstRunWelcomeCard({required this.onDiscover, required this.onManageSources, this.onImportLocal});
 
   final VoidCallback onDiscover;
+  final VoidCallback? onImportLocal;
   final VoidCallback onManageSources;
 
   @override
@@ -132,6 +133,12 @@ class _FirstRunWelcomeCard extends StatelessWidget {
                         label: const Text('去发现好书'),
                       ),
                     ),
+                    if (onImportLocal != null)
+                      OutlinedButton.icon(
+                        onPressed: onImportLocal,
+                        icon: const Icon(Icons.file_open_outlined),
+                        label: const Text('导入 TXT / EPUB'),
+                      ),
                     Center(
                       child: TextButton(key: const Key('first-run-manage-sources'), onPressed: onManageSources, child: const Text('管理数据源')),
                     ),

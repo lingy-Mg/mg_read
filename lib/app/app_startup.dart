@@ -9,6 +9,7 @@
 /// session for the surrounding ProviderScope instead of rebuilding per cover.
 library;
 
+import 'package:mg_read/features/reader/data/content_library_local_reader.dart';
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
@@ -589,7 +590,9 @@ final class DeferredBookCoverBytesLoader implements BookCoverBytesLoader {
   bool _disposed = false;
 
   @override
-  Future<List<int>?> resolve(BookCoverRequest request) async => (await _ensurePersistence()).resolve(request);
+  Future<List<int>?> resolve(BookCoverRequest request) async => request.isLocal
+      ? (await _get()).readLocalDocumentCover(LibraryItemId(request.remoteContentId))
+      : (await _ensurePersistence()).resolve(request);
 
   Future<ContentLibrarySourceCoverPersistence> _ensurePersistence() async {
     if (_disposed) throw StateError('Deferred book cover loader is disposed.');
@@ -740,6 +743,7 @@ final class DeferredLibraryReaderLauncher implements LibraryReaderLauncher, Loca
     if (item == null) {
       return _textReader(library).launch(libraryItemId);
     }
+    if (item.source.isLocal) return ContentLibraryLocalReader(library, _settings).launch(libraryItemId);
     return switch (item.kind) {
       ContentKind.novel => _textReader(library).launch(libraryItemId),
       ContentKind.manga => _comicReader(library).launch(libraryItemId),
@@ -751,7 +755,7 @@ final class DeferredLibraryReaderLauncher implements LibraryReaderLauncher, Loca
   Future<ReaderLaunchRequest?> warmLocal(String libraryItemId) async {
     final library = await _get();
     final item = await library.getLibraryItem(LibraryItemId(libraryItemId));
-    if (item == null) return null;
+    if (item == null || item.source.isLocal) return null;
     return switch (item.kind) {
       ContentKind.novel => _textReader(library).warmLocal(libraryItemId),
       ContentKind.manga => _comicReader(library).warmLocal(libraryItemId),

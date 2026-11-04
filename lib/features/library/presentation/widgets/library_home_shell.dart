@@ -229,6 +229,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                         Transform.translate(
                           offset: const Offset(0, -8),
                           child: LibraryHomeTopBar(
+                            onImportLocal: widget.callbacks.onImportLocal,
                             onRefresh: () {
                               unawaited(_handleRefresh());
                             },
@@ -299,7 +300,11 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                     sliver: books.isEmpty
                         ? SliverToBoxAdapter(
                             child: _isFirstRunEmpty && selection.section == LibraryHomeSection.recentUpdates
-                                ? _FirstRunWelcomeCard(onDiscover: _handleDiscover, onManageSources: _handleManageSources)
+                                ? _FirstRunWelcomeCard(
+                                    onDiscover: _handleDiscover,
+                                    onManageSources: _handleManageSources,
+                                    onImportLocal: widget.callbacks.onImportLocal,
+                                  )
                                 : _NoMatchingBooks(tokens: AppThemeTokens.of(context)),
                           )
                         : _buildBookCollection(books: books, section: selection.section),

@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include "flutter_window.h"
+#include "local_import_bridge.h"
 #include "utils.h"
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
@@ -15,6 +16,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
       source_check_command = true;
       break;
     }
+  }
+
+  // A second Open With launch should deliver its document list to the existing
+  // desktop window. Source-check commands and ordinary launches keep their
+  // normal startup behavior; failure to deliver also falls through to startup.
+  if (!source_check_command && TryForwardLocalImportArguments()) {
+    return EXIT_SUCCESS;
   }
 
   // A source-check invocation is a real console command. Attach to the

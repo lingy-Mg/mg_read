@@ -6,6 +6,58 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 void main() {
   testWidgets(
+    'hides text continuation segments and selects their logical entry',
+    (WidgetTester tester) async {
+      final source = _ContinuationCatalogDataSource();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TextReaderView(
+              bookId: 'continuation-book',
+              dataSource: source,
+              stateStore: const _ContinuationCatalogStateStore(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('reader-content-surface')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('目录'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('内部续段'), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('reader-catalog-chapter-segment-15')),
+        findsNothing,
+      );
+      final tile = tester.widget<ListTile>(
+        find.byKey(const ValueKey<String>('reader-catalog-chapter-logical-14')),
+      );
+      expect(tile.selected, isTrue);
+      final scrollable = tester.state<ScrollableState>(
+        find.descendant(
+          of: find.byKey(
+            const PageStorageKey<String>(
+              'reader-catalog-scroll-continuation-book',
+            ),
+          ),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      expect(scrollable.position.pixels, greaterThan(0));
+      final centerY =
+          tester.view.physicalSize.height / tester.view.devicePixelRatio / 2;
+      expect(
+        (tester.getCenter(find.byWidget(tile)).dy - centerY).abs(),
+        lessThan(180),
+      );
+    },
+  );
+
+  testWidgets(
     'catalog selection closes reader chrome and shows loading until an unavailable chapter arrives',
     (WidgetTester tester) async {
       final _DelayedCatalogChapterDataSource dataSource =
@@ -65,6 +117,89 @@ void main() {
       expect(find.textContaining('第三章正文'), findsOneWidget);
     },
   );
+}
+
+final class _ContinuationCatalogDataSource implements TextReaderDataSource {
+  late final List<ReaderChapterInfo> _chapters = List.generate(36, (index) {
+    if (index == 15) {
+      return const ReaderChapterInfo(
+        id: 'segment-15',
+        title: '内部续段',
+        index: 15,
+        isContinuation: true,
+      );
+    }
+    final logicalIndex = index > 15 ? index - 1 : index;
+    return ReaderChapterInfo(
+      id: 'logical-$logicalIndex',
+      title: '第${logicalIndex + 1}章',
+      index: index,
+    );
+  });
+
+  @override
+  Future<ReaderBookInfo> loadBookInfo(String bookId) async => ReaderBookInfo(
+    id: bookId,
+    title: '分段目录测试书',
+    chapterCount: _chapters.length,
+  );
+
+  @override
+  Future<ChapterCatalogPage> loadChapterCatalog(
+    String bookId, {
+    String? cursor,
+    int pageSize = 100,
+  }) async => ChapterCatalogPage(
+    items: _chapters,
+    total: _chapters.length,
+    hasMore: false,
+  );
+
+  @override
+  Future<ReaderChapterInfo> loadChapterAtIndex(
+    String bookId,
+    int index,
+  ) async => _chapters[index];
+
+  @override
+  Future<TextChapterContent> loadChapterContent(
+    String bookId,
+    String chapterId,
+  ) async => TextChapterContent(
+    chapterId: chapterId,
+    title: chapterId,
+    paragraphs: [TextParagraph(id: '$chapterId-body', text: '测试正文。')],
+  );
+}
+
+final class _ContinuationCatalogStateStore implements TextReaderStateStore {
+  const _ContinuationCatalogStateStore();
+
+  @override
+  Future<ReaderProgress?> loadProgress(String bookId) async =>
+      const ReaderProgress(
+        chapterId: 'segment-15',
+        paragraphId: 'segment-15-body',
+        chapterIndex: 15,
+      );
+
+  @override
+  Future<List<ReaderBookmark>> loadBookmarks(String bookId) async => const [];
+
+  @override
+  Future<TextReaderPreferences?> loadPreferences() async => null;
+
+  @override
+  Future<void> addBookmark(ReaderBookmark bookmark) async {}
+
+  @override
+  Future<void> removeBookmark(String bookId, String bookmarkId) async {}
+
+  @override
+  Future<void> savePreferences(TextReaderPreferences preferences) async {}
+
+  @override
+  Future<void> saveProgress(String bookId, ReaderProgress progress) async {}
 }
 
 final class _DelayedCatalogChapterDataSource implements TextReaderDataSource {

@@ -1,4 +1,5 @@
 #include "flutter_window.h"
+#include "local_import_bridge.h"
 
 #include <optional>
 
@@ -26,6 +27,7 @@ bool FlutterWindow::OnCreate() {
   }
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
+  AttachLocalImportBridge(flutter_controller_->engine(), GetHandle());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
@@ -40,6 +42,7 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  DetachLocalImportBridge();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
@@ -51,6 +54,7 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  if (HandleLocalImportMessage(hwnd, message, wparam, lparam)) return 0;
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =
