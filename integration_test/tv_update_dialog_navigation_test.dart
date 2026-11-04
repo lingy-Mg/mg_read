@@ -65,9 +65,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     final size = MediaQuery.sizeOf(tester.element(find.text('电视设置')));
-    binding.reportData = {
-      'screen': {'width': size.width, 'height': size.height},
-    };
+    binding.reportData ??= {};
+    binding.reportData!['updateDialogScreen'] = {'width': size.width, 'height': size.height};
 
     final first = showGitHubApkUpdatePrompt(appRootNavigatorKey.currentContext!, githubApkReleaseFixture);
     await tester.pumpAndSettle();

@@ -1,6 +1,7 @@
 /// Remote-operated update choice with fixed actions and scrollable release notes.
 /// Focus and scrolling belong to this dialog; downloading and routing stay with
 /// the caller. The initial focus is Later, so OK never starts an unattended install.
+/// Reduced motion scrolls immediately; animateTo requires a nonzero duration.
 library;
 
 import 'package:flutter/material.dart';
@@ -52,11 +53,11 @@ class _GitHubApkUpdateTvPromptState extends State<GitHubApkUpdateTvPrompt> {
     final position = _scroll.position;
     final next = (position.pixels + (down ? 1 : -1) * position.viewportDimension * .75).clamp(0.0, position.maxScrollExtent);
     if ((next - position.pixels).abs() < 1) return KeyEventResult.ignored;
-    _scroll.animateTo(
-      next,
-      duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 160),
-      curve: Curves.easeOutCubic,
-    );
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _scroll.jumpTo(next);
+    } else {
+      _scroll.animateTo(next, duration: const Duration(milliseconds: 160), curve: Curves.easeOutCubic);
+    }
     return KeyEventResult.handled;
   }
 

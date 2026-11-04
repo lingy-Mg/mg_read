@@ -125,56 +125,58 @@ void main() {
     expect(find.byKey(const Key('github-apk-update-prompt')), findsOneWidget);
   });
 
-  testWidgets('TV long release notes scroll while action buttons remain reachable', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(640, 360));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: appTvTheme(AppTheme.dark()),
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.6)),
-          child: TvModeScope(
-            enabled: true,
-            onChanged: (_) {},
-            child: TvRemoteShortcuts(child: child!),
+  for (final disableAnimations in [false, true]) {
+    testWidgets('TV long release notes scroll with disableAnimations=$disableAnimations while actions remain reachable', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(640, 360));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: appTvTheme(AppTheme.dark()),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.6), disableAnimations: disableAnimations),
+            child: TvModeScope(
+              enabled: true,
+              onChanged: (_) {},
+              child: TvRemoteShortcuts(child: child!),
+            ),
           ),
-        ),
-        home: Builder(
-          builder: (context) => Scaffold(
-            body: TextButton(
-              onPressed: () => showDialog<void>(
-                context: context,
-                builder: (_) => GitHubApkUpdateTvPrompt(
-                  notes: List.generate(80, (i) => '第 $i 项：修复电视遥控操作和页面显示。').join('\n'),
-                  onOpenRelease: () {},
-                  onLater: () {},
-                  onInstall: () {},
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => GitHubApkUpdateTvPrompt(
+                    notes: List.generate(80, (i) => '第 $i 项：修复电视遥控操作和页面显示。').join('\n'),
+                    onOpenRelease: () {},
+                    onLater: () {},
+                    onInstall: () {},
+                  ),
                 ),
+                child: const Text('Show'),
               ),
-              child: const Text('Show'),
             ),
           ),
         ),
-      ),
-    );
-    await tester.tap(find.text('Show'));
-    await tester.pumpAndSettle();
-    final notes = find.byKey(const Key('github-apk-update-notes-scroll'));
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
-    await tester.pumpAndSettle();
-    final focus = Focus.of(tester.element(notes));
-    expect(FocusManager.instance.primaryFocus, focus);
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-    await tester.pumpAndSettle();
-    final scrollable = find.descendant(of: notes, matching: find.byType(Scrollable)).first;
-    expect(tester.state<ScrollableState>(scrollable).position.pixels, greaterThan(0));
-    expect(FocusManager.instance.primaryFocus, focus);
-    expect(find.byKey(const Key('github-apk-update-install')).hitTestable(), findsOneWidget);
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-    await tester.pumpAndSettle();
-    expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvFocusable>(), isNotNull);
-    expect(tester.takeException(), isNull);
-  });
+      );
+      await tester.tap(find.text('Show'));
+      await tester.pumpAndSettle();
+      final notes = find.byKey(const Key('github-apk-update-notes-scroll'));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pumpAndSettle();
+      final focus = Focus.of(tester.element(notes));
+      expect(FocusManager.instance.primaryFocus, focus);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+      final scrollable = find.descendant(of: notes, matching: find.byType(Scrollable)).first;
+      expect(tester.state<ScrollableState>(scrollable).position.pixels, greaterThan(0));
+      expect(FocusManager.instance.primaryFocus, focus);
+      expect(find.byKey(const Key('github-apk-update-install')).hitTestable(), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvFocusable>(), isNotNull);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('download progress is full-screen, reports progress, and blocks back dismissal', (tester) async {
     final finishDownload = Completer<void>();
