@@ -27,7 +27,7 @@ void main() {
       'OPS/z-last.xhtml': _xhtml('''<h1>Last</h1><p>Tail</p>'''),
       'OPS/images/cover.png': 'png-data',
       'OPS/a-first.xhtml': _xhtml(
-        '''<h1 id="start">Opening</h1><p>A <strong>bold</strong> <em>italic</em> <a href="z-last.xhtml#next">next</a></p><ul><li>one</li><li>two</li></ul><blockquote>quote</blockquote><table><tr><th>head</th><td>cell</td></tr></table><img src="images/cover.png" alt="cover"/>''',
+        '''<h1 id="start">Opening</h1><p>A <strong>bold</strong> <em>italic</em> <a href="z-last.xhtml#next">next</a></p><ul><li>one</li><li>two</li></ul><blockquote>quote</blockquote><table><tr><th>head</th><td>cell</td></tr></table>''',
       ),
       'OPS/nav.xhtml': _xhtml(
         '''<nav epub:type="toc"><ol><li><a href="a-first.xhtml#start">Start</a><ol><li><a href="z-last.xhtml#next">Last section</a></li></ol></li></ol></nav>''',
@@ -37,6 +37,8 @@ void main() {
     final parsed = await parser.parse(source: file, output: output);
 
     expect(parsed.format, LocalDocumentFormat.epub);
+    expect(parsed.readingKind, LocalDocumentReadingKind.text);
+    expect((parsed.attributes['logicalChapterStarts'] as List), hasLength(4));
     expect(parsed.title, 'Test book');
     expect(parsed.chapters.map((c) => c.href).take(2), ['OPS/a-first.xhtml', 'OPS/z-last.xhtml']);
     expect(parsed.chapters.first.title, 'Opening');
@@ -45,7 +47,9 @@ void main() {
     expect(parsed.navigation.single.children.single.fragment, 'next');
     final first = await _chapter(parsed.chapters.first, output);
     final types = (first['blocks'] as List).map((b) => (b as Map)['type']).toList();
-    expect(types, containsAll(['heading', 'paragraph', 'listItem', 'quote', 'row', 'image']));
+    expect(types, containsAll(['heading', 'paragraph']));
+    expect(types.every((type) => type == 'heading' || type == 'paragraph'), isTrue);
+    expect((first['blocks'] as List).cast<Map>().every((block) => (block['children'] as List? ?? const []).isEmpty), isTrue);
     final paragraph = (first['blocks'] as List).cast<Map>().firstWhere((b) => b['type'] == 'paragraph');
     expect((paragraph['spans'] as List).cast<Map>().any((span) => span['bold'] == true), isTrue);
     expect((paragraph['spans'] as List).cast<Map>().any((span) => span['href'] == 'OPS/z-last.xhtml#next'), isTrue);
@@ -64,7 +68,10 @@ void main() {
 
     final parsed = await parser.parse(source: file, output: output);
 
+    expect(parsed.readingKind, LocalDocumentReadingKind.text);
     expect(parsed.chapters.length, greaterThan(1));
+    expect(parsed.attributes['logicalChapterStarts'], [parsed.chapters.first.id]);
+    expect(parsed.logicalChapterCount, 1);
     expect(parsed.navigation.single.label, 'Part');
     expect(parsed.navigation.single.children.single.label, 'Nested');
     for (final chapter in parsed.chapters) {
@@ -74,20 +81,84 @@ void main() {
     }
   });
 
+  test('pure image SVG-spine EPUB is classified as comic, including fixed layout', () async {
+    final opf = _opf3
+        .replaceAll(
+          '<itemref idref="first"/><itemref idref="last"/><itemref idref="main"/><itemref idref="notes"/>',
+          '<itemref idref="main"/><itemref idref="notes"/>',
+        )
+        .replaceAll('</metadata>', '<meta property="rendition:layout">pre-paginated</meta></metadata>');
+    final file = await _epub(temp, {
+      'OPS/main.xhtml': _xhtml(
+        '''<div class="page"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><image xlink:href="images/page.png"/></svg></div>''',
+      ),
+      'OPS/notes.xhtml': _xhtml(
+        '<section epub:type="backmatter"><h1>About this document</h1><p>Publisher and edition notes.</p></section>',
+      ),
+      'OPS/images/page.png': 'comic page bytes',
+    }, opf: opf);
+    final parsed = await parser.parse(source: file, output: output);
+    expect(parsed.readingKind, LocalDocumentReadingKind.comic);
+    expect(parsed.chapters, hasLength(1));
+    expect(parsed.description, contains('Publisher and edition notes.'));
+    expect(parsed.warnings, contains('已将 EPUB 标记的附加页文字保留在书籍介绍中。'));
+    expect(parsed.attributes['logicalChapterStarts'], [parsed.chapters.single.id]);
+    final blocks = ((await _chapter(parsed.chapters.single, output))['blocks'] as List).cast<Map>();
+    expect(blocks, hasLength(1));
+    expect(blocks.single['type'], 'image');
+    expect(blocks.single['resourceId'], isNotNull);
+  });
+
+  test('text with inline image is rejected as mixed content without a partial document', () async {
+    final opf = _opf3.replaceAll(
+      '<itemref idref="first"/><itemref idref="last"/><itemref idref="main"/><itemref idref="notes"/>',
+      '<itemref idref="main"/>',
+    );
+    final file = await _epub(temp, {
+      'OPS/main.xhtml': _xhtml('<p>Body text <img src="images/cover.png"/></p>'),
+      'OPS/images/cover.png': 'image bytes',
+    }, opf: opf);
+    await _expectCode(parser, file, output, 'epub_mixed_content_unsupported');
+    expect(await Directory('${output.path}/chapters').exists(), isFalse);
+  });
+
+  test('reading kind stays unknown for old EPUB manifests without the classifier field', () {
+    final old = ParsedLocalDocument(format: LocalDocumentFormat.epub, title: 'Old', chapters: const []);
+    expect(old.readingKind, isNull);
+    final roundTripped = ParsedLocalDocument.fromJson(old.toJson());
+    expect(roundTripped.readingKind, isNull);
+    expect(
+      const ParsedLocalDocument(format: LocalDocumentFormat.txt, title: 'TXT', chapters: []).readingKind,
+      LocalDocumentReadingKind.text,
+    );
+  });
+
   test('long common path prefixes retain distinct chapter and resource identities', () async {
     const directory = 'very-long-shared-directory-prefix/';
-    final opf = _opf3.replaceAll('a-first.xhtml', '${directory}first.xhtml').replaceAll('z-last.xhtml', '${directory}last.xhtml');
+    final opf = _opf3
+        .replaceAll('a-first.xhtml', '${directory}first.xhtml')
+        .replaceAll('z-last.xhtml', '${directory}last.xhtml')
+        .replaceAll(
+          '<itemref idref="first"/><itemref idref="last"/><itemref idref="main"/><itemref idref="notes"/>',
+          '<itemref idref="first"/><itemref idref="last"/>',
+        );
     final file = await _epub(temp, {
-      'OPS/${directory}first.xhtml': _xhtml('<p>First <img src="one.png"/></p>'),
-      'OPS/${directory}last.xhtml': _xhtml('<p>Last <img src="two.png"/></p>'),
+      'OPS/${directory}first.xhtml': _xhtml('<div><img src="one.png"/></div>'),
+      'OPS/${directory}last.xhtml': _xhtml('<div><img src="two.png"/></div>'),
       'OPS/${directory}one.png': 'first-image',
       'OPS/${directory}two.png': 'second-image',
     }, opf: opf);
     final parsed = await parser.parse(source: file, output: output);
     expect(parsed.chapters.map((entry) => entry.id).toSet().length, parsed.chapters.length);
     expect(parsed.resources.map((entry) => entry.id).toSet().length, parsed.resources.length);
-    expect((await _chapter(parsed.chapters[0], output))['blocks'].toString(), contains('First'));
-    expect((await _chapter(parsed.chapters[1], output))['blocks'].toString(), contains('Last'));
+    expect(parsed.readingKind, LocalDocumentReadingKind.comic);
+    expect(parsed.resources.map((resource) => resource.href), contains('OPS/${directory}one.png'));
+    expect(parsed.resources.map((resource) => resource.href), contains('OPS/${directory}two.png'));
+    for (final chapter in parsed.chapters) {
+      final blocks = ((await _chapter(chapter, output))['blocks'] as List).cast<Map>();
+      expect(blocks, hasLength(1));
+      expect(blocks.single['type'], 'image');
+    }
   });
 
   test('linear=no spine content remains available as an auxiliary chapter', () async {

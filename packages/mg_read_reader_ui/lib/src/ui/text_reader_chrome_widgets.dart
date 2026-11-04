@@ -244,7 +244,8 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
                       textStyle: const TextStyle(fontSize: 13),
                     ),
                     onPressed: () => unawaited(
-                      _previousChapter(
+                      _navigateLogicalChapter(
+                        -1,
                         dismissControls: true,
                         showLoadingOverlay: true,
                       ),
@@ -268,7 +269,8 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
                       textStyle: const TextStyle(fontSize: 13),
                     ),
                     onPressed: () => unawaited(
-                      _nextChapter(
+                      _navigateLogicalChapter(
+                        1,
                         dismissControls: true,
                         showLoadingOverlay: true,
                       ),

@@ -7,6 +7,8 @@ import 'dart:io';
 
 enum LocalDocumentFormat { txt, epub }
 
+enum LocalDocumentReadingKind { text, comic }
+
 const localDocumentMaxFileBytes = 256 * 1024 * 1024;
 const localDocumentMaxExpandedBytes = 2 * 1024 * 1024 * 1024;
 const localDocumentMaxEntries = 20000;
@@ -144,8 +146,16 @@ final class ParsedLocalDocument {
   final List<LocalDocumentNavigation> navigation;
   final List<String> warnings;
   final Map<String, Object?> attributes;
+  LocalDocumentReadingKind? get readingKind => switch (format) {
+    LocalDocumentFormat.txt => LocalDocumentReadingKind.text,
+    LocalDocumentFormat.epub => switch (attributes['readingKind']) {
+      'text' => LocalDocumentReadingKind.text,
+      'comic' => LocalDocumentReadingKind.comic,
+      _ => null,
+    },
+  };
   int get wordCount => chapters.fold(0, (sum, chapter) => sum + chapter.wordCount);
-  int get logicalChapterCount => format == LocalDocumentFormat.txt && attributes['logicalChapterStarts'] is List
+  int get logicalChapterCount => attributes['logicalChapterStarts'] is List
       ? (attributes['logicalChapterStarts']! as List).length
       : chapters.map((chapter) => chapter.href ?? chapter.id).toSet().length;
   Map<String, Object?> toJson() => {

@@ -50,6 +50,7 @@ part 'comic_reader_catalog.dart';
 part 'comic_reader_chrome.dart';
 part 'comic_reader_page_turning.dart';
 part 'comic_reader_sheets.dart';
+part 'comic_reader_precise_progress.dart';
 
 const Color _comicReaderChromeColor = Color(0xFF17191B);
 
@@ -184,6 +185,8 @@ class _ComicReaderViewState extends State<ComicReaderView>
   ComicBookInfo? _book;
   ComicChapterInfo? _currentChapter;
   ComicReaderProgress? _progress;
+  ComicReaderProgress? _pendingExactRestore;
+  int? _exactRestoreGeneration;
   List<ComicReaderBookmark> _bookmarks = const <ComicReaderBookmark>[];
   ComicReaderPreferences _preferences = ComicReaderPreferences.defaults;
   ReaderPlatformCapabilities _platformCapabilities =
@@ -207,6 +210,7 @@ class _ComicReaderViewState extends State<ComicReaderView>
   ComicChapterPreloader? _preloader;
   ValueNotifier<int>? _activeCatalogRevision;
   bool _dimensionsUpdateScheduled = false;
+  bool _preciseProgressProbeScheduled = false;
   double _viewportWidth = 0;
   double _viewportHeight = 0;
   double _topPadding = 0;
@@ -297,6 +301,8 @@ class _ComicReaderViewState extends State<ComicReaderView>
             store: oldWidget.stateStore,
             bookId: oldWidget.bookId,
             progress: oldProgress,
+            precisePosition:
+                oldWidget.dataSource is ComicReaderPreciseProgressDataSource,
           ),
         );
       }
@@ -421,6 +427,8 @@ class _ComicReaderViewState extends State<ComicReaderView>
                 body: LayoutBuilder(
                   builder: (BuildContext context, BoxConstraints constraints) {
                     final double previousWidth = _viewportWidth;
+                    final double previousHeight = _viewportHeight;
+                    final double previousTopPadding = _topPadding;
                     _viewportWidth =
                         constraints.maxWidth *
                         _preferences.contentWidthFraction;
@@ -431,11 +439,19 @@ class _ComicReaderViewState extends State<ComicReaderView>
                         );
                     _viewportHeight = constraints.maxHeight;
                     _topPadding = MediaQuery.paddingOf(context).top;
-                    if (previousWidth > 0 &&
-                        (previousWidth - _viewportWidth).abs() > .5 &&
+                    final bool widthChanged =
+                        previousWidth > 0 &&
+                        (previousWidth - _viewportWidth).abs() > .5;
+                    final bool preciseVerticalMetricsChanged =
+                        _supportsPreciseProgress &&
+                        previousHeight > 0 &&
+                        ((previousHeight - _viewportHeight).abs() > .5 ||
+                            (previousTopPadding - _topPadding).abs() > .5);
+                    if ((widthChanged || preciseVerticalMetricsChanged) &&
                         _progress != null &&
                         !_restoring) {
-                      final ComicReaderProgress anchor = _progress!;
+                      final ComicReaderProgress anchor =
+                          _pendingExactRestore ?? _progress!;
                       _restoring = true;
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         if (_disposed) return;

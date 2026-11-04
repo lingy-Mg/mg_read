@@ -1,6 +1,7 @@
 /// App-lifetime coordinator for local TXT/EPUB import and library management.
 /// It retains selected input handles only while work is active; durable jobs and
 /// recovery belong to ContentLibrary. No source path is written to the journal.
+/// Changed document snapshots notify the host's shelf/statistics projections.
 library;
 
 import 'dart:async';
@@ -10,6 +11,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart' show ChangeNotifierProvider;
 import 'package:mg_read/core/content_library/content_library.dart';
+import 'package:mg_read/features/library/application/library_page_controller.dart';
+import 'package:mg_read/features/profile/application/profile_reading_stats_loader.dart';
 
 import '../data/local_import_ingress.dart';
 
@@ -19,11 +22,18 @@ final localContentLibraryProvider = Provider<Future<ContentLibrary> Function()>(
 );
 
 final localImportControllerProvider = ChangeNotifierProvider<LocalImportController>((ref) {
-  return LocalImportController(ref.read(localContentLibraryProvider));
+  return LocalImportController(
+    ref.read(localContentLibraryProvider),
+    onLibraryChanged: () {
+      ref.invalidate(libraryPageControllerProvider);
+      ref.invalidate(privateLibraryPageControllerProvider);
+      ref.invalidate(profileReadingStatsProvider);
+    },
+  );
 });
 
 class LocalImportController extends ChangeNotifier {
-  LocalImportController(this._getLibrary) {
+  LocalImportController(this._getLibrary, {VoidCallback? onLibraryChanged}) : _onLibraryChanged = onLibraryChanged {
     _ingressSubscription = LocalImportIngress.instance.pendingInputs.listen((inputs) => acceptInputs(inputs, openAsRequest: true));
     for (final inputs in LocalImportIngress.instance.takeBufferedInputs()) {
       acceptInputs(inputs, openAsRequest: true);
@@ -33,6 +43,7 @@ class LocalImportController extends ChangeNotifier {
   }
 
   final Future<ContentLibrary> Function() _getLibrary;
+  final VoidCallback? _onLibraryChanged;
   final List<LocalImportInput> _selected = <LocalImportInput>[];
   final Map<String, LocalImportInput> _retryInputs = <String, LocalImportInput>{};
   final Map<String, List<String>> _previews = <String, List<String>>{};
@@ -149,7 +160,7 @@ class LocalImportController extends ChangeNotifier {
         if (snapshot.isTerminal) unawaited(_refreshDocuments(library));
       });
       _jobs = await library.localImportJobs();
-      _documents = await library.listLocalDocuments(includeRetained: true);
+      _replaceDocuments(await library.listLocalDocuments(includeRetained: true));
       _usageBytes = await library.localDocumentUsageBytes();
     } on Object catch (error) {
       _lastErrors['library'] = _friendlyError(error);
@@ -370,7 +381,7 @@ class LocalImportController extends ChangeNotifier {
 
   Future<void> _refreshDocuments(ContentLibrary library) async {
     try {
-      _documents = await library.listLocalDocuments(includeRetained: true);
+      _replaceDocuments(await library.listLocalDocuments(includeRetained: true));
       _usageBytes = await library.localDocumentUsageBytes();
     } on Object catch (error) {
       _lastErrors['documents'] = _friendlyError(error);
@@ -382,6 +393,19 @@ class LocalImportController extends ChangeNotifier {
     final freedBytes = await (await _getLibrary()).collectLocalDocumentGarbage();
     await reload();
     return freedBytes;
+  }
+
+  void _replaceDocuments(List<LibraryItem> documents) {
+    if (_disposed) return;
+    final changed =
+        _documents.length != documents.length ||
+        documents.indexed.any((entry) {
+          final before = _documents[entry.$1];
+          final after = entry.$2;
+          return before.id.value != after.id.value || before.revision != after.revision || before.state != after.state;
+        });
+    _documents = documents;
+    if (changed) _onLibraryChanged?.call();
   }
 
   void _upsertJob(LocalImportSnapshot job) {
@@ -411,6 +435,8 @@ class LocalImportController extends ChangeNotifier {
     'reselect_file' => '请重新选择原文件后继续',
     'empty_document' => '文件没有可导入的正文',
     'epub_drm_unsupported' => '此 EPUB 受到 DRM 保护，无法导入',
+    'epub_mixed_content_unsupported' => '暂不支持图文混排 EPUB，请选择纯文字或纯图片书籍',
+    'epub_reparse_required' => '此 EPUB 需要重新解析，请在本地书籍详情中选择“重新解析”',
     'epub_fixed_layout' || 'epub_mixed_fixed_layout' || 'epub_vertical_layout' => '暂不支持此 EPUB 排版格式',
     'epub_source_size' || 'epub_entry_size' || 'epub_expanded_size' || 'epub_container_size' || 'epub_opf_size' => 'EPUB 内容超过支持的大小上限',
     'epub_zip_invalid' ||

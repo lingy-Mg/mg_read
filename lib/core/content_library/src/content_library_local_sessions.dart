@@ -12,10 +12,9 @@ final class LocalDocumentReadingSession {
   bool _closed = false;
   int get chapterCount => _document.chapters.length;
   int get logicalChapterCount => _document.logicalChapterCount;
+  LocalDocumentReadingKind? get readingKind => _document.readingKind;
   bool isChapterContinuation(String id) =>
-      _document.format == LocalDocumentFormat.txt &&
-      _document.attributes['logicalChapterStarts'] is List &&
-      !(_document.attributes['logicalChapterStarts']! as List).contains(id);
+      _document.attributes['logicalChapterStarts'] is List && !(_document.attributes['logicalChapterStarts']! as List).contains(id);
   LocalDocumentFormat get format => _document.format;
   List<LocalDocumentNavigation> get navigation => _document.navigation;
   List<String> get warnings => _document.warnings;
@@ -39,6 +38,9 @@ final class LocalDocumentReadingSession {
     if (resource == null) return null;
     return _library._localFiles.readResource(generation, resource.file);
   }
+
+  /// Encoded image adapters use parser-owned MIME metadata without opening paths.
+  String? resourceMimeType(String resourceId) => _document.resources.where((resource) => resource.id == resourceId).firstOrNull?.mimeType;
 
   Future<List<int>?> readCover() => item.source.coverHash != null
       ? _library._localFiles.readSmallOriginal(item.source.coverHash!)
@@ -158,6 +160,14 @@ extension LocalDocumentSessions on ContentLibrary {
   );
 
   Future<bool> saveLocalReadingBookmark(LibraryBookmark bookmark, String generation) => _withStorageMaintenance(
+    () => _persistence.metadataRecords.contentLibrary.saveLocalBookmark(bookmark.itemId.value, generation, _bookmarkValues(bookmark)),
+  );
+
+  Future<bool> saveLocalMangaReadingProgress(LibraryMangaReadingProgress progress, String generation) => _withStorageMaintenance(
+    () => _persistence.metadataRecords.contentLibrary.saveLocalProgress(progress.itemId.value, generation, _progressValues(progress)),
+  );
+
+  Future<bool> saveLocalMangaBookmark(LibraryMangaBookmark bookmark, String generation) => _withStorageMaintenance(
     () => _persistence.metadataRecords.contentLibrary.saveLocalBookmark(bookmark.itemId.value, generation, _bookmarkValues(bookmark)),
   );
 

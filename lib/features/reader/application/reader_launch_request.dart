@@ -49,35 +49,6 @@ sealed class ReaderLaunchRequest {
   final Duration networkPreparationElapsed;
 }
 
-/// Host-parsed reflowable EPUB session; archive and resource ownership stays
-/// with the host data source and is released by the reader entry lifecycle.
-final class DocumentReaderLaunchRequest extends ReaderLaunchRequest {
-  const DocumentReaderLaunchRequest({
-    required super.bookId,
-    required this.dataSource,
-    required this.stateStore,
-    this.navigationEntries = const [],
-    this.observer,
-    super.entryCoverBytes,
-    super.estimatedWarmBytes,
-    super.preparationKind,
-  }) : super._();
-  final ReaderDocumentDataSource dataSource;
-  final TextReaderStateStore stateStore;
-  final List<ReaderDocumentNavigationEntry> navigationEntries;
-  final ReaderObserver? observer;
-  DocumentReaderLaunchRequest withObserver(ReaderObserver? value) => DocumentReaderLaunchRequest(
-    bookId: bookId,
-    dataSource: dataSource,
-    stateStore: stateStore,
-    navigationEntries: navigationEntries,
-    observer: value,
-    entryCoverBytes: entryCoverBytes,
-    estimatedWarmBytes: estimatedWarmBytes,
-    preparationKind: preparationKind,
-  );
-}
-
 /// Typed launch inputs for a text reader session.
 final class NovelReaderLaunchRequest extends ReaderLaunchRequest {
   const NovelReaderLaunchRequest({

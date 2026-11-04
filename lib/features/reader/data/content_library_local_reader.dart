@@ -2,20 +2,23 @@
 ///
 /// It owns exactly one local session lease and never opens paths or performs
 /// network access. The entry transition releases the source after the route.
+/// Text presentation omits duplicate headings and blank-line blocks without
+/// changing stored IDs. A 32-chapter LRU remaps legacy progress/bookmark anchors
+/// to retained paragraphs; all anchor maps are released with the session.
 library;
 
-import 'dart:typed_data';
+import 'dart:collection';
 
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/errors/app_error.dart';
-import 'package:mg_read/core/local_documents/local_document_models.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/reader/application/library_reader_launcher.dart';
 import 'package:mg_read/features/reader/application/reader_launch_failure.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 import 'package:mg_read/features/reader/data/content_library_text_reader_state_store.dart';
+import 'package:mg_read/features/reader/data/content_library_local_comic_reader.dart';
 
 /// Opens a local TXT or EPUB item through a generation-pinned library lease.
 final class ContentLibraryLocalReader implements LibraryReaderLauncher {
@@ -34,6 +37,17 @@ final class ContentLibraryLocalReader implements LibraryReaderLauncher {
       throw ReaderLaunchFailure(reason: reason, error: AppError.fromUnknown(StateError('Local document is unavailable.')));
     }
     try {
+      final readingKind = session.readingKind;
+      if (readingKind == null) {
+        throw ReaderLaunchFailure(
+          reason: ReaderLaunchFailureReason.localReparseRequired,
+          error: AppError.fromUnknown(const LocalDocumentException('epub_reparse_required')),
+        );
+      }
+      final cover = await session.readCover();
+      if (readingKind == LocalDocumentReadingKind.comic) {
+        return createLocalComicReaderRequest(session, _library, _settings, cover);
+      }
       final durable = await _library.loadProgress(itemId);
       final initialProgress = durable is LibraryReadingProgress ? durable : null;
       final store = ContentLibraryTextReaderStateStore(
@@ -45,22 +59,10 @@ final class ContentLibraryLocalReader implements LibraryReaderLauncher {
         progressAlreadyLoaded: true,
       );
       final source = _ContentLibraryLocalDocumentSource(session);
-      final cover = await session.readCover();
       final observer = _LocalDocumentObserver(store);
       final int warmBytes = session.chapterAt(0)?.wordCount.clamp(0, 1 << 18).toInt() ?? 0;
-      if (session.format == LocalDocumentFormat.epub) {
-        return DocumentReaderLaunchRequest(
-          bookId: id,
-          dataSource: source,
-          stateStore: store,
-          navigationEntries: _flattenNavigation(session.navigation),
-          observer: observer,
-          entryCoverBytes: cover,
-          estimatedWarmBytes: warmBytes * 2,
-          preparationKind: ReaderLaunchPreparationKind.persistent,
-        );
-      }
-      final progress = await store.loadProgress(id);
+      final textStateStore = _LocalTextReaderStateStore(store, source);
+      final progress = await textStateStore.loadProgress(id);
       var index = progress?.chapterIndex ?? 0;
       if (progress != null) {
         final byId = session.chapterById(progress.chapterId);
@@ -72,7 +74,7 @@ final class ContentLibraryLocalReader implements LibraryReaderLauncher {
       return NovelReaderLaunchRequest(
         bookId: id,
         dataSource: source,
-        stateStore: store,
+        stateStore: textStateStore,
         seed: ReaderSessionSeed(
           book: await source.loadBookInfo(id),
           initialChapter: entry,
@@ -91,24 +93,17 @@ final class ContentLibraryLocalReader implements LibraryReaderLauncher {
   }
 }
 
-List<ReaderDocumentNavigationEntry> _flattenNavigation(List<LocalDocumentNavigation> navigation) {
-  final result = <ReaderDocumentNavigationEntry>[];
-  void visit(List<LocalDocumentNavigation> entries, int depth) {
-    for (final entry in entries) {
-      result.add(ReaderDocumentNavigationEntry(title: entry.label, chapterId: entry.chapterId, anchor: entry.fragment, depth: depth));
-      visit(entry.children, depth + 1);
-    }
-  }
+final class _ContentLibraryLocalDocumentSource implements TextReaderDataSource, DisposableReaderDataSource {
+  static const int _maxTextAnchorCacheChapters = 32;
 
-  visit(navigation, 0);
-  return List.unmodifiable(result);
-}
-
-final class _ContentLibraryLocalDocumentSource implements ReaderDocumentDataSource, TextReaderDataSource, DisposableReaderDataSource {
   _ContentLibraryLocalDocumentSource(this._session);
 
   final LocalDocumentReadingSession _session;
   Future<void>? _disposing;
+  final LinkedHashMap<String, Set<String>> _textParagraphIds = LinkedHashMap<String, Set<String>>();
+  final LinkedHashMap<String, Map<String, _TxtParagraphTarget>> _removedTextAnchors =
+      LinkedHashMap<String, Map<String, _TxtParagraphTarget>>();
+  final LinkedHashMap<String, Set<String>> _headingAnchorsAtSegmentEnd = LinkedHashMap<String, Set<String>>();
 
   @override
   Future<ReaderBookInfo> loadBookInfo(String bookId) async {
@@ -172,48 +167,121 @@ final class _ContentLibraryLocalDocumentSource implements ReaderDocumentDataSour
   }
 
   @override
-  Future<ReaderDocumentChapter> loadChapter(String bookId, String chapterId) async {
-    _requireBook(bookId);
-    final raw = await _session.readChapter(chapterId);
-    final blocks = raw['blocks'] as List? ?? const [];
-    return ReaderDocumentChapter(
-      chapterId: raw['chapterId'] as String? ?? chapterId,
-      title: raw['title'] as String? ?? _session.chapterById(chapterId)?.title ?? '',
-      blocks: [
-        for (final block in blocks)
-          if (block is Map) ReaderDocumentBlock.fromJson(Map<String, Object?>.from(block)),
-      ],
-    );
-  }
-
-  @override
-  Future<Uint8List?> loadResourceBytes(String resourceId) async {
-    final bytes = await _session.readResource(resourceId);
-    return bytes == null ? null : Uint8List.fromList(bytes);
-  }
-
-  @override
-  Future<ReaderDocumentLinkTarget?> resolveLink(String currentChapterId, String href) async {
-    final target = await _session.resolveLink(currentChapterId, href);
-    return target == null ? null : ReaderDocumentLinkTarget(chapterId: target.chapterId, anchor: target.anchor);
-  }
-
-  @override
   Future<TextChapterContent> loadChapterContent(String bookId, String chapterId) async {
     _requireBook(bookId);
-    if (_session.format != LocalDocumentFormat.txt) {
-      throw StateError('EPUB content must use the document reader.');
-    }
     final raw = await _session.readChapter(chapterId);
     final blocks = raw['blocks'] as List? ?? const [];
-    return TextChapterContent(
-      chapterId: raw['chapterId'] as String? ?? chapterId,
-      title: raw['title'] as String? ?? _session.chapterById(chapterId)?.title ?? '',
-      paragraphs: [
-        for (final block in blocks)
-          if (block is Map) TextParagraph(id: block['id'] as String? ?? '', text: block['text'] as String? ?? ''),
-      ],
-    );
+    final title = raw['title'] as String? ?? _session.chapterById(chapterId)?.title ?? '';
+    final retained = <(int, TextParagraph)>[];
+    final removed = <(int, String)>[];
+    var sawHeading = false;
+    for (var index = 0; index < blocks.length; index++) {
+      final block = blocks[index];
+      if (block is! Map) continue;
+      final id = block['id'] as String? ?? '';
+      if (id.isEmpty) continue;
+      final type = block['type'] as String? ?? 'paragraph';
+      final text = _withoutOneLineEnding(block['text'] as String? ?? '');
+      final duplicateFirstHeading = type == 'heading' && !sawHeading && text.trim() == title.trim();
+      if (type == 'heading') sawHeading = true;
+      if (duplicateFirstHeading || text.trim().isEmpty) {
+        removed.add((index, id));
+      } else {
+        retained.add((index, TextParagraph(id: id, text: text)));
+      }
+    }
+    final paragraphs = retained.map((entry) => entry.$2).toList(growable: false);
+    final knownIds = paragraphs.map((paragraph) => paragraph.id).toSet();
+    final anchorTargets = <String, _TxtParagraphTarget>{};
+    final headingAnchorsAtEnd = <String>{};
+    for (final (removedIndex, removedId) in removed) {
+      final next = retained.where((entry) => entry.$1 > removedIndex).firstOrNull;
+      final previous = retained.where((entry) => entry.$1 < removedIndex).lastOrNull;
+      final target = next ?? previous;
+      if (target != null) {
+        anchorTargets[removedId] = _TxtParagraphTarget(
+          chapterId: chapterId,
+          chapterIndex: _session.chapterById(chapterId)?.index ?? 0,
+          paragraphId: target.$2.id,
+        );
+      }
+      if (next == null && target != null && (blocks[removedIndex] as Map)['type'] == 'heading') {
+        headingAnchorsAtEnd.add(removedId);
+      }
+    }
+    _cacheTextAnchorMaps(chapterId, knownIds, anchorTargets, headingAnchorsAtEnd);
+    return TextChapterContent(chapterId: raw['chapterId'] as String? ?? chapterId, title: title, paragraphs: paragraphs);
+  }
+
+  Future<_TxtParagraphTarget?> resolveTextAnchor(String chapterId, String paragraphId) async {
+    if (!_textParagraphIds.containsKey(chapterId)) {
+      await loadChapterContent(_session.item.id.value, chapterId);
+    }
+    _touchTextAnchorMaps(chapterId);
+    if (_textParagraphIds[chapterId]?.contains(paragraphId) == true) {
+      final chapter = _session.chapterById(chapterId);
+      return _TxtParagraphTarget(chapterId: chapterId, chapterIndex: chapter?.index ?? 0, paragraphId: paragraphId);
+    }
+    final fallback = _removedTextAnchors[chapterId]?[paragraphId];
+    if (_headingAnchorsAtSegmentEnd[chapterId]?.contains(paragraphId) != true) {
+      return fallback;
+    }
+    final chapter = _session.chapterById(chapterId);
+    if (chapter == null) return fallback;
+    for (var index = chapter.index + 1; index < _session.chapterCount; index++) {
+      final nextChapter = _session.chapterAt(index);
+      if (nextChapter == null) break;
+      final content = await loadChapterContent(_session.item.id.value, nextChapter.id);
+      final first = content.paragraphs.firstOrNull;
+      if (first != null) {
+        return _TxtParagraphTarget(chapterId: nextChapter.id, chapterIndex: nextChapter.index, paragraphId: first.id);
+      }
+    }
+    return fallback;
+  }
+
+  void _cacheTextAnchorMaps(
+    String chapterId,
+    Set<String> paragraphIds,
+    Map<String, _TxtParagraphTarget> removedAnchors,
+    Set<String> headingAnchorsAtEnd,
+  ) {
+    _textParagraphIds.remove(chapterId);
+    _removedTextAnchors.remove(chapterId);
+    _headingAnchorsAtSegmentEnd.remove(chapterId);
+    _textParagraphIds[chapterId] = paragraphIds;
+    _removedTextAnchors[chapterId] = removedAnchors;
+    _headingAnchorsAtSegmentEnd[chapterId] = headingAnchorsAtEnd;
+    while (_textParagraphIds.length > _maxTextAnchorCacheChapters) {
+      final oldest = _textParagraphIds.keys.first;
+      _textParagraphIds.remove(oldest);
+      _removedTextAnchors.remove(oldest);
+      _headingAnchorsAtSegmentEnd.remove(oldest);
+    }
+  }
+
+  void _touchTextAnchorMaps(String chapterId) {
+    final paragraphIds = _textParagraphIds.remove(chapterId);
+    if (paragraphIds == null) return;
+    final removedAnchors = _removedTextAnchors.remove(chapterId) ?? {};
+    final headingAnchorsAtEnd = _headingAnchorsAtSegmentEnd.remove(chapterId) ?? {};
+    _textParagraphIds[chapterId] = paragraphIds;
+    _removedTextAnchors[chapterId] = removedAnchors;
+    _headingAnchorsAtSegmentEnd[chapterId] = headingAnchorsAtEnd;
+  }
+
+  void _clearTextAnchorMaps() {
+    _textParagraphIds.clear();
+    _removedTextAnchors.clear();
+    _headingAnchorsAtSegmentEnd.clear();
+  }
+
+  String _withoutOneLineEnding(String text) {
+    if (text.endsWith('\r\n')) return text.substring(0, text.length - 2);
+    if (text.endsWith('\n') || text.endsWith('\r')) {
+      return text.substring(0, text.length - 1);
+    }
+    return text;
   }
 
   void _requireBook(String bookId) {
@@ -223,7 +291,84 @@ final class _ContentLibraryLocalDocumentSource implements ReaderDocumentDataSour
   }
 
   @override
-  Future<void> dispose() => _disposing ??= _session.close();
+  Future<void> dispose() => _disposing ??= _disposeSession();
+
+  Future<void> _disposeSession() async {
+    _clearTextAnchorMaps();
+    await _session.close();
+  }
+}
+
+final class _TxtParagraphTarget {
+  const _TxtParagraphTarget({required this.chapterId, required this.chapterIndex, required this.paragraphId});
+
+  final String chapterId;
+  final int chapterIndex;
+  final String paragraphId;
+}
+
+final class _LocalTextReaderStateStore implements TextReaderStateStore {
+  const _LocalTextReaderStateStore(this._inner, this._source);
+
+  final TextReaderStateStore _inner;
+  final _ContentLibraryLocalDocumentSource _source;
+
+  @override
+  Future<ReaderProgress?> loadProgress(String bookId) async {
+    final progress = await _inner.loadProgress(bookId);
+    if (progress == null) return null;
+    final target = await _source.resolveTextAnchor(progress.chapterId, progress.paragraphId);
+    if (target == null || (target.chapterId == progress.chapterId && target.paragraphId == progress.paragraphId)) {
+      return progress;
+    }
+    return progress.copyWith(
+      chapterId: target.chapterId,
+      chapterIndex: target.chapterIndex,
+      paragraphId: target.paragraphId,
+      characterOffset: 0,
+    );
+  }
+
+  @override
+  Future<List<ReaderBookmark>> loadBookmarks(String bookId) async {
+    final bookmarks = await _inner.loadBookmarks(bookId);
+    final result = <ReaderBookmark>[];
+    for (final bookmark in bookmarks) {
+      final target = await _source.resolveTextAnchor(bookmark.chapterId, bookmark.paragraphId);
+      if (target == null || (target.chapterId == bookmark.chapterId && target.paragraphId == bookmark.paragraphId)) {
+        result.add(bookmark);
+        continue;
+      }
+      result.add(
+        ReaderBookmark(
+          id: bookmark.id,
+          bookId: bookmark.bookId,
+          chapterId: target.chapterId,
+          paragraphId: target.paragraphId,
+          characterOffset: 0,
+          chapterTitle: bookmark.chapterTitle,
+          excerpt: bookmark.excerpt,
+          createdAt: bookmark.createdAt,
+        ),
+      );
+    }
+    return result;
+  }
+
+  @override
+  Future<void> saveProgress(String bookId, ReaderProgress progress) => _inner.saveProgress(bookId, progress);
+
+  @override
+  Future<TextReaderPreferences?> loadPreferences() => _inner.loadPreferences();
+
+  @override
+  Future<void> savePreferences(TextReaderPreferences preferences) => _inner.savePreferences(preferences);
+
+  @override
+  Future<void> addBookmark(ReaderBookmark bookmark) => _inner.addBookmark(bookmark);
+
+  @override
+  Future<void> removeBookmark(String bookId, String bookmarkId) => _inner.removeBookmark(bookId, bookmarkId);
 }
 
 final class _LocalDocumentObserver extends ReaderObserver {

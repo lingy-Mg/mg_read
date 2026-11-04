@@ -21,8 +21,14 @@ import 'package:novel_reader_ui/novel_reader_ui.dart';
 
 开发和 AI 规则只在 [AGENTS.md](AGENTS.md) 维护。
 
-## EPUB 文档阅读器
+## EPUB 接入范围
 
-通过 `DocumentReaderView` 接入连续滚动、可重排的 EPUB 文档阅读；宿主实现公开的
-`ReaderDocumentDataSource`，并提供 `ReaderDocumentChapter`、`ReaderDocumentBlock` 和资源读取，负责解析、存储与链接解析。
-阅读器只接收宿主提供的章节和资源，不自行访问网络、文件系统或数据库。为限制单次布局与图片解码开销，宿主应将章节分段到每段最多 16 Ki UTF-16 字符、128 个块、512 个渲染节点和 4 张图片；资源通过不透明 `resourceId` 按需读取。
+EPUB 由宿主解析并区分正文类型：纯文字复用 `TextReaderView` 与文本数据、状态契约；纯图片复用
+`ComicReaderView` 与漫画数据、状态契约。工具栏、目录、阅读设置、进度和书签均使用已有实现，
+不提供独立 EPUB 阅读 UI。独立封面属于元数据，不计入正文混排。
+
+图文混排 EPUB 暂不支持。宿主必须明确拒绝此类导入，不能静默去图或去文字后降级。package 不解析 ZIP、
+访问宿主路径或执行书籍脚本；图片仍由漫画数据源按稳定图片 ID 按需提供。
+
+本地不可变图片源通过 `ComicReaderPreciseProgressDataSource` 声明精确进度能力，保存和恢复图片 ID 与图片内比例；
+未声明该能力的源沿用既有章首进度策略。

@@ -82,7 +82,7 @@ extension _ComicReaderChrome on _ComicReaderViewState {
       decodeBudget: _decodeBudget,
       onPresented: (bool cacheHit) {
         _imageRetryCoordinator.markResolved(retryKey);
-        _notifyFirstContentPresented(cacheHit);
+        _onComicImagePresented(entry.chapter.info.id, entry.image.id, cacheHit);
       },
       onAutomaticRetryAvailable: (Future<void> Function() retry) {
         _imageRetryCoordinator.register(

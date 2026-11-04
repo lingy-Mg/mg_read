@@ -20,9 +20,11 @@ Android 验收规则。
 - 文本位置使用 `chapterId + paragraphId + characterOffset`，漫画位置使用
   `chapterId + imageId + imageFraction`。页码和像素偏移不得持久化。
 - capability 未提供时隐藏对应 UI；Observer 只请求宿主动作。所有异步资源必须支持取消并成对释放。
-- EPUB 使用 `ReaderDocumentDataSource` 和 `DocumentReaderView`，宿主提供已净化的结构化块、资源字节与链接解析；
-  package 不读 ZIP、磁盘路径或执行书籍脚本。宿主应将读取段限制为 16Ki UTF-16、128 个顶层块、512 个递归块及四幅图，
-  使当前段的语义锚点可挂载。位置恢复使用块 ID 和 UTF-16 字符偏移，首屏报告必须等恢复完成；段末由用户显式继续。
+- EPUB 由宿主分类：纯文字复用 `TextReaderView`，纯图片复用 `ComicReaderView`，包括既有目录、设置、进度和
+  书签 UI；不得新增独立 EPUB 阅读 UI。独立封面不算正文图文混排，图文混排暂不支持且必须明确拒绝。
+  package 不读 ZIP、磁盘路径或执行书籍脚本；文本继续使用 UTF-16 字符锚点，漫画使用图片 ID 与图片内比例。
+- 不可变本地图片源声明 `ComicReaderPreciseProgressDataSource` 后必须精确保留图片内进度；真实图片解码后的
+  尺寸校正不得将已恢复位置覆盖为章首。未声明的源保持既有章首进度策略。
 
 ## 验证
 

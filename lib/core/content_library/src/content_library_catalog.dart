@@ -1,3 +1,6 @@
+/// Catalog persistence operations and stateless item/shelf projections.
+/// Local shelf counts use logical chapters; stored catalog/progress anchors
+/// keep their physical indexes. Projection never opens document files.
 part of 'content_library.dart';
 
 final class _CatalogOperations {
@@ -253,7 +256,9 @@ LibraryItem _storedItem(StoredLibraryItem row) {
     language: details['language'] as String?,
     accessCode: details['accessCode'] as String?,
     wordCount: details['wordCount'] as int?,
-    chapterCount: values['source_chapter_count'] as int?,
+    chapterCount: values['origin_kind'] == 'local'
+        ? details['chapterCount'] as int? ?? values['source_chapter_count'] as int?
+        : values['source_chapter_count'] as int?,
     publishedAt: _dateTimeValue(details['publishedAt']),
     updatedAt: _dateTimeValue(details['updatedAt']),
     statusLabel: details['statusLabel'] as String?,
@@ -312,15 +317,34 @@ LibraryShelfProjection _storedShelfProjection(StoredShelfItem row) {
             pluginVersion: values['source_plugin_version']! as String,
             remoteContentId: values['remote_item_id']! as String,
           ),
-    sourceChapterCount: values['source_chapter_count'] as int?,
+    sourceChapterCount: values['origin_kind'] == 'local'
+        ? details['chapterCount'] as int? ?? values['source_chapter_count'] as int?
+        : values['source_chapter_count'] as int?,
     catalogCount: values['catalog_count']! as int,
     summaryExcerpt: values['summary_excerpt'] as String?,
     progressKind: values['progress_kind'] == null ? null : ContentKind.fromCode(values['progress_kind']! as String),
-    chapterPosition: values['chapter_position'] as int?,
+    chapterPosition: values['origin_kind'] == 'local'
+        ? _localLogicalChapterPosition(details, values['chapter_position'] as int?)
+        : values['chapter_position'] as int?,
     bookFraction: (values['book_fraction'] as num?)?.toDouble(),
     totalReadingSeconds: values['total_reading_seconds'] as int?,
     progressUpdatedAtUtc: progressUpdated == null ? null : DateTime.fromMillisecondsSinceEpoch(progressUpdated, isUtc: true),
   );
+}
+
+int? _localLogicalChapterPosition(Map<String, Object?> details, int? physicalPosition) {
+  if (physicalPosition == null) return null;
+  final local = details['local'];
+  final rawStarts = local is Map ? local['logicalChapterStarts'] : null;
+  if (rawStarts is! List) return physicalPosition;
+  final starts = rawStarts.whereType<int>().toList(growable: false);
+  if (starts.isEmpty) return physicalPosition;
+  var logicalPosition = 0;
+  for (var index = 0; index < starts.length; index++) {
+    if (starts[index] > physicalPosition) break;
+    logicalPosition = index;
+  }
+  return logicalPosition;
 }
 
 String? _summaryExcerpt(String? value) {

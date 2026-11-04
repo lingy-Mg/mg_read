@@ -152,7 +152,6 @@ final class ShelfReaderLaunchCoordinator extends Notifier<ShelfReaderLaunchState
       final request = warmed ?? await _launcher.launch(bookId);
       attempt.readerMode = switch (request) {
         NovelReaderLaunchRequest() => 'text',
-        DocumentReaderLaunchRequest() => 'document',
         ComicReaderLaunchRequest() => 'comic',
       };
       attempt.preparationKind = warmed == null ? request.preparationKind : ReaderLaunchPreparationKind.memory;

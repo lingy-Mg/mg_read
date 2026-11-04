@@ -17,6 +17,7 @@ import 'local_document_models.dart';
 import 'local_document_disk_space.dart';
 
 part 'epub_local_document_markup.dart';
+part 'epub_reading_mode.dart';
 
 const _maxContainer = 16 * 1024 * 1024;
 const _maxXhtml = 16 * 1024 * 1024;
@@ -143,17 +144,16 @@ final class EpubLocalDocumentParser implements LocalDocumentParser {
         }
       }
       final rendition = _metaProperty(package, 'rendition:layout');
-      if (metadataNode
-              ?.findAllElements('meta')
-              .any(
-                (element) =>
-                    element.getAttribute('name') == 'fixed-layout' &&
-                    ['true', 'yes'].contains(element.getAttribute('content')?.toLowerCase()),
-              ) ==
-          true) {
-        throw const LocalDocumentException('epub_fixed_layout');
-      }
-      if (rendition == 'pre-paginated') throw const LocalDocumentException('epub_fixed_layout');
+      var hasFixedLayout =
+          rendition == 'pre-paginated' ||
+          metadataNode
+                  ?.findAllElements('meta')
+                  .any(
+                    (element) =>
+                        element.getAttribute('name') == 'fixed-layout' &&
+                        ['true', 'yes'].contains(element.getAttribute('content')?.toLowerCase()),
+                  ) ==
+              true;
       final items = manifest.values.toList(growable: false);
       final spineRefs = spineNode.findAllElements('itemref').toList();
       if (spineRefs.isEmpty) throw const LocalDocumentException('epub_spine_missing');
@@ -163,7 +163,7 @@ final class EpubLocalDocumentParser implements LocalDocumentParser {
       final fallbackIds = <String>{};
       for (final ref in spineRefs) {
         if ((ref.getAttribute('properties') ?? '').split(RegExp(r'\s+')).contains('rendition:layout-pre-paginated')) {
-          throw const LocalDocumentException('epub_mixed_fixed_layout');
+          hasFixedLayout = true;
         }
         final idref = ref.getAttribute('idref');
         if (idref == null || !spineIds.add(idref)) throw const LocalDocumentException('epub_spine_invalid');
@@ -182,6 +182,7 @@ final class EpubLocalDocumentParser implements LocalDocumentParser {
           final entry = byName[selected.path];
           if (entry == null) throw LocalDocumentException('epub_spine_content_missing', selected.href);
           final selectedDoc = _xmlBytes(_bytes(entry, _maxXhtml, 'xhtml'), _maxXhtml, 'xhtml');
+          if (_metaProperty(selectedDoc.rootElement, 'rendition:layout') == 'pre-paginated') hasFixedLayout = true;
           final scripted =
               selected.properties.split(RegExp(r'\s+')).contains('scripted') || selectedDoc.findAllElements('script').isNotEmpty;
           if (scripted && !_hasStaticEpubContent(selectedDoc)) {
@@ -205,14 +206,13 @@ final class EpubLocalDocumentParser implements LocalDocumentParser {
       chapterItems.addAll(auxiliaryItems.where((aux) => !chapterItems.any((linear) => linear.path == aux.path)));
       if (chapterItems.isEmpty) throw const LocalDocumentException('epub_spine_missing');
 
-      // A pre-paginated XHTML item outside spine or a fixed-layout item overrides
-      // the package layout; mixed layout does not silently become reflowable.
+      // A pre-paginated XHTML item outside the spine still identifies fixed layout.
       for (final item in items.where(_isXhtml)) {
         final bytes = byName[item.path];
         if (bytes == null) continue;
         final doc = _xmlBytes(_bytes(bytes, _maxXhtml, 'xhtml'), _maxXhtml, 'xhtml');
         if (_metaProperty(doc.rootElement, 'rendition:layout') == 'pre-paginated') {
-          throw LocalDocumentException('epub_mixed_fixed_layout', item.href);
+          hasFixedLayout = true;
         }
       }
 
@@ -221,14 +221,17 @@ final class EpubLocalDocumentParser implements LocalDocumentParser {
       final tocItem = navItem ?? (ncxId == null ? null : manifest[ncxId]);
       final chapterMap = <String, String>{};
       final chapterOutput = <LocalDocumentChapter>[];
+      final logicalChapterStarts = <String>[];
       final resources = <LocalDocumentResource>[];
       final resourceByPath = <String, LocalDocumentResource>{};
+      final coverResourceIds = _epubDeclaredCoverResourceIds(package, manifest, items, byName);
+      final pages = <_EpubSpinePage>[];
+      final auxiliaryBackmatter = <String>[];
       String? coverId;
       for (var i = 0; i < chapterItems.length; i++) {
         cancel.check();
         final item = chapterItems[i];
         final chapterId = _stableId('ch', item.path);
-        chapterMap[item.path] = chapterId;
         final entry = byName[item.path];
         if (entry == null) throw LocalDocumentException('epub_spine_content_missing', item.href);
         final doc = _xmlBytes(_bytes(entry, _maxXhtml, 'xhtml'), _maxXhtml, 'xhtml');
@@ -250,29 +253,90 @@ final class EpubLocalDocumentParser implements LocalDocumentParser {
         if (builder.blocks.length > _maxBlocks) throw const LocalDocumentException('epub_block_count');
         final sectionTitle =
             builder.blocks.where((block) => block['type'] == 'heading').map((block) => block['text'] as String).firstOrNull ?? item.href;
-        final split = _splitBlocks(builder.blocks, chapterId, item.href, item.path, i, sectionTitle);
+        final containsImageMarkup = _epubContainsImageMarkup(doc);
+        final isAuxiliaryBackmatter = !containsImageMarkup && _epubHasBackmatterSemantics(doc) && _epubHasBodyText(builder.blocks);
+        if (isAuxiliaryBackmatter) auxiliaryBackmatter.add(_epubBackmatterDescription(builder.blocks));
+        pages.add(
+          _EpubSpinePage(
+            item: item,
+            chapterId: chapterId,
+            blocks: builder.blocks,
+            title: sectionTitle,
+            containsImageMarkup: containsImageMarkup,
+            isAuxiliaryBackmatter: isAuxiliaryBackmatter,
+          ),
+        );
+        onProgress?.call('epub_chapters', i + 1, chapterItems.length);
+      }
+      final contentPages = pages.where((page) => !page.isAuxiliaryBackmatter).toList(growable: false);
+      final coverOnly = <_EpubSpinePage>{
+        for (final page in contentPages)
+          if (_epubIsCoverOnly(page.blocks, coverResourceIds)) page,
+      };
+      final hasBodyText = contentPages.any((page) => _epubHasBodyText(page.blocks));
+      final hasText = contentPages.any((page) => _epubHasText(page.blocks));
+      final hasNonCoverImages = contentPages.any(
+        (page) => (_epubImages(page.blocks).isNotEmpty || page.containsImageMarkup) && !coverOnly.contains(page),
+      );
+      if (hasBodyText && hasNonCoverImages) {
+        throw const LocalDocumentException('epub_mixed_content_unsupported');
+      }
+      final readingKind = hasBodyText
+          ? 'text'
+          : hasNonCoverImages
+          ? 'comic'
+          : hasText
+          ? 'text'
+          : throw const LocalDocumentException('epub_no_readable_content');
+      if (hasFixedLayout && readingKind != 'comic') throw const LocalDocumentException('epub_fixed_layout');
+      final retainedPages = <_EpubSpinePage>[];
+      for (final page in contentPages) {
+        if (coverOnly.contains(page)) continue;
+        final blocks = readingKind == 'text' ? _epubTextBlocks(page.blocks) : _epubComicBlocks(page.blocks);
+        if (blocks.isEmpty) continue;
+        retainedPages.add(
+          _EpubSpinePage(
+            item: page.item,
+            chapterId: page.chapterId,
+            blocks: blocks,
+            title: page.title == page.item.href ? '第${retainedPages.length + 1}部分' : page.title,
+          ),
+        );
+      }
+      if (retainedPages.isEmpty) throw const LocalDocumentException('epub_no_readable_content');
+      final pageIndexByPath = {for (var i = 0; i < pages.length; i++) pages[i].item.path: i};
+      for (var i = 0; i < pages.length; i++) {
+        final page = pages[i];
+        final target = retainedPages.where((candidate) => pageIndexByPath[candidate.item.path]! >= i).firstOrNull ?? retainedPages.last;
+        chapterMap[page.item.path] = target.chapterId;
+      }
+      for (var i = 0; i < retainedPages.length; i++) {
+        cancel.check();
+        final page = retainedPages[i];
+        chapterMap[page.item.path] = page.chapterId;
+        logicalChapterStarts.add(page.chapterId);
+        final split = _splitBlocks(page.blocks, page.chapterId, page.item.href, page.item.path, i, page.title);
         for (var j = 0; j < split.length; j++) {
           final part = split[j];
-          final filename = 'chapters/${chapterId}_${j.toString().padLeft(4, '0')}.json';
+          final filename = 'chapters/${page.chapterId}_${j.toString().padLeft(4, '0')}.json';
           final file = File('${output.path}${Platform.pathSeparator}${filename.replaceAll('/', Platform.pathSeparator)}');
           await file.parent.create(recursive: true);
           await file.writeAsString(
-            jsonEncode({'chapterId': j == 0 ? chapterId : '$chapterId-$j', 'title': part.title, 'blocks': part.blocks}),
+            jsonEncode({'chapterId': j == 0 ? page.chapterId : '${page.chapterId}-$j', 'title': part.title, 'blocks': part.blocks}),
             encoding: utf8,
           );
           chapterOutput.add(
             LocalDocumentChapter(
-              id: j == 0 ? chapterId : '$chapterId-$j',
-              title: part.title.isEmpty ? item.href : part.title,
+              id: j == 0 ? page.chapterId : '${page.chapterId}-$j',
+              title: part.title.isEmpty ? page.item.href : part.title,
               index: chapterOutput.length,
               contentFile: filename,
               wordCount: part.words,
               startOffset: part.startOffset,
-              href: item.path,
+              href: page.item.path,
             ),
           );
         }
-        onProgress?.call('epub_chapters', i + 1, chapterItems.length);
       }
       // Copy media resources referenced by the normalized block stream. CSS URLs
       // and unreferenced package payloads are intentionally not made fetchable.
@@ -313,18 +377,20 @@ final class EpubLocalDocumentParser implements LocalDocumentParser {
         title: meta.title.isEmpty ? _fallbackTitle(source) : meta.title,
         author: meta.author,
         language: meta.language,
-        description: meta.description,
+        description: [meta.description, ...auxiliaryBackmatter].whereType<String>().where((text) => text.trim().isNotEmpty).join('\n\n'),
         encoding: 'UTF-8',
         coverResourceId: coverId,
         chapters: chapterOutput,
         resources: resources,
         navigation: nav,
-        warnings: warnings.toSet().toList(),
+        warnings: {...warnings, if (auxiliaryBackmatter.isNotEmpty) '已将 EPUB 标记的附加页文字保留在书籍介绍中。'}.toList(),
         attributes: {
           'opfPath': opfPath,
           'epubVersion': package.getAttribute('version') ?? '2.0',
           'linearAuxiliaryContent': spineRefs.where((e) => e.getAttribute('linear')?.toLowerCase() == 'no').length,
           'fallbackContent': fallbackIds.length,
+          'readingKind': readingKind,
+          'logicalChapterStarts': logicalChapterStarts,
         },
       );
     } finally {

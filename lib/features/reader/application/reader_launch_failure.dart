@@ -5,7 +5,8 @@ import 'package:mg_read/core/errors/app_error.dart';
 /// The reason and normalized [error] are small diagnostic metadata.
 enum ReaderLaunchFailureReason {
   shelfItemMissing('shelf_item_missing', '书架记录不存在，或已被删除。'),
-  unsupportedContentKind('unsupported_content_kind', '当前阅读器只能打开小说内容。'),
+  unsupportedContentKind('unsupported_content_kind', '当前条目不是可阅读的小说或漫画。'),
+  localReparseRequired('local_reparse_required', '此 EPUB 需要重新解析，请在本地书籍详情中选择“重新解析”。'),
   shelfSourceMissing('shelf_source_missing', '书架记录缺少数据源信息，请从发现页重新加入书架。'),
   sourceDetail('source_detail', '无法从数据源获取这本书的详情。'),
   sourceContentKind('source_content_kind', '数据源返回的内容不是可阅读的小说。'),

@@ -59,6 +59,7 @@ extension LocalDocumentMetadata on ContentLibraryMetadataStore {
     required String documentId,
     required String title,
     required String? author,
+    required String contentKind,
     required String format,
     required String rawSha256,
     required String generation,
@@ -70,6 +71,7 @@ extension LocalDocumentMetadata on ContentLibraryMetadataStore {
     List<Map<String, Object?>>? bookmarks,
   }) => _owner._withOperation(
     () => _owner._database.transaction(() async {
+      if (contentKind != 'novel' && contentKind != 'manga') throw const PersistenceValidationError('Invalid local content kind.');
       final existing = await readItem(itemId);
       final duplicate = expectedRevision == null ? await localItemByHash(rawSha256) : null;
       if (duplicate != null) {
@@ -90,10 +92,11 @@ extension LocalDocumentMetadata on ContentLibraryMetadataStore {
           '''INSERT INTO library_items
           (item_id,sort_order,content_kind,title,author,origin_kind,local_document_id,local_format,raw_sha256,
           active_generation,source_name,source_chapter_count,catalog_count,catalog_revision,details_json,created_at_utc,updated_at_utc)
-          VALUES (?,?,'novel',?,?,'local',?,?,?,?,?,?,?,?,?,?,?)''',
+          VALUES (?,?,?, ?,?,'local',?,?,?,?,?,?,?,?,?,?,?)''',
           [
             itemId,
             order.data['n'],
+            contentKind,
             title,
             author,
             documentId,
@@ -111,10 +114,10 @@ extension LocalDocumentMetadata on ContentLibraryMetadataStore {
         );
       } else {
         await _owner._database.customStatement(
-          '''UPDATE library_items SET title=?,author=?,local_format=?,raw_sha256=?,
+          '''UPDATE library_items SET content_kind=?,title=?,author=?,local_format=?,raw_sha256=?,
           active_generation=?,details_json=?,catalog_count=?,source_chapter_count=?,catalog_revision=catalog_revision+1,
           item_revision=item_revision+1,shelf_state='active',updated_at_utc=? WHERE item_id=?''',
-          [title, author, format, rawSha256, generation, detailsJson, chapters.length, chapters.length, now, itemId],
+          [contentKind, title, author, format, rawSha256, generation, detailsJson, chapters.length, chapters.length, now, itemId],
         );
       }
       final committed = (await readItem(itemId))!;

@@ -3,6 +3,8 @@
 /// Content Library owns durable reading state; AppSettingsManager owns reader
 /// preferences. This adapter validates book identity and owns no HTTP client or
 /// reader-session cache. Preference updates flush before returning.
+/// Local EPUB sessions fence progress and bookmark mutations by generation.
+/// Local bookmark labels resolve against the request's immutable chapter catalog.
 library;
 
 import 'package:novel_reader_ui/novel_reader_ui.dart';
@@ -12,15 +14,33 @@ import 'package:mg_read/core/settings/settings.dart';
 
 /// Comic reader state adapter backed by Content Library and app settings.
 final class ContentLibraryComicReaderStateStore implements ComicReaderStateStore {
-  ContentLibraryComicReaderStateStore(this.library, {required this.itemId, this.settings});
+  ContentLibraryComicReaderStateStore(this.library, {required this.itemId, this.settings, this.localGeneration, this.localChapterTitle});
   final ContentLibrary library;
   final LibraryItemId itemId;
   final AppSettingsManager? settings;
+  final String? localGeneration;
+  final String Function(String chapterId)? localChapterTitle;
+  Future<LibraryMangaReadingProgress?>? _durableProgress;
+  LibraryMangaReadingProgress? _latestProgress;
+  final Stopwatch _foregroundReading = Stopwatch();
+
+  Future<LibraryMangaReadingProgress?> _loadDurableProgress() =>
+      _durableProgress ??= library.loadProgress(itemId).then((stored) => stored is LibraryMangaReadingProgress ? stored : null);
+
+  void startLocalSession() => _foregroundReading.start();
+  void finishLocalSession() => _foregroundReading.stop();
+  void onLocalLifecycle(ReaderLifecycleState state) {
+    if (state == ReaderLifecycleState.foreground) {
+      _foregroundReading.start();
+    } else {
+      _foregroundReading.stop();
+    }
+  }
+
   @override
   Future<ComicReaderProgress?> loadProgress(String bookId) async {
     _check(bookId);
-    final stored = await library.loadProgress(itemId);
-    final p = stored is LibraryMangaReadingProgress ? stored : null;
+    final p = _latestProgress ?? await _loadDurableProgress();
     return p == null
         ? null
         : ComicReaderProgress(
@@ -33,19 +53,26 @@ final class ContentLibraryComicReaderStateStore implements ComicReaderStateStore
   }
 
   @override
-  Future<void> saveProgress(String bookId, ComicReaderProgress p) {
+  Future<void> saveProgress(String bookId, ComicReaderProgress p) async {
     _check(bookId);
-    return library.saveProgress(
-      LibraryMangaReadingProgress(
-        itemId: itemId,
-        chapterId: p.chapterId,
-        imageId: p.imageId,
-        imageFraction: p.imageFraction,
-        chapterIndex: p.chapterIndex,
-        bookFraction: p.bookFraction,
-        updatedAtUtc: DateTime.now().toUtc(),
-      ),
+    final durable = await _loadDurableProgress();
+    final value = LibraryMangaReadingProgress(
+      itemId: itemId,
+      chapterId: p.chapterId,
+      imageId: p.imageId,
+      imageFraction: p.imageFraction,
+      chapterIndex: p.chapterIndex,
+      bookFraction: p.bookFraction,
+      updatedAtUtc: DateTime.now().toUtc(),
+      readingSeconds: (durable?.readingSeconds ?? 0) + _foregroundReading.elapsed.inSeconds,
     );
+    final generation = localGeneration;
+    if (generation == null) {
+      await library.saveProgress(value);
+    } else if (!await library.saveLocalMangaReadingProgress(value, generation)) {
+      return;
+    }
+    _latestProgress = value;
   }
 
   @override
@@ -96,7 +123,7 @@ final class ContentLibraryComicReaderStateStore implements ComicReaderStateStore
             chapterId: b.chapterId,
             imageId: b.imageId,
             imageFraction: b.imageFraction,
-            chapterTitle: '',
+            chapterTitle: localChapterTitle?.call(b.chapterId) ?? '',
             createdAt: b.createdAtUtc,
           ),
     ];
@@ -105,22 +132,25 @@ final class ContentLibraryComicReaderStateStore implements ComicReaderStateStore
   @override
   Future<void> addBookmark(ComicReaderBookmark b) {
     _check(b.bookId);
-    return library.saveBookmark(
-      LibraryMangaBookmark(
-        id: b.id,
-        itemId: itemId,
-        chapterId: b.chapterId,
-        imageId: b.imageId,
-        imageFraction: b.imageFraction,
-        createdAtUtc: b.createdAt.toUtc(),
-      ),
+    final value = LibraryMangaBookmark(
+      id: b.id,
+      itemId: itemId,
+      chapterId: b.chapterId,
+      imageId: b.imageId,
+      imageFraction: b.imageFraction,
+      createdAtUtc: b.createdAt.toUtc(),
     );
+    final generation = localGeneration;
+    return generation == null ? library.saveBookmark(value) : library.saveLocalMangaBookmark(value, generation).then((_) {});
   }
 
   @override
   Future<void> removeBookmark(String bookId, String id) {
     _check(bookId);
-    return library.deleteBookmark(itemId, id);
+    final generation = localGeneration;
+    return generation == null
+        ? library.deleteBookmark(itemId, id)
+        : library.deleteLocalReadingBookmark(itemId, id, generation).then((_) {});
   }
 
   void _check(String bookId) {

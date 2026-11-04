@@ -24,6 +24,33 @@ void main() {
     await root.delete(recursive: true);
   });
 
+  test('document mutations invalidate host projections once per changed snapshot', () async {
+    controller.dispose();
+    var changes = 0;
+    controller = LocalImportController(() async => library, onLibraryChanged: () => changes++);
+    await controller.reload();
+    expect(changes, 0);
+    final bytes = utf8.encode('第一章\n\n正文');
+    controller.acceptInputs([LocalImportInput(fileName: 'snapshot.txt', bytes: bytes.length, openRead: () => Stream.value(bytes))]);
+    await controller.importSelected();
+    await controller.commit(controller.jobs.single.id);
+    await controller.reload();
+    expect(changes, 1);
+    final itemId = controller.documents.single.id;
+    await controller.reload();
+    expect(changes, 1);
+    await library.updateLocalDocumentMetadata(itemId, title: '更新书名');
+    await controller.reload();
+    expect(changes, 2);
+    await library.removeLibraryItem(itemId, LibraryRemovalPolicy.removeFromShelfKeepContent);
+    await controller.reload();
+    expect(changes, 3);
+    await library.removeLibraryItem(itemId, LibraryRemovalPolicy.removeIncludingUnreferencedContent);
+    await controller.reload();
+    expect(changes, 4);
+    expect(controller.documents, isEmpty);
+  });
+
   test('real TXT preview, encoding option, confirmation and persistent completion', () async {
     final bytes = utf8.encode('第一章 清晨\n\n这是第一段正文。\n\n第二章 远方\n\n这是第二段正文。');
     controller.acceptInputs(<LocalImportInput>[

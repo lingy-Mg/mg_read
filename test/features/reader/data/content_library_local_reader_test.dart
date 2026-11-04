@@ -52,30 +52,117 @@ void main() {
     await expectLater(novel.dataSource.loadChapterContent(novel.bookId, seed.initialChapter.id), throwsStateError);
   });
 
-  test('EPUB launch exposes rich blocks, nested navigation, resources and links', () async {
-    final epub = _epubBytes();
-    final staged = await library.prepareLocalImport(
-      LocalImportInput(fileName: 'book.epub', bytes: epub.length, openRead: () => Stream.value(epub)),
+  test('TXT text adapter removes parser-only title and whitespace while preserving semantic IDs', () async {
+    final imported = await _importText(library, '第一章 起点\n\n正文第一段。\n\n正文第二段。\n');
+    final session = (await library.openLocalDocumentSession(imported.itemId!))!;
+    final info = session.chapterAt(0)!;
+    final raw = await session.readChapter(info.id);
+    final rawBlocks = (raw['blocks'] as List).cast<Map>();
+    final titleBlock = rawBlocks.firstWhere((block) => block['type'] == 'heading');
+    final firstBody = rawBlocks.firstWhere((block) => (block['text'] as String).contains('正文第一段'));
+    final secondBody = rawBlocks.firstWhere((block) => (block['text'] as String).contains('正文第二段'));
+    await library.saveLocalReadingProgress(
+      LibraryReadingProgress(
+        itemId: imported.itemId!,
+        chapterId: info.id,
+        paragraphId: titleBlock['id'] as String,
+        characterOffset: 4,
+        chapterIndex: 0,
+        chapterFraction: .3,
+        bookFraction: .3,
+        updatedAtUtc: DateTime.utc(2026, 11, 4),
+      ),
+      session.generation,
     );
-    expect(staged.status, LocalImportStatus.awaitingConfirmation);
-    final imported = await library.commitLocalImport(staged.id);
-    expect(imported.status, LocalImportStatus.succeeded, reason: imported.errorCode);
+    await library.saveLocalReadingBookmark(
+      LibraryBookmark(
+        id: 'heading-bookmark',
+        itemId: imported.itemId!,
+        chapterId: info.id,
+        paragraphId: titleBlock['id'] as String,
+        characterOffset: 4,
+        chapterTitle: info.title,
+        excerpt: '第一章 起点',
+        createdAtUtc: DateTime.utc(2026, 11, 4),
+      ),
+      session.generation,
+    );
+    await session.close();
+
+    final novel = await ContentLibraryLocalReader(library).launch(imported.itemId!.value) as NovelReaderLaunchRequest;
+    addTearDown(() => (novel.dataSource as DisposableReaderDataSource).dispose());
+    final paragraphs = novel.seed!.initialContent.paragraphs;
+    expect(paragraphs.map((paragraph) => paragraph.id), [firstBody['id'], secondBody['id']]);
+    expect(paragraphs.map((paragraph) => paragraph.text), ['正文第一段。', '正文第二段。']);
+    expect(paragraphs.every((paragraph) => !paragraph.text.endsWith('\n')), isTrue);
+
+    final resumed = await novel.stateStore.loadProgress(novel.bookId);
+    expect(resumed?.paragraphId, firstBody['id']);
+    expect(resumed?.characterOffset, 0);
+    final bookmarks = await novel.stateStore.loadBookmarks(novel.bookId);
+    expect(bookmarks.single.paragraphId, firstBody['id']);
+    expect(bookmarks.single.characterOffset, 0);
+  });
+
+  test('text-only EPUB uses the existing novel request and text anchors', () async {
+    final imported = await _importEpub(library, _epubBytes());
     final request = await ContentLibraryLocalReader(library).launch(imported.itemId!.value);
-    expect(request, isA<DocumentReaderLaunchRequest>());
-    final document = request as DocumentReaderLaunchRequest;
-    expect(document.dataSource, isA<DisposableReaderDataSource>());
-    expect(document.navigationEntries.map((entry) => entry.depth), [0, 1]);
-    expect(document.navigationEntries.last.anchor, 'target');
-    final chapters = await document.dataSource.loadChapterCatalog(document.bookId);
-    final chapter = await document.dataSource.loadChapter(document.bookId, chapters.items.first.id);
-    expect(chapter.blocks.map((block) => block.type), containsAll(['heading', 'paragraph', 'image']));
-    final paragraph = chapter.blocks.firstWhere((block) => block.type == 'paragraph');
-    expect(paragraph.spans.any((span) => span.bold), isTrue);
-    final image = chapter.blocks.firstWhere((block) => block.type == 'image');
-    expect(await document.dataSource.loadResourceBytes(image.resourceId!), isNotEmpty);
-    final target = await document.dataSource.resolveLink(chapter.chapterId, 'chapter.xhtml#target');
-    expect(target?.anchor, 'target');
-    await (document.dataSource as DisposableReaderDataSource).dispose();
+    expect(request, isA<NovelReaderLaunchRequest>());
+    final novel = request as NovelReaderLaunchRequest;
+    addTearDown(() => (novel.dataSource as DisposableReaderDataSource).dispose());
+    expect(novel.seed!.initialContent.paragraphs.map((p) => p.text), ['A bold paragraph.']);
+    expect(novel.entryCoverBytes, isNotEmpty);
+    expect((await library.getLibraryItem(imported.itemId!))!.kind, ContentKind.novel);
+  });
+
+  test('image-only EPUB uses the existing comic request and typed image state', () async {
+    final imported = await _importEpub(library, _epubBytes(imageOnly: true));
+    final request = await ContentLibraryLocalReader(library).launch(imported.itemId!.value);
+    expect(request, isA<ComicReaderLaunchRequest>());
+    final comic = request as ComicReaderLaunchRequest;
+    expect(comic.dataSource, isA<ComicReaderPreciseProgressDataSource>());
+    addTearDown(() => (comic.dataSource as DisposableReaderDataSource).dispose());
+    final catalog = await comic.dataSource.loadChapterCatalog(comic.bookId);
+    final chapter = await comic.dataSource.loadChapterContent(comic.bookId, catalog.items.first.id);
+    expect(chapter.images, hasLength(2));
+    final image = chapter.images.last;
+    expect(await comic.dataSource.loadImageBytes(comic.bookId, chapter.chapterId, image.id), isNotEmpty);
+    await comic.stateStore.saveProgress(
+      comic.bookId,
+      ComicReaderProgress(chapterId: chapter.chapterId, imageId: image.id, imageFraction: .42, chapterIndex: 0, bookFraction: .7),
+    );
+    final progress = await library.loadProgress(imported.itemId!) as LibraryMangaReadingProgress;
+    expect(progress.imageId, image.id);
+    expect(progress.imageFraction, .42);
+    expect((await library.getLibraryItem(imported.itemId!))!.kind, ContentKind.manga);
+    expect((await comic.stateStore.loadProgress(comic.bookId))!.imageFraction, .42);
+    await comic.stateStore.addBookmark(
+      ComicReaderBookmark(
+        id: 'local-comic-bookmark',
+        bookId: comic.bookId,
+        chapterId: chapter.chapterId,
+        imageId: image.id,
+        imageFraction: .42,
+        chapterTitle: chapter.title,
+        createdAt: DateTime.utc(2026, 11, 4),
+      ),
+    );
+    final reopened = await ContentLibraryLocalReader(library).launch(imported.itemId!.value) as ComicReaderLaunchRequest;
+    addTearDown(() => (reopened.dataSource as DisposableReaderDataSource).dispose());
+    final restoredBookmark = (await reopened.stateStore.loadBookmarks(reopened.bookId)).single;
+    expect(restoredBookmark.chapterTitle, chapter.title);
+    expect(restoredBookmark.imageId, image.id);
+    expect(restoredBookmark.imageFraction, .42);
+  });
+
+  test('mixed EPUB is rejected without creating a shelf item', () async {
+    final bytes = _epubBytes(mixed: true);
+    final staged = await library.prepareLocalImport(
+      LocalImportInput(fileName: 'mixed.epub', bytes: bytes.length, openRead: () => Stream.value(bytes)),
+    );
+    expect(staged.status, LocalImportStatus.failed);
+    expect(staged.errorCode, 'epub_mixed_content_unsupported');
+    expect(await library.listLocalDocuments(), isEmpty);
   });
 
   test('TXT internal segments remain readable while only logical chapters enter the directory', () async {
@@ -102,7 +189,7 @@ Future<LocalImportSnapshot> _importText(ContentLibrary library, String text) asy
   return imported;
 }
 
-List<int> _epubBytes() {
+List<int> _epubBytes({bool imageOnly = false, bool mixed = false}) {
   final archive = Archive();
   void add(String path, String value) => archive.addFile(ArchiveFile.bytes(path, utf8.encode(value)));
   add('mimetype', 'application/epub+zip');
@@ -112,16 +199,27 @@ List<int> _epubBytes() {
   );
   add(
     'OPS/package.opf',
-    '''<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="book">id</dc:identifier><dc:title>Local EPUB</dc:title><dc:creator>Author</dc:creator></metadata><manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="cover" href="cover.png" media-type="image/png" properties="cover-image"/></manifest><spine><itemref idref="chapter"/></spine></package>''',
+    '''<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="book">id</dc:identifier><dc:title>Local EPUB</dc:title><dc:creator>Author</dc:creator></metadata><manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="cover" href="cover.png" media-type="image/png" properties="cover-image"/><item id="page" href="page.png" media-type="image/png"/></manifest><spine><itemref idref="chapter"/></spine></package>''',
   );
   add(
     'OPS/chapter.xhtml',
-    '''<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Chapter</title></head><body><h1 id="target">Chapter</h1><p>A <strong>bold</strong> paragraph.</p><img src="cover.png"/></body></html>''',
+    '''<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Chapter</title></head><body>${imageOnly ? '<img id="one" src="page.png"/><img id="two" src="page.png"/>' : '<h1 id="target">Chapter</h1><p>A <strong>bold</strong> paragraph.</p>'}${mixed ? '<img src="cover.png"/>' : ''}</body></html>''',
   );
   add(
     'OPS/nav.xhtml',
     '''<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body><nav epub:type="toc"><ol><li><a href="chapter.xhtml#target">Chapter</a><ol><li><a href="chapter.xhtml#target">Nested</a></li></ol></li></ol></nav></body></html>''',
   );
   archive.addFile(ArchiveFile.bytes('OPS/cover.png', [1, 2, 3, 4]));
+  archive.addFile(ArchiveFile.bytes('OPS/page.png', [4, 3, 2, 1]));
   return ZipEncoder().encode(archive);
+}
+
+Future<LocalImportSnapshot> _importEpub(ContentLibrary library, List<int> bytes) async {
+  final staged = await library.prepareLocalImport(
+    LocalImportInput(fileName: 'book.epub', bytes: bytes.length, openRead: () => Stream.value(bytes)),
+  );
+  expect(staged.status, LocalImportStatus.awaitingConfirmation, reason: staged.errorCode);
+  final imported = await library.commitLocalImport(staged.id);
+  expect(imported.status, LocalImportStatus.succeeded, reason: imported.errorCode);
+  return imported;
 }

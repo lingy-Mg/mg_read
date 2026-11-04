@@ -5,7 +5,8 @@ import 'dart:async';
 import '../../local_documents/local_document_models.dart';
 import 'models.dart';
 
-export '../../local_documents/local_document_models.dart' show LocalDocumentFormat, LocalDocumentParseOptions, LocalDocumentException;
+export '../../local_documents/local_document_models.dart'
+    show LocalDocumentFormat, LocalDocumentReadingKind, LocalDocumentParseOptions, LocalDocumentException;
 
 enum LocalImportStatus {
   queued,

@@ -57,6 +57,7 @@ import 'settings/reader_settings_tokens.dart';
 part 'text_reader_session.dart';
 part 'text_reader_chapter_recovery.dart';
 part 'text_reader_pagination.dart';
+part 'text_reader_logical_navigation.dart';
 part 'text_reader_progress_navigation.dart';
 part 'text_reader_adjacent_pagination.dart';
 part 'text_reader_chapter_prefetch.dart';

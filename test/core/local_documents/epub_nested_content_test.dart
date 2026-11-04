@@ -4,8 +4,6 @@ import 'dart:io';
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
-import 'package:mg_read/features/reader/data/content_library_local_reader.dart';
-import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 
 void main() {
   late Directory root;
@@ -21,21 +19,18 @@ void main() {
     await root.delete(recursive: true);
   });
 
-  test('nested XHTML keeps structure, inline styles, media, and root-relative links through reader adapter', () async {
+  test('nested pure text XHTML keeps rich spans, flat blocks, links, and cover metadata', () async {
     final source = await _epub(
       root,
       <String, String>{
         'OPS/text/one.xhtml': _xhtml('''
         <section id="part-one"><div class="chapter"><h1>First</h1>
           <p id="intro">A <strong>bold</strong> and <em>emphatic</em> <a href="/OPS/text/two.xhtml#target">next</a>.</p>
-          <p>Picture <img src="../images/figure.svg" alt="diagram"/> inline.</p>
           <p>Footnote <a epub:type="noteref" href="notes.xhtml#note-1">1</a></p>
         </div></section>
       '''),
         'OPS/text/two.xhtml': _xhtml('<section><h1 id="target">Second</h1><p>Destination.</p></section>'),
         'OPS/text/notes.xhtml': _xhtml('<section><p id="note-1">Footnote body.</p></section>'),
-        'OPS/images/figure.svg':
-            '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><title>Triangle</title><path d="M0 10L5 0L10 10Z"/></svg>''',
         'OPS/images/cover-wrapper.svg':
             '''<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 20 30"><image xlink:href="cover.png" width="20" height="30"/></svg>''',
         'OPS/images/cover.png': 'not-a-real-image-but-retained-by-epub',
@@ -67,30 +62,25 @@ void main() {
     final body = await session.readChapter(chapter.id);
     final blocks = (body['blocks'] as List).whereType<Map>().toList();
 
-    expect(blocks.map((block) => block['type']), containsAll(['heading', 'paragraph', 'image']));
+    expect(session.readingKind, LocalDocumentReadingKind.text);
+    expect(session.chapterCount, 3);
+    expect(blocks.map((block) => block['type']), containsAll(['heading', 'paragraph']));
+    expect(blocks.every((block) => block['type'] == 'heading' || block['type'] == 'paragraph'), isTrue);
+    expect(blocks.every((block) => (block['children'] as List? ?? const []).isEmpty), isTrue);
     final introductory = blocks.firstWhere((block) => block['type'] == 'paragraph');
     final spans = (introductory['spans'] as List).whereType<Map>().toList();
     expect(spans.map((span) => span['text']).join(), contains('bold'));
     expect(spans.any((span) => span['bold'] == true), isTrue);
     expect(spans.any((span) => span['italic'] == true), isTrue);
     expect(spans.any((span) => span['href'] == 'OPS/text/two.xhtml#target'), isTrue);
-    final image = blocks.firstWhere((block) => block['type'] == 'image');
-    final resourceId = image['resourceId'] as String;
-    expect(await session.readResource(resourceId), isNotEmpty);
     final coverBytes = await session.readCover();
     expect(coverBytes, isNotNull);
     // A packaged SVG cover wrapper resolves to its controlled raster image,
     // rather than leaving an unresolved relative image URL in display bytes.
     expect(utf8.decode(coverBytes!), 'not-a-real-image-but-retained-by-epub');
 
-    final rawReader = ContentLibraryLocalReader(library);
-    final request = await rawReader.launch(committed.itemId!.value) as DocumentReaderLaunchRequest;
-    addTearDown(() async => (request.dataSource as DisposableReaderDataSource).dispose());
-    final adapter = request.dataSource;
-    final adapted = await adapter.loadChapter(committed.itemId!.value, chapter.id);
-    expect(adapted.blocks.map((block) => block.type), containsAll(['heading', 'paragraph', 'image']));
     final target = session.chapterAt(1)!;
-    final link = await adapter.resolveLink(chapter.id, '/OPS/text/two.xhtml#target');
+    final link = await session.resolveLink(chapter.id, '/OPS/text/two.xhtml#target');
     expect(link?.chapterId, target.id);
     expect(link?.anchor, 'target');
     expect(await session.resolveLink(chapter.id, 'notes.xhtml#note-1'), isNotNull);
@@ -98,6 +88,51 @@ void main() {
 
     expect(await session.resolveLink(chapter.id, 'https://example.invalid/book'), isNull);
     expect(await session.resolveLink(chapter.id, '../../outside.xhtml'), isNull);
+  });
+
+  test('independent SVG cover spine page is removed from a pure text EPUB', () async {
+    final source = await _epub(
+      root,
+      {
+        'OPS/text/wrap0000.xhtml': _xhtml('''
+          <div class="x-ebookmaker-cover">
+            <svg xmlns="http://www.w3.org/2000/svg" height="100%" viewBox="0 0 1600 2400"
+                 xmlns:xlink="http://www.w3.org/1999/xlink">
+              <image width="1600" height="2400" xlink:href="../images/cover.png"/>
+            </svg>
+          </div>
+        '''),
+        'OPS/text/chapter.xhtml': _xhtml('<h1>Chapter</h1><p>Readable content.</p>'),
+        'OPS/images/cover.png': 'not-a-real-image-but-retained-by-epub',
+      },
+      opf: '''<?xml version="1.0"?>
+      <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+        <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Wrapper Image</dc:title></metadata>
+        <manifest>
+          <item id="cover-spine" href="text/wrap0000.xhtml" media-type="application/xhtml+xml"/>
+          <item id="chapter" href="text/chapter.xhtml" media-type="application/xhtml+xml"/>
+          <item id="cover-image" href="images/cover.png" media-type="image/png" properties="cover-image"/>
+        </manifest>
+        <spine><itemref idref="cover-spine"/><itemref idref="chapter"/></spine>
+      </package>''',
+    );
+    final bytes = await source.readAsBytes();
+    final prepared = await library.prepareLocalImport(
+      LocalImportInput(fileName: 'wrapper.epub', bytes: bytes.length, openRead: () => Stream.value(bytes)),
+    );
+    expect(prepared.status, LocalImportStatus.awaitingConfirmation, reason: prepared.errorCode);
+    final committed = await library.commitLocalImport(prepared.id);
+    expect(committed.status, LocalImportStatus.succeeded, reason: committed.errorCode);
+    final session = (await library.openLocalDocumentSession(committed.itemId!))!;
+    addTearDown(session.close);
+
+    expect(session.readingKind, LocalDocumentReadingKind.text);
+    expect(session.chapterCount, 1);
+    expect(session.chapterAt(0)?.href, 'OPS/text/chapter.xhtml');
+    final first = session.chapterAt(0)!;
+    final chapter = await session.readChapter(first.id);
+    expect((chapter['blocks'] as List).whereType<Map>().map((block) => block['type']), ['heading', 'paragraph']);
+    expect(await session.readCover(), isNotEmpty);
   });
 
   test('malformed container and non-ZIP input fail without publishing a shelf item', () async {
@@ -118,7 +153,7 @@ void main() {
   });
 
   test(
-    'official reflowable EPUB samples import through ContentLibrary',
+    'official reflowable EPUB samples classify through ContentLibrary',
     () async {
       final samples = <String>[
         '.dart_tool/ai-checks/local-samples/childrens-literature.epub',
@@ -136,12 +171,14 @@ void main() {
             openRead: () => Stream<List<int>>.value(bytes),
           ),
         );
+        if (prepared.status == LocalImportStatus.failed && prepared.errorCode == 'epub_mixed_content_unsupported') continue;
         expect(prepared.status, LocalImportStatus.awaitingConfirmation, reason: '$path: ${prepared.errorCode}');
         final committed = await library.commitLocalImport(prepared.id);
         expect(committed.status, LocalImportStatus.succeeded, reason: '$path: ${committed.errorCode}');
         final session = (await library.openLocalDocumentSession(committed.itemId!))!;
         try {
           expect(session.chapterCount, greaterThan(0), reason: path);
+          expect(session.readingKind, isNotNull, reason: path);
           var textBlocks = 0;
           var imageBlocks = 0;
           for (final chapter in session.chapters(limit: session.chapterCount)) {
@@ -152,7 +189,13 @@ void main() {
             }).length;
             imageBlocks += blocks.where((block) => block['type'] == 'image').length;
           }
-          expect(textBlocks, greaterThan(0), reason: path);
+          if (session.readingKind == LocalDocumentReadingKind.text) {
+            expect(textBlocks, greaterThan(0), reason: path);
+            expect(imageBlocks, 0, reason: path);
+          } else {
+            expect(textBlocks, 0, reason: path);
+            expect(imageBlocks, greaterThan(0), reason: path);
+          }
           // Keep the real-sample evidence compact in the test output.
           // ignore: avoid_print
           print(

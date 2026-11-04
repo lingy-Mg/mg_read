@@ -31,6 +31,7 @@ class LocalImportBridge private constructor(
     private val worker = Executors.newSingleThreadExecutor()
     private val handles = ConcurrentHashMap<String, Handle>()
     private var pendingPick: MethodChannel.Result? = null
+    private var pendingPickSingle = false
     private var pendingExport: MethodChannel.Result? = null
 
     data class Handle(
@@ -70,14 +71,16 @@ class LocalImportBridge private constructor(
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = if (kind == "image") "image/*" else "*/*"
-            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-            if (kind != "image") putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/plain", "application/epub+zip", "application/octet-stream"))
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, kind != "backup")
+            if (kind != "image" && kind != "backup") putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/plain", "application/epub+zip", "application/octet-stream"))
         }
         pendingPick = result
+        pendingPickSingle = kind == "backup"
         try {
             activity.startActivityForResult(intent, PICK_REQUEST)
         } catch (error: Exception) {
             pendingPick = null
+            pendingPickSingle = false
             result.error("picker_unavailable", error.javaClass.simpleName, null)
         }
     }
@@ -120,13 +123,16 @@ class LocalImportBridge private constructor(
         }
         if (requestCode != PICK_REQUEST) return false
         val result = pendingPick ?: return true
+        val single = pendingPickSingle
         pendingPick = null
+        pendingPickSingle = false
         if (resultCode != Activity.RESULT_OK || data == null) { result.success(emptyList<Any>()); return true }
         val uris = mutableListOf<Uri>()
         data.data?.let(uris::add)
         data.clipData?.let { clip -> for (i in 0 until clip.itemCount) clip.getItemAt(i).uri?.let(uris::add) }
         worker.execute {
-            val payload = uris.distinct().take(MAX_PENDING).map(::createHandle)
+            val selected = uris.distinct().let { if (single) it.take(1) else it.take(MAX_PENDING) }
+            val payload = selected.map(::createHandle)
             Handler(Looper.getMainLooper()).post { result.success(payload) }
         }
         return true
@@ -252,6 +258,8 @@ class LocalImportBridge private constructor(
                 }
                 Handler(Looper.getMainLooper()).post { result.success(null) }
             } catch (error: Exception) {
+                try { handle.output?.close() } catch (_: Exception) { }
+                try { DocumentsContract.deleteDocument(activity.contentResolver, handle.uri) } catch (_: Exception) { }
                 Handler(Looper.getMainLooper()).post { result.error("export_finish_failed", error.javaClass.simpleName, null) }
             }
         }
@@ -274,6 +282,7 @@ class LocalImportBridge private constructor(
         channel.setMethodCallHandler(null)
         pendingPick?.error("activity_closed", "Activity closed during file selection", null)
         pendingPick = null
+        pendingPickSingle = false
         pendingExport?.error("activity_closed", "Activity closed during export", null)
         pendingExport = null
         handles.values.forEach { handle ->

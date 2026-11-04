@@ -109,41 +109,67 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
     for (final item in items) {
       final details = await _library.localDocumentDetails(item.id);
       if (details == null || details.originalBytes <= 0 || details.originalBytes > lanSyncMaxLocalDocumentBytes) continue;
-      final progress = await _library.loadProgress(item.id);
-      final bookmarks = await _library.loadBookmarks(item.id, ContentKind.novel);
-      final coverBytes = item.source.coverHash == null ? null : await _library.readLocalDocumentCover(item.id);
-      if (item.source.coverHash != null && coverBytes == null) throw const LanSyncGatewayException('lan_sync_local_cover_missing');
-      if (coverBytes != null && coverBytes.length > lanSyncMaxLocalCoverBytes) {
-        throw const LanSyncGatewayException('lan_sync_local_cover_too_large');
+      final session = await _library.openLocalDocumentSession(item.id);
+      if (session == null) continue;
+      try {
+        final readingKind = switch (session.readingKind?.name) {
+          'text' => LanSyncLocalReadingKind.text,
+          'comic' => LanSyncLocalReadingKind.comic,
+          _ => item.kind == ContentKind.manga ? LanSyncLocalReadingKind.comic : null,
+        };
+        final contentKind = readingKind == LanSyncLocalReadingKind.comic ? ContentKind.manga : ContentKind.novel;
+        final progress = await _library.loadProgress(item.id);
+        final bookmarks = await _library.loadBookmarks(item.id, contentKind);
+        final coverBytes = item.source.coverHash == null ? null : await _library.readLocalDocumentCover(item.id);
+        if (item.source.coverHash != null && coverBytes == null) throw const LanSyncGatewayException('lan_sync_local_cover_missing');
+        if (coverBytes != null && coverBytes.length > lanSyncMaxLocalCoverBytes) {
+          throw const LanSyncGatewayException('lan_sync_local_cover_too_large');
+        }
+        final coverMimeType = coverBytes == null ? null : _localCoverMimeType(coverBytes);
+        final textProgress = readingKind != LanSyncLocalReadingKind.comic && progress is LibraryReadingProgress ? progress : null;
+        final mangaProgress = readingKind == LanSyncLocalReadingKind.comic && progress is LibraryMangaReadingProgress ? progress : null;
+        documents.add(
+          LanSyncLocalDocumentDescriptor(
+            documentId: details.documentId,
+            rawSha256: details.rawSha256,
+            originalBytes: details.originalBytes,
+            format: details.format.name,
+            title: item.title,
+            author: item.author,
+            options: details.options.toJson(),
+            readingKind: readingKind,
+            coverSha256: coverBytes == null ? null : crypto.sha256.convert(coverBytes).toString(),
+            coverBytes: coverBytes?.length,
+            coverMimeType: coverMimeType,
+            progress: textProgress == null ? null : _toLanReadingProgress(textProgress),
+            bookmarks: <LanSyncLocalBookmark>[
+              for (final bookmark in bookmarks.whereType<LibraryBookmark>())
+                LanSyncLocalBookmark(
+                  id: bookmark.id,
+                  chapterId: bookmark.chapterId,
+                  paragraphId: bookmark.paragraphId,
+                  characterOffset: bookmark.characterOffset,
+                  chapterTitle: bookmark.chapterTitle,
+                  excerpt: bookmark.excerpt,
+                  createdAtUtc: bookmark.createdAtUtc,
+                ),
+            ],
+            mangaProgress: mangaProgress == null ? null : _toLanLocalMangaProgress(mangaProgress),
+            mangaBookmarks: <LanSyncLocalMangaBookmark>[
+              for (final bookmark in bookmarks.whereType<LibraryMangaBookmark>())
+                LanSyncLocalMangaBookmark(
+                  id: bookmark.id,
+                  chapterId: bookmark.chapterId,
+                  imageId: bookmark.imageId,
+                  imageFraction: bookmark.imageFraction,
+                  createdAtUtc: bookmark.createdAtUtc,
+                ),
+            ],
+          ),
+        );
+      } finally {
+        await session.close();
       }
-      final coverMimeType = coverBytes == null ? null : _localCoverMimeType(coverBytes);
-      documents.add(
-        LanSyncLocalDocumentDescriptor(
-          documentId: details.documentId,
-          rawSha256: details.rawSha256,
-          originalBytes: details.originalBytes,
-          format: details.format.name,
-          title: item.title,
-          author: item.author,
-          options: details.options.toJson(),
-          coverSha256: coverBytes == null ? null : crypto.sha256.convert(coverBytes).toString(),
-          coverBytes: coverBytes?.length,
-          coverMimeType: coverMimeType,
-          progress: progress is LibraryReadingProgress ? _toLanReadingProgress(progress) : null,
-          bookmarks: <LanSyncLocalBookmark>[
-            for (final bookmark in bookmarks.whereType<LibraryBookmark>())
-              LanSyncLocalBookmark(
-                id: bookmark.id,
-                chapterId: bookmark.chapterId,
-                paragraphId: bookmark.paragraphId,
-                characterOffset: bookmark.characterOffset,
-                chapterTitle: bookmark.chapterTitle,
-                excerpt: bookmark.excerpt,
-                createdAtUtc: bookmark.createdAtUtc,
-              ),
-          ],
-        ),
-      );
     }
     return List<LanSyncLocalDocumentDescriptor>.unmodifiable(documents);
   }
@@ -230,19 +256,36 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
     if (snapshot.status != LocalImportStatus.awaitingConfirmation) {
       throw LanSyncGatewayException(snapshot.errorCode ?? 'lan_sync_local_document_invalid');
     }
-    final progress = document.progress == null ? null : _toLibraryReadingProgress(document.progress!, const LibraryItemId('transfer'));
-    final bookmarks = <LibraryBookmark>[
-      for (final bookmark in document.bookmarks)
-        LibraryBookmark(
-          id: bookmark.id,
-          itemId: const LibraryItemId('transfer'),
-          chapterId: bookmark.chapterId,
-          paragraphId: bookmark.paragraphId,
-          characterOffset: bookmark.characterOffset,
-          chapterTitle: bookmark.chapterTitle,
-          excerpt: bookmark.excerpt,
-          createdAtUtc: bookmark.createdAtUtc,
-        ),
+    final progress = document.readingKind == LanSyncLocalReadingKind.comic
+        ? document.mangaProgress == null
+              ? null
+              : _toLibraryMangaProgress(document.mangaProgress!, const LibraryItemId('transfer'))
+        : document.progress == null
+        ? null
+        : _toLibraryReadingProgress(document.progress!, const LibraryItemId('transfer'));
+    final bookmarks = <LibraryBookmarkEntry>[
+      if (document.readingKind == LanSyncLocalReadingKind.comic)
+        for (final bookmark in document.mangaBookmarks)
+          LibraryMangaBookmark(
+            id: bookmark.id,
+            itemId: const LibraryItemId('transfer'),
+            chapterId: bookmark.chapterId,
+            imageId: bookmark.imageId,
+            imageFraction: bookmark.imageFraction,
+            createdAtUtc: bookmark.createdAtUtc,
+          )
+      else
+        for (final bookmark in document.bookmarks)
+          LibraryBookmark(
+            id: bookmark.id,
+            itemId: const LibraryItemId('transfer'),
+            chapterId: bookmark.chapterId,
+            paragraphId: bookmark.paragraphId,
+            characterOffset: bookmark.characterOffset,
+            chapterTitle: bookmark.chapterTitle,
+            excerpt: bookmark.excerpt,
+            createdAtUtc: bookmark.createdAtUtc,
+          ),
     ];
     final committed = await _library.commitLocalImport(
       snapshot.id,
@@ -353,14 +396,19 @@ final class MgReadLanSyncGateway implements LanSyncGateway, LanSyncPairedGateway
     }
     final snapshot = _toLibrarySnapshot(manifest);
     final preview = await _library.previewSyncSnapshot(snapshot, availablePluginIds: availableAfterTransfer);
-    final localItems = await _library.listLocalDocuments(includeRetained: false);
+    final localItems = await _library.listLocalDocuments();
+    final visibleLocalItemIds = (await _library.listLocalDocuments(includeRetained: false)).map((item) => item.id).toSet();
     final localDocumentConflicts = <LanSyncLocalDocumentConflict>[];
     for (final document in manifest.localDocuments) {
       for (final localItem in localItems) {
         final localDetails = await _library.localDocumentDetails(localItem.id);
         if (localDetails?.rawSha256 == document.rawSha256 || localItem.source.matchesLocalDocument(document.documentId)) {
           localDocumentConflicts.add(
-            LanSyncLocalDocumentConflict(documentId: document.documentId, senderTitle: document.title, localTitle: localItem.title),
+            LanSyncLocalDocumentConflict(
+              documentId: document.documentId,
+              senderTitle: document.title,
+              localTitle: visibleLocalItemIds.contains(localItem.id) ? localItem.title : '${localItem.title}（内容保留中）',
+            ),
           );
           break;
         }
@@ -771,6 +819,27 @@ LibraryReadingProgress _toLibraryReadingProgress(LanSyncReadingProgress value, L
   bookFraction: value.bookFraction,
   updatedAtUtc: value.updatedAtUtc,
   totalReadingSeconds: value.totalReadingSeconds,
+);
+
+LanSyncLocalMangaProgress _toLanLocalMangaProgress(LibraryMangaReadingProgress progress) => LanSyncLocalMangaProgress(
+  chapterId: progress.chapterId,
+  imageId: progress.imageId,
+  imageFraction: progress.imageFraction,
+  chapterIndex: progress.chapterIndex,
+  bookFraction: progress.bookFraction,
+  updatedAtUtc: progress.updatedAtUtc,
+  readingSeconds: progress.readingSeconds,
+);
+
+LibraryMangaReadingProgress _toLibraryMangaProgress(LanSyncLocalMangaProgress value, LibraryItemId itemId) => LibraryMangaReadingProgress(
+  itemId: itemId,
+  chapterId: value.chapterId,
+  imageId: value.imageId,
+  imageFraction: value.imageFraction,
+  chapterIndex: value.chapterIndex,
+  bookFraction: value.bookFraction,
+  updatedAtUtc: value.updatedAtUtc,
+  readingSeconds: value.readingSeconds,
 );
 
 String _localCoverMimeType(List<int> bytes) {

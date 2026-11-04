@@ -391,6 +391,85 @@ final class LanSyncLocalBookmark {
   }
 }
 
+enum LanSyncLocalReadingKind { text, comic }
+
+@immutable
+final class LanSyncLocalMangaProgress {
+  const LanSyncLocalMangaProgress({
+    required this.chapterId,
+    required this.imageId,
+    required this.imageFraction,
+    required this.chapterIndex,
+    required this.bookFraction,
+    required this.updatedAtUtc,
+    required this.readingSeconds,
+  });
+
+  final String chapterId, imageId;
+  final double imageFraction, bookFraction;
+  final int chapterIndex, readingSeconds;
+  final DateTime updatedAtUtc;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'chapterId': chapterId,
+    'imageId': imageId,
+    'imageFraction': imageFraction,
+    'chapterIndex': chapterIndex,
+    'bookFraction': bookFraction,
+    'updatedAtUtc': updatedAtUtc.toUtc().toIso8601String(),
+    'readingSeconds': readingSeconds,
+  };
+
+  factory LanSyncLocalMangaProgress.fromJson(Map<String, Object?> json) {
+    final updatedAt = DateTime.tryParse(_requiredString(json, 'updatedAtUtc', maxLength: 64));
+    if (updatedAt == null) throw const FormatException('invalid_updated_at');
+    return LanSyncLocalMangaProgress(
+      chapterId: _requiredString(json, 'chapterId', maxLength: 2048),
+      imageId: _requiredString(json, 'imageId', maxLength: 2048),
+      imageFraction: _requiredFraction(json, 'imageFraction'),
+      chapterIndex: _requiredInt(json, 'chapterIndex', min: 0, max: 10000000),
+      bookFraction: _requiredFraction(json, 'bookFraction'),
+      updatedAtUtc: updatedAt.toUtc(),
+      readingSeconds: _requiredInt(json, 'readingSeconds', min: 0, max: 1576800000),
+    );
+  }
+}
+
+@immutable
+final class LanSyncLocalMangaBookmark {
+  const LanSyncLocalMangaBookmark({
+    required this.id,
+    required this.chapterId,
+    required this.imageId,
+    required this.imageFraction,
+    required this.createdAtUtc,
+  });
+
+  final String id, chapterId, imageId;
+  final double imageFraction;
+  final DateTime createdAtUtc;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'id': id,
+    'chapterId': chapterId,
+    'imageId': imageId,
+    'imageFraction': imageFraction,
+    'createdAtUtc': createdAtUtc.toUtc().toIso8601String(),
+  };
+
+  factory LanSyncLocalMangaBookmark.fromJson(Map<String, Object?> json) {
+    final createdAt = DateTime.tryParse(_requiredString(json, 'createdAtUtc', maxLength: 64));
+    if (createdAt == null) throw const FormatException('invalid_bookmark_date');
+    return LanSyncLocalMangaBookmark(
+      id: _requiredString(json, 'id', maxLength: 256),
+      chapterId: _requiredString(json, 'chapterId', maxLength: 2048),
+      imageId: _requiredString(json, 'imageId', maxLength: 2048),
+      imageFraction: _requiredFraction(json, 'imageFraction'),
+      createdAtUtc: createdAt.toUtc(),
+    );
+  }
+}
+
 /// Path-free offer for one imported TXT/EPUB original and its reading state.
 @immutable
 final class LanSyncLocalDocumentDescriptor {
@@ -403,11 +482,15 @@ final class LanSyncLocalDocumentDescriptor {
     required Map<String, Object?> options,
     this.author,
     this.progress,
+    this.readingKind,
+    this.mangaProgress,
+    List<LanSyncLocalMangaBookmark> mangaBookmarks = const <LanSyncLocalMangaBookmark>[],
     this.coverSha256,
     this.coverBytes,
     this.coverMimeType,
     List<LanSyncLocalBookmark> bookmarks = const <LanSyncLocalBookmark>[],
   }) : bookmarks = List<LanSyncLocalBookmark>.unmodifiable(bookmarks),
+       mangaBookmarks = List<LanSyncLocalMangaBookmark>.unmodifiable(mangaBookmarks),
        options = Map<String, Object?>.unmodifiable(options);
 
   final String documentId, rawSha256, format, title;
@@ -418,6 +501,9 @@ final class LanSyncLocalDocumentDescriptor {
   final Map<String, Object?> options;
   final LanSyncReadingProgress? progress;
   final List<LanSyncLocalBookmark> bookmarks;
+  final LanSyncLocalReadingKind? readingKind;
+  final LanSyncLocalMangaProgress? mangaProgress;
+  final List<LanSyncLocalMangaBookmark> mangaBookmarks;
 
   Map<String, Object?> toJson() => <String, Object?>{
     'documentId': documentId,
@@ -426,12 +512,15 @@ final class LanSyncLocalDocumentDescriptor {
     'format': format,
     'title': title,
     if (author != null) 'author': author,
+    if (readingKind != null) 'readingKind': readingKind!.name,
     if (coverSha256 != null) 'coverSha256': coverSha256,
     if (coverBytes != null) 'coverBytes': coverBytes,
     if (coverMimeType != null) 'coverMimeType': coverMimeType,
     'options': options,
     if (progress != null) 'progress': progress!.toJson(),
     'bookmarks': <Object?>[for (final bookmark in bookmarks) bookmark.toJson()],
+    if (mangaProgress != null) 'mangaProgress': mangaProgress!.toJson(),
+    if (mangaBookmarks.isNotEmpty) 'mangaBookmarks': <Object?>[for (final bookmark in mangaBookmarks) bookmark.toJson()],
   };
 
   factory LanSyncLocalDocumentDescriptor.fromJson(Map<String, Object?> json) {
@@ -444,6 +533,16 @@ final class LanSyncLocalDocumentDescriptor {
     final rawBookmarks = json['bookmarks'] ?? const <Object?>[];
     if (rawBookmarks is! List || rawBookmarks.length > 10000) throw const FormatException('invalid_local_document');
     final rawProgress = json['progress'];
+    final rawMangaProgress = json['mangaProgress'];
+    final rawMangaBookmarks = json['mangaBookmarks'] ?? const <Object?>[];
+    if (rawMangaBookmarks is! List || rawMangaBookmarks.length > 10000) throw const FormatException('invalid_local_document');
+    final rawReadingKind = json['readingKind'];
+    final readingKind = _parseLanSyncLocalReadingKind(rawReadingKind);
+    if (rawReadingKind != null && readingKind == null) throw const FormatException('invalid_local_document');
+    if ((readingKind == LanSyncLocalReadingKind.comic && (rawProgress != null || rawBookmarks.isNotEmpty)) ||
+        (readingKind != LanSyncLocalReadingKind.comic && (rawMangaProgress != null || rawMangaBookmarks.isNotEmpty))) {
+      throw const FormatException('invalid_local_document');
+    }
     final originalBytes = _requiredInt(json, 'originalBytes', min: 1, max: lanSyncMaxLocalDocumentBytes);
     final coverSha256 = _optionalString(json, 'coverSha256', maxLength: 64);
     final coverBytes = json.containsKey('coverBytes') ? _requiredInt(json, 'coverBytes', min: 1, max: lanSyncMaxLocalCoverBytes) : null;
@@ -467,8 +566,21 @@ final class LanSyncLocalDocumentDescriptor {
       options: Map<String, Object?>.from(rawOptions),
       progress: rawProgress == null ? null : LanSyncReadingProgress.fromJson(_requiredMap(rawProgress)),
       bookmarks: <LanSyncLocalBookmark>[for (final raw in rawBookmarks) LanSyncLocalBookmark.fromJson(_requiredMap(raw))],
+      readingKind: readingKind,
+      mangaProgress: rawMangaProgress == null ? null : LanSyncLocalMangaProgress.fromJson(_requiredMap(rawMangaProgress)),
+      mangaBookmarks: <LanSyncLocalMangaBookmark>[
+        for (final raw in rawMangaBookmarks) LanSyncLocalMangaBookmark.fromJson(_requiredMap(raw)),
+      ],
     );
   }
+}
+
+LanSyncLocalReadingKind? _parseLanSyncLocalReadingKind(Object? value) {
+  if (value == null) return null;
+  for (final kind in LanSyncLocalReadingKind.values) {
+    if (kind.name == value) return kind;
+  }
+  return null;
 }
 
 @immutable

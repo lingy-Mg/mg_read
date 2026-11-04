@@ -17,8 +17,9 @@ import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart' hide XFile;
 
+import 'package:mg_read/features/import_export/data/android_backup_file_exporter.dart';
+import 'package:mg_read/features/import_export/data/android_backup_file_importer.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 
@@ -26,7 +27,7 @@ const int _bundleHeaderLimit = lanSyncMaxManifestBytes;
 const List<int> _bundleMagic = <int>[0x4d, 0x47, 0x52, 0x45, 0x41, 0x44, 0x31, 0x0a];
 
 final importExportCoordinatorProvider = Provider<ImportExportCoordinator>((Ref ref) {
-  return ImportExportService(ref.watch(lanSyncGatewayProvider), const PlatformImportExportFilePicker());
+  return ImportExportService(ref.watch(lanSyncGatewayProvider), PlatformImportExportFilePicker());
 });
 
 abstract interface class ImportExportCoordinator {
@@ -83,7 +84,10 @@ abstract interface class ImportExportFilePicker {
 }
 
 final class PlatformImportExportFilePicker implements ImportExportFilePicker {
-  const PlatformImportExportFilePicker();
+  PlatformImportExportFilePicker({AndroidBackupFileImporter? androidImporter})
+    : _androidImporter = androidImporter ?? AndroidBackupFileImporter();
+
+  final AndroidBackupFileImporter _androidImporter;
 
   static const XTypeGroup _bundleType = XTypeGroup(label: 'MgRead 备份', extensions: <String>['mgread']);
 
@@ -105,22 +109,12 @@ final class PlatformImportExportFilePicker implements ImportExportFilePicker {
   @override
   Future<bool> completeExport(String path) async {
     if (!Platform.isAndroid) return true;
-    try {
-      final result = await SharePlus.instance.share(
-        ShareParams(
-          title: '导出 MgRead 备份',
-          files: <XFile>[XFile(path, mimeType: 'application/octet-stream')],
-        ),
-      );
-      return result.status != ShareResultStatus.dismissed;
-    } finally {
-      final temporary = File(path);
-      if (await temporary.exists()) await temporary.delete();
-    }
+    return const AndroidBackupFileExporter().exportFile(path);
   }
 
   @override
   Future<String?> chooseImportPath() async {
+    if (Platform.isAndroid) return _androidImporter.pickImportPath();
     final file = await openFile(acceptedTypeGroups: const <XTypeGroup>[_bundleType], confirmButtonText: '导入');
     return file?.path;
   }

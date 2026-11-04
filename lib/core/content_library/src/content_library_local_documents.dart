@@ -31,8 +31,8 @@ extension LocalDocumentImports on ContentLibrary {
     String? title,
     String? author,
     String? documentId,
-    LibraryReadingProgress? progress,
-    List<LibraryBookmark>? bookmarks,
+    LibraryProgress? progress,
+    List<LibraryBookmarkEntry>? bookmarks,
     bool useSenderMetadata = false,
     List<int>? coverBytes,
     String coverMimeType = 'image/png',
@@ -120,6 +120,11 @@ extension LocalDocumentImports on ContentLibrary {
           throw const LocalDocumentException('revision_conflict');
         }
         final itemId = target?.itemId ?? _id();
+        final localContentKind = switch (document.readingKind) {
+          LocalDocumentReadingKind.comic => ContentKind.manga,
+          LocalDocumentReadingKind.text => ContentKind.novel,
+          null => target == null ? ContentKind.novel : ContentKind.values.byName(target.values['content_kind']! as String),
+        };
         final chosenDocumentId = target?.values['local_document_id'] as String? ?? documentId ?? _id();
         Map<String, Object?>? migratedProgress;
         List<Map<String, Object?>>? migratedBookmarks;
@@ -129,10 +134,34 @@ extension LocalDocumentImports on ContentLibrary {
             : Map<String, Object?>.from(jsonDecode(target.values['details_json']! as String) as Map);
         if (target != null) {
           final progress = await loadProgress(LibraryItemId(itemId));
-          final bookmarks = await loadBookmarks(LibraryItemId(itemId), ContentKind.novel);
+          final previousItemKind = ContentKind.values.byName(target.values['content_kind']! as String);
+          final bookmarks = await loadBookmarks(LibraryItemId(itemId), previousItemKind);
           final oldSession = await openLocalDocumentSession(LibraryItemId(itemId));
           try {
-            if (progress is LibraryReadingProgress) {
+            if (localContentKind == ContentKind.manga && progress is LibraryMangaReadingProgress) {
+              final mapped = await _mapLocalMangaAnchor(
+                stage,
+                document,
+                oldSession,
+                progress.chapterId,
+                progress.imageId,
+                progress.imageFraction,
+                progress.bookFraction,
+              );
+              migratedProgress = _progressValues(
+                LibraryMangaReadingProgress(
+                  itemId: LibraryItemId(itemId),
+                  chapterId: mapped.chapterId,
+                  imageId: mapped.imageId,
+                  imageFraction: progress.imageFraction,
+                  chapterIndex: mapped.index,
+                  bookFraction: progress.bookFraction,
+                  updatedAtUtc: progress.updatedAtUtc,
+                  readingSeconds: progress.readingSeconds,
+                ),
+              );
+              if (!mapped.exact) warnings.add('reading_position_approximate');
+            } else if (localContentKind == ContentKind.novel && progress is LibraryReadingProgress) {
               final mapped = await _mapLocalAnchor(
                 stage,
                 document,
@@ -161,7 +190,33 @@ extension LocalDocumentImports on ContentLibrary {
               if (!mapped.exact) warnings.add('reading_position_approximate');
             }
             migratedBookmarks = [];
-            for (final bookmark in bookmarks.whereType<LibraryBookmark>()) {
+            for (final bookmark in bookmarks) {
+              if (localContentKind == ContentKind.manga && bookmark is LibraryMangaBookmark) {
+                final mapped = await _mapLocalMangaAnchor(
+                  stage,
+                  document,
+                  oldSession,
+                  bookmark.chapterId,
+                  bookmark.imageId,
+                  bookmark.imageFraction,
+                  0,
+                );
+                if (!mapped.exact && warnings.length < 100) warnings.add('bookmark_approximate:${bookmark.id}');
+                migratedBookmarks.add(
+                  _bookmarkValues(
+                    LibraryMangaBookmark(
+                      id: bookmark.id,
+                      itemId: LibraryItemId(itemId),
+                      chapterId: mapped.chapterId,
+                      imageId: mapped.imageId,
+                      imageFraction: bookmark.imageFraction,
+                      createdAtUtc: bookmark.createdAtUtc,
+                    ),
+                  ),
+                );
+                continue;
+              }
+              if (localContentKind != ContentKind.novel || bookmark is! LibraryBookmark) continue;
               final mapped = await _mapLocalAnchor(
                 stage,
                 document,
@@ -191,7 +246,7 @@ extension LocalDocumentImports on ContentLibrary {
               );
             }
             manifest['previousLocations'] = {
-              'progress': progress is LibraryReadingProgress ? _progressValues(progress) : null,
+              'progress': progress == null ? null : _progressValues(progress),
               'bookmarks': [for (final bookmark in bookmarks) _bookmarkValues(bookmark)],
             };
           } finally {
@@ -228,6 +283,8 @@ extension LocalDocumentImports on ContentLibrary {
             'generation': id,
             'rawSha256': hash,
             'format': document.format.name,
+            'readingKind': document.readingKind?.name,
+            'logicalChapterStarts': _localLogicalChapterStartIndexes(document),
             'originalBytes': record['totalBytes'],
             'options': record['options'],
             'warnings': warnings,
@@ -246,6 +303,7 @@ extension LocalDocumentImports on ContentLibrary {
           documentId: chosenDocumentId,
           title: chosenTitle,
           author: author ?? record['author'] as String? ?? document.author,
+          contentKind: localContentKind.code,
           format: document.format.name,
           rawSha256: hash,
           generation: id,
@@ -314,6 +372,24 @@ extension LocalDocumentImports on ContentLibrary {
   });
 }
 
+List<int> _localLogicalChapterStartIndexes(ParsedLocalDocument document) {
+  final chapterIndexes = <String, int>{for (final chapter in document.chapters) chapter.id: chapter.index};
+  final rawStarts = document.attributes['logicalChapterStarts'];
+  if (rawStarts is List) {
+    final indexes = <int>[];
+    for (final id in rawStarts.whereType<String>()) {
+      final index = chapterIndexes[id];
+      if (index != null && (indexes.isEmpty || index > indexes.last)) indexes.add(index);
+    }
+    if (indexes.isNotEmpty) return indexes;
+  }
+  final seen = <String>{};
+  return <int>[
+    for (final chapter in document.chapters)
+      if (seen.add(chapter.href ?? chapter.id)) chapter.index,
+  ];
+}
+
 Future<Map<String, Object?>> _readLocalDraft(Directory stage) async {
   final file = File('${stage.path}/parsed/manifest.json');
   if (!await file.exists()) throw const LocalDocumentException('preview_required');
@@ -379,13 +455,14 @@ Future<({Map<String, Object?>? progress, List<Map<String, Object?>>? bookmarks})
   Directory stage,
   ParsedLocalDocument document,
   String itemId,
-  LibraryReadingProgress? progress,
-  List<LibraryBookmark>? bookmarks, {
+  LibraryProgress? progress,
+  List<LibraryBookmarkEntry>? bookmarks, {
   LocalDocumentReadingSession? session,
 }) async {
   if ((bookmarks?.length ?? 0) > 10000) throw const LocalDocumentException('too_many_bookmarks');
   Map<String, Object?>? progressValues;
-  if (progress != null) {
+  if (progress is LibraryReadingProgress) {
+    if (document.readingKind != LocalDocumentReadingKind.text) throw const LocalDocumentException('reading_kind_mismatch');
     final anchor = await _mapLocalAnchor(
       stage,
       document,
@@ -410,11 +487,67 @@ Future<({Map<String, Object?>? progress, List<Map<String, Object?>>? bookmarks})
         totalReadingSeconds: progress.totalReadingSeconds,
       ),
     );
+  } else if (progress is LibraryMangaReadingProgress) {
+    if (document.readingKind != LocalDocumentReadingKind.comic) throw const LocalDocumentException('reading_kind_mismatch');
+    final anchor = await _mapLocalMangaAnchor(
+      stage,
+      document,
+      session,
+      progress.chapterId,
+      progress.imageId,
+      progress.imageFraction,
+      progress.bookFraction,
+      chapterIndex: progress.chapterIndex,
+    );
+    progressValues = _progressValues(
+      LibraryMangaReadingProgress(
+        itemId: LibraryItemId(itemId),
+        chapterId: anchor.chapterId,
+        imageId: anchor.imageId,
+        imageFraction: progress.imageFraction,
+        chapterIndex: anchor.index,
+        bookFraction: progress.bookFraction,
+        updatedAtUtc: progress.updatedAtUtc,
+        readingSeconds: progress.readingSeconds,
+      ),
+    );
+  } else if (progress != null) {
+    throw const LocalDocumentException('unsupported_local_progress');
   }
   List<Map<String, Object?>>? bookmarkValues;
   if (bookmarks != null) {
     bookmarkValues = [];
     for (final bookmark in bookmarks) {
+      if (bookmark is LibraryMangaBookmark) {
+        if (document.readingKind != LocalDocumentReadingKind.comic) throw const LocalDocumentException('reading_kind_mismatch');
+        final sourceChapterIndex = session?.chapterById(bookmark.chapterId)?.index;
+        final anchor = await _mapLocalMangaAnchor(
+          stage,
+          document,
+          session,
+          bookmark.chapterId,
+          bookmark.imageId,
+          bookmark.imageFraction,
+          0,
+          chapterIndex: sourceChapterIndex,
+        );
+        bookmarkValues.add(
+          _bookmarkValues(
+            LibraryMangaBookmark(
+              id: bookmark.id,
+              itemId: LibraryItemId(itemId),
+              chapterId: anchor.chapterId,
+              imageId: anchor.imageId,
+              imageFraction: bookmark.imageFraction,
+              createdAtUtc: bookmark.createdAtUtc,
+            ),
+          ),
+        );
+        continue;
+      }
+      if (bookmark is! LibraryBookmark || document.readingKind != LocalDocumentReadingKind.text) {
+        throw const LocalDocumentException('reading_kind_mismatch');
+      }
       final anchor = await _mapLocalAnchor(
         stage,
         document,
@@ -443,4 +576,83 @@ Future<({Map<String, Object?>? progress, List<Map<String, Object?>>? bookmarks})
     }
   }
   return (progress: progressValues, bookmarks: bookmarkValues);
+}
+
+Future<({String chapterId, String imageId, int index, bool exact})> _mapLocalMangaAnchor(
+  Directory stage,
+  ParsedLocalDocument document,
+  LocalDocumentReadingSession? sourceSession,
+  String sourceChapterId,
+  String sourceImageId,
+  double imageFraction,
+  double bookFraction, {
+  int? chapterIndex,
+}) async {
+  if (!imageFraction.isFinite || imageFraction < 0 || imageFraction > 1 || !bookFraction.isFinite || bookFraction < 0 || bookFraction > 1) {
+    throw const LocalDocumentException('invalid_manga_position');
+  }
+  final sourceChapter = sourceSession?.chapterById(sourceChapterId);
+  final sourceIndex = chapterIndex ?? sourceChapter?.index ?? (bookFraction * document.chapters.length).floor();
+  int? sourceImageIndex;
+  if (sourceSession != null && sourceChapter != null) {
+    sourceImageIndex = _localImageBlocks(
+      (await sourceSession.readChapter(sourceChapterId))['blocks'],
+    ).indexWhere((block) => block['id'] == sourceImageId);
+    if (sourceImageIndex == -1) sourceImageIndex = null;
+  }
+
+  var targetIndex = document.chapters.indexWhere((chapter) => chapter.id == sourceChapterId);
+  if (targetIndex < 0) targetIndex = sourceIndex.clamp(0, document.chapters.length - 1);
+  var targetChapter = document.chapters[targetIndex];
+  var targetImages = await _localMangaImages(stage, document, targetChapter, null);
+  final exactImage = targetImages.where((block) => block['id'] == sourceImageId).firstOrNull;
+  if (exactImage != null) {
+    return (chapterId: targetChapter.id, imageId: exactImage['id']! as String, index: targetIndex, exact: true);
+  }
+
+  sourceImageIndex ??= 0;
+  if (targetImages.isEmpty) {
+    for (var offset = 1; offset < document.chapters.length; offset++) {
+      final candidateIndex = (targetIndex + offset).clamp(0, document.chapters.length - 1);
+      if (candidateIndex == targetIndex) continue;
+      final candidate = document.chapters[candidateIndex];
+      final images = await _localMangaImages(stage, document, candidate, null);
+      if (images.isNotEmpty) {
+        targetIndex = candidateIndex;
+        targetChapter = candidate;
+        targetImages = images;
+        break;
+      }
+    }
+  }
+  if (targetImages.isEmpty) throw const LocalDocumentException('manga_image_anchor_missing');
+  final fallback = targetImages[sourceImageIndex.clamp(0, targetImages.length - 1)];
+  return (chapterId: targetChapter.id, imageId: fallback['id']! as String, index: targetIndex, exact: false);
+}
+
+Future<List<Map<String, Object?>>> _localMangaImages(
+  Directory stage,
+  ParsedLocalDocument document,
+  LocalDocumentChapter chapter,
+  LocalDocumentReadingSession? session,
+) async {
+  final body = session == null ? await _readStagedJson(stage, chapter.contentFile) : await session.readChapter(chapter.id);
+  return _localImageBlocks(body['blocks']);
+}
+
+List<Map<String, Object?>> _localImageBlocks(Object? blocks) {
+  if (blocks is! List) return const <Map<String, Object?>>[];
+  final images = <Map<String, Object?>>[];
+  void visit(Object? value) {
+    if (value is! List) return;
+    for (final block in value) {
+      if (block is! Map) continue;
+      final map = Map<String, Object?>.from(block);
+      if (map['type'] == 'image' && map['id'] is String && (map['id']! as String).isNotEmpty) images.add(map);
+      visit(map['children']);
+    }
+  }
+
+  visit(blocks);
+  return images;
 }

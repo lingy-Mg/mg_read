@@ -42,13 +42,6 @@ class ReaderHostPage extends StatelessWidget {
             extensions: request.extensions,
             catalogRefreshToken: catalogRefreshToken,
           ),
-          DocumentReaderLaunchRequest request => DocumentReaderView(
-            bookId: request.bookId,
-            dataSource: request.dataSource,
-            stateStore: request.stateStore,
-            navigationEntries: request.navigationEntries,
-            observer: request.observer,
-          ),
           ComicReaderLaunchRequest request => ComicReaderView(
             bookId: request.bookId,
             dataSource: request.dataSource,

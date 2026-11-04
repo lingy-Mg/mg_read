@@ -138,9 +138,7 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
             value: _selectedLocalDocumentIds.contains(document.documentId),
             onChanged: _busy ? null : (value) => _toggleLocalDocument(document.documentId, value),
             title: Text(document.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text(
-              '${document.format.toUpperCase()} 原文件 · ${_formatBytes(document.originalBytes)} · ${document.bookmarks.length} 个书签',
-            ),
+            subtitle: Text(_localDocumentSubtitle(document)),
           ),
         ],
       ],
@@ -210,9 +208,7 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
             value: _selectedLocalDocumentIds.contains(document.documentId),
             onChanged: _busy ? null : (value) => _toggleLocalDocument(document.documentId, value),
             title: Text(document.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text(
-              '${document.format.toUpperCase()} 原文件 · ${_formatBytes(document.originalBytes)} · ${document.bookmarks.length} 个书签',
-            ),
+            subtitle: Text(_localDocumentSubtitle(document)),
           ),
           if (_selectedLocalDocumentIds.contains(document.documentId))
             if (_localConflictFor(plan, document.documentId) case final conflict?)
@@ -681,4 +677,12 @@ String _formatBytes(int bytes) {
   if (bytes < 1024) return '$bytes B';
   if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KiB';
   return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MiB';
+}
+
+String _localDocumentSubtitle(LanSyncLocalDocumentDescriptor document) {
+  final isComic = document.readingKind == LanSyncLocalReadingKind.comic;
+  final bookmarkCount = isComic ? document.mangaBookmarks.length : document.bookmarks.length;
+  final hasProgress = isComic ? document.mangaProgress != null : document.progress != null;
+  return '${document.format.toUpperCase()} 原文件 · ${_formatBytes(document.originalBytes)}'
+      '${hasProgress ? ' · 含阅读进度' : ''} · $bookmarkCount 个书签';
 }

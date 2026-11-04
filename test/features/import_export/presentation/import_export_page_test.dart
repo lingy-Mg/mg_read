@@ -53,6 +53,25 @@ void main() {
     expect(find.textContaining('导出完成'), findsOneWidget);
   });
 
+  testWidgets('uses comic reading progress and manga bookmarks in local document summary', (tester) async {
+    final coordinator = _FakeCoordinator()..localDocuments = <LanSyncLocalDocumentDescriptor>[_comicDocument];
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: ImportExportPage(onBackRequested: () {}, coordinator: coordinator),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('prepare-export')));
+    await tester.pumpAndSettle();
+
+    final summary = find.text('EPUB 原文件 · 1.0 MiB · 含阅读进度 · 2 个书签');
+    await tester.ensureVisible(summary);
+    expect(summary, findsOneWidget);
+  });
+
   test('capacity failure has explicit local-import user feedback', () {
     expect(importExportFailureMessage(const LanSyncGatewayException(bookshelfCapacityExceededCode), fallback: '导入失败'), '书架已满，请先清理书籍。');
   });
@@ -79,10 +98,16 @@ const _shelf = LanSyncShelfItem(
 final class _FakeCoordinator implements ImportExportCoordinator {
   Set<String>? exportedPluginIds;
   Set<String>? exportedShelfIds;
+  List<LanSyncLocalDocumentDescriptor> localDocuments = const <LanSyncLocalDocumentDescriptor>[];
 
   @override
   Future<ImportExportExportPlan> prepareExport() async => ImportExportExportPlan(
-    const LanSyncManifest(plugins: <LanSyncPluginDescriptor>[_plugin], shelfItems: <LanSyncShelfItem>[_shelf], skippedShelfItems: 0),
+    LanSyncManifest(
+      plugins: const <LanSyncPluginDescriptor>[_plugin],
+      shelfItems: const <LanSyncShelfItem>[_shelf],
+      skippedShelfItems: 0,
+      localDocuments: localDocuments,
+    ),
   );
 
   @override
@@ -109,3 +134,38 @@ final class _FakeCoordinator implements ImportExportCoordinator {
     required Map<String, LanSyncConflictChoice> conflictChoices,
   }) async => throw UnimplementedError();
 }
+
+final _comicDocument = LanSyncLocalDocumentDescriptor(
+  documentId: 'comic-document-identifier',
+  rawSha256: 'b' * 64,
+  originalBytes: 1024 * 1024,
+  format: 'epub',
+  title: '本地漫画',
+  options: const <String, Object?>{},
+  readingKind: LanSyncLocalReadingKind.comic,
+  mangaProgress: LanSyncLocalMangaProgress(
+    chapterId: 'chapter-1',
+    imageId: 'image-2',
+    imageFraction: .42,
+    chapterIndex: 0,
+    bookFraction: .25,
+    updatedAtUtc: DateTime.utc(2026, 11, 4),
+    readingSeconds: 60,
+  ),
+  mangaBookmarks: <LanSyncLocalMangaBookmark>[
+    LanSyncLocalMangaBookmark(
+      id: 'bookmark-1',
+      chapterId: 'chapter-1',
+      imageId: 'image-1',
+      imageFraction: .15,
+      createdAtUtc: DateTime.utc(2026, 11, 4),
+    ),
+    LanSyncLocalMangaBookmark(
+      id: 'bookmark-2',
+      chapterId: 'chapter-1',
+      imageId: 'image-3',
+      imageFraction: .7,
+      createdAtUtc: DateTime.utc(2026, 11, 4),
+    ),
+  ],
+);

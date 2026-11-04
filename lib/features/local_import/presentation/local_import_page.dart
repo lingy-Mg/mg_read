@@ -1,5 +1,6 @@
 /// Import confirmation and local-library management UI. It consumes only the
 /// path-free ContentLibrary facade and an app-scoped queue controller.
+/// Returning from details reloads the library after metadata or removal changes.
 library;
 
 import 'dart:io';
@@ -30,6 +31,7 @@ class LocalImportPage extends ConsumerWidget {
               Text('导入 TXT 或 EPUB', style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 6),
               Text('支持 UTF-8、GB18030 等常见文本编码；单文件最大 256 MiB，每批最多 100 个。', style: Theme.of(context).textTheme.bodyMedium),
+              Text('EPUB 仅支持纯文字或纯图片正文，分别使用小说或漫画阅读器；暂不支持图文混排。', style: Theme.of(context).textTheme.bodyMedium),
               const SizedBox(height: 16),
               Wrap(
                 spacing: 12,
@@ -147,11 +149,14 @@ class LocalImportPage extends ConsumerWidget {
                     '${item.author ?? '作者未知'} · ${item.source.isLocal ? '本地书籍' : '其他来源'}${item.state == 'retained' ? ' · 已从书架移除，内容保留' : ''}',
                   ),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => LocalDocumentDetailPage(itemId: item.id.value, onReaderRequested: onReaderRequested),
-                    ),
-                  ),
+                  onTap: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => LocalDocumentDetailPage(itemId: item.id.value, onReaderRequested: onReaderRequested),
+                      ),
+                    );
+                    if (context.mounted) await controller.reload();
+                  },
                 ),
             ],
           ),

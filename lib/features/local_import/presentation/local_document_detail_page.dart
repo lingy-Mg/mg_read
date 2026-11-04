@@ -169,6 +169,7 @@ class _LocalDocumentDetailPageState extends ConsumerState<LocalDocumentDetailPag
           author: author.text.trim().isEmpty ? null : author.text.trim(),
         );
         await _load();
+        if (mounted) await ref.read(localImportControllerProvider).reload();
       } on Object catch (error) {
         _show(error.toString());
       }
@@ -185,7 +186,10 @@ class _LocalDocumentDetailPageState extends ConsumerState<LocalDocumentDetailPag
       if (!mounted) return;
       _show(job.status == LocalImportStatus.awaitingConfirmation ? '新解析已就绪，请预览并确认后应用。' : '重新解析未能完成。');
       if (job.status == LocalImportStatus.awaitingConfirmation) {
-        await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const LocalImportPage()));
+        await Navigator.of(
+          context,
+        ).push(MaterialPageRoute<void>(builder: (_) => LocalImportPage(onReaderRequested: widget.onReaderRequested)));
+        if (mounted) await _load();
       }
     } on Object catch (error) {
       _show(error.toString());
@@ -211,6 +215,7 @@ class _LocalDocumentDetailPageState extends ConsumerState<LocalDocumentDetailPag
         localContentLibraryProvider,
       )()).updateLocalDocumentCover(LibraryItemId(widget.itemId), bytes: bytes, mimeType: mime);
       await _load();
+      if (mounted) await ref.read(localImportControllerProvider).reload();
     } on Object catch (error) {
       _show(error.toString());
     }
@@ -226,7 +231,10 @@ class _LocalDocumentDetailPageState extends ConsumerState<LocalDocumentDetailPag
       await ref.read(localImportControllerProvider).reload();
       if (!mounted) return;
       if (job.status == LocalImportStatus.awaitingConfirmation) {
-        await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const LocalImportPage()));
+        await Navigator.of(
+          context,
+        ).push(MaterialPageRoute<void>(builder: (_) => LocalImportPage(onReaderRequested: widget.onReaderRequested)));
+        if (mounted) await _load();
       } else {
         _show('无法读取所选文件：${job.errorCode ?? job.status.name}');
       }
@@ -305,6 +313,8 @@ class _LocalDocumentDetailPageState extends ConsumerState<LocalDocumentDetailPag
     if (yes != true) return;
     try {
       await (await ref.read(localContentLibraryProvider)()).removeLibraryItem(LibraryItemId(widget.itemId), policy);
+      if (!mounted) return;
+      await ref.read(localImportControllerProvider).reload();
       if (!mounted) return;
       _show(message);
       Navigator.of(context).pop();

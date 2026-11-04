@@ -1,3 +1,7 @@
+/// Shelf projections use request generations and reset their lifecycle guard
+/// on provider rebuild; invalidation may reuse the same Notifier instance.
+library;
+
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,22 +15,16 @@ import 'package:mg_read/features/library/domain/library_item_summary.dart';
 import 'package:mg_read/features/library/domain/library_overview.dart';
 
 /// Composition port for the current feature-local library overview reader.
-final libraryOverviewLoaderProvider = Provider<LibraryOverviewLoader>(
-  (Ref ref) => const EmptyLibraryOverviewLoader(),
-);
+final libraryOverviewLoaderProvider = Provider<LibraryOverviewLoader>((Ref ref) => const EmptyLibraryOverviewLoader());
 
 /// Owns the library page lifecycle and its local optimistic shelf projection.
-final libraryPageControllerProvider =
-    NotifierProvider<LibraryPageController, LibraryPageState>(
-      LibraryPageController.new,
-    );
+final libraryPageControllerProvider = NotifierProvider<LibraryPageController, LibraryPageState>(LibraryPageController.new);
 
 /// Owns the privacy-only shelf projection with the same lifecycle guarantees
 /// as the normal library landing page.
-final privateLibraryPageControllerProvider =
-    NotifierProvider<PrivateLibraryPageController, LibraryPageState>(
-      PrivateLibraryPageController.new,
-    );
+final privateLibraryPageControllerProvider = NotifierProvider<PrivateLibraryPageController, LibraryPageState>(
+  PrivateLibraryPageController.new,
+);
 
 /// Immutable-state controller with request-generation protection.
 ///
@@ -34,8 +32,7 @@ final privateLibraryPageControllerProvider =
 /// removal is reflected immediately. A successful background reconciliation
 /// replaces that projection; a reconciliation failure deliberately keeps the
 /// durable mutation outcome visible.
-abstract class _LibraryOverviewPageController
-    extends Notifier<LibraryPageState> {
+abstract class _LibraryOverviewPageController extends Notifier<LibraryPageState> {
   LibraryVisibility get visibility;
 
   late LibraryOverviewLoader _loader;
@@ -44,12 +41,12 @@ abstract class _LibraryOverviewPageController
   bool _disposed = false;
   bool _hasLoadedBase = false;
   LibraryOverview _baseOverview = const LibraryOverview.empty();
-  final Map<String, _PendingAddition> _pendingAdditions =
-      <String, _PendingAddition>{};
+  final Map<String, _PendingAddition> _pendingAdditions = <String, _PendingAddition>{};
   final Map<String, bool> _pendingRemovals = <String, bool>{};
 
   @override
   LibraryPageState build() {
+    _disposed = false;
     _loader = ref.watch(libraryOverviewLoaderProvider);
     _diagnostics = ref.watch(diagnosticsManagerProvider);
     ref.onDispose(() {
@@ -64,25 +61,16 @@ abstract class _LibraryOverviewPageController
   }
 
   /// Immediately inserts a provisional shelf item identified by [mutationId].
-  void beginAddition({
-    required String mutationId,
-    required LibraryItemSummary provisionalItem,
-  }) {
+  void beginAddition({required String mutationId, required LibraryItemSummary provisionalItem}) {
     if (_disposed) return;
     _pendingAdditions[mutationId] = _PendingAddition(provisionalItem);
     _publishProjectedLoaded();
   }
 
   /// Replaces a provisional item with its durable identity and reconciles it.
-  void commitAddition({
-    required String mutationId,
-    required LibraryItemSummary durableItem,
-  }) {
+  void commitAddition({required String mutationId, required LibraryItemSummary durableItem}) {
     if (_disposed) return;
-    _pendingAdditions[mutationId] = _PendingAddition(
-      durableItem,
-      committed: true,
-    );
+    _pendingAdditions[mutationId] = _PendingAddition(durableItem, committed: true);
     _publishProjectedLoaded();
     unawaited(_reconcileAfterMutation());
   }
@@ -128,11 +116,7 @@ abstract class _LibraryOverviewPageController
 
   Future<void> _reconcileAfterMutation() {
     final int generation = ++_latestGeneration;
-    return _load(
-      generation,
-      retainedOverview: _projectedOverview(),
-      preserveProjectedStateOnFailure: true,
-    );
+    return _load(generation, retainedOverview: _projectedOverview(), preserveProjectedStateOnFailure: true);
   }
 
   Future<void> _load(
@@ -143,18 +127,12 @@ abstract class _LibraryOverviewPageController
   }) async {
     if (!_isCurrent(generation)) return;
 
-    final bool initialLoad =
-        retainedOverview == null &&
-        !_hasLoadedBase &&
-        _pendingAdditions.isEmpty &&
-        _pendingRemovals.isEmpty;
+    final bool initialLoad = retainedOverview == null && !_hasLoadedBase && _pendingAdditions.isEmpty && _pendingRemovals.isEmpty;
     final span = _diagnostics.startSpan(
       AppDiagnosticEvents.libraryLoad,
       attributes: () => DiagnosticObjectValue(<String, DiagnosticValue>{
         'requestGeneration': DiagnosticValue.int64(generation),
-        'resultState': DiagnosticValue.string(
-          initialLoad ? 'initialLoading' : 'refreshing',
-        ),
+        'resultState': DiagnosticValue.string(initialLoad ? 'initialLoading' : 'refreshing'),
       }),
     );
     final stopwatch = Stopwatch()..start();
@@ -176,15 +154,11 @@ abstract class _LibraryOverviewPageController
     } else if (initialLoad) {
       state = const LibraryPageState.initialLoading();
     } else {
-      state = LibraryPageState.refreshing(
-        retainedOverview ?? _projectedOverview(),
-      );
+      state = LibraryPageState.refreshing(retainedOverview ?? _projectedOverview());
     }
 
     try {
-      final LibraryOverview overview = await _loader.load(
-        visibility: visibility,
-      );
+      final LibraryOverview overview = await _loader.load(visibility: visibility);
       if (!_isCurrent(generation)) {
         span.cancel(
           attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
@@ -204,9 +178,7 @@ abstract class _LibraryOverviewPageController
         attributes: DiagnosticObjectValue(<String, DiagnosticValue>{
           'requestGeneration': DiagnosticValue.int64(generation),
           'itemCount': DiagnosticValue.int64(projected.items.length),
-          'resultState': DiagnosticValue.string(
-            projected.isEmpty ? 'empty' : 'content',
-          ),
+          'resultState': DiagnosticValue.string(projected.isEmpty ? 'empty' : 'content'),
         }),
       );
       report(DiagnosticOutcome.success);
@@ -227,9 +199,7 @@ abstract class _LibraryOverviewPageController
       } else {
         state = LibraryPageState.failure(
           error: appError,
-          retainedOverview:
-              retainedOverview ??
-              (_hasLoadedBase ? _projectedOverview() : null),
+          retainedOverview: retainedOverview ?? (_hasLoadedBase ? _projectedOverview() : null),
         );
       }
       span.fail(
@@ -251,8 +221,7 @@ abstract class _LibraryOverviewPageController
     ];
     final knownIds = items.map((item) => item.id).toSet();
     for (final pending in _pendingAdditions.values) {
-      if (hiddenIds.contains(pending.item.id) ||
-          !knownIds.add(pending.item.id)) {
+      if (hiddenIds.contains(pending.item.id) || !knownIds.add(pending.item.id)) {
         continue;
       }
       items.add(pending.item);
@@ -267,16 +236,11 @@ abstract class _LibraryOverviewPageController
 
   void _discardReconciledMutations() {
     final durableIds = _baseOverview.items.map((item) => item.id).toSet();
-    _pendingAdditions.removeWhere(
-      (_, pending) => pending.committed && durableIds.contains(pending.item.id),
-    );
-    _pendingRemovals.removeWhere(
-      (itemId, committed) => committed && !durableIds.contains(itemId),
-    );
+    _pendingAdditions.removeWhere((_, pending) => pending.committed && durableIds.contains(pending.item.id));
+    _pendingRemovals.removeWhere((itemId, committed) => committed && !durableIds.contains(itemId));
   }
 
-  bool _isCurrent(int generation) =>
-      !_disposed && generation == _latestGeneration;
+  bool _isCurrent(int generation) => !_disposed && generation == _latestGeneration;
 }
 
 final class LibraryPageController extends _LibraryOverviewPageController {
@@ -284,8 +248,7 @@ final class LibraryPageController extends _LibraryOverviewPageController {
   LibraryVisibility get visibility => LibraryVisibility.normal;
 }
 
-final class PrivateLibraryPageController
-    extends _LibraryOverviewPageController {
+final class PrivateLibraryPageController extends _LibraryOverviewPageController {
   @override
   LibraryVisibility get visibility => LibraryVisibility.private;
 }

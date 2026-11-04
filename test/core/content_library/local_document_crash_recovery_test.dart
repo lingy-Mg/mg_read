@@ -12,8 +12,9 @@ void main() {
     final phase = Platform.environment['MGREAD_CRASH_PHASE'];
     if (rootPath == null || (phase != 'prepare' && phase != 'recover')) {
       markTestSkipped('Set MGREAD_CRASH_ROOT and MGREAD_CRASH_PHASE=prepare|recover.');
+      return;
     }
-    final root = Directory(rootPath!);
+    final root = Directory(rootPath);
 
     if (phase == 'prepare') {
       final library = await ContentLibrary.open(dataRoot: root);

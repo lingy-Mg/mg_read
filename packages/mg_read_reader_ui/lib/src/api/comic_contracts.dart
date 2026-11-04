@@ -51,6 +51,13 @@ abstract interface class ComicReaderDataSource {
   );
 }
 
+/// Opts a comic source into durable image-level progress restoration.
+///
+/// Without this marker the reader preserves its legacy chapter-start save
+/// policy. Sources should implement it only when image IDs remain stable and
+/// loading bytes provides reliable image geometry for semantic restoration.
+abstract interface class ComicReaderPreciseProgressDataSource {}
+
 /// Optional host capability for distinguishing readable bytes from a durable
 /// image-cache hit. A reader still displays valid bytes when persistence fails,
 /// but does not report that image as cached.

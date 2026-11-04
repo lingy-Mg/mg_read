@@ -28,6 +28,31 @@ import 'package:mg_read/features/library/domain/library_overview.dart';
 import '../../../core/diagnostics/diagnostics_testkit.dart';
 
 void main() {
+  test('provider invalidation reloads instead of leaving the shelf permanently loading', () async {
+    final diagnostics = DiagnosticsTestkit();
+    addTearDown(diagnostics.dispose);
+    final loader = _ControlledLibraryOverviewLoader();
+    final container = ProviderContainer(
+      overrides: [
+        libraryOverviewLoaderProvider.overrideWithValue(loader),
+        diagnosticsManagerProvider.overrideWithValue(diagnostics.manager),
+      ],
+    );
+    addTearDown(container.dispose);
+    final subscription = container.listen(libraryPageControllerProvider, (_, _) {}, fireImmediately: true);
+    addTearDown(subscription.close);
+    await _flush();
+    loader.completeNext(_overview('before-import'));
+    await _flush();
+    expect(container.read(libraryPageControllerProvider).status, LibraryPageStatus.content);
+    container.invalidate(libraryPageControllerProvider);
+    await _flush();
+    loader.completeNext(_overview('after-import'));
+    await _flush();
+    expect(container.read(libraryPageControllerProvider).status, LibraryPageStatus.content);
+    expect(container.read(libraryPageControllerProvider).overview!.items.single.title, 'after-import');
+  });
+
   test('keeps the successful overview when the page listener is replaced', () async {
     final diagnostics = DiagnosticsTestkit();
     addTearDown(diagnostics.dispose);

@@ -204,9 +204,6 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
       NovelReaderLaunchRequest request => request.withObserver(
         _ReaderEntryObserver(delegate: request.observer, firstContentHandler: _presentFirstContent, failureHandler: _presentInitialFailure),
       ),
-      DocumentReaderLaunchRequest request => request.withObserver(
-        _ReaderEntryObserver(delegate: request.observer, firstContentHandler: _presentFirstContent, failureHandler: _presentInitialFailure),
-      ),
       ComicReaderLaunchRequest request => request.withObserver(
         _ComicEntryObserver(
           delegate: request.observer,
@@ -333,9 +330,6 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
         if (observer != null) {
           unawaited(Future<void>.sync(() async => observer.onExitRequested(null)));
         }
-      case DocumentReaderLaunchRequest request:
-        final observer = request.observer;
-        if (observer != null) unawaited(Future<void>.sync(() async => observer.onExitRequested(null)));
       case ComicReaderLaunchRequest request:
         final observer = request.observer;
         if (observer != null) {
@@ -347,9 +341,6 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
   @override
   void dispose() {
     final ReaderLaunchRequest request = _boundRequest;
-    if (request case DocumentReaderLaunchRequest(dataSource: final DisposableReaderDataSource dataSource)) {
-      unawaited(dataSource.dispose().onError((Object _, StackTrace _) {}));
-    }
     if (request case NovelReaderLaunchRequest(dataSource: final DisposableReaderDataSource dataSource)) {
       unawaited(dataSource.dispose().onError((Object _, StackTrace _) {}));
     }
@@ -396,7 +387,7 @@ class _ReaderEntryTransitionState extends State<ReaderEntryTransition> with Tick
                     progress: entryProgress,
                     disappearance: handoff,
                     kind: switch (_boundRequest) {
-                      NovelReaderLaunchRequest() || DocumentReaderLaunchRequest() => DefaultCoverKind.novel,
+                      NovelReaderLaunchRequest() => DefaultCoverKind.novel,
                       ComicReaderLaunchRequest() => DefaultCoverKind.manga,
                     },
                     coverImage: _entryCoverImage,

@@ -490,6 +490,8 @@ final class _BlockBuilder {
             'blockquote',
             'pre',
             'figure',
+            'svg',
+            'img',
             'h1',
             'h2',
             'h3',
