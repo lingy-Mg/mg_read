@@ -5,6 +5,7 @@
  * line ordering, HTML parsing and MCUE player decryption. This upstream rejects
  * proxies, so source requests and Runtime-proxied covers/media explicitly use
  * direct Runtime routing; resource bytes still remain in Runtime's resource proxy.
+ * The hot ranking is a complete single-page list, independent of page-size hints.
  */
 import { createDecipheriv, createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -101,12 +102,15 @@ export async function discover(request: {
   }
   const category = categories.find(([id]) => request.target === `category:${id}`);
   if (category === undefined) throw new Error('Discovery target is invalid.');
+  const singlePage = category[0] === 'hot';
+  if (singlePage && request.cursor !== null) throw new Error('Discovery cursor is invalid.');
   const page = discoveryPage(request.cursor, request.target);
   const [, title, route] = category;
   const collectionId = `video:${category[0]}`;
-  const values = parseListing(await fetchText(`${base}${pagedRoute(route, page)}`)).slice(0, clamp(request.pageSize));
+  const listing = parseListing(await fetchText(`${base}${pagedRoute(route, page)}`));
+  const values = listing.slice(0, singlePage ? 50 : clamp(request.pageSize));
   const items = values.map((content) => frozen({ content, rank: null, metric: null, recommendation: null }));
-  const continuation = values.length >= clamp(request.pageSize) && page < 50
+  const continuation = !singlePage && values.length >= clamp(request.pageSize) && page < 50
     ? frozen({ target: request.target, cursor: `${request.target}:${page + 1}` })
     : null;
   if (request.collectionId !== null) {

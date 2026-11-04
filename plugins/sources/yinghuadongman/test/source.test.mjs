@@ -99,6 +99,33 @@ test('fixture flow covers discovery, search, detail, neutral groups and both pla
   );
 });
 
+test('hot ranking keeps the complete single page without offering more', async () => {
+  const list = await readFile(new URL('./fixtures/list.html', import.meta.url), 'utf8');
+  const requests = [];
+  await plugin.activate({
+    log: { info() {}, warn() {} },
+    resource: { proxy(value) { return value.url; } },
+    http: { async fetch(input) {
+      requests.push(new URL(input).pathname);
+      return new Response(list);
+    } },
+  });
+
+  for (const pageSize of [1, 2, 20]) {
+    const result = await plugin.discover({ target: 'category:hot', cursor: null, collectionId: null, pageSize });
+    const collection = result.document.components[0].children[0];
+    assert.deepEqual(collection.items.map(item => item.content.id), ['video:101', 'video:102']);
+    assert.equal(collection.continuation, null);
+  }
+  assert.deepEqual(requests, Array(3).fill('/label/hot.html'));
+
+  await assert.rejects(
+    plugin.discover({ target: 'category:hot', cursor: 'category:hot:2', collectionId: 'video:hot', pageSize: 2 }),
+    /Discovery cursor is invalid/u,
+  );
+  assert.equal(requests.length, 3, 'a stale hot cursor must not request a nonexistent page');
+});
+
 test('search supplements an exact current item when the upstream search index lags', async () => {
   const list = await readFile(new URL('./fixtures/list.html', import.meta.url), 'utf8');
   const staleSearch = list

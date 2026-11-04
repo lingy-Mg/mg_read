@@ -30,6 +30,10 @@ test('fixture outputs pass the current Runtime source validators', async () => {
   const sourceName = 'Fixture Yinghua';
   const discovery = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 5 });
   assert.doesNotThrow(() => validators.validateDiscoverResult(pluginId, sourceName, discovery));
+  const hot = await plugin.discover({ target: 'category:hot', cursor: null, collectionId: null, pageSize: 1 });
+  const hotCollection = validators.validateDiscoverResult(pluginId, sourceName, hot).document.components[0].children[0];
+  assert.equal(hotCollection.items.length, 2);
+  assert.equal(hotCollection.continuation, null);
   const library = await plugin.discover({ target: 'category:library', cursor: null, collectionId: null, pageSize: 20 });
   const normalized = validators.validateDiscoverResult(pluginId, sourceName, library);
   assert.equal(normalized.document.components[0].groups[1].options.length, 45);

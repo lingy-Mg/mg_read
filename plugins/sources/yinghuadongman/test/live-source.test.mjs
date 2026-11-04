@@ -25,6 +25,11 @@ test('live public flow reaches discovery, search, detail, catalog and playback r
     http: { fetch: liveFetch },
   });
   const discovery = await plugin.discover({ target: 'category:today', cursor: null, collectionId: null, pageSize: 3 });
+  const hot = await plugin.discover({ target: 'category:hot', cursor: null, collectionId: null, pageSize: 1 });
+  const ranking = hot.document.components[0].children[0];
+  assert.ok(ranking.items.length > 0);
+  assert.equal(ranking.continuation, null);
+  t.diagnostic(`hot_items=${ranking.items.length} hot_continuation=null`);
   const library = await plugin.discover({ target: 'category:library', cursor: null, collectionId: null, pageSize: 20 });
   const filters = library.document.components.find(component => component.type === 'filters');
   assert.deepEqual(filters.groups.map(group => group.label), ['类型', '剧情', '地区', '年份', '字母', '排序']);
