@@ -14,6 +14,8 @@ final class CompanionNativeQaServer {
   final HttpServer server;
   final File sample;
   Map<String, Object?>? _ready;
+  Map<String, Object?>? _externalState;
+  Map<String, Object?>? _completion;
   Map<String, Object?> Function()? _stateReader;
   final Completer<Map<String, Object?>> _done = Completer<Map<String, Object?>>();
 
@@ -59,9 +61,21 @@ final class CompanionNativeQaServer {
           }
           await request.response.close();
         case '/state':
-          final state = _stateReader?.call();
+          final state = _stateReader?.call() ?? _externalState;
           request.response.headers.contentType = ContentType.json;
           request.response.write(jsonEncode(state ?? {'status': 'waiting'}));
+          await request.response.close();
+        case '/receiver-ready':
+          _ready = await _readPost(request);
+          request.response.statusCode = HttpStatus.accepted;
+          await request.response.close();
+        case '/receiver-state':
+          _externalState = await _readPost(request);
+          request.response.statusCode = HttpStatus.accepted;
+          await request.response.close();
+        case '/completion':
+          request.response.headers.contentType = ContentType.json;
+          request.response.write(jsonEncode({'done': _completion != null, 'report': _completion}));
           await request.response.close();
         case '/done':
           if (request.method != 'POST') {
@@ -82,6 +96,8 @@ final class CompanionNativeQaServer {
           }
           request.response.statusCode = HttpStatus.accepted;
           await request.response.close();
+          _completion = Map<String, Object?>.from(payload);
+          await writeReport(_completion!);
           _done.complete(Map<String, Object?>.from(payload));
         case '/media.mp4':
           await _serveMedia(request);
@@ -93,6 +109,18 @@ final class CompanionNativeQaServer {
       await request.response.close().catchError((Object _) {});
       stderr.writeln('COMPANION_QA_HTTP_ERROR ${error.runtimeType}');
     }
+  }
+
+  Future<Map<String, Object?>> _readPost(HttpRequest request) async {
+    if (request.method != 'POST') throw const HttpException('POST required');
+    final bytes = <int>[];
+    await for (final chunk in request) {
+      if (bytes.length + chunk.length > 64 * 1024) throw const HttpException('QA report too large');
+      bytes.addAll(chunk);
+    }
+    final value = jsonDecode(utf8.decode(bytes));
+    if (value is! Map<String, dynamic>) throw const FormatException('Expected QA JSON object');
+    return Map<String, Object?>.from(value);
   }
 
   Future<void> _serveMedia(HttpRequest request) async {

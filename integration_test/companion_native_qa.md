@@ -51,3 +51,31 @@ Windows 接收端与 MuMu BRA AL00（Android 12，ADB `127.0.0.1:16384`，x86_64
 
 本机证据保存在忽略目录 `.dart_tool/ai-checks/companion-qa/`，包括 `tv-final-report.json`、
 `phone-complete-results/` 与 `surface-final-results/`。MuMu NAT 下采用手动地址；未宣称 UDP 广播发现或实体电视通过。
+
+## 2026-11-04 实体 TV 补充验收
+
+设备为 MiTV-ANSP0、Android 9、amlogic、armeabi-v7a，ADB 与 Wi-Fi 地址为 `192.168.50.102:5555`。
+仅安装独立包 `com.mgread.mg_read.companiontvqa`，未覆盖正式应用或修改其数据。
+
+实体 TV 角色通过 `MGREAD_COMPANION_QA_PHYSICAL=true` 运行；协调与媒体服务仍在 Windows，
+由 TV 上报真实接收端口和播放器状态。该模式使用真实网络能力，不替换网卡或注入发现地址。
+测试身份满足发现协议至少 16 字符的要求，配对记录及密钥写入会直接使验收失败。
+
+`test_driver/companion_lan_probe.dart` 可在 Windows 运行，仅自动选择隔离验收接收端的真实 UDP 广播，
+使用生产加密通道和命令类型连接，不提供预设 IP 或共享密钥。实测结果：
+
+- Windows 连续收到来自 `192.168.50.102` 的发现广播，TV 接收状态为开启。
+- 自动发现后直接获得控制，handoff 返回 started，实体 TV 真实首帧及持续播放成立。
+- 暂停、12000 ms 跳转、继续、下一集、退出均返回 applied。
+- 不可用选集返回 failed，仍播放 next；失败回退后实测位置 26166 ms，未丢失原播放。
+
+MuMu 的真实网卡为 `10.0.2.15/24`，与电视的 `192.168.50.0/24` 隔着 NAT。
+本轮手机实际打开了播放器右上角入口，但 40 秒内自动列表未出现实体 TV，未判为通过。
+Windows 能接收同一广播，因此保留此环境限制与失败截图；不能据此宣称同 Wi-Fi 实体手机自动发现已验收。
+本轮未完成“手机按钮到实体 TV”的完整交接；此前 Windows 接收端与 MuMu 的按钮交接结果单独保留。
+用户随后要求不再追加测试，已停止设备驱动并归还 MuMu，没有用手动地址或伪造广播替代自动发现结果。
+
+证据位于 `.dart_tool/ai-checks/companion-physical/`：`udp-probe.log`、`lan-probe-report.json`、
+`lan-probe-next.log` 及 `phone-results/`。本轮只有验收代码与文档变化，不升级根应用版本。
+定向 Dart 分析、格式和文档检查通过；全局源码规模检查被其他任务的
+`packages/mg_read_node_runtime/src/desktop-runtime.ts` 收缩后未同步基线阻止，未修改该路径或基线。

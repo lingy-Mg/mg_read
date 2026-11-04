@@ -1,7 +1,9 @@
 /// Native two-endpoint companion acceptance.
 ///
 /// Run role=tv on the Windows LAN host first, then role=phone on the authorized
-/// MuMu Android 12 client. TV reception uses the real PairedSyncHost,
+/// MuMu Android 12 client. MGREAD_COMPANION_QA_PHYSICAL=true also runs on an
+/// isolated physical Android TV; network capabilities and discovery stay real.
+/// TV reception uses the real PairedSyncHost,
 /// CompanionController, encrypted direct LAN handshake and launchCompanionSourceVideo.
 library;
 
@@ -42,16 +44,87 @@ void main() {
   final role = const String.fromEnvironment('MGREAD_COMPANION_QA_ROLE');
 
   testWidgets('native companion TV receiver or Android phone handoff acceptance', (tester) async {
-    expect(const String.fromEnvironment('MGREAD_APPLICATION_ID_SUFFIX'), 'companionqa');
+    expect(const String.fromEnvironment('MGREAD_APPLICATION_ID_SUFFIX'), anyOf('companionqa', 'companiontvqa'));
     expect(role, anyOf('tv', 'phone'), reason: 'Set MGREAD_COMPANION_QA_ROLE=tv or phone.');
     if (role == 'tv') {
-      expect(Platform.isWindows, isTrue, reason: 'TV receiver role belongs on the authorized Windows LAN host.');
-      await _runTvReceiver(tester, binding);
+      if (const bool.fromEnvironment('MGREAD_COMPANION_QA_PHYSICAL')) {
+        expect(Platform.isAndroid, isTrue);
+        await _runPhysicalTvReceiver(tester, binding);
+      } else {
+        expect(Platform.isWindows, isTrue, reason: 'TV receiver role belongs on the authorized Windows LAN host.');
+        await _runTvReceiver(tester, binding);
+      }
     } else {
       expect(Platform.isAndroid, isTrue, reason: 'Phone role belongs on the authorized MuMu Android 12 client.');
       await _runPhoneClient(tester, binding);
     }
   }, timeout: const Timeout(Duration(minutes: 12)));
+}
+
+Future<void> _runPhysicalTvReceiver(WidgetTester tester, IntegrationTestWidgetsFlutterBinding binding) async {
+  final coordinator = Uri.parse('http://${const String.fromEnvironment('MGREAD_COMPANION_QA_HOST')}');
+  final host = await _QaAppHost.create(
+    role: 'tv',
+    mediaUri: coordinator.replace(path: '/media.mp4'),
+  );
+  var publishing = false;
+  Timer? publisher;
+  try {
+    await tester.pumpWidget(host.app);
+    final container = ProviderScope.containerOf(tester.element(find.text('Companion QA receiver')), listen: false);
+    final companion = container.read(companionControllerProvider);
+    await companion.initialize();
+    expect(isValidPairedDeviceId(companion.identity!.deviceId), isTrue);
+    binding.reportData = {
+      'role': 'physical-tv',
+      'networkAvailable': await container.read(companionNetworkProvider).available(),
+      'addresses': companion.localAddresses,
+    };
+    await companion.setTvMode(true);
+    await container.read(deviceSyncControllerProvider.notifier).start();
+    await _waitUntil(() => companion.hostPort != null, const Duration(seconds: 40));
+    await _postJson(coordinator.replace(path: '/receiver-ready'), {
+      'id': companion.identity!.deviceId,
+      'label': companion.identity!.label,
+      'port': companion.hostPort,
+      'addresses': companion.localAddresses,
+    });
+    Future<void> publish() async {
+      if (publishing) return;
+      publishing = true;
+      try {
+        await _postJson(coordinator.replace(path: '/receiver-state'), {
+          ...coordinatorState(companion, container),
+          'durationMs': container.read(companionMediaHostProvider).active?.controller.snapshot.duration.inMilliseconds ?? 0,
+          'controllers': companion.connectedControllerIds,
+        });
+      } finally {
+        publishing = false;
+      }
+    }
+
+    await publish();
+    publisher = Timer.periodic(const Duration(milliseconds: 300), (_) => unawaited(publish()));
+    await binding.convertFlutterSurfaceToImage();
+    final done = _pollEndpoint(coordinator.replace(path: '/completion'), (value) => value['done'] == true, const Duration(minutes: 10));
+    await _pumpUntil(tester, done, const Duration(minutes: 10));
+    final state = coordinatorState(companion, container);
+    expect(state['playing'], isTrue);
+    expect(state['firstFrame'], isTrue);
+    await binding.takeScreenshot('companion-physical-tv-playing');
+    binding.reportData = {
+      ...?binding.reportData,
+      'role': 'physical-tv',
+      'android': Platform.operatingSystemVersion,
+      'addresses': companion.localAddresses,
+      'finalReceiverState': state,
+      'phoneReport': (await done)['report'],
+    };
+  } finally {
+    publisher?.cancel();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await host.close();
+  }
 }
 
 Future<void> _runTvReceiver(WidgetTester tester, IntegrationTestWidgetsFlutterBinding binding) async {
@@ -177,14 +250,27 @@ Future<void> _runPhoneClient(WidgetTester tester, IntegrationTestWidgetsFlutterB
     await tester.tap(cast);
     await tester.pumpAndSettle();
     await binding.takeScreenshot('companion-phone-tv-picker');
-    final manualTarget = find.text('手动输入 TV 地址');
-    expect(manualTarget, findsOneWidget);
-    await tester.tap(manualTarget);
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('companion-manual-address')), coordinatorHost.split(':').first);
-    await tester.enterText(find.byKey(const Key('companion-manual-port')), '${ready['port']}');
-    await tester.tap(find.byKey(const Key('companion-manual-connect')));
-    await tester.pumpAndSettle();
+    if (const bool.fromEnvironment('MGREAD_COMPANION_QA_PHYSICAL')) {
+      final target = find.byKey(Key('companion-cast-device-${ready['id']}'));
+      final discoveryClock = Stopwatch()..start();
+      while (target.evaluate().isEmpty && discoveryClock.elapsed < const Duration(seconds: 40)) {
+        await tester.pump(const Duration(milliseconds: 200));
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      expect(target, findsOneWidget, reason: 'The physical TV must be found by real LAN discovery, without a supplied address.');
+      await binding.takeScreenshot('companion-phone-discovered-physical-tv');
+      await tester.tap(target);
+      await tester.pumpAndSettle();
+    } else {
+      final manualTarget = find.text('手动输入 TV 地址');
+      expect(manualTarget, findsOneWidget);
+      await tester.tap(manualTarget);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('companion-manual-address')), coordinatorHost.split(':').first);
+      await tester.enterText(find.byKey(const Key('companion-manual-port')), '${ready['port']}');
+      await tester.tap(find.byKey(const Key('companion-manual-connect')));
+      await tester.pumpAndSettle();
+    }
     final service = container.read(companionControllerProvider);
     Map<String, Object?> castState;
     try {
@@ -258,6 +344,7 @@ Future<void> _runPhoneClient(WidgetTester tester, IntegrationTestWidgetsFlutterB
       'android': Platform.operatingSystemVersion,
       'coordinator': coordinatorHost,
       'receiver': ready,
+      'automaticDiscovery': const bool.fromEnvironment('MGREAD_COMPANION_QA_PHYSICAL'),
       'cast': {'firstFrame': castState['firstFrame'], 'episodeId': castState['episodeId']},
       'pause': paused,
       'seek': sought,
@@ -374,8 +461,10 @@ final class _QaAppHost {
       deviceIdentityStoreProvider.overrideWithValue(_QaIdentity(role)),
       pairedDeviceRepositoryProvider.overrideWithValue(_QaPairedDevices()),
       companionRepositoryProvider.overrideWithValue(MemoryCompanionRepository()),
-      companionNetworkProvider.overrideWithValue(network),
-      lanSyncNetworkEnvironmentProvider.overrideWithValue(const _QaLanEnvironment()),
+      if (!const bool.fromEnvironment('MGREAD_COMPANION_QA_PHYSICAL')) ...[
+        companionNetworkProvider.overrideWithValue(network),
+        lanSyncNetworkEnvironmentProvider.overrideWithValue(const _QaLanEnvironment()),
+      ],
       lanPeerServiceProvider.overrideWith((ref) => ref.read(companionControllerProvider)),
       companionHandoffLauncherProvider.overrideWith(
         (ref) =>
@@ -400,6 +489,7 @@ final class _QaAppHost {
     await startup.start();
     final settings = AppSettingsManager(store: FakeSettingsStore(), registry: AppSettingKeys.registry);
     await settings.initialize();
+    if (const bool.fromEnvironment('MGREAD_COMPANION_QA_PHYSICAL')) await settings.set(AppSettingKeys.tvMode, role == 'tv');
     return _QaAppHost._(role, root, library, startup, settings, CompanionQaGateway(mediaUri), _QaCompanionNetwork(role));
   }
 
@@ -423,15 +513,17 @@ final class _QaIdentity implements DeviceIdentityStore {
   final String role;
   @override
   Future<LocalDeviceIdentity> loadOrCreateIdentity() async => LocalDeviceIdentity(
-    deviceId: role == 'tv' ? 'companion-qa-tv' : 'companion-qa-phone',
-    label: role == 'tv' ? 'Windows TV' : 'MuMu phone',
+    deviceId: role == 'tv'
+        ? (const bool.fromEnvironment('MGREAD_COMPANION_QA_PHYSICAL') ? 'companion-qa-tv-receiver' : 'companion-qa-tv')
+        : 'companion-qa-phone',
+    label: role == 'tv' ? (const bool.fromEnvironment('MGREAD_COMPANION_QA_PHYSICAL') ? 'MiTV companion QA' : 'Windows TV') : 'MuMu phone',
   );
   @override
   Future<void> deletePeerSecret(String peerDeviceId) async {}
   @override
   Future<List<int>?> readPeerSecret(String peerDeviceId) async => null;
   @override
-  Future<void> writePeerSecret(String peerDeviceId, List<int> secret) async {}
+  Future<void> writePeerSecret(String peerDeviceId, List<int> secret) async => throw StateError('Companion must not save pairing secrets.');
 }
 
 final class _QaPairedDevices implements PairedDeviceRepository {
@@ -442,7 +534,7 @@ final class _QaPairedDevices implements PairedDeviceRepository {
   @override
   Future<void> remove(String deviceId) async {}
   @override
-  Future<void> upsert(PairedDevice device) async {}
+  Future<void> upsert(PairedDevice device) async => throw StateError('Companion must not create sync pairing.');
 }
 
 final class _QaCompanionNetwork extends CompanionNetwork {
