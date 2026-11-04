@@ -43,7 +43,7 @@
     ".mgplugin.js"
   ],
   "legacyBaseline": {
-    "packages/mg_read_node_runtime/src/desktop-runtime.ts": 1130,
+    "packages/mg_read_node_runtime/src/desktop-runtime.ts": 1110,
     "packages/mobile_scanner/darwin/mobile_scanner/Sources/mobile_scanner/MobileScannerPlugin.swift": 1184
   },
   "legacyRationale": {

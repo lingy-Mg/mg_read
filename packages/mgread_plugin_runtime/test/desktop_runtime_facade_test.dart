@@ -9,9 +9,11 @@ import 'test_paths.dart';
 
 part 'desktop_runtime_facade_startup_part.dart';
 part 'desktop_runtime_facade_lifecycle_part.dart';
+part 'desktop_runtime_facade_bun_part.dart';
 
 void main() {
   _registerDesktopRuntimeStartupTests();
+  _registerBunRuntimeTests();
   _registerDesktopRuntimeLifecycleTests();
 }
 

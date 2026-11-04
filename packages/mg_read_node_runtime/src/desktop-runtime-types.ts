@@ -82,10 +82,35 @@ export interface RuntimeStatusResponse extends JsonObject {
   readonly platform: string;
   readonly plugins: readonly JsonObject[];
   readonly runtimeVersion: string;
-  readonly runtimeKind: "android-javet" | "android-node-process" | "desktop-node";
+  readonly runtimeKind: "android-javet" | "android-node-process" | "desktop-node" | "desktop-bun";
   readonly uptimeMs: number;
 }
 
 export interface RuntimeShutdownResponse extends JsonObject {
   readonly accepted: boolean;
+}
+
+/**
+ * One stdout-only startup record emitted after the loopback server is usable.
+ * It is consumed by the Runtime-owned Flutter supervisor, never by app code.
+ */
+export interface DesktopRuntimeReady {
+  /** Fresh identity that binds HTTP, WebSocket, and Flutter startup together. */
+  readonly bootId: string;
+  /** Fixed loopback-only host; this Runtime never listens on LAN interfaces. */
+  readonly host: "127.0.0.1";
+  /** Exact Node binary version that started the Core. */
+  readonly nodeVersion: string;
+  /** Runtime child process identifier, used only for lifecycle diagnostics. */
+  readonly pid: number;
+  /** Ephemeral loopback port selected by Node or supplied by a test. */
+  readonly port: number;
+  /** Wire-protocol version that the Flutter connection must validate. */
+  readonly protocolVersion: string;
+  /** Runtime implementation version for compatibility and diagnostics. */
+  readonly runtimeVersion: string;
+  /** ISO-8601 timestamp captured once when this Core instance is created. */
+  readonly startedAt: string;
+  /** Distinguishes this stdout record from structured diagnostic records. */
+  readonly type: "ready";
 }

@@ -176,10 +176,11 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ProfileSettingsList(
                                   items: [
                                     ...data.settings.where((item) => item.id == 'network-proxy'),
-                                    if (Platform.isAndroid && !const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME'))
-                                      const ProfileSettingsItemViewData(
+                                    if ((Platform.isAndroid || Platform.isWindows || Platform.isMacOS) &&
+                                        !const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME'))
+                                      ProfileSettingsItemViewData(
                                         id: 'node-runtime',
-                                        title: 'Node.js 运行时',
+                                        title: Platform.isAndroid ? 'Node.js 运行时' : 'JavaScript 运行时',
                                         description: '切换运行时，重启后生效',
                                         icon: ProfileSettingsIcon.sources,
                                       ),

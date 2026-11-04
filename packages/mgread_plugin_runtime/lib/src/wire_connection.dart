@@ -106,6 +106,7 @@ final class _WireConnection {
     if (hello['protocolVersion'] != _protocolVersion ||
         hello['bootId'] != _ready.bootId ||
         hello['nodeVersion'] != _ready.nodeVersion ||
+        hello['bunVersion'] != _ready.bunVersion ||
         hello['maxFrameBytes'] != _maxControlFrameBytes ||
         hello['maxInlineBytes'] != _maxControlFrameBytes ||
         hello['maxInFlightRequests'] != _maxInFlightRequests ||

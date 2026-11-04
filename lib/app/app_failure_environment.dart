@@ -50,6 +50,8 @@ final class AppFailureEnvironment {
           ? AndroidNodeRuntimeSettings.instance.active == AndroidNodeBackend.javet
                 ? 'android-javet'
                 : 'android-node-process'
+          : DesktopRuntimeSettings.instance.active == DesktopRuntimeBackend.bun
+          ? 'desktop-bun'
           : 'desktop-node',
       'vpnStatus': 'not_observed',
       'proxyPreferenceSnapshot': 'report_time',

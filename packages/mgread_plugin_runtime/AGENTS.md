@@ -12,6 +12,12 @@
 
 ## Package 所有权
 
+- Windows x64/macOS arm64 同包包含固定 Node 26.10.0 和 Bun 1.4.4；默认 Node，
+  `DesktopRuntimeSettings` 在组合根读取选择，App 冷重启后生效，两个 JS 后端共用数据根且一次只启动一个。
+  ready/HTTP/hello 必须校验实际引擎及版本，Bun 的 `nodeVersion` 只表示兼容层；不得伪造 Node 版本。
+  Windows Rust 来源仍独立并存。桌面重启继任进程先等待旧进程退出，再打开业务数据库和 Runtime。
+  回归入口为 `desktop_runtime_settings_test.dart`、`desktop_runtime_facade_bun_part.dart` 和根应用桌面设置/重启测试。
+
 - 本 package 独立拥有唯一 Flutter Facade、Node/原生双 Supervisor、Android 组合后端和桌面平台宿主；Node.js Core
   位于同级 `mg_read_node_runtime`，构建后只以 package asset 形式进入本 package。
 - 主应用只调用版本化 `PluginRuntime.invoke`；不得获得 executable、PID、端口、ready、bootId、内部 URL、

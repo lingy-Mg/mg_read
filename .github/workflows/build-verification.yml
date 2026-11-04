@@ -299,6 +299,8 @@ jobs:
           npm ci
           npm run stage:flutter-windows
           npm run verify:staged-windows
+          npm run verify:staged-bun
+          npm run test:bun
 
       - name: Ensure declared Runtime asset directories exist
         shell: bash
@@ -321,6 +323,13 @@ jobs:
 
       - name: Build Windows
         run: flutter build windows --release --no-pub
+
+      - name: Verify final Windows Bun bundle
+        shell: pwsh
+        run: |
+          $env:MGREAD_BUN_BUNDLE_ROOT = Join-Path $PWD 'build/windows/x64/runner/Release/data/flutter_assets/packages/mgread_plugin_runtime/assets/runtime/windows-x64'
+          Push-Location packages/mg_read_node_runtime
+          npm run verify:staged-bun
 
       - name: Package Windows build
         shell: pwsh
@@ -362,6 +371,8 @@ jobs:
         run: |
           npm ci
           npm run stage:flutter-macos
+          npm run verify:staged-bun
+          npm run test:bun
 
       - name: Ensure declared Runtime asset directories exist
         shell: bash
@@ -384,6 +395,17 @@ jobs:
 
       - name: Build macOS
         run: flutter build macos --release --no-pub
+
+      - name: Verify signed macOS runtime helpers
+        run: |
+          APP="$PWD/build/macos/Build/Products/Release/MgRead.app"
+          codesign --verify --strict "$APP/Contents/MacOS/MgReadNode"
+          codesign --verify --strict "$APP/Contents/MacOS/MgReadBun"
+          "$APP/Contents/MacOS/MgReadNode" --version
+          export MGREAD_BUN_BUNDLE_ROOT="$APP/Contents/Frameworks/App.framework/Resources/flutter_assets/packages/mgread_plugin_runtime/assets/runtime/macos-arm64"
+          export MGREAD_BUN_EXECUTABLE="$APP/Contents/MacOS/MgReadBun"
+          cd packages/mg_read_node_runtime
+          npm run verify:staged-bun
 
       - name: Package macOS app
         run: ditto -c -k --sequesterRsrc --keepParent "build/macos/Build/Products/Release/MgRead.app" "build/mgread-macos-arm64.zip"

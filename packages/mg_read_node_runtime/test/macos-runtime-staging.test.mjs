@@ -52,4 +52,11 @@ test("macOS staging uses the pinned Node executable and Runtime entrypoint", asy
     assert.equal(stdout.trim(), "v26.10.0");
   }
   await assert.rejects(access(stagedNpmPackage), { code: "ENOENT" });
+  const bun = resolve(runtimeRoot, "../mgread_plugin_runtime/assets/runtime/macos-arm64/node/MgReadBun");
+  const bunSource = resolve(runtimeRoot, "tools/bun-v1.4.4-macos-arm64/bun");
+  assert.deepEqual(await readFile(bun), await readFile(bunSource));
+  if (process.platform === "darwin") {
+    const { stdout } = await executeFile(bun, ["--version"]);
+    assert.equal(stdout.trim(), "1.4.4");
+  }
 });

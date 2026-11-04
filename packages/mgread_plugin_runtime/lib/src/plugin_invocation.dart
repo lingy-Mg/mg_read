@@ -77,14 +77,19 @@ final class RuntimeStatusInvocation
     final nodeVersion = result['nodeVersion'];
     final runtimeVersion = result['runtimeVersion'];
     final runtimeKind = result['runtimeKind'];
+    final bunVersion = result['bunVersion'];
     final platform = result['platform'];
     final arch = result['arch'];
     if (ok is! bool ||
         nodeVersion is! String ||
         runtimeVersion is! String ||
+        (bunVersion != null && bunVersion is! String) ||
+        (runtimeKind == 'desktop-bun' &&
+            (bunVersion is! String || bunVersion.isEmpty)) ||
         (runtimeKind != 'android-javet' &&
             runtimeKind != 'android-node-process' &&
             runtimeKind != 'desktop-node' &&
+            runtimeKind != 'desktop-bun' &&
             runtimeKind != 'native-rust') ||
         platform is! String ||
         arch is! String ||
@@ -114,6 +119,7 @@ final class RuntimeStatusInvocation
       ),
       runtimeVersion: runtimeVersion,
       runtimeKind: runtimeKind as String,
+      bunVersion: bunVersion as String?,
       uptimeMs: uptimeMs,
     );
   }
@@ -225,6 +231,7 @@ final class RuntimeStatusResult {
     required this.runtimeKind,
     required this.uptimeMs,
     this.nativeStatus,
+    this.bunVersion,
   });
 
   final String arch;
@@ -239,6 +246,7 @@ final class RuntimeStatusResult {
 
   /// Independent native worker metrics in a mixed-engine application.
   final RuntimeStatusResult? nativeStatus;
+  final String? bunVersion;
 }
 
 @immutable

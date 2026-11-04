@@ -3,6 +3,7 @@ part of mgread_plugin_runtime;
 final class _RuntimeChildMonitor {
   _RuntimeChildMonitor(
     this._process, {
+    this.expectedBun = false,
     required _RuntimeDiagnosticSink onDiagnostic,
     required _RuntimeInitializationSink onProgress,
     required _RuntimeProcessExitSink onExit,
@@ -57,6 +58,7 @@ final class _RuntimeChildMonitor {
 
   /// Owned direct child whose stdout, stderr, and exit state are monitored.
   final Process _process;
+  final bool expectedBun;
 
   /// Adds the supervisor's bounded diagnostics to a startup failure.
   final _RuntimeStartupFailureFactory _startupFailure;
@@ -114,7 +116,7 @@ final class _RuntimeChildMonitor {
     }
     if (!_readyReceived) {
       try {
-        final ready = _RuntimeReady.parse(line);
+        final ready = _RuntimeReady.parse(line, expectedBun: expectedBun);
         _readyReceived = true;
         if (!_ready.isCompleted) {
           _ready.complete(ready);
@@ -377,7 +379,7 @@ String _joinPath(List<String> parts) => parts.join(Platform.pathSeparator);
 Directory? _findDevelopmentRuntimeRepository(List<Directory> starts) {
   final toolchain = Platform.isWindows
       ? 'node-v26.10.0-win-x64'
-      : 'node-v24.16.0-darwin-arm64';
+      : 'node-v26.10.0-darwin-arm64';
   final nodeParts = Platform.isWindows
       ? <String>['tools', toolchain, 'node.exe']
       : <String>['tools', toolchain, 'bin', 'node'];
@@ -474,6 +476,7 @@ Future<void> _writeConfiguredDevelopmentPluginDirectory(
 final class _RuntimeReady {
   const _RuntimeReady({
     required this.bootId,
+    this.bunVersion,
     required this.host,
     required this.nodeVersion,
     required this.port,
@@ -487,18 +490,24 @@ final class _RuntimeReady {
 
   /// Exact Node version selected by the platform backend.
   final String nodeVersion;
+  final String? bunVersion;
 
   /// Validated ephemeral TCP port in the unsigned 16-bit TCP range.
   final int port;
 
   /// Parses and validates the fixed ready-record schema from child stdout.
-  factory _RuntimeReady.parse(String line, {String? expectedNodeVersion}) {
+  factory _RuntimeReady.parse(
+    String line, {
+    String? expectedNodeVersion,
+    bool expectedBun = false,
+  }) {
     final value = _jsonObject(jsonDecode(line), 'Runtime ready signal');
     final type = value['type'];
     final bootId = value['bootId'];
     final host = value['host'];
     final port = value['port'];
     final nodeVersion = value['nodeVersion'];
+    final bunVersion = value['bunVersion'];
     final protocolVersion = value['protocolVersion'];
     if (type != 'ready' ||
         bootId is! String ||
@@ -509,7 +518,12 @@ final class _RuntimeReady {
         port <= 0 ||
         port > 65535 ||
         nodeVersion is! String ||
-        nodeVersion != (expectedNodeVersion ?? _expectedNodeVersion) ||
+        (expectedBun
+            ? bunVersion != DesktopRuntimeSettings.bunVersion ||
+                  nodeVersion.isEmpty
+            : bunVersion != null ||
+                  nodeVersion !=
+                      (expectedNodeVersion ?? _expectedNodeVersion)) ||
         protocolVersion != _protocolVersion) {
       throw const FormatException('Invalid Runtime ready signal.');
     }
@@ -518,6 +532,7 @@ final class _RuntimeReady {
       bootId: bootId,
       host: host,
       nodeVersion: nodeVersion,
+      bunVersion: bunVersion as String?,
       port: port,
     );
   }

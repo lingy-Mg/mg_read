@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'desktop_runtime_settings_page.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 
 import 'network_proxy_settings_page.dart';
@@ -23,6 +25,9 @@ class ProfileSettingPlaceholderPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (settingId == 'node-runtime' && (Platform.isWindows || Platform.isMacOS)) {
+      return DesktopRuntimeSettingsPage(onBackRequested: onBackRequested);
+    }
     if (settingId == 'node-runtime') {
       return NodeRuntimeSettingsPage(onBackRequested: onBackRequested);
     }

@@ -392,6 +392,7 @@
 			);
 			outputPaths = (
 				"$(TARGET_BUILD_DIR)/$(EXECUTABLE_FOLDER_PATH)/MgReadNode",
+				"$(TARGET_BUILD_DIR)/$(EXECUTABLE_FOLDER_PATH)/MgReadBun",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;

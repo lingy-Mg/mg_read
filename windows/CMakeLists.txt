@@ -123,6 +123,17 @@ install(CODE "
 install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime)
 
+# A normal desktop release must contain both selectable JavaScript engines.
+if(NOT MGREAD_NATIVE_RUNTIME)
+  foreach(JS_HELPER MgReadNode.exe MgReadBun.exe)
+    install(CODE "
+      if(NOT EXISTS \"${INSTALL_BUNDLE_DATA_DIR}/${FLUTTER_ASSET_DIR_NAME}/packages/mgread_plugin_runtime/assets/runtime/windows-x64/node/${JS_HELPER}\")
+        message(FATAL_ERROR \"Missing bundled JavaScript runtime: ${JS_HELPER}\")
+      endif()
+      " COMPONENT Runtime)
+  endforeach()
+endif()
+
 if(NOT EXISTS "${MGREAD_NATIVE_HOST_EXECUTABLE}")
   message(FATAL_ERROR
     "MgRead requires the Rust host at ${MGREAD_NATIVE_HOST_EXECUTABLE}. Build it before packaging.")
@@ -136,6 +147,12 @@ if(MGREAD_NATIVE_RUNTIME)
     "file(REMOVE_RECURSE \"${INSTALL_BUNDLE_DATA_DIR}/${FLUTTER_ASSET_DIR_NAME}/packages/mgread_plugin_runtime/assets/runtime\")"
     COMPONENT Runtime)
 endif()
+
+# Desktop staging tests may have populated other platforms in this checkout.
+# Keep the delivered Windows bundle free of foreign Runtime executables.
+install(CODE
+  "file(REMOVE_RECURSE \"${INSTALL_BUNDLE_DATA_DIR}/${FLUTTER_ASSET_DIR_NAME}/packages/mgread_plugin_runtime/assets/runtime/macos-arm64\")"
+  COMPONENT Runtime)
 
 # Install the AOT library on non-Debug builds only.
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"

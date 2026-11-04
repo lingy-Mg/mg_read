@@ -48,6 +48,8 @@ test("loads backend-specific Runtime metadata through pinned Node ESM", async ()
   assert.equal(recorded.runtime.javetAndroid.node, nodeVersionByBackend.androidJavet);
   assert.equal(recorded.runtime.processNode, nodeVersionByBackend.androidProcess);
   assert.equal(recorded.desktop.windows.node, nodeVersionByBackend.windows);
+  assert.equal(recorded.desktop.windows.bun, runtimeCompatibility.desktop.windows.bun);
+  assert.equal(recorded.desktop.macos.bun, runtimeCompatibility.desktop.macos.bun);
   assert.equal(recorded.desktop.macos.node, nodeVersionByBackend.macos);
 });
 

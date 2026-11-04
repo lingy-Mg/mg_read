@@ -1,4 +1,5 @@
 // @ts-check
+import { stageBunRuntime } from "./stage-bun-runtime.mjs";
 
 /**
  * Stages the pinned Apple Silicon Node Runtime for the Flutter macOS bundle.
@@ -76,16 +77,17 @@ await requireReadable(sourceNodeLicense, "the bundled Node license");
 await requireReadable(sourceDist, "the compiled Runtime entrypoint");
 await requireReadable(sourceEntrypoint, "the compiled Runtime main script");
 
-await rm(stagedNodeDirectory, { force: true, recursive: true });
-await rm(stagedDist, { force: true, recursive: true });
-await rm(stagedNodeModules, { force: true, recursive: true });
-await rm(stagedDefaultPluginsDirectory, { force: true, recursive: true });
+await rm(stagedNodeDirectory, { force: true, recursive: true, maxRetries: 8, retryDelay: 250 });
+await rm(stagedDist, { force: true, recursive: true, maxRetries: 8, retryDelay: 250 });
+await rm(stagedNodeModules, { force: true, recursive: true, maxRetries: 8, retryDelay: 250 });
+await rm(stagedDefaultPluginsDirectory, { force: true, recursive: true, maxRetries: 8, retryDelay: 250 });
 await mkdir(stagedNodeDirectory, { recursive: true });
 await copyFile(sourceNodeExecutable, stagedNodeExecutable);
 await chmod(stagedNodeExecutable, 0o755);
 await copyFile(sourceNodeLicense, stagedNodeLicense);
 await cp(sourceDist, stagedDist, { recursive: true });
+await stageBunRuntime("macos-arm64", stagedNodeDirectory);
 
 process.stdout.write(
-  "Staged the pinned macOS ARM64 Node executable and Runtime assets; npm remains development-only.\n",
+  "Staged the pinned macOS ARM64 Node and Bun executables and Runtime assets; npm remains development-only.\n",
 );

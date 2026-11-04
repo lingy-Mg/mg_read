@@ -20,7 +20,9 @@
     "verify:staged-windows": "node --test tools/verify-staged-windows-runtime.mjs",
     "check:no-native-addons": "npm run check:toolchain && node probes/check-no-native-addons.mjs",
     "verify": "npm run typecheck && npm test && npm run check:no-native-addons",
-    "verify:desktop": "npm run verify && npm run test:flutter-desktop"
+    "verify:desktop": "npm run verify && npm run test:flutter-desktop",
+    "test:bun": "npm run build && node tools/test-bun-runtime.mjs",
+    "verify:staged-bun": "node --test tools/verify-staged-bun-runtime.mjs"
   },
   "devDependencies": {
     "@types/node": "24.13.3",

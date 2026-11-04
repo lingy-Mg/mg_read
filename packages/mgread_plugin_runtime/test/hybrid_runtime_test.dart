@@ -9,7 +9,13 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'test_paths.dart';
 
 void main() {
-  test('one Facade lists and invokes Node and native sources together', () async {
+  for (final backend in DesktopRuntimeBackend.values) {
+    _registerHybridTest(backend);
+  }
+}
+
+void _registerHybridTest(DesktopRuntimeBackend backend) {
+  test('one Facade lists and invokes $backend and native sources together', () async {
     final repository = nodeRuntimeRepositoryRoot.parent.parent;
     final fixture = Directory.fromUri(
       repository.uri.resolve(
@@ -120,6 +126,7 @@ void main() {
     final node = PluginRuntime.desktopForTesting(
       runtimeRepositoryRoot: nodeRuntimeRepositoryRoot,
       runtimeDataRoot: nodeRoot,
+      backend: backend,
     );
     final native = PluginRuntime.nativeForTesting(
       executablePath: 'unused-in-http-fixture',

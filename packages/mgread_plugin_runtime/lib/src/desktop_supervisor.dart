@@ -1,7 +1,7 @@
 part of mgread_plugin_runtime;
 
 /// Exact Node version required by the current desktop bundle and ready record.
-final String _expectedNodeVersion = Platform.isMacOS ? '24.16.0' : '26.10.0';
+const _expectedNodeVersion = '26.10.0';
 
 /// Version of the internal Runtime control protocol negotiated during hello.
 const _protocolVersion = '1.2';
@@ -511,7 +511,13 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
         _bundle.nodeExecutable.path,
         <String>[
           if (_developmentPluginDirectory != null) '--preserve-symlinks',
-          if (_useEnvironmentProxy) '--use-env-proxy',
+          if (_useEnvironmentProxy &&
+              _bundle.backend == DesktopRuntimeBackend.node)
+            '--use-env-proxy',
+          if (_bundle.backend == DesktopRuntimeBackend.bun) ...[
+            '--no-env-file',
+            '--no-install',
+          ],
           _bundle.entrypoint.path,
           '--data-root=${_bundle.dataRoot.path}',
           if (Platform.isMacOS) '--parent-pid=$pid',
@@ -548,6 +554,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
 
       final monitor = _RuntimeChildMonitor(
         process,
+        expectedBun: _bundle.backend == DesktopRuntimeBackend.bun,
         onDiagnostic: _recordDiagnostic,
         onProgress: _recordInitializationProgress,
         onExit: _handleProcessExit,
@@ -626,15 +633,19 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
   Future<void> _assertBundleAvailable() async {
     if (!await _bundle.nodeExecutable.exists()) {
       _recordDiagnostic(
-        const RuntimeDiagnostic(
-          code: 'runtime_node_executable_missing',
+        RuntimeDiagnostic(
+          code: _bundle.backend == DesktopRuntimeBackend.bun
+              ? 'runtime_bun_executable_missing'
+              : 'runtime_node_executable_missing',
           level: RuntimeDiagnosticLevel.error,
-          message: 'The packaged desktop Node executable is missing.',
+          message: 'The packaged desktop JavaScript executable is missing.',
         ),
       );
       throw _failure(
-        'runtime_node_executable_missing',
-        'The packaged desktop Node executable is unavailable.',
+        _bundle.backend == DesktopRuntimeBackend.bun
+            ? 'runtime_bun_executable_missing'
+            : 'runtime_node_executable_missing',
+        'The packaged desktop JavaScript executable is unavailable.',
       );
     }
     if (!await _bundle.entrypoint.exists()) {

@@ -10,6 +10,37 @@ import 'package:mg_read/features/plugins/application/plugin_runtime_connection.d
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_health_page.dart';
 
 void main() {
+  testWidgets('Bun health reports the real engine version rather than the Node compatibility version', (tester) async {
+    final base = _statusFixture;
+    final bun = PluginRuntimeStatus(
+      arch: base.arch,
+      isHealthy: true,
+      memory: base.memory,
+      nodeVersion: '26.3.0',
+      platform: base.platform,
+      plugins: base.plugins,
+      runtimeVersion: base.runtimeVersion,
+      runtimeKind: 'desktop-bun',
+      bunVersion: '1.4.4',
+      uptime: base.uptime,
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [pluginRuntimeStatusProvider.overrideWith((ref) async => bun)],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: PluginRuntimeHealthPage(onBackRequested: () {}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Bun Runtime'), findsOneWidget);
+    expect(find.text('1.4.4'), findsOneWidget);
+    expect(find.text('26.3.0'), findsNothing);
+    expect(find.text('JS 堆已用 / 总量'), findsOneWidget);
+    expect(find.text('V8 堆已用 / 总量'), findsNothing);
+  });
+
   testWidgets('TV can traverse diagnostics down to the final source on a short screen', (tester) async {
     tester.view.physicalSize = const Size(640, 360);
     tester.view.devicePixelRatio = 1;

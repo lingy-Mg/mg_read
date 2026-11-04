@@ -13,6 +13,12 @@
 
 ## Package 所有权
 
+- Windows/macOS 的 JS Core 支持 Node 26.10.0 与 Bun 1.4.4；Bun 通过精确版本和 SHA-512 固定的
+  官方 `@oven` 分发包暂存，不依赖全局 Bun，不在生产安装 npm 包。构建与开发热更新仍用固定 Node/npm。
+  Bun 使用打包的 Undici Fetch，不能使用忽略 dispatcher 的 Bun 原生 fetch 代替来源代理传输；
+  Bun 没有 `net.client.socket` 观测时如实输出 `not_observed`。来源 API 与数据根在两后端保持一致。
+  桌面 staging 同时交付两套 helper；运行 `test:bun` 和 `verify:staged-bun`，macOS helper 签名包含 Bun。
+
 - 发现 `filters` 的分组/选项预算与选中 ID 关联由 `plugin-content-discovery.ts` 校验；`plugin-content-tree.test.mjs`
   保留 45 选项与非法选择/重复/超限回归。原有首个根 `tabs` 的约束不变。
 

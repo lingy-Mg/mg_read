@@ -85,7 +85,8 @@ test("plugin HTTP negotiates h2 directly and through proxies with HTTP/1.1 fallb
   await Promise.all([listen(h2Server), listen(h1Server), listen(httpProxy), listen(socksProxy)]);
   t.after(async () => {
     await client.close();
-    await getGlobalDispatcher().close();
+    // Bun owns its native global Fetch pool; our client owns its bundled dispatcher.
+    if (!process.versions.bun) await getGlobalDispatcher().close();
     // Node 26 keeps upgraded HTTP/2 and CONNECT sockets alive after the
     // dispatcher closes. Tear down the test's own sockets before server.close.
     for (const socket of sockets) socket.destroy();

@@ -316,7 +316,11 @@ function isRelevantDevelopmentPath(path: string): boolean {
 function createNpmBuildRunner(npmCliPath: string): DevelopmentBuildRunner {
   const normalizedNpmCli = resolve(npmCliPath);
   return (projectRoot) => new Promise<DevelopmentBuildResult>((complete) => {
-    const nodeDirectory = dirname(process.execPath);
+    // The source build toolchain stays Node/npm even while Core runs on Bun.
+    const nodeExecutable = process.platform === "win32"
+      ? resolve(dirname(normalizedNpmCli), "../../..", "node.exe")
+      : resolve(dirname(normalizedNpmCli), "../../../..", "bin/node");
+    const nodeDirectory = dirname(nodeExecutable);
     const currentPath = process.env.PATH ?? process.env.Path ?? "";
     const stdout: string[] = [];
     const stderr: string[] = [];
@@ -336,7 +340,7 @@ function createNpmBuildRunner(npmCliPath: string): DevelopmentBuildRunner {
       complete(result);
     };
     const child = spawn(
-      process.execPath,
+      nodeExecutable,
       [normalizedNpmCli, "run", "build"],
       {
         cwd: projectRoot,
@@ -348,7 +352,7 @@ function createNpmBuildRunner(npmCliPath: string): DevelopmentBuildRunner {
             ? {}
             : { npm_config_script_shell: "/bin/sh" }),
           npm_execpath: normalizedNpmCli,
-          npm_node_execpath: process.execPath,
+          npm_node_execpath: nodeExecutable,
         },
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],

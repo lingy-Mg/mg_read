@@ -24,6 +24,7 @@
 import { isIP } from "node:net";
 import { httpDiagnosticOrigin, withHttpFailureContext } from "./plugin-http-diagnostics.js";
 import {
+  fetch as undiciFetch,
   Agent,
   EnvHttpProxyAgent,
   ProxyAgent,
@@ -39,6 +40,12 @@ import type {
 
 /** Chrome Stable 152.0.7977.64 reduced desktop UA, verified on 2026-08-31. */
 export const defaultPluginUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36";
+
+// Bun's native fetch ignores Undici's dispatcher. Use our bundled Fetch
+// implementation there so source proxies, loopback bypass, cancellation and
+// connection diagnostics retain exactly the same transport contract.
+const runtimeFetch: typeof fetch = process.versions.bun
+  ? undiciFetch as unknown as typeof fetch : fetch;
 
 const http2TlsOptions = Object.freeze({ allowH2: true as const });
 
@@ -137,7 +144,7 @@ export class ConfigurablePluginHttpClient implements PluginRuntimeHttpClient {
       configuredProxy: httpDiagnosticOrigin(this.#proxyUrl),
       requestTraceId: trace?.traceId,
       runtimeHttpStateAtStart: this.#shutdown.signal.aborted ? "closed" : "open",
-    }, () => fetch(input, proxiedInit), () => ({
+    }, () => runtimeFetch(input, proxiedInit), () => ({
       runtimeHttpStateAtFailure: this.#shutdown.signal.aborted ? "closed" : "open",
     }));
   }

@@ -25,6 +25,27 @@ export function runtimeNodeVersion(embedded: boolean): string {
   return process.platform === "darwin" ? nodeVersionByBackend.macos : nodeVersionByBackend.windows;
 }
 
+/** Exact desktop Bun binary; its Node compatibility version is reported as-is. */
+export const expectedBunVersion = "1.4.4";
+
+/** Additive private wire metadata; Node/Android records retain their old shape. */
+export function runtimeEngineIdentity(): { readonly bunVersion?: string } {
+  const bunVersion = process.versions.bun;
+  return bunVersion === undefined ? {} : { bunVersion };
+}
+
+/** Verifies the actual executable, never Bun's emulated Node version. */
+export function assertRuntimeEngine(embedded: boolean): void {
+  const bun = process.versions.bun;
+  if (bun !== undefined) {
+    if (embedded || !["win32", "darwin"].includes(process.platform) || bun !== expectedBunVersion) {
+      throw new Error(`Desktop Runtime requires Bun ${expectedBunVersion}, received ${bun}.`);
+    }
+  } else if (process.versions.node !== runtimeNodeVersion(embedded)) {
+    throw new Error(`Runtime requires Node ${runtimeNodeVersion(embedded)}, received ${process.versions.node}.`);
+  }
+}
+
 /** Plugin compatibility starts at Node 24; backend binaries remain pinned above. */
 export const supportedPluginNodeRange = ">=24";
 
@@ -57,11 +78,13 @@ export interface RuntimeCompatibilityMatrix {
       readonly architectures: readonly DesktopArchitecture[];
       readonly node: string;
       readonly npm: string;
+      readonly bun: string;
     };
     readonly windows: {
       readonly architectures: readonly DesktopArchitecture[];
       readonly node: string;
       readonly npm: string;
+      readonly bun: string;
     };
   };
   readonly protocol: string;
@@ -86,11 +109,13 @@ export const runtimeCompatibility: RuntimeCompatibilityMatrix = Object.freeze({
       architectures: Object.freeze(["arm64", "x64"] as const),
       node: nodeVersionByBackend.macos,
       npm: "11.19.1",
+      bun: expectedBunVersion,
     }),
     windows: Object.freeze({
       architectures: Object.freeze(["x64"] as const),
       node: nodeVersionByBackend.windows,
       npm: "11.19.1",
+      bun: expectedBunVersion,
     }),
   }),
   protocol: protocolVersion,

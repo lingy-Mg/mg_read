@@ -52,11 +52,16 @@ plugins/sources/                    真实数据源及其他能力参考实现
 
 ## Runtime 与平台宿主
 
+- Windows x64/macOS arm64 的 JS 数据源宿主同包交付固定 Node 与 Bun，默认 Node。选择由 Runtime-owned
+  启动偏好持久化，App 冷重启后生效；共享 JS 来源数据根，一次只启动所选宿主。开发构建仍用固定 Node/npm。
+  Bun 启动禁用 dotenv 与自动依赖安装，代理传输使用打包的 Undici；ready/HTTP/hello 校验实际 Bun 版本，
+  Node 兼容版本不得伪装成固定 Node 二进制版本。Windows 原生来源仍通过独立 Rust 宿主路由。
+
 - Windows/Android 默认 App 并存 Node 与原生数据源引擎，Facade 按安装来源的引擎归属路由调用、管理和传输；
   两端使用独立宿主、安装根和资源服务。Android 正常包同时包含 Javet 与私有 Service 中的 Node 后端，
   ARMv7 进程仅启用 Node 私有进程后端；ARMv8 保留两种 Node 后端。选择按当前进程 ABI 校验，
   设置中保存选择并在 App 进程重启后启用；两者共享 Node 来源数据根，不在运行中替换 VM。
-  Node 侧一次只启动一个 Node Runtime/V8，禁止来源创建 Worker、子进程、第二 VM、native addon 或自定义 loader。
+  JS 侧一次只启动一个所选 Runtime/VM，禁止来源创建 Worker、子进程、第二 VM、native addon 或自定义 loader。
 - `MGREAD_NATIVE_RUNTIME=true` 保留为 Windows/Android 原生独立性验收构建；该构建不包含 Node/Javet/V8 和
   Runtime JS 资产。默认并存构建中，Windows EXE 与 Android 私有 Service 的 Rust 宿主仅为已启用来源按需加载初始化 ABI v3
   DLL/SO；宿主拥有安装和调用生命周期，插件拥有上游 HTTP、专属缓存及动态回环服务，初始化后内容和资源均走插件 HTTP。原生可信插件按目标 ABI 发布；动态库更新和卸载经

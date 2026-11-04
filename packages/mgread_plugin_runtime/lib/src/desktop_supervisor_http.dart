@@ -49,6 +49,7 @@ extension _DesktopRuntimeSupervisorHttp on _DesktopRuntimeSupervisor {
           if (decoded['status'] == 'ready' &&
               decoded['bootId'] == ready.bootId &&
               decoded['nodeVersion'] == ready.nodeVersion &&
+              decoded['bunVersion'] == ready.bunVersion &&
               decoded['protocolVersion'] == _protocolVersion) {
             return;
           }

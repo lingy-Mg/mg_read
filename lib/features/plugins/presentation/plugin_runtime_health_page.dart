@@ -119,6 +119,8 @@ class _RuntimeSummaryCard extends StatelessWidget {
           ? 'Rust 原生数据源引擎'
           : status.runtimeKind == 'android-javet'
           ? 'Node/V8（Android 内嵌）'
+          : status.runtimeKind == 'desktop-bun'
+          ? 'Bun Runtime'
           : 'Node.js Runtime',
       icon: Icons.memory_rounded,
       child: Column(
@@ -140,7 +142,9 @@ class _RuntimeSummaryCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.regular),
-          if (status.runtimeKind != 'native-rust')
+          if (status.runtimeKind == 'desktop-bun')
+            _StatusValue(label: 'Bun', value: status.bunVersion ?? '未知')
+          else if (status.runtimeKind != 'native-rust')
             _StatusValue(label: status.runtimeKind == 'android-javet' ? 'Node/V8' : 'Node.js', value: status.nodeVersion),
           _StatusValue(label: 'Runtime', value: status.runtimeVersion),
           _StatusValue(label: '运行时长', value: _formatDuration(status.uptime)),
@@ -167,7 +171,10 @@ class _RuntimeMemoryCard extends StatelessWidget {
         children: <Widget>[
           _StatusValue(label: runtimeKind == 'android-javet' ? '宿主进程 RSS' : '进程占用 RSS', value: _formatBytes(memory.rss)),
           if (runtimeKind != 'native-rust') ...<Widget>[
-            _StatusValue(label: 'V8 堆已用 / 总量', value: '${_formatBytes(memory.heapUsed)} / ${_formatBytes(memory.heapTotal)}'),
+            _StatusValue(
+              label: runtimeKind == 'desktop-bun' ? 'JS 堆已用 / 总量' : 'V8 堆已用 / 总量',
+              value: '${_formatBytes(memory.heapUsed)} / ${_formatBytes(memory.heapTotal)}',
+            ),
             _StatusValue(label: '外部内存', value: _formatBytes(memory.external)),
             _StatusValue(label: 'ArrayBuffer', value: _formatBytes(memory.arrayBuffers)),
           ],

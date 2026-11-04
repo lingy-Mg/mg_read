@@ -35,7 +35,7 @@ import {
   type RuntimeProtocolError,
   type RuntimeRequest,
 } from "./protocol.js";
-import { runtimeNodeVersion, protocolVersion, runtimeVersion } from "./runtime-version.js";
+import { assertRuntimeEngine, runtimeEngineIdentity, protocolVersion, runtimeVersion } from "./runtime-version.js";
 import { developmentPluginBuildFailureDebugLog, developmentPluginChangeFromManagerEvent, emitPluginManagerDiagnostic } from "./plugin-manager-events.js";
 import {
   maxWebSocketControlFrameBytes,
@@ -51,6 +51,7 @@ import { RuntimeDebugHttpSettings } from "./debug-http-settings.js";
 import { ConfigurablePluginHttpClient } from "./plugin-http-client.js";
 import { readPluginHttpProxyConfiguration } from "./plugin-http-proxy-control.js";
 import type {
+  DesktopRuntimeReady,
   InFlightRequestsBySession,
   RuntimeDispatchResult,
   RuntimeHealthResponse,
@@ -92,6 +93,8 @@ import {
   dispatchSourceResourceResolve,
 } from "./desktop-source-control-dispatch.js";
 import { emitRuntimeDiagnostic, observeRuntimeDiagnostics } from "./runtime-diagnostics.js";
+
+export type { DesktopRuntimeReady } from "./desktop-runtime-types.js";
 
 const LOOPBACK_HOST = "127.0.0.1";
 const MAX_INLINE_BYTES = maxWebSocketControlFrameBytes;
@@ -167,31 +170,6 @@ const RUNTIME_CONTROL_CAPABILITIES = Object.freeze([
 const RUNTIME_RPC_PATH = "/v1/rpc";
 const WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
-/**
- * One stdout-only startup record emitted after the loopback server is usable.
- * It is consumed by the Runtime-owned Flutter supervisor, never by app code.
- */
-export interface DesktopRuntimeReady {
-  /** Fresh identity that binds HTTP, WebSocket, and Flutter startup together. */
-  readonly bootId: string;
-  /** Fixed loopback-only host; this Runtime never listens on LAN interfaces. */
-  readonly host: typeof LOOPBACK_HOST;
-  /** Exact Node binary version that started the Core. */
-  readonly nodeVersion: string;
-  /** Runtime child process identifier, used only for lifecycle diagnostics. */
-  readonly pid: number;
-  /** Ephemeral loopback port selected by Node or supplied by a test. */
-  readonly port: number;
-  /** Wire-protocol version that the Flutter connection must validate. */
-  readonly protocolVersion: string;
-  /** Runtime implementation version for compatibility and diagnostics. */
-  readonly runtimeVersion: string;
-  /** ISO-8601 timestamp captured once when this Core instance is created. */
-  readonly startedAt: string;
-  /** Distinguishes this stdout record from structured diagnostic records. */
-  readonly type: "ready";
-}
-
 /** Result returned by the Runtime-owned Android Javet adapter. */
 export type EmbeddedRuntimeResult =
   | { readonly ok: true; readonly result: JsonValue }
@@ -236,7 +214,7 @@ export class DesktopRuntime {
   #startPromise: Promise<DesktopRuntimeReady> | undefined;
   #stopPromise: Promise<void> | undefined;
   #pluginManager: PluginManager | undefined;
-  readonly #pluginHttp = new ConfigurablePluginHttpClient({}, () => process.platform !== "android" ? "desktop-node" : this.#embedded ? "android-javet" : "android-node-process");
+  readonly #pluginHttp = new ConfigurablePluginHttpClient({}, () => process.platform !== "android" ? (process.versions.bun ? "desktop-bun" : "desktop-node") : this.#embedded ? "android-javet" : "android-node-process");
   /** Optional, separately-bound Debug inspector; never carries Runtime RPC. */
   #debugHttp: RuntimeDebugHttpServer | undefined;
   #debugHttpConfiguredEnabled = false;
@@ -327,11 +305,7 @@ export class DesktopRuntime {
 
   /** Performs the single Core launch after `start` has claimed the promise. */
   async #start(): Promise<DesktopRuntimeReady> {
-    if (process.versions.node !== runtimeNodeVersion(this.#embedded)) {
-      throw new Error(
-        `Runtime requires Node ${runtimeNodeVersion(this.#embedded)}, received ${process.versions.node}.`,
-      );
-    }
+    assertRuntimeEngine(this.#embedded);
 
     const pluginManager = await createInitializedPluginManager(this.#dataRoot, {
       ...(this.#browserSession === undefined ? {} : { browserSession: this.#browserSession }),
@@ -393,6 +367,7 @@ export class DesktopRuntime {
       bootId: this.#bootId,
       host: LOOPBACK_HOST,
       nodeVersion: process.versions.node,
+      ...runtimeEngineIdentity(),
       pid: process.pid,
       port: startedServer.port,
       protocolVersion,
@@ -521,6 +496,7 @@ export class DesktopRuntime {
       const live: RuntimeHealthResponse = {
         bootId: this.#bootId,
         nodeVersion: process.versions.node,
+      ...runtimeEngineIdentity(),
         protocolVersion,
         runtimeVersion,
         status: "live",
@@ -534,6 +510,7 @@ export class DesktopRuntime {
       const ready: RuntimeHealthResponse = {
         bootId: this.#bootId,
         nodeVersion: process.versions.node,
+      ...runtimeEngineIdentity(),
         protocolVersion,
         runtimeVersion,
         status: "ready",
@@ -756,6 +733,7 @@ export class DesktopRuntime {
           maxInFlightRequests: MAX_INFLIGHT_REQUESTS_PER_CONNECTION,
           maxOutboundQueueBytes: maxWebSocketOutboundQueueBytes,
           nodeVersion: process.versions.node,
+      ...runtimeEngineIdentity(),
           protocolVersion,
           runtimeVersion,
           supportsCancellation: true,
@@ -768,6 +746,7 @@ export class DesktopRuntime {
         const ping: RuntimePingResponse = {
           bootId: this.#bootId,
           nodeVersion: process.versions.node,
+      ...runtimeEngineIdentity(),
           ok: true,
           runtimeVersion,
         };
@@ -798,11 +777,12 @@ export class DesktopRuntime {
             rss: memory.rss,
           },
           nodeVersion: process.versions.node,
+      ...runtimeEngineIdentity(),
           ok: true,
           platform: process.platform,
           plugins: plugins ?? [],
           runtimeVersion,
-          runtimeKind: process.platform !== "android" ? "desktop-node" : this.#embedded ? "android-javet" : "android-node-process",
+          runtimeKind: process.platform !== "android" ? (process.versions.bun ? "desktop-bun" : "desktop-node") : this.#embedded ? "android-javet" : "android-node-process",
           uptimeMs: Math.max(0, Math.floor(process.uptime() * 1000)),
         };
         return { result: status };

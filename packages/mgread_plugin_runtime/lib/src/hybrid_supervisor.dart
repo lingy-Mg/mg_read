@@ -96,6 +96,7 @@ final class _HybridRuntimeSupervisor implements _RuntimeSupervisor {
             plugins: <InstalledPlugin>[...node.plugins, ...native.plugins],
             runtimeVersion: node.runtimeVersion,
             runtimeKind: node.runtimeKind,
+            bunVersion: node.bunVersion,
             uptimeMs: node.uptimeMs,
             nativeStatus: native,
           )

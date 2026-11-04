@@ -84,8 +84,15 @@ test("concurrent failures retain their own route and trace across proxy rebindin
     assert.equal(context.configuredProxy, proxy.url);
     assert.equal(context.requestTraceId, trace);
     assert.equal(context.runtimeKind, "desktop-node");
-    assert.equal(context.tcpAttemptAddress, loopback);
-    assert.equal(context.tcpAttemptPort, proxy.port);
+    // Bun does not publish net.client.socket / connectionAttempt. Keep the
+    // absence explicit rather than fabricating a TCP observation from a URL.
+    if (process.versions.bun) {
+      assert.equal(context.tcpObservation, "not_observed");
+      assert.equal(context.tcpAttemptAddress, undefined);
+    } else {
+      assert.equal(context.tcpAttemptAddress, loopback);
+      assert.equal(context.tcpAttemptPort, proxy.port);
+    }
     assert.equal(context.proxyTunnelOrigin, proxy.url);
     assert.equal(context.runtimeHttpStateAtFailure, "open");
     assert.ok(!error.message.includes("PROXY_SECRET"));

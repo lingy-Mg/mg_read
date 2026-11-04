@@ -3,6 +3,7 @@ part of mgread_plugin_runtime;
 final class _DesktopRuntimeBundle {
   const _DesktopRuntimeBundle({
     required this.dataRoot,
+    this.backend = DesktopRuntimeBackend.node,
     required this.bundledPluginDirectory,
     required this.developmentPluginDirectory,
     required this.developmentNpmCli,
@@ -34,6 +35,9 @@ final class _DesktopRuntimeBundle {
   /// Exact packaged Node executable; never resolved from the ambient PATH.
   final File nodeExecutable;
 
+  /// Frozen choice for this supervisor, never changed by a settings save.
+  final DesktopRuntimeBackend backend;
+
   /// Test-only crash fixture delay; production bundles always leave this null.
   final Duration? testExitAfterReady;
 
@@ -41,7 +45,10 @@ final class _DesktopRuntimeBundle {
   final Directory workingDirectory;
 
   /// Resolves the fixed platform bundle staged into a Flutter application.
-  factory _DesktopRuntimeBundle.fromApplicationPackage() {
+  factory _DesktopRuntimeBundle.fromApplicationPackage({
+    DesktopRuntimeBackend? backend,
+  }) {
+    backend ??= DesktopRuntimeSettings.instance.active;
     if (!Platform.isWindows && !Platform.isMacOS) {
       throw const PluginRuntimeException(
         'unsupported',
@@ -113,7 +120,7 @@ final class _DesktopRuntimeBundle {
     final runtimeRoot = developmentRuntimeRoot ?? bundleRoot;
     final platformToolchain = Platform.isWindows
         ? 'node-v26.10.0-win-x64'
-        : 'node-v24.16.0-darwin-arm64';
+        : 'node-v26.10.0-darwin-arm64';
     final developmentNpmCli = developmentRuntimeRoot == null
         ? null
         : File(
@@ -150,7 +157,24 @@ final class _DesktopRuntimeBundle {
               Platform.isWindows ? 'node.exe' : 'node',
             ]),
           );
+    final executable = backend == DesktopRuntimeBackend.bun
+        ? (developmentRuntimeRoot == null
+              ? File(
+                  Platform.isWindows
+                      ? _joinPath([runtimeRoot.path, 'node', 'MgReadBun.exe'])
+                      : _joinPath([executableDirectory.path, 'MgReadBun']),
+                )
+              : File(
+                  _joinPath([
+                    developmentRuntimeRoot.path,
+                    'tools',
+                    'bun-v${DesktopRuntimeSettings.bunVersion}-$platformAssetRoot',
+                    Platform.isWindows ? 'bun.exe' : 'bun',
+                  ]),
+                ))
+        : nodeExecutable;
     return _DesktopRuntimeBundle(
+      backend: backend,
       dataRoot: dataRoot,
       bundledPluginDirectory: null,
       developmentPluginDirectory: developmentPluginDirectory,
@@ -159,7 +183,7 @@ final class _DesktopRuntimeBundle {
           ? _openWithWindowsExplorer
           : _openWithMacOSFinder,
       entrypoint: entrypoint,
-      nodeExecutable: nodeExecutable,
+      nodeExecutable: executable,
       testExitAfterReady: null,
       workingDirectory: runtimeRoot,
     );
@@ -173,15 +197,17 @@ final class _DesktopRuntimeBundle {
     Directory runtimeRepositoryRoot, {
     File? entrypointOverride,
     File? nodeExecutableOverride,
+    DesktopRuntimeBackend backend = DesktopRuntimeBackend.node,
     Directory? runtimeDataRoot,
     Directory? developmentPluginDirectory,
     _DesktopDirectoryLauncher? directoryLauncher,
     Duration? testExitAfterReady,
   }) {
     final platformToolchain = Platform.isMacOS
-        ? 'node-v24.16.0-darwin-arm64'
+        ? 'node-v26.10.0-darwin-arm64'
         : 'node-v26.10.0-win-x64';
     return _DesktopRuntimeBundle(
+      backend: backend,
       dataRoot:
           runtimeDataRoot ??
           Directory(
@@ -217,9 +243,15 @@ final class _DesktopRuntimeBundle {
             _joinPath(<String>[
               runtimeRepositoryRoot.path,
               'tools',
-              platformToolchain,
-              if (Platform.isMacOS) 'bin',
-              Platform.isMacOS ? 'node' : 'node.exe',
+              if (backend == DesktopRuntimeBackend.bun)
+                'bun-v${DesktopRuntimeSettings.bunVersion}-${Platform.isMacOS ? 'macos-arm64' : 'windows-x64'}'
+              else
+                platformToolchain,
+              if (backend == DesktopRuntimeBackend.node && Platform.isMacOS)
+                'bin',
+              backend == DesktopRuntimeBackend.bun
+                  ? (Platform.isMacOS ? 'bun' : 'bun.exe')
+                  : (Platform.isMacOS ? 'node' : 'node.exe'),
             ]),
           ),
       testExitAfterReady: testExitAfterReady,

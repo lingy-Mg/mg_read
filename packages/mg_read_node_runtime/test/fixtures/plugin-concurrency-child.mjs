@@ -10,7 +10,7 @@ const request = (query) => ({ query, cursor: null, pageSize: 20 });
 const deadline = () => String(Date.now() + 5_000);
 
 if (mode === "hang-stop") {
-  const runtime = new DesktopRuntime({ dataRoot, embedded: true });
+  const runtime = new DesktopRuntime({ dataRoot, embedded: !process.versions.bun });
   await runtime.start();
   void runtime.invokeEmbedded(
     "source.search.v1",

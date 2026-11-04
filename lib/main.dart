@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:mg_read/app/desktop_restart.dart';
 import 'package:mg_read/features/local_import/data/local_import_ingress.dart';
 
 import 'package:flutter/widgets.dart';
+import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'package:mg_read/app/bootstrap.dart';
@@ -12,8 +14,18 @@ import 'package:mg_read/features/network_proxy/application/flutter_network_proxy
 import 'package:mg_read/features/plugins/application/source_verification.dart';
 
 Future<void> main(List<String> arguments) async {
-  // debugRepaintRainbowEnabled = true;
+  // Wait before Flutter, app databases, or either Runtime is initialized.
+  try {
+    arguments = await awaitDesktopRestartParent(arguments);
+  } on Object {
+    exit(4);
+  }
   WidgetsFlutterBinding.ensureInitialized();
+  // Resolve the desktop host before composing providers. Keep this platform
+  // file IO out of bootstrap so its startup surface still mounts immediately.
+  if ((Platform.isWindows || Platform.isMacOS) && !const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME')) {
+    await DesktopRuntimeSettings.instance.initialize();
+  }
   registerLocalContentLicenses();
   LocalImportIngress.instance.queuePaths(arguments.where((argument) => !argument.startsWith('--')).toList());
   if (Platform.isWindows) await windowManager.ensureInitialized();

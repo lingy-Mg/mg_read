@@ -25,6 +25,7 @@ import 'src/windows_browser_session_host.dart';
 import 'src/android_node_browser_session_host.dart';
 
 part 'src/android_node_runtime_settings.dart';
+part 'src/desktop_runtime_settings.dart';
 part 'src/windows_system_proxy.dart';
 part 'src/system_proxy.dart';
 part 'src/desktop_supervisor.dart';

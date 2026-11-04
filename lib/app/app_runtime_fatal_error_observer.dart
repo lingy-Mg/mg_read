@@ -104,6 +104,7 @@ _RuntimeFatalProjection? _fatalProjectionFor(String code) => switch (code) {
   'runtime_invalid_launch_options' ||
   'runtime_exited_before_ready' ||
   'runtime_node_executable_missing' ||
+  'runtime_bun_executable_missing' ||
   'runtime_process_launch_failed' ||
   'runtime_startup_channel_failed' ||
   'runtime_start_failed' => const _RuntimeFatalProjection(

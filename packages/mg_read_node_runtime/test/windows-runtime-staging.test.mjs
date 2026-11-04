@@ -36,4 +36,11 @@ test("Windows staging uses the pinned Node executable and Runtime entrypoint", a
   assert.deepEqual(stagedBytes, source);
   assert.deepEqual(stagedDist, sourceDist);
   await assert.rejects(access(stagedNpmPackage), { code: "ENOENT" });
+  const bun = resolve(runtimeRoot, "../mgread_plugin_runtime/assets/runtime/windows-x64/node/MgReadBun.exe");
+  const bunSource = resolve(runtimeRoot, "tools/bun-v1.4.4-windows-x64/bun.exe");
+  assert.deepEqual(await readFile(bun), await readFile(bunSource));
+  if (process.platform === "win32") {
+    const { stdout } = await executeFile(bun, ["--version"]);
+    assert.equal(stdout.trim(), "1.4.4");
+  }
 });

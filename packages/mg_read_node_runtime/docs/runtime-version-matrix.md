@@ -11,11 +11,12 @@
 | Android 独立进程 | Node `24.21.0`；arm64-v8a/armeabi-v7a `libnode.so` 来自 fogtape/nodejs-mobile Android 24.21.0-0 |
 | Windows bundled Node/npm | `26.10.0` / `11.19.1` |
 | macOS bundled Node/npm | `26.10.0` / `11.19.1` |
+| Windows/macOS Bun | `1.4.4`；官方 `@oven` 分发包，SHA-512 固定 |
 | TypeScript | `5.9.3` |
 | `@types/node` | `24.13.3` |
-| protocol marker | `1.0` |
+| protocol marker | `1.2` |
 
-每个后端只接受自己的精确 Node 版本；不得回退用户 PATH 或全局 Node。插件 `engines.node` 统一声明 `>=24`，
+每个后端只接受自己的精确引擎版本（Node 或 Bun）；不得回退用户 PATH 或全局 Node。插件 `engines.node` 统一声明 `>=24`，
 表示兼容 Node 24 及以上；这不改变宿主固定工具链。插件打包和安装不另设 Node 版本白名单。
 
 ## 平台与 ABI
@@ -23,12 +24,23 @@
 | 平台 | 选择 | 证据边界 |
 | --- | --- | --- |
 | Android | 同包包含 Javet Node 26.9.0（arm64-v8a/x86_64）与 Node 24.21.0 私有进程（arm64-v8a/armeabi-v7a）；ARMv7 默认且仅支持 Node 私有进程，64 位默认 Javet，设置中选择并重启 App 生效；minSdk 24 | 新后端 `libnode.so` 是基于 Node.js 源码的移动端第三方构建，非 Node.js 官方 Android 二进制；模拟器集成验证与最终安装包验收分别记录 |
-| Windows | bundled Node 26.10.0 x64 child process | Windows 测试不证明 Android、macOS 或最终安装包 |
-| macOS | bundled Node 26.10.0；当前产物为 arm64 | arm64 验证执行、签名和启动；x64、hardened runtime 与公证待发布验证 |
+| Windows | bundled Node 26.10.0 / Bun 1.4.4，x64，设置选择并重启 App 生效 | Windows 测试不证明 Android、macOS 或最终安装包 |
+| macOS | bundled Node 26.10.0 / Bun 1.4.4；当前产物为 arm64，设置选择并重启 App 生效 | arm64 验证执行、签名和启动；x64、hardened runtime 与公证待发布验证 |
 
 Android Javet adapter 只在专用后台线程上创建一个 Node-mode `NodeRuntime`；进程后端只在私有 Service 的
 专用线程调用 `node::Start`。构建选择一次只能启用一个后端，WebView 仍由主进程持有；不得引入 VM Pool、
 Worker 或未经当前版本公开类型证明的 lifecycle API。
+
+## 桌面 Bun 交付边界
+
+产品行为、恢复矩阵和打包验收入口见 [桌面双运行时](desktop-dual-runtime.md)。
+
+- 默认 Node；已安装来源、缓存和开发目录配置共用，不迁移、不复制来源。Windows 原生 Rust 引擎保持独立。
+- Bun 启动禁用 dotenv 和自动依赖安装；以 `bunVersion` 校验二进制，Node 兼容版本如实报告。
+- Bun 的代理、HTTP/2、资源流和取消走打包 Undici；开发构建继续使用仓库固定 Node/npm。
+- 版本及下载摘要由 `tools/stage-bun-runtime.mjs` 固定；构建失败不能交付缺少 Bun 的正常桌面包。
+- `npm run test:bun` 验证共享桌面用例；`npm run verify:staged-bun` 在独立工作目录验证打包 helper、
+  来源调用和退出。两者加入 Windows/macOS CI。Windows 测试不代表 macOS 签名或实机验收。
 
 ## 升级单元
 

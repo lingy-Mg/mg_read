@@ -49,6 +49,7 @@ final class PluginRuntimeStatus {
     required this.runtimeKind,
     required this.uptime,
     this.nativeStatus,
+    this.bunVersion,
   });
 
   final String arch;
@@ -61,6 +62,7 @@ final class PluginRuntimeStatus {
   final String runtimeKind;
   final Duration uptime;
   final PluginRuntimeStatus? nativeStatus;
+  final String? bunVersion;
 }
 
 @immutable

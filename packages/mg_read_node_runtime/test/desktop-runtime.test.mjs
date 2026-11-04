@@ -157,6 +157,7 @@ test("desktop Runtime binds only loopback HTTP health gates", async (t) => {
   assert.deepEqual(await live.json(), {
     bootId: ready.bootId,
     nodeVersion: process.versions.node,
+    ...(process.versions.bun ? { bunVersion: process.versions.bun } : {}),
     protocolVersion,
     runtimeVersion,
     status: "live",
@@ -169,6 +170,7 @@ test("desktop Runtime binds only loopback HTTP health gates", async (t) => {
   assert.deepEqual(await health.json(), {
     bootId: ready.bootId,
     nodeVersion: process.versions.node,
+    ...(process.versions.bun ? { bunVersion: process.versions.bun } : {}),
     protocolVersion,
     runtimeVersion,
     status: "ready",
@@ -232,6 +234,7 @@ test("desktop Runtime completes hello, ping and stable protocol errors over WebS
     result: {
       bootId: ready.bootId,
       nodeVersion: process.versions.node,
+    ...(process.versions.bun ? { bunVersion: process.versions.bun } : {}),
       ok: true,
       runtimeVersion,
     },
@@ -628,7 +631,7 @@ test("desktop Runtime reconciles bundled defaults per source at a cold start", a
   );
 });
 
-test("embedded import inbox installs an archive before cold activation", async (t) => {
+test("embedded import inbox installs an archive before cold activation", { skip: !!process.versions.bun }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), "mgread-runtime-import-inbox-"));
   const dataRoot = join(root, "runtime-data");
   const pluginImportInboxRoot = join(root, "import-inbox");

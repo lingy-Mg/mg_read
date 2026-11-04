@@ -295,6 +295,7 @@ PluginRuntimeStatus _toPluginRuntimeStatus(RuntimeStatusResult result) {
     plugins: List<PluginRuntimePlugin>.unmodifiable(result.plugins.map(_toPluginRuntimePlugin)),
     runtimeVersion: result.runtimeVersion,
     runtimeKind: result.runtimeKind,
+    bunVersion: result.bunVersion,
     uptime: Duration(milliseconds: result.uptimeMs),
     nativeStatus: result.nativeStatus == null ? null : _toPluginRuntimeStatus(result.nativeStatus!),
   );
@@ -329,6 +330,7 @@ AppError normalizePluginRuntimeError(PluginRuntimeException error, {String? loca
     'runtime_entrypoint_missing' ||
     'runtime_exited_before_ready' ||
     'runtime_node_executable_missing' ||
+    'runtime_bun_executable_missing' ||
     'runtime_process_exited' ||
     'runtime_process_launch_failed' ||
     'runtime_startup_channel_failed' ||
