@@ -281,6 +281,9 @@ LibraryShelfProjection _storedShelfProjection(StoredShelfItem row) {
   final rawDetails = jsonDecode(values['details_json']! as String);
   final details = rawDetails is Map<String, Object?> ? rawDetails : const <String, Object?>{};
   return LibraryShelfProjection(
+    categories: _stringList(details['categories']),
+    tags: _stringList(details['tags']),
+    attributes: _storedAttributes(details['attributes']),
     itemId: LibraryItemId(values['item_id']! as String),
     kind: kind,
     title: values['title']! as String,

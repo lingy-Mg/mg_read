@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/library/data/content_library_overview_loader.dart';
 import 'package:mg_read/features/library/domain/library_item_summary.dart';
+import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
+import 'package:mg_read/features/library/presentation/tv_library_data.dart';
 
 void main() {
   test('reads persisted bookshelf items through the feature projection', () async {
@@ -47,15 +49,19 @@ void main() {
       BookshelfAddRequest(
         title: '首次加载封面',
         author: null,
-        kind: ContentKind.novel,
+        kind: ContentKind.video,
         pluginId: 'test-source',
         pluginVersion: '1.0.0',
         remoteContentId: 'cover-book',
         coverUrl: Uri.parse('https://covers.example/cover.png'),
         chapterCount: 999,
+        categories: const ['电影'],
+        tags: const ['科幻片'],
         attributes: const <LibraryItemAttribute>[LibraryItemAttribute(key: 'heat', label: '热度', value: '565.2万')],
       ),
     );
+    await library.close();
+    library = await ContentLibrary.open(dataRoot: root);
     final overview = await ContentLibraryOverviewLoader(library).load();
     final summary = overview.items.single;
     expect(summary.id, item.id.value);
@@ -64,7 +70,11 @@ void main() {
     expect(summary.coverPluginVersion, '1.0.0');
     expect(summary.coverRemoteContentId, 'cover-book');
     expect(summary.chapterCount, 999);
-    expect(summary.attributes, isEmpty, reason: 'details_json is loaded only by the long-press detail path');
+    expect(summary.categories, ['电影']);
+    expect(summary.tags, ['科幻片']);
+    expect(summary.attributes.single.value, '565.2万');
+    final projection = LibraryHomeViewData.fromLocalOverview(overview);
+    expect(TvLibraryEntry(projection.books.single, summary).category, TvLibraryFilter.movies);
     await library.close();
     await root.delete(recursive: true);
   });
@@ -120,6 +130,8 @@ void main() {
     expect(byKind[ContentKind.video]?.readingProgress, isNull);
     expect(byKind.values.every((item) => item.lastReadAtUtc != null), isTrue);
     expect(overview.continueReading?.contentKind, ContentKind.manga);
+    final history = LibraryHomeViewData.fromReadingHistory(overview).books;
+    expect(history.map((book) => book.contentKind), [ContentKind.manga, ContentKind.video, ContentKind.audio, ContentKind.novel]);
   });
 
   test('normal overview and continue reading exclude private books', () async {

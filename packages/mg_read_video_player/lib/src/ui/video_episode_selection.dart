@@ -71,21 +71,7 @@ VideoEpisodeSelection? adjacentVideoSelection(
   if (target >= 0 && target < group.episodes.length) {
     return (group: group, episode: group.episodes[target]);
   }
-  for (
-    var index = groupIndex + direction;
-    index >= 0 && index < groups.length;
-    index += direction
-  ) {
-    final next = groups[index];
-    // A deferred group is not an empty group: never silently skip it.
-    if (next.deferred) return null;
-    if (next.episodes.isNotEmpty) {
-      return (
-        group: next,
-        episode: direction > 0 ? next.episodes.first : next.episodes.last,
-      );
-    }
-  }
+  // Host-defined groups may be alternative lines, so adjacency stays local.
   return null;
 }
 

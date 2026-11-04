@@ -8,11 +8,128 @@
 /// - Fakes never initialize MediaKit or native platform libraries.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read_video_player/mg_read_video_player.dart';
 
 void main() {
+  testWidgets(
+    'retry opens the failed selected episode instead of resuming the prior episode',
+    (tester) async {
+      final backend = _Backend()..failSecondOpen = true;
+      final controller = VideoPlayerController();
+      final store = _Store();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        _app(
+          contentId: 'lazy-show',
+          backend: backend,
+          source: _LazySource(),
+          store: store,
+          controller: controller,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await controller.seek(const Duration(seconds: 45));
+      await controller.selectEpisode('route-a', 'episode-2');
+      await tester.pumpAndSettle();
+      backend.failSecondOpen = false;
+      await tester.tap(find.byKey(const Key('video-player-retry')));
+      await tester.pumpAndSettle();
+      expect(controller.snapshot.activeEpisodeId, 'episode-2');
+      expect(controller.snapshot.status, VideoPlayerStatus.ready);
+      expect(backend.state.value.position, Duration.zero);
+      await controller.seek(const Duration(seconds: 8));
+      await controller.pause();
+      expect(store.saved.last.episodeId, 'episode-2');
+      expect(store.saved.last.position, const Duration(seconds: 8));
+    },
+  );
+
+  for (final failResolution in [false, true]) {
+    testWidgets(
+      'switch failure or waiting exit preserves the old episode progress: resolution=$failResolution',
+      (tester) async {
+        final backend = _Backend();
+        final source = _BlockedSource();
+        final store = _Store();
+        final controller = VideoPlayerController();
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(
+          _app(
+            contentId: 'lazy-show',
+            backend: backend,
+            source: source,
+            store: store,
+            controller: controller,
+          ),
+        );
+        await tester.pumpAndSettle();
+        await controller.seek(const Duration(seconds: 45));
+        final switching = controller.selectEpisode('route-a', 'episode-2');
+        await tester.pump();
+        await tester.pump();
+        if (failResolution) {
+          source.gate.completeError(StateError('offline'));
+          await tester.pumpAndSettle();
+          await switching;
+          expect(controller.snapshot.status, VideoPlayerStatus.failure);
+        }
+        final exiting = controller.requestExit();
+        await tester.pump();
+        await tester.pump();
+        await exiting;
+        expect(store.saved, isNotEmpty);
+        expect(store.saved.last.episodeId, 'episode-1');
+        expect(store.saved.last.position, const Duration(seconds: 45));
+        expect(store.saved.where((p) => p.episodeId == 'episode-2'), isEmpty);
+        if (!failResolution) {
+          source.gate.complete(
+            VideoEpisode(
+              id: 'episode-2',
+              title: '2',
+              uri: 'https://example.test/2.mp4',
+            ),
+          );
+          await tester.pump();
+          await switching;
+          expect(backend.opened.map((episode) => episode.id), ['episode-1']);
+          await tester.pumpWidget(const SizedBox());
+        }
+      },
+    );
+  }
+  testWidgets('backend open failure cannot inherit old episode time', (
+    tester,
+  ) async {
+    final backend = _Backend()..failSecondOpen = true;
+    final store = _Store();
+    final controller = VideoPlayerController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      _app(
+        contentId: 'lazy-show',
+        backend: backend,
+        source: _LazySource(),
+        store: store,
+        controller: controller,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await controller.seek(const Duration(seconds: 45));
+    await controller.selectEpisode('route-a', 'episode-2');
+    await tester.pumpAndSettle();
+    expect(controller.snapshot.status, VideoPlayerStatus.failure);
+    final exiting = controller.requestExit();
+    await tester.pumpAndSettle();
+    await exiting;
+    expect(store.saved.last.episodeId, 'episode-1');
+    expect(store.saved.last.position, const Duration(seconds: 45));
+    expect(store.saved.where((p) => p.episodeId == 'episode-2'), isEmpty);
+  });
+
   testWidgets('restores a deferred line before resolving the saved episode', (
     tester,
   ) async {
@@ -124,11 +241,13 @@ Widget _app({
   required _Backend backend,
   required VideoDataSource source,
   required _Store store,
+  VideoPlayerController? controller,
 }) => MaterialApp(
   home: VideoPlayerView(
     contentId: contentId,
     dataSource: source,
     stateStore: store,
+    controller: controller,
     backendFactory: () => backend,
     controlsAutoHideDelay: const Duration(hours: 1),
   ),
@@ -200,12 +319,15 @@ final class _Store implements VideoPlaybackStateStore {
   _Store({this.restored});
 
   final VideoPlaybackProgress? restored;
+  final saved = <VideoPlaybackProgress>[];
 
   @override
   Future<VideoPlaybackProgress?> load(String contentId) async => restored;
 
   @override
-  Future<void> save(VideoPlaybackProgress progress) async {}
+  Future<void> save(VideoPlaybackProgress progress) async {
+    saved.add(progress);
+  }
 }
 
 final class _Observer extends VideoPlayerObserver {
@@ -224,6 +346,7 @@ final class _Backend implements VideoPlaybackBackend {
         const VideoPlaybackBackendState(),
       );
   final List<VideoEpisode> opened = <VideoEpisode>[];
+  bool failSecondOpen = false;
 
   @override
   Widget buildSurface({required BoxFit fit, Key? key}) =>
@@ -235,6 +358,9 @@ final class _Backend implements VideoPlaybackBackend {
     required Duration initialPosition,
     required bool play,
   }) async {
+    if (failSecondOpen && episode.id == 'episode-2') {
+      throw StateError('cannot open');
+    }
     opened.add(episode);
     state.value = VideoPlaybackBackendState(
       playing: play,
@@ -315,4 +441,19 @@ final class _DeferredSource implements VideoGroupDataSource {
       uri: 'https://example.test/$episodeId.m3u8',
     );
   }
+}
+
+final class _BlockedSource implements VideoEpisodeDataSource {
+  final gate = Completer<VideoEpisode>();
+  final _source = _LazySource();
+  @override
+  Future<VideoContent> load(String id) => _source.load(id);
+  @override
+  Future<VideoEpisode> loadEpisode(
+    String id, {
+    required String groupId,
+    required String episodeId,
+  }) => episodeId == 'episode-2'
+      ? gate.future
+      : _source.loadEpisode(id, groupId: groupId, episodeId: episodeId);
 }

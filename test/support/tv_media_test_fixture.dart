@@ -74,8 +74,9 @@ class TvDetailFixtureGateway implements SourceContentGateway {
 }
 
 class TvDetailFixtureEntry extends StatefulWidget {
-  const TvDetailFixtureEntry({required this.onPlay, this.onSave, this.onRemove, super.key});
+  const TvDetailFixtureEntry({required this.onPlay, this.onSave, this.onRemove, this.catalog, super.key});
   final SourceVideoEpisodeRequested onPlay;
+  final PluginChaptersResult? catalog;
   final SourceShelfSaveRequested? onSave;
   final SourceShelfRemoveRequested? onRemove;
   @override
@@ -94,7 +95,7 @@ class _TvDetailFixtureEntryState extends State<TvDetailFixtureEntry> {
         pluginId: 'tv-fixture',
         id: 'show',
         initialDetail: tvDetailFixture,
-        initialCatalog: tvCatalogFixture,
+        initialCatalog: widget.catalog ?? tvCatalogFixture,
         refreshInitialContent: false,
         onVideoEpisodeRequested: widget.onPlay,
         onAddToShelf: widget.onSave,

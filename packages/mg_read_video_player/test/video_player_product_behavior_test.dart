@@ -7,6 +7,32 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read_video_player/mg_read_video_player.dart';
 
 void main() {
+  testWidgets(
+    'last episode stops at the line boundary and previous means previous episode',
+    (tester) async {
+      final backend = _Backend();
+      final controller = VideoPlayerController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(_app(backend: backend, controller: controller));
+      await tester.pumpAndSettle();
+      await controller.selectEpisode('group-a', 'episode-2');
+      await tester.pumpAndSettle();
+      expect(controller.snapshot.hasNextEpisode, isFalse);
+      backend.complete();
+      await tester.pumpAndSettle();
+      expect(backend.opened, ['episode-1', 'episode-2']);
+      expect(controller.snapshot.activeGroupId, 'group-a');
+      await controller.seek(const Duration(seconds: 40));
+      await controller.playPreviousEpisode();
+      await tester.pumpAndSettle();
+      expect(controller.snapshot.activeEpisodeId, 'episode-1');
+      expect(controller.snapshot.hasPreviousEpisode, isFalse);
+      await controller.selectEpisode('group-b', 'episode-3');
+      await tester.pumpAndSettle();
+      expect(controller.snapshot.hasPreviousEpisode, isFalse);
+    },
+  );
+
   testWidgets('completion advances to the next ordered episode', (
     tester,
   ) async {

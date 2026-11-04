@@ -28,6 +28,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focus_traversal.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/errors/app_error.dart';

@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -19,6 +21,38 @@ import 'package:mg_read/features/discovery/application/search_page_controller.da
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 
 void main() {
+  testWidgets('TV keyboard submit leaves focus on search action through async results', (tester) async {
+    final gate = Completer<PluginSearchResult>();
+    final gateway = _SearchGateway(searchCompletion: gate);
+    final destinations = <Object>[];
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sourceContentGatewayProvider.overrideWithValue(gateway),
+          searchHistoryStoreProvider.overrideWithValue(_MemorySearchHistoryStore(const [])),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.dark(),
+          builder: (_, child) => TvModeScope(enabled: true, onChanged: (_) {}, child: child!),
+          home: SearchPage(onDestinationRequested: destinations.add),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('source-search-query')), '影视');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pump();
+    final submit = tester.widget<TextButton>(find.byKey(const Key('source-search-submit'))).focusNode!;
+    expect(submit.hasFocus, isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    final afterMove = FocusManager.instance.primaryFocus;
+    gate.complete(_searchResult('source.test'));
+    await tester.pumpAndSettle();
+    expect(destinations, isEmpty);
+    expect(FocusManager.instance.primaryFocus, same(afterMove));
+  });
+
   testWidgets('TV search prefers video once and respects subsequent manual source selection', (tester) async {
     final gateway = _SearchGateway(
       sources: [

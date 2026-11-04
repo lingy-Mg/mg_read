@@ -2,9 +2,11 @@
 ///
 /// Rows project app-owned source descriptors only. Runtime transport state and
 /// installation details must not enter this presentation library.
+/// TV focus follows source identity across lazy reordering; offscreen kept-alive
+/// rows must be laid out before asking the viewport to reveal their focus.
 part of 'source_picker_sheet.dart';
 
-class _SourcePickerList extends StatelessWidget {
+class _SourcePickerList extends StatefulWidget {
   const _SourcePickerList({
     required this.sources,
     required this.selectedSourceId,
@@ -30,7 +32,93 @@ class _SourcePickerList extends StatelessWidget {
   final bool asSliver;
 
   @override
+  State<_SourcePickerList> createState() => _SourcePickerListState();
+}
+
+class _SourcePickerListState extends State<_SourcePickerList> {
+  String? _revealSource;
+  FocusNode? _revealFocus;
+  bool _revealScheduled = false;
+  int _revealAttempts = 0;
+  List<_SourceListEntry> _entries = const [];
+
+  Future<void> _pin(String id) async {
+    if (!mounted) return;
+    final current = FocusManager.instance.primaryFocus;
+    final focus = TvModeScope.isEnabled(context) && current?.context?.findAncestorWidgetOfExactType<_SourcePickerRow>()?.source.id == id
+        ? current
+        : null;
+    void reveal() {
+      if (!mounted || focus == null || !focus.hasFocus || !widget.asSliver) return;
+      setState(() {
+        _revealSource = id;
+        _revealFocus = focus;
+        _revealAttempts = 0;
+      });
+    }
+
+    reveal();
+    await widget.onPinPressed(id);
+    // The host may have rolled back an unsuccessful persistence write.
+    reveal();
+  }
+
+  void _scheduleReveal() {
+    if (_revealSource == null || _revealScheduled) return;
+    _revealScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _revealScheduled = false;
+      if (!mounted) return;
+      final focus = _revealFocus;
+      if (focus == null || !focus.hasFocus || focus.context == null) {
+        _revealSource = null;
+        return;
+      }
+      final padding = context.findRenderObject();
+      final sliver = padding is RenderSliverPadding ? padding.child : null;
+      if (sliver is! RenderSliverList) return;
+      RenderObject? child = focus.context!.findRenderObject();
+      while (child != null && child.parent != sliver) {
+        child = child.parent;
+      }
+      final data = child?.parentData;
+      if (data is SliverMultiBoxAdaptorParentData && !data.keptAlive && data.layoutOffset != null) {
+        _revealSource = null;
+        requestTvFocus(focus, alignmentPolicy: ScrollPositionAlignmentPolicy.explicit, alignment: .5);
+        return;
+      }
+      // A reordered kept-alive row has no layout offset. Move the viewport near
+      // its new index first; ensureVisible only works once it is laid out again.
+      final first = sliver.firstChild;
+      final last = sliver.lastChild;
+      final position = Scrollable.maybeOf(context)?.position;
+      final index = _entries.indexWhere((entry) => entry is _SourceItemEntry && entry.source.id == _revealSource);
+      if (first == null || last == null || position == null || index < 0 || _revealAttempts++ >= 8) {
+        _revealSource = null;
+        return;
+      }
+      final firstData = first.parentData! as SliverMultiBoxAdaptorParentData;
+      final lastData = last.parentData! as SliverMultiBoxAdaptorParentData;
+      final start = firstData.layoutOffset ?? 0;
+      final extent = ((lastData.layoutOffset ?? start) + last.size.height - start) / (lastData.index! - firstData.index! + 1);
+      final target = sliver.constraints.precedingScrollExtent + start + extent * (index - firstData.index!);
+      position.jumpTo(target.clamp(position.minScrollExtent, position.maxScrollExtent));
+      _scheduleReveal();
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final sources = widget.sources;
+    final selectedSourceId = widget.selectedSourceId;
+    final pinnedSourceIds = widget.pinnedSourceIds;
+    final query = widget.query;
+    final hasAnySources = widget.hasAnySources;
+    final onClearQuery = widget.onClearQuery;
+    final onSourcePressed = widget.onSourcePressed;
+    final onWebViewAction = widget.onWebViewAction;
+    final asSliver = widget.asSliver;
     if (sources.isEmpty) {
       final empty = _SourcePickerEmptyState(query: query, hasAnySources: hasAnySources, onClearQuery: onClearQuery);
       return asSliver ? SliverToBoxAdapter(child: empty) : empty;
@@ -44,19 +132,34 @@ class _SourcePickerList extends StatelessWidget {
       if (others.isNotEmpty) entries.add(_SourceSectionEntry('其他数据源', others.length));
     }
     entries.addAll(others.map(_SourceItemEntry.new));
+    _entries = entries;
+    _scheduleReveal();
+
+    Key entryKey(_SourceListEntry entry) => switch (entry) {
+      _SourceSectionEntry(:final label) => ValueKey('section-$label'),
+      _SourceItemEntry(:final source) => ValueKey('source-${source.id}'),
+    };
+    int? findEntry(Key key) {
+      final index = entries.indexWhere((entry) => entryKey(entry) == key);
+      return index < 0 ? null : index;
+    }
 
     Widget buildEntry(BuildContext context, int index) {
       final entry = entries[index];
       return switch (entry) {
-        _SourceSectionEntry(:final label, :final count) => _SourcePickerSectionLabel(label: label, count: count),
+        _SourceSectionEntry(:final label, :final count) => KeyedSubtree(
+          key: entryKey(entry),
+          child: _SourcePickerSectionLabel(label: label, count: count),
+        ),
         _SourceItemEntry(:final source) => Padding(
+          key: entryKey(entry),
           padding: const EdgeInsets.only(bottom: AppSpacing.compact),
           child: _SourcePickerRow(
             source: source,
             selected: source.id == selectedSourceId,
             pinned: pinnedSourceIds.contains(source.id),
             onPressed: () => onSourcePressed(source.id),
-            onPinPressed: () => onPinPressed(source.id),
+            onPinPressed: () => _pin(source.id),
             onWebViewAction: (action) => onWebViewAction(source.id, action),
           ),
         ),
@@ -67,7 +170,12 @@ class _SourcePickerList extends StatelessWidget {
     if (asSliver) {
       return SliverPadding(
         padding: padding,
-        sliver: SliverList.builder(key: const Key('discovery-source-picker-list'), itemCount: entries.length, itemBuilder: buildEntry),
+        sliver: SliverList.builder(
+          key: const Key('discovery-source-picker-list'),
+          itemCount: entries.length,
+          itemBuilder: buildEntry,
+          findChildIndexCallback: findEntry,
+        ),
       );
     }
     return ListView.builder(
@@ -75,6 +183,7 @@ class _SourcePickerList extends StatelessWidget {
       padding: padding,
       itemCount: entries.length,
       itemBuilder: buildEntry,
+      findChildIndexCallback: findEntry,
     );
   }
 }
@@ -260,6 +369,7 @@ class _SourcePickerRow extends StatelessWidget {
       tokens.accent.withValues(alpha: theme.brightness == Brightness.dark ? 0.14 : 0.065),
       tokens.surface,
     );
+    FocusNode? menuFocus;
     return Semantics(
       button: true,
       selected: selected,
@@ -330,7 +440,8 @@ class _SourcePickerRow extends StatelessWidget {
                   PopupMenuButton<_SourcePickerAction>(
                     key: ValueKey<String>('discovery-source-picker-actions-${source.id}'),
                     tooltip: '更多操作',
-                    onSelected: (action) => _handleSourcePickerAction(action, onPinPressed, onWebViewAction),
+                    onOpened: () => menuFocus = FocusManager.instance.primaryFocus,
+                    onSelected: (action) => _handleSourcePickerAction(action, onPinPressed, onWebViewAction, returnFocus: menuFocus),
                     icon: Icon(Icons.more_vert_rounded, size: 20, color: tokens.mutedText),
                     itemBuilder: (context) => _sourcePickerActionItems(pinned),
                   ),
@@ -383,12 +494,13 @@ Future<void> _showSourcePickerActions(
 ) async {
   final overlay = Overlay.of(context).context.findRenderObject();
   if (overlay is! RenderBox) return;
+  final returnFocus = FocusManager.instance.primaryFocus;
   final action = await showMenu<_SourcePickerAction>(
     context: context,
     position: RelativeRect.fromRect(Rect.fromLTWH(globalPosition.dx, globalPosition.dy, 1, 1), Offset.zero & overlay.size),
     items: _sourcePickerActionItems(pinned),
   );
-  if (action != null) _handleSourcePickerAction(action, onPinPressed, onAction);
+  if (action != null) _handleSourcePickerAction(action, onPinPressed, onAction, returnFocus: returnFocus);
 }
 
 List<PopupMenuEntry<_SourcePickerAction>> _sourcePickerActionItems(bool pinned) {
@@ -411,11 +523,16 @@ List<PopupMenuEntry<_SourcePickerAction>> _sourcePickerActionItems(bool pinned) 
 void _handleSourcePickerAction(
   _SourcePickerAction action,
   Future<void> Function() onPinPressed,
-  ValueChanged<DiscoverySourceWebViewAction> onAction,
-) {
+  ValueChanged<DiscoverySourceWebViewAction> onAction, {
+  FocusNode? returnFocus,
+}) {
   switch (action) {
     case _SourcePickerAction.togglePin:
-      unawaited(onPinPressed());
+      // Restore the launching row before reordering, while it still has a
+      // layout position. The popup's temporary focus must not become the owner.
+      if (returnFocus?.context != null) returnFocus!.requestFocus();
+      WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(onPinPressed()));
+      WidgetsBinding.instance.ensureVisualUpdate();
     case _SourcePickerAction.enterDebug:
       onAction(DiscoverySourceWebViewAction.enterDebug);
     case _SourcePickerAction.show:

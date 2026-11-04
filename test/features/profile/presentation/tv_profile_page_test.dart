@@ -56,6 +56,33 @@ void main() {
     ),
   );
 
+  testWidgets('returning from a child page restores the exact setting action', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      host(
+        onSetting: (_) {
+          Navigator.of(
+            tester.element(find.byType(TvProfilePage)),
+          ).push(MaterialPageRoute<void>(builder: (_) => const Scaffold(body: Text('子设置'))));
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+    _focus(tester, 'tv-settings-section-2').requestFocus();
+    await tester.pumpAndSettle();
+    final focus = _focus(tester, 'tv-setting-network-proxy');
+    focus.requestFocus();
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(find.text('子设置'), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(FocusManager.instance.primaryFocus, same(focus));
+    expect(find.byKey(const Key('tv-setting-network-proxy')).hitTestable(), findsOneWidget);
+  });
+
   testWidgets('TV video choices save by remote and keep focus through the save', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1280, 720));
     addTearDown(() => tester.binding.setSurfaceSize(null));

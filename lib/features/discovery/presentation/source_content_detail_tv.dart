@@ -210,7 +210,15 @@ class _TvVideoDetail extends StatelessWidget {
 }
 
 class _TvDetailEpisodes extends StatelessWidget {
-  const _TvDetailEpisodes({required this.episodes, required this.groupId, required this.onSelected});
+  const _TvDetailEpisodes({
+    required this.episodes,
+    required this.groupId,
+    required this.onSelected,
+    this.focusedEpisodeId,
+    this.episodeFocusNode,
+  });
+  final String? focusedEpisodeId;
+  final FocusNode? episodeFocusNode;
   final Iterable<PluginChapterSummary> episodes;
   final String groupId;
   final ValueChanged<PluginChapterSummary> onSelected;
@@ -231,6 +239,7 @@ class _TvDetailEpisodes extends StatelessWidget {
                 width: width,
                 child: TvFocusable(
                   key: ValueKey('source-detail-episode-$groupId-${episode.id}'),
+                  focusNode: episode.id == focusedEpisodeId ? episodeFocusNode : null,
                   onPressed: () => onSelected(episode),
                   child: Text(episode.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodyMedium),
                 ),

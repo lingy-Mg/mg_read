@@ -98,8 +98,8 @@ class DataSourceManagementSheet extends StatelessWidget {
           actionKey: const Key('data-source-verify-all'),
           icon: Icons.playlist_add_check_rounded,
           title: '检测数据源',
-          subtitle: '进入检测页，检查已启用的数据源',
-          onTap: busy ? null : () => Navigator.pop(context, DataSourceManagementAction.verify),
+          subtitle: Platform.isWindows || Platform.isMacOS ? '进入检测页，检查已启用的数据源' : '全链路检测需在电脑运行；当前设备请使用运行诊断或搜索验证',
+          onTap: busy || !(Platform.isWindows || Platform.isMacOS) ? null : () => Navigator.pop(context, DataSourceManagementAction.verify),
         ),
       if (canDiagnose)
         _ActionTile(

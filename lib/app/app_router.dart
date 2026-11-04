@@ -227,6 +227,8 @@ class ReadingHistoryRoute extends GoRouteData with $ReadingHistoryRoute {
     return ReadingHistoryPage(
       onBackRequested: () => _returnToLibrary(context),
       onReaderRequested: (String bookId) => ReaderRoute(bookId: bookId).push(context),
+      onAudioChapterRequested: _sourceLaunchCallbacks(context).audioChapter,
+      onVideoEpisodeRequested: _sourceLaunchCallbacks(context).videoEpisode,
     );
   }
 }

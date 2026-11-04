@@ -90,10 +90,17 @@ final class LibraryHomeViewData {
     );
   }
 
-  /// Projects only items with a durable reading position for the history page.
+  /// Projects durable reader and media activity without requiring a book fraction.
   factory LibraryHomeViewData.fromReadingHistory(LibraryOverview overview) {
-    final items = overview.items.where((item) => item.readingProgress != null && item.lastReadAtUtc != null).toList()
-      ..sort((a, b) => b.lastReadAtUtc!.compareTo(a.lastReadAtUtc!));
+    final items =
+        overview.items
+            .where(
+              (item) =>
+                  item.lastReadAtUtc != null &&
+                  (item.readingProgress != null || item.contentKind == ContentKind.video || item.contentKind == ContentKind.audio),
+            )
+            .toList()
+          ..sort((a, b) => b.lastReadAtUtc!.compareTo(a.lastReadAtUtc!));
     return LibraryHomeViewData(
       isPresentationFixture: false,
       continueReading: null,

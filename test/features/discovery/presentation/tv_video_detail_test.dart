@@ -9,8 +9,64 @@ import 'package:mg_read/app/app_tv_theme.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 import '../../../support/tv_media_test_fixture.dart';
+import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 void main() {
+  testWidgets('expanding a long line focuses and reveals the first new episode', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(960, 540));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final group = PluginMediaGroup(
+      id: 'long',
+      title: '长剧',
+      order: 0,
+      episodes: [
+        for (var i = 0; i < 60; i++)
+          PluginChapterSummary(
+            id: 'ep-$i',
+            title: '第${i + 1}集',
+            order: i,
+            url: null,
+            volumeTitle: null,
+            wordCount: null,
+            updatedAt: null,
+            isLocked: false,
+            attributes: const [],
+          ),
+      ],
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTvTheme(AppTheme.dark()),
+        builder: (_, child) => TvModeScope(
+          enabled: true,
+          onChanged: (_) {},
+          child: TvRemoteShortcuts(child: child!),
+        ),
+        home: TvDetailFixtureEntry(
+          catalog: PluginChaptersResult(pluginId: 'tv-fixture', sourceName: '影视测试源', items: group.episodes, groups: [group]),
+          onPlay: ({required detail, required firstCatalogPage, required chapter}) async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    for (final id in ['ep-24', 'ep-48']) {
+      final more = find.byKey(const Key('source-detail-load-more-group-episodes'));
+      await tester.ensureVisible(more);
+      await tester.pumpAndSettle();
+      Focus.of(tester.element(find.descendant(of: more, matching: find.byType(Text)))).requestFocus();
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      final newEpisode = find.byKey(ValueKey('source-detail-episode-long-$id'));
+      expect(newEpisode.hitTestable(), findsOneWidget);
+      expect(
+        FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvFocusable>()?.key,
+        ValueKey('source-detail-episode-long-$id'),
+      );
+    }
+    expect(find.byKey(const Key('source-detail-load-more-group-episodes')), findsNothing);
+  });
+
   testWidgets('TV favorite removal can be cancelled and confirmed with remote buttons', (tester) async {
     var removed = 0;
     await tester.binding.setSurfaceSize(const Size(960, 540));

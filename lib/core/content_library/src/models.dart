@@ -217,6 +217,9 @@ final class LibraryItemSource {
 /// Bounded shelf-card projection returned by one metadata query.
 final class LibraryShelfProjection {
   const LibraryShelfProjection({
+    this.categories = const <String>[],
+    this.tags = const <String>[],
+    this.attributes = const <LibraryItemAttribute>[],
     required this.itemId,
     required this.kind,
     required this.title,
@@ -246,6 +249,9 @@ final class LibraryShelfProjection {
   final int? sourceChapterCount;
   final int catalogCount;
   final String? summaryExcerpt;
+  final List<String> categories;
+  final List<String> tags;
+  final List<LibraryItemAttribute> attributes;
   final ContentKind? progressKind;
   final int? chapterPosition;
   final double? bookFraction;

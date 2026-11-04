@@ -136,6 +136,15 @@ class _GroupedDetailCatalogState extends State<_GroupedDetailCatalog> {
 
   late String? _selectedGroupId = widget.groups.firstOrNull?.id;
   var _visibleEpisodeCount = _pageSize;
+  final _expandedEpisodeFocus = FocusNode();
+  String? _expandedEpisodeId;
+
+  @override
+  void dispose() {
+    _expandedEpisodeFocus.dispose();
+    super.dispose();
+  }
+
   final _loaded = <String, PluginMediaGroup>{};
   final _loading = <String>{};
   final _failed = <String>{};
@@ -259,6 +268,8 @@ class _GroupedDetailCatalogState extends State<_GroupedDetailCatalog> {
           _TvDetailEpisodes(
             episodes: visibleEpisodes,
             groupId: group.id,
+            focusedEpisodeId: _expandedEpisodeId,
+            episodeFocusNode: _expandedEpisodeFocus,
             onSelected: (episode) => widget.onEpisodeSelected(episode, _catalog),
           )
         else
@@ -293,7 +304,18 @@ class _GroupedDetailCatalogState extends State<_GroupedDetailCatalog> {
             padding: const EdgeInsets.only(top: AppSpacing.regular),
             child: OutlinedButton(
               key: const Key('source-detail-load-more-group-episodes'),
-              onPressed: () => setState(() => _visibleEpisodeCount = math.min(_visibleEpisodeCount + _pageSize, episodes.length)),
+              onPressed: () {
+                final nextId = episodes[_visibleEpisodeCount].id;
+                setState(() {
+                  _expandedEpisodeId = nextId;
+                  _visibleEpisodeCount = math.min(_visibleEpisodeCount + _pageSize, episodes.length);
+                });
+                if (TvModeScope.isEnabled(context)) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted && _selectedGroupId == group?.id && _expandedEpisodeId == nextId) requestTvFocus(_expandedEpisodeFocus);
+                  });
+                }
+              },
               child: const Text('显示更多选集'),
             ),
           ),

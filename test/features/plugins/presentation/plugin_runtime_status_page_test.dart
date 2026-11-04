@@ -3,6 +3,8 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_theme.dart';
@@ -12,6 +14,20 @@ import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page
 import 'plugin_runtime_status_page_fixture.dart';
 
 void main() {
+  testWidgets('TV source filter lets the remote leave the editor vertically', (tester) async {
+    await tester.pumpWidget(TvModeScope(enabled: true, onChanged: (_) {}, child: _host()));
+    await tester.pumpAndSettle();
+    final field = find.byKey(const Key('data-source-search'));
+    await tester.enterText(field, '起点');
+    await tester.pumpAndSettle();
+    final editor = tester.widget<EditableText>(find.descendant(of: field, matching: find.byType(EditableText)));
+    expect(editor.focusNode.hasFocus, isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    expect(editor.focusNode.hasFocus, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('missing source homepage leaves discovery and search available', (tester) async {
     var discovered = false;
     var searched = false;

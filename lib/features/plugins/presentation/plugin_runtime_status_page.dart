@@ -16,6 +16,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_text_input_navigation.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/plugins/application/source_collection_import.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
@@ -609,32 +610,34 @@ class _DataSourceSearchField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
-    return TextField(
-      key: const Key('data-source-search'),
-      controller: controller,
-      onChanged: onChanged,
-      textInputAction: TextInputAction.search,
-      decoration: InputDecoration(
-        hintText: '筛选名称或用途',
-        prefixIcon: const Icon(Icons.search_rounded, size: 21),
-        suffixIcon: query.isEmpty
-            ? null
-            : IconButton(
-                key: const Key('data-source-search-clear'),
-                tooltip: '清除搜索',
-                onPressed: onClear,
-                icon: const Icon(Icons.close_rounded),
-              ),
-        filled: true,
-        fillColor: tokens.surface,
-        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.comfortable, vertical: AppSpacing.comfortable),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: AppRadii.detailControl,
-          borderSide: BorderSide(color: tokens.divider),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: AppRadii.detailControl,
-          borderSide: BorderSide(color: tokens.dataSourceAccent, width: 1.4),
+    return TvTextInputNavigation(
+      child: TextField(
+        key: const Key('data-source-search'),
+        controller: controller,
+        onChanged: onChanged,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: '筛选名称或用途',
+          prefixIcon: const Icon(Icons.search_rounded, size: 21),
+          suffixIcon: query.isEmpty
+              ? null
+              : IconButton(
+                  key: const Key('data-source-search-clear'),
+                  tooltip: '清除搜索',
+                  onPressed: onClear,
+                  icon: const Icon(Icons.close_rounded),
+                ),
+          filled: true,
+          fillColor: tokens.surface,
+          contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.comfortable, vertical: AppSpacing.comfortable),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: AppRadii.detailControl,
+            borderSide: BorderSide(color: tokens.divider),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: AppRadii.detailControl,
+            borderSide: BorderSide(color: tokens.dataSourceAccent, width: 1.4),
+          ),
         ),
       ),
     );

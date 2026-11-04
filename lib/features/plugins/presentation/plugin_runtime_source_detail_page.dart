@@ -185,7 +185,7 @@ class _DetailContent extends ConsumerWidget {
           opening: opening,
           packaging: packaging,
           removing: removing,
-          canVerify: source.enabled && source.activeVersion != null && onVerificationRequested != null,
+          canVerify: isDesktop && source.enabled && source.activeVersion != null && onVerificationRequested != null,
           onVerify: onVerificationRequested == null ? null : () => onVerificationRequested!(source.id),
           onOpenDirectory: () => _openDirectory(context, ref, source, isDevelopment),
           onPackage: () => _packageDevelopmentSource(context, ref, source),
@@ -530,6 +530,11 @@ class _DetailActions extends StatelessWidget {
             Text('数据源操作', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: AppSpacing.regular),
             _VerifySourceButton(onPressed: canVerify ? onVerify : null),
+            if (!isDesktop)
+              const Padding(
+                padding: EdgeInsets.only(top: AppSpacing.unit),
+                child: Text('全链路检测需在电脑运行。请返回数据源工具使用运行诊断，或通过搜索验证该源。'),
+              ),
             if (isDevelopment && isWindows) ...<Widget>[
               const SizedBox(height: AppSpacing.regular),
               _PackageDevelopmentButton(isPackaging: packaging, onPressed: packaging ? null : onPackage),

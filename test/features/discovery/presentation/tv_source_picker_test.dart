@@ -12,6 +12,68 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 void main() {
+  testWidgets('pinning and unpinning keeps the same source control focused and visible', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(960, 540));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTvTheme(AppTheme.dark()),
+        builder: (_, child) => TvModeScope(
+          enabled: true,
+          onChanged: (_) {},
+          child: TvRemoteShortcuts(child: child!),
+        ),
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: FilledButton(
+              onPressed: () => showDiscoverySourcePicker(
+                context,
+                sources: [
+                  for (var i = 0; i < 30; i++)
+                    PluginSourceDescriptor(id: 'source-$i', displayName: '来源$i', contentKinds: const [PluginContentKind.video]),
+                ],
+                selectedSourceId: 'source-0',
+              ),
+              child: const Text('打开'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('打开'));
+    await tester.pumpAndSettle();
+    final pin = find.byKey(const ValueKey('discovery-source-picker-pin-source-20'));
+    await tester.scrollUntilVisible(
+      pin,
+      300,
+      scrollable: find.descendant(of: find.byKey(const Key('tv-source-picker-scroll')), matching: find.byType(Scrollable)).first,
+    );
+    await tester.pumpAndSettle();
+    Focus.of(tester.element(find.descendant(of: pin, matching: find.byType(Icon)))).requestFocus();
+    await tester.pumpAndSettle();
+    final focus = FocusManager.instance.primaryFocus;
+    for (var i = 0; i < 2; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+      expect(FocusManager.instance.primaryFocus, same(focus));
+      expect(pin.hitTestable(), findsOneWidget);
+      expect(tester.widget<IconButton>(pin).tooltip, i == 0 ? '取消置顶' : '置顶');
+    }
+    final menu = find.byKey(const ValueKey('discovery-source-picker-actions-source-20'));
+    Focus.of(tester.element(find.descendant(of: menu, matching: find.byType(Icon)).first)).requestFocus();
+    await tester.pumpAndSettle();
+    final menuFocus = FocusManager.instance.primaryFocus;
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(find.text('置顶'), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(tester.widget<IconButton>(pin).tooltip, '取消置顶');
+    expect(FocusManager.instance.primaryFocus, same(menuFocus));
+    expect(menu.hitTestable(), findsOneWidget);
+  });
+
   setUpAll(() async {
     await (FontLoader(
       'packages/novel_reader_ui/MiSans',

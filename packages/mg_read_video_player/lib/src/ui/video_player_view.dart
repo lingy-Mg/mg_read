@@ -115,6 +115,8 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   VideoContent? _content;
   VideoEpisodeGroup? _group;
   VideoEpisode? _episode;
+  // Backend timestamps belong to the selection only after its open succeeds.
+  bool _episodeOpened = false;
   String? _activeContentId;
   VideoPlaybackStateStore? _activeStateStore;
   VideoPlayerStatus _status = VideoPlayerStatus.loading;
@@ -216,6 +218,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
       _status = VideoPlayerStatus.loading;
       _failure = null;
       _content = null;
+      _episodeOpened = false;
       _group = null;
       _episode = null;
       _controlsVisible = !widget.tvMode;
@@ -344,6 +347,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
       return;
     }
     _update(() {
+      _episodeOpened = false;
       _group = group;
       _episode = episode;
     });
@@ -405,6 +409,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
         return;
       }
       if (_status == VideoPlayerStatus.failure) return;
+      _episodeOpened = true;
       _update(() => _status = VideoPlayerStatus.ready);
       _scheduleFirstFrameTimeout(generation);
       _scheduleControlsHide();
@@ -467,7 +472,10 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     _hostBridge.reportPlaybackActive(
       next.playing && _status != VideoPlayerStatus.failure,
     );
-    if (!previous.completed && next.completed) {
+    if (_episodeOpened &&
+        _status == VideoPlayerStatus.ready &&
+        !previous.completed &&
+        next.completed) {
       unawaited(_handlePlaybackCompleted());
     }
     final groupId = _group?.id;
@@ -606,7 +614,21 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   Future<void> _showEpisodes() => _actionShowEpisodes();
 
   Future<void> _retry() async {
-    _reportedBackendError = null;
+    final group = _group;
+    final episode = _episode;
+    if (_content != null && group != null && episode != null) {
+      final position = _currentProgress?.position ?? Duration.zero;
+      _playbackDesired = widget.autoPlay;
+      _startupSession = VideoStartupSession.create();
+      await _openEpisode(
+        group,
+        episode,
+        initialPosition: position,
+        play: widget.autoPlay,
+        flushCurrent: true,
+      );
+      return;
+    }
     await _reloadSession();
   }
 

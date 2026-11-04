@@ -197,10 +197,6 @@ extension _VideoPlayerViewActions on _VideoPlayerViewState {
   }
 
   Future<void> _actionPlayPreviousEpisode() async {
-    if (_backendState.position >= const Duration(seconds: 5)) {
-      await _actionReplay();
-      return;
-    }
     await _selectAdjacentEpisode(-1);
   }
 
@@ -315,6 +311,9 @@ extension _VideoPlayerViewActions on _VideoPlayerViewState {
     }
     if (_exitRequested) return;
     _exitRequested = true;
+    // An exit invalidates pending resolution/open even before the route pops.
+    _loadGeneration++;
+    _episodeGeneration++;
     _playbackDesired = false;
     await _pauseBackend(code: 'exit_pause_failed', reportFailure: false);
     await _flushProgress(force: true);
@@ -416,7 +415,12 @@ extension _VideoPlayerViewActions on _VideoPlayerViewState {
     final group = _group;
     final episode = _episode;
     final contentId = _activeContentId;
-    if (group == null || episode == null || contentId == null) return null;
+    if (!_episodeOpened ||
+        group == null ||
+        episode == null ||
+        contentId == null) {
+      return null;
+    }
     return VideoPlaybackProgress(
       contentId: contentId,
       groupId: group.id,

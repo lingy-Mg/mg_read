@@ -76,6 +76,7 @@ class SearchPage extends ConsumerStatefulWidget {
 class _SearchPageState extends ConsumerState<SearchPage> {
   final TextEditingController _queryController = TextEditingController();
   final FocusNode _queryFocusNode = FocusNode();
+  final FocusNode _submitFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
   final List<String> _history = <String>[];
   int _historyGeneration = 0;
@@ -96,6 +97,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       ..removeListener(_onQueryChanged)
       ..dispose();
     _queryFocusNode.dispose();
+    _submitFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -185,6 +187,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                   _SearchTopBar(
                     queryController: _queryController,
                     queryFocusNode: _queryFocusNode,
+                    submitFocusNode: _submitFocusNode,
                     isSearching: state.status == SearchPageStatus.searching,
                     onSearch: () => _search(controller),
                     onCancel: controller.cancelSearch,
@@ -274,7 +277,11 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       unawaited(controller.clear());
       return;
     }
-    _queryFocusNode.unfocus();
+    if (TvModeScope.isEnabled(context)) {
+      _submitFocusNode.requestFocus();
+    } else {
+      _queryFocusNode.unfocus();
+    }
     _replaceHistory(<String>[query, ..._history.where((item) => item != query)].take(5));
     unawaited(controller.search(query));
   }
@@ -361,6 +368,7 @@ class _SearchTopBar extends StatelessWidget {
   const _SearchTopBar({
     required this.queryController,
     required this.queryFocusNode,
+    required this.submitFocusNode,
     required this.isSearching,
     required this.onSearch,
     required this.onCancel,
@@ -369,6 +377,7 @@ class _SearchTopBar extends StatelessWidget {
 
   final TextEditingController queryController;
   final FocusNode queryFocusNode;
+  final FocusNode submitFocusNode;
   final bool isSearching;
   final VoidCallback onSearch;
   final VoidCallback onCancel;
@@ -435,6 +444,7 @@ class _SearchTopBar extends StatelessWidget {
           const SizedBox(width: AppSpacing.unit),
           TextButton(
             key: const Key('source-search-submit'),
+            focusNode: submitFocusNode,
             onPressed: isSearching ? onCancel : onSearch,
             child: Text(isSearching ? '取消搜索' : '搜索'),
           ),

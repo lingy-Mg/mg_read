@@ -197,7 +197,7 @@ class _TvProfilePageState extends State<TvProfilePage> {
                             child: ListView(
                               key: ValueKey('tv-settings-panel-$_section'),
                               padding: const EdgeInsets.fromLTRB(8, 8, 12, 24),
-                              children: (ModalRoute.of(context)?.isCurrent ?? true) ? _panel() : const [],
+                              children: _panel(),
                             ),
                           ),
                         ),

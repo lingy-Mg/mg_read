@@ -38,6 +38,12 @@ final class ContentLibraryOverviewLoader implements LibraryOverviewLoader {
         coverRemoteContentId: source.remoteContentId,
         sourceName: item.sourceName,
         description: item.summaryExcerpt,
+        categories: item.categories,
+        tags: item.tags,
+        attributes: [
+          for (final attribute in item.attributes)
+            LibraryItemSummaryAttribute(key: attribute.key, label: attribute.label, value: attribute.value),
+        ],
         chapterCount: item.sourceChapterCount ?? item.catalogCount,
         readingProgress: item.bookFraction,
         readingChapterIndex: item.chapterPosition,
