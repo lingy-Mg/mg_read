@@ -21,7 +21,6 @@ import 'package:mg_read/app/mg_read_app.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/discovery/application/discovery_page_controller.dart';
 import 'package:mg_read/features/library/presentation/widgets/tv_library_shell.dart';
-import 'package:mg_read/features/tv_companion/presentation/companion_entry.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 
 import '../test/app/mg_read_app_test_support.dart';
@@ -88,12 +87,12 @@ void main() {
     expect(_focusedKey(), const Key('tv-setting-theme-appearance'));
     await _press(tester, LogicalKeyboardKey.select);
     expect(find.byKey(const Key('appearance-tv-mode')), findsOneWidget);
-    expect(find.byType(CompanionEntry), findsNothing);
+    expect(find.widgetWithText(FilledButton, '手机连接'), findsNothing);
     await _capture(binding, capture, 'mumu-tv-appearance');
     await tester.binding.handlePopRoute();
     await _settle(tester);
     expect(router.routeInformationProvider.value.uri.path, '/profile');
-    expect(find.byType(CompanionEntry), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '手机连接'), findsNothing);
     await tester.binding.handlePopRoute();
     await _settle(tester);
     expect(router.routeInformationProvider.value.uri.path, '/');
@@ -150,7 +149,7 @@ void main() {
     await _settle(tester);
     await _press(tester, LogicalKeyboardKey.select);
     expect(find.byKey(const Key('tv-filter-dialog')), findsOneWidget);
-    expect(find.byType(CompanionEntry), findsNothing);
+    expect(find.widgetWithText(FilledButton, '手机连接'), findsNothing);
     _focus(tester, find.byKey(const ValueKey(('discovery-filter', 'genre', 'all')))).requestFocus();
     await _settle(tester);
     await _press(tester, LogicalKeyboardKey.arrowRight);
@@ -161,7 +160,7 @@ void main() {
     await tester.binding.handlePopRoute();
     await _settle(tester);
     expect(find.byKey(const Key('tv-filter-dialog')), findsNothing);
-    expect(find.byType(CompanionEntry), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '手机连接'), findsNothing);
     expect(_focusedKey(), const Key('tv-open-filters'));
 
     _focus(tester, find.byKey(const Key('app-nav-discover'))).requestFocus();

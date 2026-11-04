@@ -1,7 +1,8 @@
 /// “我的”主页面。
 ///
 /// 职责：
-/// - 按阅读外观、内容存储和高级设置分组；同步只保留概览卡入口。
+/// - 按阅读外观、内容存储和高级设置分组；手机辅助 TV 在内容与存储中进入。
+/// - 局域网同步只保留概览卡入口。
 /// - 作为设置子页面的顶部节奏基准。
 ///
 /// 注意：
@@ -158,7 +159,10 @@ class _ProfilePageState extends State<ProfilePage> {
                           ..._settingsGroup(
                             '内容与存储',
                             data.settings
-                                .where((item) => const {'source-management', 'downloads-cache', 'import-export'}.contains(item.id))
+                                .where(
+                                  (item) =>
+                                      const {'source-management', 'downloads-cache', 'import-export', 'tv-companion'}.contains(item.id),
+                                )
                                 .toList(),
                           ),
                           Material(
