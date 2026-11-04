@@ -76,6 +76,7 @@ final class TransientSourceVideoPlaybackStateStore implements VideoPlaybackState
   @override
   Future<VideoPlaybackProgress?> load(String requestedContentId) async {
     if (requestedContentId != contentId) return null;
+    if (_active) await prepareActivation();
     final existing = _progress;
     if (initialPosition != null) return existing;
     if (existing != null) return existing;
@@ -131,10 +132,24 @@ final class TransientSourceVideoPlaybackStateStore implements VideoPlaybackState
   /// Enables history writes only after the prepared route is visibly active.
   Future<void> activate() async {
     if (_active) return;
+    await prepareActivation();
     _active = true;
     final progress = _bufferedProgress;
     _bufferedProgress = null;
     if (progress != null) unawaited(save(progress).catchError((Object _) {}));
+  }
+
+  /// Reserve the session's ordering before it becomes active, including when
+  /// its first progress save is delayed. This never writes a watched checkpoint.
+  Future<void> prepareActivation() async {
+    if (!_hasHistoryMetadata) return;
+    try {
+      final library = await libraryFuture;
+      final device = originDeviceId ?? await originDeviceIdFuture;
+      if (library != null && device != null) await _sessionGeneration(library, device);
+    } on Object {
+      _saveFailure = true;
+    }
   }
 
   Future<void> _persist(VideoPlaybackProgress progress) async {

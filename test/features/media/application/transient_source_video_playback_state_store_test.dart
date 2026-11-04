@@ -158,6 +158,61 @@ void main() {
     expect(store.saveFailure, isFalse);
   });
 
+  for (final staged in [false, true]) {
+    test('session ordering is reserved before its delayed first save with staged=$staged', () async {
+      final root = await Directory.systemTemp.createTemp('mg-read-video-first-save-');
+      final library = await ContentLibrary.open(dataRoot: root);
+      addTearDown(() async {
+        await library.close();
+        await root.delete(recursive: true);
+      });
+      TransientSourceVideoPlaybackStateStore create(String session) => TransientSourceVideoPlaybackStateStore(
+        contentId: 'video',
+        initialGroupId: 'line',
+        initialEpisodeId: 'episode',
+        initialPosition: Duration.zero,
+        library: library,
+        pluginId: 'fixture',
+        pluginVersion: '1.0',
+        title: 'Video',
+        originDeviceId: 'device',
+        playbackSessionId: session,
+        initiallyActive: !staged,
+      );
+      Future<void> begin(TransientSourceVideoPlaybackStateStore store) async {
+        if (staged) {
+          await store.prepareActivation();
+          await store.activate();
+        } else {
+          await store.load('video');
+        }
+      }
+
+      VideoPlaybackProgress at(int value) => VideoPlaybackProgress(
+        contentId: 'video',
+        groupId: 'line',
+        episodeId: 'episode',
+        position: Duration(seconds: value),
+        duration: const Duration(minutes: 10),
+      );
+      final older = create('older');
+      await begin(older);
+      expect(
+        await library.readVideoHistory(videoHistorySourceKey('fixture', 'video')),
+        isNull,
+        reason: 'reserving an order must not create a watched checkpoint',
+      );
+      final newer = create('newer');
+      await begin(newer);
+      await newer.save(at(2));
+      await expectLater(older.save(at(1)), throwsStateError);
+      await newer.save(at(3));
+      final latest = await library.readVideoHistory(videoHistorySourceKey('fixture', 'video'));
+      expect(latest?.checkpoint.playbackSessionId, 'newer');
+      expect(latest?.checkpoint.position, const Duration(seconds: 3));
+    });
+  }
+
   test('history generation stays fixed per session and stale sessions cannot replace newer progress', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-video-generation-');
     final library = await ContentLibrary.open(dataRoot: root);

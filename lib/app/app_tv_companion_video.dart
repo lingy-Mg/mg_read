@@ -253,6 +253,7 @@ Future<void> launchCompanionSourceVideo(
     execution.ensureCurrent();
     await _awaitWhileCurrent(_waitForRouteVisible(route), execution);
     execution.ensureCurrent();
+    await _awaitWhileCurrent(store.prepareActivation(), execution);
     execution.commitPlaybackChange();
     unawaited(store.activate());
     if (oldRoute != null && oldRoute.isActive) {
