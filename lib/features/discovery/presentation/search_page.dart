@@ -7,9 +7,12 @@
 /// 注意：
 /// - 首次进入不主动搜索；封面加载不得延迟搜索结果主体。
 /// - 控制器负责异步状态，页面不直接读取 Runtime 或持久化。
+/// - TV 仅挂载当前可见搜索编辑器供手机输入；切页或销毁后旧输入令牌失效。
 /// - 顶级内容与发现、我的共用主入口最大宽度，超宽窗口中保持操作区集中。
 ///
 library;
+
+import 'package:mg_read/features/tv_companion/application/companion_text_input.dart';
 
 import 'source_debug_page.dart';
 
@@ -74,6 +77,7 @@ class SearchPage extends ConsumerStatefulWidget {
 }
 
 class _SearchPageState extends ConsumerState<SearchPage> {
+  late final CompanionTextInput _companionText;
   final TextEditingController _queryController = TextEditingController();
   final FocusNode _queryFocusNode = FocusNode();
   final FocusNode _submitFocusNode = FocusNode();
@@ -86,13 +90,31 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   @override
   void initState() {
     super.initState();
+    _companionText = ref.read(companionTextInputProvider);
     _queryController.addListener(_onQueryChanged);
     ref.listenManual<SearchPageState>(searchPageControllerProvider, (_, next) => _applyInitialSource(next), fireImmediately: true);
     unawaited(_loadHistory());
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (TvModeScope.isEnabled(context)) {
+      final route = ModalRoute.of(context);
+      _companionText.attach(
+        this,
+        _queryController,
+        () => _search(ref.read(searchPageControllerProvider.notifier)),
+        isCurrent: () => mounted && route?.isCurrent == true,
+      );
+    } else {
+      _companionText.detach(this);
+    }
+  }
+
+  @override
   void dispose() {
+    _companionText.detach(this);
     _queryController
       ..removeListener(_onQueryChanged)
       ..dispose();
@@ -194,6 +216,15 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                     onClear: _clearQuery,
                   ),
                   const SizedBox(height: AppSpacing.compact),
+                  AnimatedBuilder(
+                    animation: ref.read(companionTextInputProvider),
+                    builder: (context, _) => ref.read(companionTextInputProvider).active
+                        ? Padding(
+                            padding: EdgeInsets.all(8),
+                            child: Semantics(liveRegion: true, child: Text('手机正在输入，提交后搜索；在 TV 修改文字会结束手机输入。')),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
                   SearchSuggestionSections(
                     history: List<String>.unmodifiable(_history),
                     onHistorySelected: (String value) => _selectSuggestion(value, controller),

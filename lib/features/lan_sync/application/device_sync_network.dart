@@ -1,7 +1,7 @@
 /// 已配对同步的网络可用性与平台频率策略。
 ///
-/// Android 仅在 Wi-Fi 下广播和传输，并对开发书源变化做低频合并；Windows/macOS 可使用
-/// 私有以太网或 Wi-Fi，并作为桌面端/Android 组合的默认自动发起方。
+/// Android 原有同步与唤醒仅允许 Wi-Fi，并对开发书源变化做低频合并；独立辅助服务可在
+/// 私网以太网复用宿主和发现，不放宽同步资格。Windows/macOS 可使用私有以太网或 Wi-Fi。
 part of 'device_sync_controller.dart';
 
 abstract base class _DeviceSyncNetworkBase extends Notifier<DeviceSyncState> {
@@ -19,6 +19,8 @@ abstract base class _DeviceSyncNetworkBase extends Notifier<DeviceSyncState> {
   bool get _foregroundDesired;
   bool get _networkAvailable;
   set _networkAvailable(bool value);
+  bool get _hostDesired =>
+      _foregroundDesired || ((Platform.isWindows || Platform.isMacOS) && (ref.read(lanPeerServiceProvider)?.requiresHost ?? false));
 
   Future<void> _ensureHost();
   Future<void> _closeHost();
@@ -41,9 +43,9 @@ abstract base class _DeviceSyncNetworkBase extends Notifier<DeviceSyncState> {
   Duration get _reconciliationInterval => Platform.isAndroid ? const Duration(minutes: 15) : const Duration(minutes: 5);
 
   void _startNetworkMonitor() {
-    if (_networkProbeTimer != null || state.devices.isEmpty) return;
+    if (_networkProbeTimer != null || (state.devices.isEmpty && !(ref.read(lanPeerServiceProvider)?.requiresHost ?? false))) return;
     _networkProbeTimer = Timer.periodic(_networkProbeInterval, (_) {
-      if (!_disposed && _foregroundDesired) unawaited(_refreshNetworkAvailability());
+      if (!_disposed && _hostDesired) unawaited(_refreshNetworkAvailability());
     });
   }
 
@@ -54,7 +56,11 @@ abstract base class _DeviceSyncNetworkBase extends Notifier<DeviceSyncState> {
     _mobileDevelopmentSyncTimer = null;
   }
 
-  Future<bool> _readNetworkAvailability() => ref.read(lanSyncNetworkEnvironmentProvider).isLocalNetworkAvailable();
+  Future<bool> _readNetworkAvailability() async {
+    if (await ref.read(lanSyncNetworkEnvironmentProvider).isLocalNetworkAvailable()) return true;
+    final service = ref.read(lanPeerServiceProvider);
+    return service != null && service.requiresHost && await service.canUseNetwork();
+  }
 
   Future<bool> _refreshNetworkAvailability() {
     final existing = _networkRefreshFuture;
@@ -76,7 +82,7 @@ abstract base class _DeviceSyncNetworkBase extends Notifier<DeviceSyncState> {
 
   Future<bool> _refreshNetworkAvailabilityOnce() async {
     final available = await _readNetworkAvailability();
-    if (_disposed || !_foregroundDesired) return false;
+    if (_disposed || !_hostDesired) return false;
     final changed = available != _networkAvailable;
     _networkAvailable = available;
     if (!available) {
@@ -93,7 +99,7 @@ abstract base class _DeviceSyncNetworkBase extends Notifier<DeviceSyncState> {
       }
       return false;
     }
-    if (_host == null && state.devices.isNotEmpty) {
+    if (_host == null && (state.devices.isNotEmpty || (ref.read(lanPeerServiceProvider)?.requiresHost ?? false))) {
       try {
         await _ensureHost();
       } on Object catch (error, stackTrace) {
@@ -122,7 +128,7 @@ abstract base class _DeviceSyncNetworkBase extends Notifier<DeviceSyncState> {
   }
 
   Future<bool> _ensureNetworkForOperation(PairedDevice device, {required PairedSyncOperation operation, required bool automatic}) async {
-    if (await _refreshNetworkAvailability()) return true;
+    if (await ref.read(lanSyncNetworkEnvironmentProvider).isLocalNetworkAvailable() && await _refreshNetworkAvailability()) return true;
     if (automatic || _disposed) return false;
     final code = Platform.isAndroid ? 'lan_sync_wifi_required' : 'lan_sync_local_network_unavailable';
     final failure = PairedSyncFailure.fromException(stage: 'network', error: StateError(code), stackTrace: StackTrace.current, code: code);

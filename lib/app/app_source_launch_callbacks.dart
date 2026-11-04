@@ -22,6 +22,10 @@ import 'package:mg_read/features/reader/data/comic_image_transport.dart';
 
 import 'package:mg_read/features/media/application/source_audio_player_launcher.dart';
 import 'package:mg_read/features/media/application/source_video_player_launcher.dart';
+import 'package:mg_read/features/tv_companion/application/companion_controller.dart';
+import 'package:mg_read/features/tv_companion/domain/companion_models.dart';
+import 'package:mg_read/features/tv_companion/domain/companion_command.dart';
+import 'package:mg_read/features/tv_companion/presentation/companion_messages.dart';
 
 /// Creates the app's standard transient launch callbacks for one route context.
 final class AppSourceLaunchCallbacks {
@@ -84,10 +88,85 @@ final class AppSourceLaunchCallbacks {
     required PluginChaptersResult firstCatalogPage,
     required PluginChapterSummary chapter,
     String? libraryItemId,
-  }) {
+  }) async {
     if (!context.mounted) return Future<void>.value();
     final navigator = navigatorKey.currentState;
     if (navigator == null) return Future<void>.error(StateError('The application navigator is not ready.'));
+    final container = ProviderScope.containerOf(context, listen: false);
+    final service = container.read(companionControllerProvider);
+    final tvMode = container.read(appSettingsProvider).get(AppSettingKeys.tvMode);
+    if (!tvMode && service.connectionStatus == CompanionConnectionStatus.connected) {
+      final tv = await showModalBottomSheet<bool>(
+        context: context,
+        builder: (context) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.tv),
+                title: Text('在 ${service.selectedEndpoint?.label ?? 'TV'} 播放'),
+                subtitle: const Text('TV 独立解析来源，准备失败会保留当前播放'),
+                onTap: () => Navigator.pop(context, true),
+              ),
+              ListTile(leading: const Icon(Icons.phone_android), title: const Text('在手机播放'), onTap: () => Navigator.pop(context, false)),
+            ],
+          ),
+        ),
+      );
+      if (tv == null || !context.mounted) return;
+      if (tv) {
+        var groups = firstCatalogPage.groups.where((group) => group.episodes.any((episode) => identical(episode, chapter))).toList();
+        if (groups.isEmpty) {
+          groups = firstCatalogPage.groups.where((group) => group.episodes.any((episode) => episode.id == chapter.id)).toList();
+        }
+        PluginMediaGroup? group;
+        if (groups.length > 1) {
+          group = await showDialog<PluginMediaGroup>(
+            context: context,
+            builder: (context) => SimpleDialog(
+              title: const Text('选择 TV 播放分组'),
+              children: [
+                for (final candidate in groups)
+                  SimpleDialogOption(onPressed: () => Navigator.pop(context, candidate), child: Text(candidate.title)),
+              ],
+            ),
+          );
+          if (group == null) return;
+        } else {
+          group = groups.firstOrNull;
+        }
+        try {
+          final source = (await container.read(sourceContentGatewayProvider).listSources())
+              .where((source) => source.id == detail.pluginId)
+              .firstOrNull;
+          final result = await service.handoff(
+            CompanionContentRef(
+              pluginId: detail.pluginId,
+              pluginVersion: source?.pluginVersion ?? 'unknown',
+              contentId: detail.summary.id,
+              title: detail.summary.title,
+              groupId: group?.id ?? 'default',
+              episodeId: chapter.id,
+              useTvProgress: true,
+            ),
+          );
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(result.phase == CompanionCommandPhase.started ? 'TV 已实际起播，点击“连接 TV”查看遥控。' : companionErrorText(result.code)),
+              ),
+            );
+          }
+        } on Object catch (error) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(companionErrorText(error is CompanionFailure ? error.code : 'operation_failed'))));
+          }
+        }
+        return;
+      }
+    }
     return openTransientSourceVideoPlayer(
       context,
       navigator: navigator,

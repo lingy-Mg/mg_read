@@ -18,6 +18,7 @@ final class DeviceSyncState {
     this.pairingOffer,
     this.pairingCode,
     this.pairingPeer,
+    this.manualPairingCode,
     this.started = false,
   });
 
@@ -34,6 +35,7 @@ final class DeviceSyncState {
   final LanPairingOffer? pairingOffer;
   final String? pairingCode;
   final PairedDevice? pairingPeer;
+  final String? manualPairingCode;
   final bool started;
 
   bool get pairingBusy => switch (pairingPhase) {
@@ -59,6 +61,7 @@ final class DeviceSyncState {
     Object? pairingOffer = _unchanged,
     Object? pairingCode = _unchanged,
     Object? pairingPeer = _unchanged,
+    Object? manualPairingCode = _unchanged,
     bool? started,
   }) {
     final errorCodeChanged = !identical(lastErrorCode, _unchanged);
@@ -80,6 +83,7 @@ final class DeviceSyncState {
       pairingOffer: identical(pairingOffer, _unchanged) ? this.pairingOffer : pairingOffer as LanPairingOffer?,
       pairingCode: identical(pairingCode, _unchanged) ? this.pairingCode : pairingCode as String?,
       pairingPeer: identical(pairingPeer, _unchanged) ? this.pairingPeer : pairingPeer as PairedDevice?,
+      manualPairingCode: identical(manualPairingCode, _unchanged) ? this.manualPairingCode : manualPairingCode as String?,
       started: started ?? this.started,
     );
   }

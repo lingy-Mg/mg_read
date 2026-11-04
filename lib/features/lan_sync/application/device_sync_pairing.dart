@@ -12,6 +12,7 @@ abstract base class _DeviceSyncPairingBase extends _DeviceSyncNetworkBase {
   set _pairingSubscription(StreamSubscription<LanPairingRequest>? value);
   LanPairingRequest? get _pairingRequest;
   set _pairingRequest(LanPairingRequest? value);
+  LanPairingClientConnection? get _pairingClient;
   set _pairingClient(LanPairingClientConnection? value);
 
   Future<void> _closePairingResources();
@@ -20,7 +21,7 @@ abstract base class _DeviceSyncPairingBase extends _DeviceSyncNetworkBase {
   Future<void> reloadDevices();
   void _pairingFailed(String code, {String? details});
 
-  Future<void> beginPairing() async {
+  Future<void> beginPairing({bool companionOnly = false}) async {
     if (!await _readNetworkAvailability()) {
       _failPairingWithoutLocalNetwork();
       return;
@@ -32,13 +33,14 @@ abstract base class _DeviceSyncPairingBase extends _DeviceSyncNetworkBase {
       pairingOffer: null,
       pairingCode: null,
       pairingPeer: null,
+      manualPairingCode: null,
       lastErrorCode: null,
     );
     try {
       final identity = _identity ?? await ref.read(deviceIdentityStoreProvider).loadOrCreateIdentity();
       _identity = identity;
       if (generation != _pairingGeneration) return;
-      final server = await LanPairingServer.start(identity);
+      final server = await LanPairingServer.start(identity, companionOnly: companionOnly);
       if (generation != _pairingGeneration) {
         await server.close();
         return;
@@ -49,11 +51,16 @@ abstract base class _DeviceSyncPairingBase extends _DeviceSyncNetworkBase {
         server.done.then((_) {
           if (generation == _pairingGeneration && identical(_pairingServer, server)) {
             _pairingServer = null;
+            state = state.copyWith(manualPairingCode: null);
             _pairingFailed('device_pairing_offer_expired');
           }
         }),
       );
-      state = state.copyWith(pairingPhase: DevicePairingPhase.showingOffer, pairingOffer: server.offer);
+      state = state.copyWith(
+        pairingPhase: DevicePairingPhase.showingOffer,
+        pairingOffer: server.offer,
+        manualPairingCode: server.manualPairingCode,
+      );
     } on Object catch (error) {
       if (generation == _pairingGeneration) {
         _pairingFailed(_pairingFailureCode(error, fallback: 'device_pairing_offer_failed'), details: _pairingFailureDetails(error));
@@ -62,6 +69,12 @@ abstract base class _DeviceSyncPairingBase extends _DeviceSyncNetworkBase {
   }
 
   void _handlePairingRequest(LanPairingRequest request) {
+    if (request.companionOnly && state.devices.any((device) => device.deviceId == request.peer.deviceId)) {
+      unawaited(request.reject());
+      _pairingFailed('device_pairing_already_exists');
+      state = state.copyWith(manualPairingCode: null);
+      return;
+    }
     final previous = _pairingRequest;
     if (previous != null) {
       unawaited(request.reject());
@@ -100,6 +113,7 @@ abstract base class _DeviceSyncPairingBase extends _DeviceSyncNetworkBase {
       state = state.copyWith(
         pairingPhase: DevicePairingPhase.completed,
         pairingOffer: null,
+        manualPairingCode: null,
         pairingCode: null,
         pairingPeer: request.peer,
         lastMessage: '已配对 ${request.peer.label}，以后无需发送端确认',
@@ -108,6 +122,7 @@ abstract base class _DeviceSyncPairingBase extends _DeviceSyncNetworkBase {
       if (saved) await _deletePairing(request.peer.deviceId);
       await request.reject();
       _pairingFailed('device_pairing_save_failed');
+      state = state.copyWith(manualPairingCode: null);
     }
   }
 
@@ -128,6 +143,27 @@ abstract base class _DeviceSyncPairingBase extends _DeviceSyncNetworkBase {
       _pairingFailed('device_pairing_qr_invalid');
       return;
     }
+    await _joinPairingOffer(offer);
+  }
+
+  Future<void> joinManualPairing({required String address, required int port, required String code}) async {
+    if (!await _readNetworkAvailability()) {
+      _failPairingWithoutLocalNetwork();
+      return;
+    }
+    try {
+      final offer = await LanPairingClientConnection.fetchManualOffer(address: address, port: port, code: code);
+      await _joinPairingOffer(offer);
+    } on Object catch (error) {
+      _pairingFailed(_pairingFailureCode(error, fallback: 'device_pairing_manual_failed'), details: _pairingFailureDetails(error));
+    }
+  }
+
+  Future<void> _joinPairingOffer(LanPairingOffer offer) async {
+    if (offer.companionOnly && state.devices.any((device) => device.deviceId == offer.deviceId)) {
+      _pairingFailed('device_pairing_already_exists');
+      return;
+    }
     final generation = ++_pairingGeneration;
     await _closePairingResources();
     state = state.copyWith(
@@ -135,6 +171,7 @@ abstract base class _DeviceSyncPairingBase extends _DeviceSyncNetworkBase {
       pairingOffer: null,
       pairingCode: null,
       pairingPeer: null,
+      manualPairingCode: null,
       lastErrorCode: null,
     );
     try {
@@ -171,16 +208,30 @@ abstract base class _DeviceSyncPairingBase extends _DeviceSyncNetworkBase {
     }
   }
 
+  void confirmPairingCode() {
+    final client = _pairingClient;
+    if (client == null || !client.companionOnly || state.pairingPhase != DevicePairingPhase.waitingApproval || state.pairingCode == null) {
+      return;
+    }
+    client.confirmCode();
+  }
+
   Future<void> cancelPairing() async {
     _pairingGeneration++;
     await _closePairingResources();
-    state = state.copyWith(pairingPhase: DevicePairingPhase.idle, pairingOffer: null, pairingCode: null, pairingPeer: null);
+    state = state.copyWith(
+      pairingPhase: DevicePairingPhase.idle,
+      pairingOffer: null,
+      pairingCode: null,
+      pairingPeer: null,
+      manualPairingCode: null,
+    );
   }
 
   void _failPairingWithoutLocalNetwork() {
     final code = Platform.isAndroid ? 'lan_sync_wifi_required' : 'lan_sync_local_network_unavailable';
     _pairingFailed(code);
-    state = state.copyWith(lastMessage: Platform.isAndroid ? '请先连接 Wi-Fi 再添加设备' : '请先连接 Wi-Fi 或网线再添加设备');
+    state = state.copyWith(manualPairingCode: null, lastMessage: Platform.isAndroid ? '请先连接 Wi-Fi 再添加设备' : '请先连接 Wi-Fi 或网线再添加设备');
   }
 }
 

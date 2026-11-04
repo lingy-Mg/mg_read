@@ -113,6 +113,18 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
   }
 
   Future<void> _handleWakeRequest(PairedSyncWakeRequest request) async {
+    if (!_foregroundDesired || !await ref.read(lanSyncNetworkEnvironmentProvider).isLocalNetworkAvailable()) {
+      await _reportWakeFailure(
+        request,
+        PairedSyncFailure.fromException(
+          stage: 'request',
+          error: StateError('lan_sync_peer_busy'),
+          stackTrace: StackTrace.current,
+          code: 'lan_sync_peer_busy',
+        ),
+      );
+      return;
+    }
     final device = _device(request.endpoint.deviceId);
     if (device == null) {
       await _reportWakeFailure(
@@ -268,6 +280,10 @@ abstract base class _DeviceSyncOperationsBase extends _DeviceSyncPairingBase {
   }
 
   Future<void> _handleIncoming(PairedSyncServerSession session) async {
+    if (!_foregroundDesired || !await ref.read(lanSyncNetworkEnvironmentProvider).isLocalNetworkAvailable()) {
+      await session.rejectBusy();
+      return;
+    }
     var device = _device(session.peer.deviceId) ?? session.peer;
     final pending = _pendingWakeForDevice(device.deviceId);
     final busyDeviceId = state.busyDeviceId;

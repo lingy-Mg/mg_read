@@ -117,54 +117,64 @@ class _TvFocusableState extends State<TvFocusable> with AutomaticKeepAliveClient
     super.build(context);
     final tokens = AppThemeTokens.of(context);
     final duration = MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 180);
-    return Semantics(
-      button: true,
-      label: widget.label,
-      selected: widget.selected,
-      enabled: widget.onPressed != null,
-      child: Focus(
-        focusNode: _node,
-        autofocus: widget.autofocus,
-        // Explicitly reset the local flag: a caller-owned node's computed
-        // skipTraversal is temporarily true under an inactive route scope.
-        skipTraversal: false,
-        canRequestFocus: widget.onPressed != null,
-        onFocusChange: (value) {
-          if (!value) _cancelHold();
-          setState(() => _focused = value);
-          updateKeepAlive();
-          if (value) {
-            if (widget.activateOnFocus) _activate();
-          }
-        },
-        onKeyEvent: _onKeyEvent,
-        child: GestureDetector(
-          onTap: widget.onPressed == null
-              ? null
-              : () {
-                  _node.requestFocus();
-                  if (!widget.activateOnFocus) _activate();
-                },
-          onLongPress: widget.onMore,
-          child: AnimatedScale(
-            scale: _focused ? 1 : .98,
-            duration: duration,
-            curve: Curves.easeOutCubic,
-            child: AnimatedContainer(
+    return Actions(
+      actions: <Type, Action<Intent>>{
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            if (!widget.activateOnFocus) _activate();
+            return null;
+          },
+        ),
+      },
+      child: Semantics(
+        button: true,
+        label: widget.label,
+        selected: widget.selected,
+        enabled: widget.onPressed != null,
+        child: Focus(
+          focusNode: _node,
+          autofocus: widget.autofocus,
+          // Explicitly reset the local flag: a caller-owned node's computed
+          // skipTraversal is temporarily true under an inactive route scope.
+          skipTraversal: false,
+          canRequestFocus: widget.onPressed != null,
+          onFocusChange: (value) {
+            if (!value) _cancelHold();
+            setState(() => _focused = value);
+            updateKeepAlive();
+            if (value) {
+              if (widget.activateOnFocus) _activate();
+            }
+          },
+          onKeyEvent: _onKeyEvent,
+          child: GestureDetector(
+            onTap: widget.onPressed == null
+                ? null
+                : () {
+                    _node.requestFocus();
+                    if (!widget.activateOnFocus) _activate();
+                  },
+            onLongPress: widget.onMore,
+            child: AnimatedScale(
+              scale: _focused ? 1 : .98,
               duration: duration,
               curve: Curves.easeOutCubic,
-              padding: widget.padding,
-              constraints: const BoxConstraints(minHeight: 52),
-              decoration: BoxDecoration(
-                color: widget.selected ? tokens.accentSoft : tokens.surface,
-                borderRadius: AppRadii.detailControl,
-                boxShadow: _focused ? [BoxShadow(color: tokens.accent.withValues(alpha: .25), blurRadius: 12)] : null,
+              child: AnimatedContainer(
+                duration: duration,
+                curve: Curves.easeOutCubic,
+                padding: widget.padding,
+                constraints: const BoxConstraints(minHeight: 52),
+                decoration: BoxDecoration(
+                  color: widget.selected ? tokens.accentSoft : tokens.surface,
+                  borderRadius: AppRadii.detailControl,
+                  boxShadow: _focused ? [BoxShadow(color: tokens.accent.withValues(alpha: .25), blurRadius: 12)] : null,
+                ),
+                foregroundDecoration: BoxDecoration(
+                  borderRadius: AppRadii.detailControl,
+                  border: Border.all(color: _focused ? tokens.accent : Colors.transparent, width: 3),
+                ),
+                child: widget.child,
               ),
-              foregroundDecoration: BoxDecoration(
-                borderRadius: AppRadii.detailControl,
-                border: Border.all(color: _focused ? tokens.accent : Colors.transparent, width: 3),
-              ),
-              child: widget.child,
             ),
           ),
         ),

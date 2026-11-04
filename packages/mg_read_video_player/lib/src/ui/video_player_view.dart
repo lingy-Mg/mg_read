@@ -12,6 +12,7 @@ import 'package:flutter/services.dart';
 import '../api/contracts.dart';
 import '../api/controller.dart';
 import '../api/models.dart';
+import '../api/prepared_session.dart';
 import '../backend/media_kit_video_playback_backend.dart';
 import 'video_backend_command_queue.dart';
 import 'video_episode_resolution.dart';
@@ -25,6 +26,7 @@ import 'video_tv_seek_gesture.dart';
 
 part 'video_player_view_actions.dart';
 part 'video_player_tv_actions.dart';
+part 'video_player_view_delegate.dart';
 
 /// A complete video player backed by host content and persistence ports.
 final class VideoPlayerView extends StatefulWidget {
@@ -35,6 +37,7 @@ final class VideoPlayerView extends StatefulWidget {
     required this.stateStore,
     this.observer,
     this.startupSession,
+    this.preparedSession,
     this.controller,
     this.backendFactory = createMediaKitVideoPlaybackBackend,
     this.autoPlay = true,
@@ -63,6 +66,9 @@ final class VideoPlayerView extends StatefulWidget {
 
   /// Optional host-created clock that includes pre-route startup stages.
   final VideoStartupSession? startupSession;
+
+  /// Optional already-opened backend to adopt without reopening its media.
+  final VideoPreparedSession? preparedSession;
 
   /// Optional externally owned imperative controller.
   final VideoPlayerController? controller;
@@ -95,6 +101,7 @@ final class VideoPlayerView extends StatefulWidget {
 }
 
 final class _VideoPlayerViewState extends State<VideoPlayerView>
+    with _VideoPlayerViewDelegate
     implements VideoPlayerControllerDelegate {
   late VideoPlaybackBackend _backend;
   late VideoPlaybackBackendState _backendState;
@@ -157,9 +164,30 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     _playbackDesired = widget.autoPlay;
     _lifecycleState = WidgetsBinding.instance.lifecycleState;
     _hostBridge = VideoPlayerHostBridge(widget.observer);
-    _createBackend();
+    if (widget.preparedSession case final prepared?) {
+      final adopted = prepared.takeForAdoption();
+      _backend = adopted.backend;
+      _backendState = _backend.state.value;
+      _backend.state.addListener(_handleBackendState);
+      _content = adopted.content;
+      _group = adopted.group;
+      _episode = adopted.episode;
+      _activeContentId = widget.contentId;
+      _activeStateStore = widget.stateStore;
+      _episodeOpened = true;
+      _playbackDesired = widget.autoPlay;
+      _status = VideoPlayerStatus.ready;
+      _reportedFirstFrameSelection =
+          '${adopted.group.id}\u0000${adopted.episode.id}';
+    } else {
+      _createBackend();
+    }
     _lifecycleListener = AppLifecycleListener(onStateChange: _handleLifecycle);
-    unawaited(_loadSession());
+    if (widget.preparedSession == null) {
+      unawaited(_loadSession());
+    } else {
+      unawaited(_resumeAdoptedBackend());
+    }
   }
 
   @override
@@ -189,6 +217,11 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     _backend = widget.backendFactory();
     _backendState = _backend.state.value;
     _backend.state.addListener(_handleBackendState);
+  }
+
+  Future<void> _resumeAdoptedBackend() async {
+    await _actionSetVolume(100);
+    if (widget.autoPlay && !_disposed) await _actionPlay();
   }
 
   Future<void> _reloadSession() async {
@@ -516,84 +549,10 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
 
   void _cancelFirstFrameTimeout() => _actionCancelFirstFrameTimeout();
 
-  @override
-  Future<void> play() => _actionPlay();
-
-  @override
-  Future<void> pause() => _actionPause();
-
-  @override
-  Future<void> playOrPause() => _actionPlayOrPause();
-
-  @override
-  Future<void> seek(Duration position) => _actionSeek(position);
-
-  @override
-  Future<void> skip(Duration delta) =>
-      _actionSeek(_backendState.position + delta);
-
-  @override
-  Future<void> setRate(double rate) => _actionSetRate(rate);
-
-  @override
-  Future<void> setVolume(double volume) => _actionSetVolume(volume);
-
-  @override
-  Future<void> setEnhancementMode(VideoEnhancementMode mode) async {
-    final backend = _backend;
-    if (backend is! MediaKitVideoPlaybackBackend) return;
-    await backend.setEnhancementMode(mode);
-  }
-
-  @override
-  Future<void> toggleMute() => setVolume(
-    _backendState.volume > 0 ? 0 : _volumeBeforeMute.clamp(1, 100).toDouble(),
-  );
-
-  @override
-  Future<void> replay() => _actionReplay();
-
-  @override
-  Future<void> playPreviousEpisode() => _actionPlayPreviousEpisode();
-
-  @override
-  Future<void> playNextEpisode() => _selectAdjacentEpisode(1);
-
-  @override
-  Future<void> setAutoAdvance(bool enabled) => _actionSetAutoAdvance(enabled);
-
-  @override
-  Future<void> setControlsLocked(bool locked) =>
-      _actionSetControlsLocked(locked);
-
-  @override
-  Future<void> selectEpisode(String groupId, String episodeId) =>
-      _actionSelectEpisode(groupId, episodeId);
-
   Future<void> _selectAdjacentEpisode(int direction) =>
       _VideoPlayerViewActions(this)._selectAdjacentEpisode(direction);
 
   Future<void> _handlePlaybackCompleted() => _actionHandlePlaybackCompleted();
-
-  @override
-  Future<void> cycleFitMode() => _actionCycleFitMode();
-
-  @override
-  Future<void> toggleControls() => _actionToggleControls();
-
-  void _handleInteractionStart() {
-    _controlsTimer?.cancel();
-    if (!_controlsVisible) _update(() => _controlsVisible = true);
-  }
-
-  void _handleInteractionEnd() => _scheduleControlsHide();
-
-  @override
-  Future<void> requestFullscreen(bool fullscreen) =>
-      _actionRequestFullscreen(fullscreen);
-
-  @override
-  Future<void> requestExit() => _actionRequestExit();
 
   Future<void> _pauseBackend({
     String code = 'transition_pause_failed',

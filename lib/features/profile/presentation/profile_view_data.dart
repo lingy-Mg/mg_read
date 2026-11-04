@@ -162,6 +162,7 @@ abstract final class ProfileFixtures {
       ),
       ProfileSettingsItemViewData(id: 'import-export', title: '导入导出', description: '选择数据源、书架与阅读进度', icon: ProfileSettingsIcon.importExport),
       ProfileSettingsItemViewData(id: 'data-backup', title: '局域网同步', description: '同一网络传输数据源、书架与进度', icon: ProfileSettingsIcon.backup),
+      ProfileSettingsItemViewData(id: 'tv-companion', title: '手机辅助 TV', description: '配对电视、选片接续、中文输入与遥控', icon: ProfileSettingsIcon.backup),
     ],
     about: <ProfileSettingsItemViewData>[
       ProfileSettingsItemViewData(id: 'diagnostics', title: '问题诊断', description: '查看异常、临时排查与日志保存', icon: ProfileSettingsIcon.diagnostics),

@@ -71,6 +71,30 @@ abstract interface class VideoPlayerControllerDelegate {
 
   /// Flushes progress and requests route exit.
   Future<void> requestExit();
+
+  /// Routes one discrete remote action through the view's TV controls.
+  Future<void> handleRemoteKey(VideoRemoteKey key);
+}
+
+/// Discrete remote actions supported by [VideoPlayerController].
+enum VideoRemoteKey {
+  /// Reveals the TV controls.
+  up,
+
+  /// Reveals the TV controls.
+  down,
+
+  /// Seeks backward by the TV short-press interval.
+  left,
+
+  /// Seeks forward by the TV short-press interval.
+  right,
+
+  /// Toggles playback.
+  confirm,
+
+  /// Hides controls, then exits through the normal host path.
+  back,
 }
 
 /// Imperative command and snapshot bridge for [VideoPlayerView].
@@ -148,6 +172,10 @@ final class VideoPlayerController extends ChangeNotifier {
 
   /// Flushes progress and requests host route exit.
   Future<void> requestExit() => _requireDelegate().requestExit();
+
+  /// Routes one discrete key through the same actions as the TV key handler.
+  Future<void> handleRemoteKey(VideoRemoteKey key) =>
+      _requireDelegate().handleRemoteKey(key);
 
   /// Attaches package-owned commands to this controller.
   @internal

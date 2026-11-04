@@ -6,6 +6,7 @@
 /// - 桌面端/Android 由桌面端自动发起；同平台用稳定设备 ID 选主，避免双向重复同步。
 /// - 开发书源变化由桌面立即推动，Android 合并延迟后再推送，手动操作始终即时执行。
 /// - 在线设备只公布可用 App 版本；App 拉取和安装必须由用户显式触发。
+/// - 独立辅助服务复用宿主；桌面后台可保留接收，但同步会话与唤醒仍只准前台执行。
 ///
 /// 注意：
 /// - Provider 非 autoDispose；离开设置页只取消未完成的首次配对，不停止前台同步宿主。
@@ -21,6 +22,7 @@ import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/lan_sync/application/app_update_service.dart';
 import 'package:mg_read/features/lan_sync/application/device_identity_store.dart';
+import 'package:mg_read/features/lan_sync/application/lan_peer_service.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_session.dart';
 import 'package:mg_read/features/lan_sync/application/lan_sync_screen_awake.dart';
@@ -106,7 +108,13 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
   }
 
   Future<void> _start() async {
-    if (_host != null) return;
+    if (_host != null) {
+      _startNetworkMonitor();
+      _reconciliationTimer ??= Timer.periodic(_reconciliationInterval, (_) {
+        if (!_disposed && _foregroundDesired) unawaited(syncAvailablePeers());
+      });
+      return;
+    }
     try {
       final devices = ref.read(pairedDeviceRepositoryProvider);
       final identityStore = ref.read(deviceIdentityStoreProvider);
@@ -121,8 +129,9 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
       _identity = identity;
       if (!_foregroundDesired || _disposed) return;
       state = state.copyWith(devices: saved, localAppVersion: localAppVersion);
-      if (saved.isNotEmpty) _startNetworkMonitor();
-      if (saved.isNotEmpty) {
+      final needsHost = saved.isNotEmpty || (ref.read(lanPeerServiceProvider)?.requiresHost ?? false);
+      if (needsHost) _startNetworkMonitor();
+      if (needsHost) {
         _networkAvailable = await _readNetworkAvailability();
         if (_networkAvailable) await _ensureHost();
       }
@@ -176,6 +185,19 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
     if (!_disposed) state = state.copyWith(onlineDeviceIds: const <String>{}, started: false);
   }
 
+  /// Desktop companion reception may stay available while minimized; sync
+  /// admission and automatic work remain foreground-only.
+  void pauseSyncKeepingPeerServices() {
+    _foregroundDesired = false;
+    _startFuture = null;
+    _reconciliationTimer?.cancel();
+    _reconciliationTimer = null;
+    for (final timer in _retryTimers.values) {
+      timer.cancel();
+    }
+    _retryTimers.clear();
+  }
+
   @override
   Future<void> _closeHost() async {
     final starting = _hostStartFuture;
@@ -220,7 +242,7 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
   Future<void> reloadDevices() async {
     final devices = await ref.read(pairedDeviceRepositoryProvider).list();
     state = state.copyWith(devices: devices);
-    if (devices.isEmpty) {
+    if (devices.isEmpty && !(ref.read(lanPeerServiceProvider)?.requiresHost ?? false)) {
       _stopNetworkMonitor();
       await _closeHost();
       _endpoints.clear();
@@ -251,7 +273,7 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
   }
 
   Future<void> _startHost() async {
-    if (_host != null || _disposed || !_foregroundDesired || !_networkAvailable) return;
+    if (_host != null || _disposed || !_hostDesired || !_networkAvailable) return;
     final identity = _identity ?? await ref.read(deviceIdentityStoreProvider).loadOrCreateIdentity();
     _identity = identity;
     final host = await PairedSyncHost.start(
@@ -265,8 +287,9 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
       advertisedPeerLifetime: _advertisedPeerLifetime,
       canAnnounce: _canAnnounce,
       appUpdates: ref.read(appUpdateServiceProvider),
+      peerService: ref.read(lanPeerServiceProvider),
     );
-    if (_disposed || !_foregroundDesired) {
+    if (_disposed || !_hostDesired) {
       await host.close();
       return;
     }
@@ -307,6 +330,7 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
   }
 
   Future<void> removeDevice(String deviceId) async {
+    ref.read(lanPeerServiceProvider)?.trustRevoked(deviceId);
     await _serializeRepositoryMutation(() async {
       await ref.read(pairedDeviceRepositoryProvider).remove(deviceId);
       await ref.read(deviceIdentityStoreProvider).deletePeerSecret(deviceId);
@@ -315,6 +339,13 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
     _retryFailures.remove(deviceId);
     _endpoints.remove(deviceId);
     await reloadDevices();
+  }
+
+  /// Reconcile independently enabled peer services without starting a sync.
+  Future<void> ensurePeerServices() async {
+    await start();
+    _startNetworkMonitor();
+    await _refreshNetworkAvailability();
   }
 
   Future<void> syncNow(String deviceId, {PairedSyncOperation operation = PairedSyncOperation.push}) async {
@@ -420,6 +451,8 @@ final class DeviceSyncController extends _DeviceSyncOperationsBase {
 
   @override
   Future<void> _syncAvailablePeersNow({required bool pushChanges}) async {
+    if (!_foregroundDesired) return;
+    if (!await ref.read(lanSyncNetworkEnvironmentProvider).isLocalNetworkAvailable()) return;
     if (!await _refreshNetworkAvailability()) return;
     final now = DateTime.now().toUtc();
     for (final device in state.devices) {

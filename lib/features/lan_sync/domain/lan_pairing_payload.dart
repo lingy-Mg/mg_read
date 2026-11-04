@@ -16,6 +16,7 @@ final class LanPairingOffer {
     required this.port,
     required Iterable<int> secret,
     required this.sessionId,
+    this.companionOnly = false,
   }) : addresses = normalizeLanSyncAddresses(addresses),
        secret = List<int>.unmodifiable(secret) {
     if (!isValidPairedDeviceId(deviceId) ||
@@ -37,6 +38,7 @@ final class LanPairingOffer {
   final int port;
   final List<int> secret;
   final String sessionId;
+  final bool companionOnly;
 }
 
 final class LanPairingQrPayload {
@@ -45,8 +47,9 @@ final class LanPairingQrPayload {
   static String encode(LanPairingOffer offer) => Uri(
     scheme: 'mgread',
     host: 'device-pair',
-    path: '/v1',
+    path: offer.companionOnly ? '/v2' : '/v1',
     queryParameters: <String, String>{
+      if (offer.companionOnly) 'purpose': 'companion',
       'addresses': offer.addresses.join(','),
       'device': offer.deviceId,
       'label': offer.label,
@@ -62,9 +65,15 @@ final class LanPairingQrPayload {
     if (uri == null ||
         uri.scheme != 'mgread' ||
         uri.host != 'device-pair' ||
-        uri.path != '/v1' ||
-        uri.fragment.isNotEmpty ||
-        uri.queryParameters.length != 6) {
+        (uri.path != '/v1' && uri.path != '/v2') ||
+        uri.fragment.isNotEmpty) {
+      return null;
+    }
+    final companionOnly = uri.path == '/v2';
+    if ((companionOnly && uri.queryParameters.length != 7) ||
+        (!companionOnly && uri.queryParameters.length != 6) ||
+        (companionOnly && uri.queryParameters['purpose'] != 'companion') ||
+        (!companionOnly && uri.queryParameters.containsKey('purpose'))) {
       return null;
     }
     try {
@@ -79,6 +88,7 @@ final class LanPairingQrPayload {
         port: port,
         secret: secret,
         sessionId: uri.queryParameters['session'] ?? '',
+        companionOnly: companionOnly,
       );
     } on Object {
       return null;

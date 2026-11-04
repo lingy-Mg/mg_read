@@ -9,6 +9,15 @@ import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 
 void main() {
+  testWidgets('ActivateIntent Actions invokes the focused control callback', (tester) async {
+    var activated = 0;
+    await _mount(tester, onPressed: () => activated++, onMore: null);
+
+    Actions.invoke(tester.element(find.text('影片')), const ActivateIntent());
+
+    expect(activated, 1);
+  });
+
   for (final key in [
     LogicalKeyboardKey.select,
     LogicalKeyboardKey.enter,

@@ -104,7 +104,7 @@ class _TvProfilePageState extends State<TvProfilePage> {
       ],
       2 => links({'source-management', 'network-proxy', 'downloads-cache'}),
       3 => [
-        ...links({'import-export', 'data-backup'}),
+        ...links({'import-export', 'data-backup', 'tv-companion'}),
         if (Platform.isAndroid && !const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME'))
           _link(
             const ProfileSettingsItemViewData(

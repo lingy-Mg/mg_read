@@ -13,7 +13,9 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mg_read_video_player/mg_read_video_player.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -34,6 +36,9 @@ import 'package:mg_read/features/media/application/transient_source_video_playba
 import 'package:mg_read/features/media/presentation/media_entry_cover.dart';
 import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
 import 'package:mg_read/features/network_proxy/application/network_proxy_settings.dart';
+import 'package:mg_read/features/lan_sync/application/device_identity_store.dart';
+import 'package:mg_read/features/tv_companion/application/companion_media_host.dart';
+import 'package:mg_read/features/tv_companion/domain/companion_models.dart';
 
 /// Opens one selected neutral video group/episode in the video player.
 Future<void> openTransientSourceVideoPlayer(
@@ -43,12 +48,26 @@ Future<void> openTransientSourceVideoPlayer(
   required PluginChaptersResult firstCatalogPage,
   required PluginChapterSummary chapter,
   String? libraryItemId,
+  String? initialGroupId,
+  Duration? initialPosition,
+  String? playbackSessionId,
+  String? controllerDeviceId,
 }) async {
   if (!context.mounted || !navigator.mounted) return;
-  final group = firstCatalogPage.groups.cast<PluginMediaGroup?>().firstWhere(
-    (candidate) => candidate?.episodes.any((episode) => episode.id == chapter.id) ?? false,
-    orElse: () => null,
-  );
+  final groups = firstCatalogPage.groups;
+  final explicitlySelected = initialGroupId == null
+      ? null
+      : groups.where((group) => group.id == initialGroupId && group.episodes.any((episode) => episode.id == chapter.id)).firstOrNull;
+  final identicalMatches = groups.where((group) => group.episodes.any((episode) => identical(episode, chapter))).toList();
+  final idMatches = groups.where((group) => group.episodes.any((episode) => episode.id == chapter.id)).toList();
+  final group =
+      explicitlySelected ??
+      (identicalMatches.length == 1
+          ? identicalMatches.single
+          : idMatches.length == 1
+          ? idMatches.single
+          : null);
+  if (group == null && idMatches.length > 1) throw StateError('ambiguous_video_group');
   final container = ProviderScope.containerOf(context, listen: false);
   final diagnostics = container.read(diagnosticsManagerProvider);
   final startupSession = VideoStartupSession(diagnostics.idGenerator.nextId('video_startup'));
@@ -61,14 +80,17 @@ Future<void> openTransientSourceVideoPlayer(
   return navigator.push<void>(
     MaterialPageRoute<void>(
       settings: const RouteSettings(name: appContentSessionRouteName),
-      builder: (_) => _SourceVideoPlayerDestination(
+      builder: (_) => SourceVideoPlayerDestination(
         container: container,
         navigator: navigator,
         detail: detail,
         initialCatalog: firstCatalogPage,
-        initialGroupId: group?.id ?? 'default',
+        initialGroupId: group?.id ?? initialGroupId ?? 'default',
         initialEpisodeId: chapter.id,
         libraryItemId: libraryItemId,
+        initialPosition: initialPosition,
+        playbackSessionId: playbackSessionId ?? diagnostics.idGenerator.nextId('video_session'),
+        controllerDeviceId: controllerDeviceId,
         playbackGate: audioStop,
         startupSession: startupSession,
         diagnostics: diagnostics,
@@ -77,8 +99,9 @@ Future<void> openTransientSourceVideoPlayer(
   );
 }
 
-final class _SourceVideoPlayerDestination extends StatefulWidget {
-  const _SourceVideoPlayerDestination({
+final class SourceVideoPlayerDestination extends StatefulWidget {
+  const SourceVideoPlayerDestination({
+    super.key,
     required this.container,
     required this.navigator,
     required this.detail,
@@ -86,9 +109,20 @@ final class _SourceVideoPlayerDestination extends StatefulWidget {
     required this.initialGroupId,
     required this.initialEpisodeId,
     required this.libraryItemId,
+    required this.initialPosition,
+    required this.playbackSessionId,
+    required this.controllerDeviceId,
     required this.playbackGate,
     required this.startupSession,
     required this.diagnostics,
+    this.initialSetup,
+    this.preparedSession,
+    this.activeCompleter,
+    this.autoPlay = true,
+    this.deferPlatformActivation = false,
+    this.beforePlaybackActivation,
+    this.ensurePlaybackActivationCurrent,
+    this.stateCompleter,
   });
 
   final ProviderContainer container;
@@ -98,22 +132,36 @@ final class _SourceVideoPlayerDestination extends StatefulWidget {
   final String initialGroupId;
   final String initialEpisodeId;
   final String? libraryItemId;
+  final Duration? initialPosition;
+  final String playbackSessionId;
+  final String? controllerDeviceId;
+  final SourceVideoPlayerSetup? initialSetup;
+  final VideoPreparedSession? preparedSession;
+  final Completer<void>? activeCompleter;
+  final bool autoPlay;
+  final bool deferPlatformActivation;
+  final Future<void> Function()? beforePlaybackActivation;
+  final VoidCallback? ensurePlaybackActivationCurrent;
+  final Completer<SourceVideoPlayerDestinationState>? stateCompleter;
   final Future<void> playbackGate;
   final VideoStartupSession startupSession;
   final DiagnosticsManager diagnostics;
 
   @override
-  State<_SourceVideoPlayerDestination> createState() => _SourceVideoPlayerDestinationState();
+  State<SourceVideoPlayerDestination> createState() => SourceVideoPlayerDestinationState();
 }
 
-final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerDestination> {
-  late final SourceVideoFullscreenController _fullscreenController;
-  late final SourceVideoPlaybackPlatformController _playbackPlatformController;
-  late final SourceVideoAudioSessionController _audioSessionController;
+final class SourceVideoPlayerDestinationState extends State<SourceVideoPlayerDestination> {
+  late SourceVideoFullscreenController _fullscreenController;
+  late SourceVideoPlaybackPlatformController _playbackPlatformController;
+  late SourceVideoAudioSessionController _audioSessionController;
   late final VideoPlayerController _playerController;
-  _VideoPlayerSetup? _setup;
+  SourceVideoPlayerSetup? _setup;
   Object? _setupFailure;
   bool _firstFramePresented = false;
+  bool _registeredWithCompanion = false;
+  bool _preparedPlaybackStarted = false;
+  final Completer<void> _closedCompleter = Completer<void>();
   int _generation = 0;
 
   @override
@@ -123,12 +171,29 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
     _playbackPlatformController = SourceVideoPlaybackPlatformController();
     _playerController = VideoPlayerController();
     _audioSessionController = SourceVideoAudioSessionController(onPauseRequested: _pauseForSystemInterruption);
-    unawaited(_fullscreenController.activate());
+    if (widget.stateCompleter case final completer?) {
+      if (!completer.isCompleted) completer.complete(this);
+    }
+    if (!widget.deferPlatformActivation) unawaited(_fullscreenController.activate());
     _recordStartupEvent(
       widget.diagnostics,
       widget.startupSession.mark(VideoStartupPhase.routePresented, state: VideoStartupState.completed),
     );
-    unawaited(_prepare());
+    _playerController.addListener(_completeActivationIfReady);
+    final initialSetup = widget.initialSetup;
+    if (initialSetup != null) {
+      _setup = initialSetup;
+      _completeActivationIfReady();
+    } else {
+      unawaited(_prepare());
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final setup = _setup;
+    if (setup != null) _registerCompanionMedia(setup);
   }
 
   Future<void> _prepare() async {
@@ -139,38 +204,169 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
       _firstFramePresented = false;
     });
     try {
-      final libraryFuture = widget.libraryItemId == null ? null : widget.container.read(appStartupControllerProvider).contentLibrary;
+      final libraryFuture = widget.container.read(appStartupControllerProvider).contentLibrary;
       final itemId = widget.libraryItemId == null ? null : LibraryItemId(widget.libraryItemId!);
       final proxyUri = widget.container.read(configuredFlutterNetworkProxyManagerProvider).playerProxyUriFor(NetworkProxyTraffic.video);
       final preferAndroidSurface = await readSourceVideoDirectSurfacePreference();
       final videoPreferences = SourceVideoPreferences.fromSettings(widget.container.read(appSettingsProvider));
       if (!mounted || generation != _generation) return;
-      setState(
-        () => _setup = _VideoPlayerSetup(
-          dataSource: SourceVideoDataSource(
-            gateway: widget.container.read(sourceContentGatewayProvider),
-            pluginId: widget.detail.pluginId,
-            initialDetail: widget.detail,
-            // Shelf entry data may contain only the stable launch placeholder.
-            // Force the player to resolve the real source catalog in that case.
-            initialCatalog: widget.libraryItemId == null ? widget.initialCatalog : null,
-            playbackGate: widget.playbackGate,
-          ),
-          stateStore: TransientSourceVideoPlaybackStateStore(
-            contentId: widget.detail.summary.id,
-            initialGroupId: widget.initialGroupId,
-            initialEpisodeId: widget.initialEpisodeId,
-            libraryFuture: libraryFuture,
-            libraryItemId: itemId,
-          ),
-          proxyUri: proxyUri,
-          preferAndroidSurface: preferAndroidSurface,
-          preferences: videoPreferences,
+      final sources = await widget.container.read(sourceContentGatewayProvider).listSources();
+      final pluginVersion = sources.where((source) => source.id == widget.detail.pluginId).firstOrNull?.pluginVersion ?? 'unknown';
+      final identityFuture = widget.container
+          .read(deviceIdentityStoreProvider)
+          .loadOrCreateIdentity()
+          .then((identity) => identity.deviceId);
+      final library = await libraryFuture;
+      final privateContent = itemId == null ? false : (await library.getLibraryItem(itemId))?.visibility == LibraryVisibility.private;
+      if (!mounted || generation != _generation) return;
+      final setup = SourceVideoPlayerSetup(
+        dataSource: SourceVideoDataSource(
+          gateway: widget.container.read(sourceContentGatewayProvider),
+          pluginId: widget.detail.pluginId,
+          initialDetail: widget.detail,
+          // Shelf entry data may contain only the stable launch placeholder.
+          // Force the player to resolve the real source catalog in that case.
+          initialCatalog: widget.libraryItemId == null ? widget.initialCatalog : null,
+          playbackGate: widget.playbackGate,
         ),
+        stateStore: TransientSourceVideoPlaybackStateStore(
+          contentId: widget.detail.summary.id,
+          initialGroupId: widget.initialGroupId,
+          initialEpisodeId: widget.initialEpisodeId,
+          libraryFuture: libraryFuture,
+          libraryItemId: itemId,
+          initialPosition: widget.initialPosition,
+          pluginId: widget.detail.pluginId,
+          pluginVersion: pluginVersion,
+          title: widget.detail.summary.title,
+          originDeviceIdFuture: identityFuture,
+          playbackSessionId: widget.playbackSessionId,
+          controllerDeviceId: widget.controllerDeviceId,
+          privateContent: privateContent,
+        ),
+        proxyUri: proxyUri,
+        preferAndroidSurface: preferAndroidSurface,
+        preferences: videoPreferences,
+        pluginVersion: pluginVersion,
+        privateContent: privateContent,
+        canSystemVolume: await _canControlSystemVolume(),
       );
+      setState(() => _setup = setup);
+      _registerCompanionMedia(setup);
+      _completeActivationIfReady();
     } on Object catch (error) {
       if (!mounted || generation != _generation) return;
       setState(() => _setupFailure = error);
+    }
+  }
+
+  void _registerCompanionMedia(SourceVideoPlayerSetup setup) {
+    if (!mounted) return;
+    final host = widget.container.read(companionMediaHostProvider);
+    final route = ModalRoute.of(context);
+    if (_registeredWithCompanion && host.active?.owner == this && host.active?.route == route) return;
+    _registeredWithCompanion = true;
+    host.register(
+      CompanionMediaBinding(
+        owner: this,
+        controller: _playerController,
+        content: CompanionContentRef(
+          pluginId: setup.dataSource.pluginId,
+          pluginVersion: setup.pluginVersion,
+          contentId: widget.detail.summary.id,
+          title: widget.detail.summary.title,
+          groupId: widget.initialGroupId,
+          episodeId: widget.initialEpisodeId,
+        ),
+        sessionId: widget.playbackSessionId,
+        systemVolumeRead: _playbackPlatformController.readSystemVolume,
+        systemVolumeWrite: _playbackPlatformController.setSystemVolume,
+        canSystemVolume: setup.canSystemVolume,
+        privateContent: setup.privateContent,
+        onSaveFailure: () => setup.stateStore.saveFailure,
+        route: route,
+      ),
+    );
+  }
+
+  void _completeActivationIfReady() {
+    final snapshot = _playerController.snapshot;
+    if (widget.preparedSession != null && widget.deferPlatformActivation && snapshot.firstFrameReady && !_preparedPlaybackStarted) {
+      _preparedPlaybackStarted = true;
+      unawaited(_activatePreparedPlayback());
+    }
+    final completer = widget.activeCompleter;
+    if (completer == null || completer.isCompleted) return;
+    if (snapshot.failure != null) {
+      _presentPlayer();
+      completer.completeError(StateError(snapshot.failure?.code ?? 'player_failed'));
+      return;
+    }
+    if (snapshot.firstFrameReady && snapshot.playing) {
+      _presentPlayer();
+      completer.complete();
+    }
+  }
+
+  Future<void> _activatePreparedPlayback() async {
+    try {
+      widget.ensurePlaybackActivationCurrent?.call();
+      await widget.beforePlaybackActivation?.call();
+      widget.ensurePlaybackActivationCurrent?.call();
+      if (!mounted) return;
+      await _fullscreenController.activate();
+      widget.ensurePlaybackActivationCurrent?.call();
+      if (!mounted) return;
+      await _playbackPlatformController.setPlaybackActive(true);
+      widget.ensurePlaybackActivationCurrent?.call();
+      if (!mounted) return;
+      await _audioSessionController.setPlaybackActive(true);
+      widget.ensurePlaybackActivationCurrent?.call();
+      if (!mounted) return;
+      await _playerController.play();
+      try {
+        widget.ensurePlaybackActivationCurrent?.call();
+      } on Object {
+        await _playerController.pause();
+        rethrow;
+      }
+    } on Object catch (error) {
+      final completer = widget.activeCompleter;
+      if (completer != null && !completer.isCompleted) completer.completeError(error);
+    }
+  }
+
+  bool get isCurrentRoute => ModalRoute.of(context)?.isCurrent == true;
+  Route<dynamic>? get modalRoute => ModalRoute.of(context);
+  Future<void> get closedFuture => _closedCompleter.future;
+
+  Future<void> relinquishPlatformSession() async {
+    await Future.wait<void>(<Future<void>>[
+      _fullscreenController.restoreAndClose(),
+      _playbackPlatformController.restoreAndClose(),
+      _audioSessionController.restoreAndClose(),
+    ], eagerError: false);
+  }
+
+  Future<void> reclaimPlatformSession() async {
+    if (!mounted) return;
+    _fullscreenController = SourceVideoFullscreenController(tvMode: widget.container.read(appSettingsProvider).get(AppSettingKeys.tvMode));
+    _playbackPlatformController = SourceVideoPlaybackPlatformController();
+    _audioSessionController = SourceVideoAudioSessionController(onPauseRequested: _pauseForSystemInterruption);
+    await _fullscreenController.activate();
+    await _playbackPlatformController.setPlaybackActive(_playerController.snapshot.playing);
+    await _audioSessionController.setPlaybackActive(_playerController.snapshot.playing);
+  }
+
+  Future<bool> _canControlSystemVolume() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return false;
+    try {
+      final fixed = await const MethodChannel(
+        'mgread/media_system_volume',
+      ).invokeMethod<bool>('isSystemVolumeFixed').timeout(const Duration(seconds: 2));
+      return fixed == false;
+    } on Object {
+      return false;
     }
   }
 
@@ -219,6 +415,8 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
         dataSource: setup.dataSource,
         stateStore: setup.stateStore,
         controller: _playerController,
+        preparedSession: widget.preparedSession,
+        autoPlay: widget.autoPlay,
         observer: _VideoEntryObserver(
           delegate: _DismissVideoPlayerObserver(
             widget.navigator,
@@ -227,15 +425,25 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
             _audioSessionController,
           ),
           onPresented: _presentPlayer,
+          onActivationFailure: (failure) {
+            final pending = widget.activeCompleter;
+            if (pending != null && !pending.isCompleted) {
+              pending.completeError(
+                VideoPlayerLoadException(message: failure.message, code: failure.code ?? 'video_activation_failed', location: '激活候选视频'),
+              );
+            }
+          },
           diagnostics: widget.diagnostics,
         ),
         startupSession: widget.startupSession,
-        backendFactory: () => createMediaKitVideoPlaybackBackend(
-          proxyUri: setup.proxyUri,
-          preferAndroidSurface: setup.preferAndroidSurface,
-          decoderMode: setup.preferences.decoderMode,
-          androidOutputMode: setup.preferences.androidOutputMode,
-        ),
+        backendFactory:
+            setup.backendFactory ??
+            () => createMediaKitVideoPlaybackBackend(
+              proxyUri: setup.proxyUri,
+              preferAndroidSurface: setup.preferAndroidSurface,
+              decoderMode: setup.preferences.decoderMode,
+              androidOutputMode: setup.preferences.androidOutputMode,
+            ),
       ),
     );
   }
@@ -243,21 +451,30 @@ final class _SourceVideoPlayerDestinationState extends State<_SourceVideoPlayerD
   @override
   void dispose() {
     _generation++;
-    unawaited(_fullscreenController.restoreAndClose());
-    unawaited(_playbackPlatformController.restoreAndClose());
-    unawaited(_audioSessionController.restoreAndClose());
+    widget.container.read(companionMediaHostProvider).unregister(this);
+    _playerController.removeListener(_completeActivationIfReady);
+    widget.preparedSession?.dispose();
+    unawaited(
+      relinquishPlatformSession().whenComplete(() {
+        if (!_closedCompleter.isCompleted) _closedCompleter.complete();
+      }),
+    );
     _playerController.dispose();
     super.dispose();
   }
 }
 
-final class _VideoPlayerSetup {
-  const _VideoPlayerSetup({
+final class SourceVideoPlayerSetup {
+  const SourceVideoPlayerSetup({
     required this.dataSource,
     required this.stateStore,
     required this.proxyUri,
     required this.preferAndroidSurface,
     required this.preferences,
+    required this.pluginVersion,
+    required this.privateContent,
+    required this.canSystemVolume,
+    this.backendFactory,
   });
 
   final SourceVideoDataSource dataSource;
@@ -265,14 +482,19 @@ final class _VideoPlayerSetup {
   final Uri? proxyUri;
   final bool preferAndroidSurface;
   final SourceVideoPreferences preferences;
+  final String pluginVersion;
+  final bool privateContent;
+  final bool canSystemVolume;
+  final VideoPlaybackBackendFactory? backendFactory;
 }
 
 final class _VideoEntryObserver extends VideoPlayerObserver {
-  const _VideoEntryObserver({required this.delegate, required this.onPresented, required this.diagnostics});
+  const _VideoEntryObserver({required this.delegate, required this.onPresented, required this.diagnostics, this.onActivationFailure});
 
   final VideoPlayerObserver delegate;
   final VoidCallback onPresented;
   final DiagnosticsManager diagnostics;
+  final ValueChanged<VideoPlayerFailure>? onActivationFailure;
 
   @override
   FutureOr<void> onStartupEvent(VideoStartupEvent event) {
@@ -288,6 +510,7 @@ final class _VideoEntryObserver extends VideoPlayerObserver {
 
   @override
   FutureOr<void> onFailure(VideoPlayerFailure failure) {
+    onActivationFailure?.call(failure);
     if (failure.kind == VideoPlayerFailureKind.data || failure.kind == VideoPlayerFailureKind.playback) onPresented();
     return delegate.onFailure(failure);
   }
