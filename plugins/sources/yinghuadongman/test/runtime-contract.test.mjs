@@ -7,8 +7,8 @@ import * as plugin from '../dist/index.mjs';
 
 test('fixture outputs pass the current Runtime source validators', async () => {
   const validators = await loadRuntimeValidators();
-  const [list, detail, player, filters] = await Promise.all([
-    'list.html', 'detail.html', 'player-direct.html', 'library-filters.html',
+  const [list, detail, player, filters, weekTemplate] = await Promise.all([
+    'list.html', 'detail.html', 'player-direct.html', 'library-filters.html', 'week.html',
   ].map((name) => readFile(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')));
   await plugin.activate({
     log: { info() {}, warn() {} },
@@ -19,6 +19,7 @@ test('fixture outputs pass the current Runtime source validators', async () => {
     http: {
       async fetch(input) {
         const path = new URL(input).pathname;
+        if (path === '/label/week.html') return new Response(weekTemplate.replace(/__DAY_\d__/gu, list));
         if (path.startsWith('/w/')) return new Response(filters + list);
         if (path === '/v/101.html') return new Response(detail);
         if (path === '/p/101-5-1.html') return new Response(player);
@@ -34,6 +35,12 @@ test('fixture outputs pass the current Runtime source validators', async () => {
   const hotCollection = validators.validateDiscoverResult(pluginId, sourceName, hot).document.components[0].children[0];
   assert.equal(hotCollection.items.length, 2);
   assert.equal(hotCollection.continuation, null);
+  for (const id of ['today', 'new', 'week']) {
+    const result = await plugin.discover({ target: `category:${id}`, cursor: null, collectionId: null, pageSize: 1 });
+    const normalized = validators.validateDiscoverResult(pluginId, sourceName, result);
+    assert.equal(normalized.document.components.length, id === 'week' ? 7 : 1);
+    assert.ok(normalized.document.components.every(section => section.children.every(collection => collection.continuation === null)));
+  }
   const library = await plugin.discover({ target: 'category:library', cursor: null, collectionId: null, pageSize: 20 });
   const normalized = validators.validateDiscoverResult(pluginId, sourceName, library);
   assert.equal(normalized.document.components[0].groups[1].options.length, 45);

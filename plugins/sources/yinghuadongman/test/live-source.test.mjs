@@ -43,8 +43,8 @@ test('live public flow reaches discovery, search, detail, catalog and playback r
   assert.ok(items.every((item) => item.content.coverUrl !== null));
   assert.ok(items.every((item) => item.content.coverOrientation === 'portrait'));
   const first = items[0].content;
-  const search = await plugin.search({ query: '海贼王', cursor: null, pageSize: 3 });
-  assert.ok(search.items.length > 0);
+  const search = await plugin.search({ query: first.title, cursor: null, pageSize: 3 });
+  assert.ok(search.items.some(item => item.id === first.id));
   const detail = await plugin.getDetail({ id: first.id });
   const catalog = await plugin.getChapters({ id: detail.id });
   assert.ok(catalog.groups.length > 0);

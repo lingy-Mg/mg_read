@@ -97,6 +97,42 @@ function plain(html) {
   return html.replace(/<[^>]*>/gu, "").replaceAll("&nbsp;", " ").replaceAll("&amp;", "&").trim();
 }
 
+// src/discovery.mts
+function categoryPanels(html, id, title) {
+  const panels = modulePanels(html);
+  if (id !== "week") {
+    if (panels[0] === void 0) throw new Error("Category listing is unavailable.");
+    return [{ id, title, html: panels[0] }];
+  }
+  const days = [...html.matchAll(/<span\b[^>]*\bdata-dropdown-value=["'](周[一二三四五六日])["'][^>]*>/gu)].map((match) => match[1]);
+  if (days.length !== 7 || new Set(days).size !== 7 || panels.length !== 7) {
+    throw new Error("Weekly schedule is unavailable.");
+  }
+  return panels.map((body, index) => ({ id: `week:${index + 1}`, title: days[index], html: body }));
+}
+function modulePanels(html) {
+  const panels = [];
+  let start = -1;
+  let depth = 0;
+  for (const match of html.matchAll(/<\/?div\b[^>]*>/giu)) {
+    if (/^<\//u.test(match[0])) {
+      if (start >= 0 && --depth === 0) {
+        panels.push(html.slice(start, match.index));
+        start = -1;
+      }
+    } else if (start >= 0) {
+      depth += 1;
+    } else {
+      const classes = /\bclass=["']([^"']*)["']/iu.exec(match[0])?.[1]?.split(/\s+/u) ?? [];
+      if (classes.includes("module-main") && classes.includes("tab-list")) {
+        start = match.index + match[0].length;
+        depth = 1;
+      }
+    }
+  }
+  return panels;
+}
+
 // src/index.mts
 var base = "https://www.yinhuadm.xyz";
 var playerBase = "https://player.mcue.cc";
@@ -133,7 +169,7 @@ async function search(request) {
   const primary = parseListing(await fetchText(`${base}${path}`));
   let values = primary;
   if (page === 1 && !primary.some((item) => sameSearchTitle(item.title, query))) {
-    const currentMatches = parseListing(await fetchText(`${base}/label/new.html`)).filter((item) => sameSearchTitle(item.title, query));
+    const currentMatches = parseCategory(await fetchText(`${base}/label/new.html`), "today", "今日更新")[0].items.filter((item) => sameSearchTitle(item.title, query));
     values = uniqueById([...currentMatches, ...primary]);
   }
   const items = values.slice(0, pageSize);
@@ -153,15 +189,15 @@ async function discover(request) {
   }
   if (request.target === "category:library" || request.target.startsWith("library:")) {
     const state = libraryState(request.target);
-    const page2 = request.cursor === null ? 1 : Number(new RegExp(`^${escape(request.target)}:(\\d+)$`, "u").exec(request.cursor)?.[1]);
-    if (!Number.isSafeInteger(page2) || page2 < 1 || page2 > 1e4 || request.cursor !== null && page2 < 2) throw new Error("Library cursor is invalid.");
-    const collectionId2 = "video:library";
-    if (request.collectionId !== null && request.collectionId !== collectionId2) throw new Error("Discovery collection is invalid.");
-    const html = await fetchText(`${base}${libraryRoute(state, page2)}`);
-    const values2 = parseListing(html).slice(0, 50);
-    const items2 = values2.map((content) => frozen({ content, rank: null, metric: null, recommendation: null }));
-    const continuation2 = page2 < 1e4 && libraryHasNext(html, state, page2) ? { target: request.target, cursor: `${request.target}:${page2 + 1}` } : null;
-    if (request.collectionId !== null) return frozen({ kind: "append", collectionId: collectionId2, items: items2, continuation: continuation2 });
+    const page = request.cursor === null ? 1 : Number(new RegExp(`^${escape(request.target)}:(\\d+)$`, "u").exec(request.cursor)?.[1]);
+    if (!Number.isSafeInteger(page) || page < 1 || page > 1e4 || request.cursor !== null && page < 2) throw new Error("Library cursor is invalid.");
+    const collectionId = "video:library";
+    if (request.collectionId !== null && request.collectionId !== collectionId) throw new Error("Discovery collection is invalid.");
+    const html = await fetchText(`${base}${libraryRoute(state, page)}`);
+    const values = parseListing(html).slice(0, 50);
+    const items = values.map((content) => frozen({ content, rank: null, metric: null, recommendation: null }));
+    const continuation = page < 1e4 && libraryHasNext(html, state, page) ? { target: request.target, cursor: `${request.target}:${page + 1}` } : null;
+    if (request.collectionId !== null) return frozen({ kind: "append", collectionId, items, continuation });
     return frozen({ kind: "document", document: { components: [
       ...libraryFilters(html),
       {
@@ -169,38 +205,34 @@ async function discover(request) {
         id: "library-results",
         title: "动漫库",
         subtitle: null,
-        children: [{ type: "contentCollection", id: collectionId2, layout: "coverGrid", items: items2, continuation: continuation2 }]
+        children: [{ type: "contentCollection", id: collectionId, layout: "coverGrid", items, continuation }]
       }
     ] } });
   }
   const category = categories.find(([id]) => request.target === `category:${id}`);
   if (category === void 0) throw new Error("Discovery target is invalid.");
-  const singlePage = category[0] === "hot";
-  if (singlePage && request.cursor !== null) throw new Error("Discovery cursor is invalid.");
-  const page = discoveryPage(request.cursor, request.target);
+  if (request.cursor !== null) throw new Error("Discovery cursor is invalid.");
   const [, title, route] = category;
-  const collectionId = `video:${category[0]}`;
-  const listing = parseListing(await fetchText(`${base}${pagedRoute(route, page)}`));
-  const values = listing.slice(0, singlePage ? 50 : clamp(request.pageSize));
-  const items = values.map((content) => frozen({ content, rank: null, metric: null, recommendation: null }));
-  const continuation = !singlePage && values.length >= clamp(request.pageSize) && page < 50 ? frozen({ target: request.target, cursor: `${request.target}:${page + 1}` }) : null;
-  if (request.collectionId !== null) {
-    if (request.collectionId !== collectionId) throw new Error("Discovery collection is invalid.");
-    return frozen({ kind: "append", collectionId, items, continuation });
-  }
-  return frozen({
-    kind: "document",
-    document: {
-      components: [{
-        type: "section",
-        id: `${collectionId}:section`,
-        title,
-        subtitle: null,
-        icon: "video",
-        children: [{ type: "contentCollection", id: collectionId, layout: "coverGrid", items, continuation }]
-      }]
+  const panels = parseCategory(await fetchText(`${base}${route}`), category[0], title);
+  const components = panels.map((panel) => {
+    const children = [];
+    for (let start = 0; start < Math.max(1, panel.items.length); start += 50) {
+      children.push({
+        type: "contentCollection",
+        id: `video:${panel.id}${start === 0 ? "" : `:part:${start / 50 + 1}`}`,
+        layout: "coverGrid",
+        continuation: null,
+        items: panel.items.slice(start, start + 50).map((content) => frozen({ content, rank: null, metric: null, recommendation: null }))
+      });
     }
+    return { type: "section", id: `video:${panel.id}:section`, title: panel.title, subtitle: null, icon: "video", children };
   });
+  if (request.collectionId !== null) {
+    const collection = components.flatMap((component) => component.children).find((value) => value.id === request.collectionId);
+    if (collection === void 0) throw new Error("Discovery collection is invalid.");
+    return frozen({ kind: "append", collectionId: collection.id, items: collection.items, continuation: null });
+  }
+  return frozen({ kind: "document", document: { components } });
 }
 async function getDetail(request) {
   const id = contentId(request.id);
@@ -245,7 +277,7 @@ async function getContent(request) {
 }
 async function rootDocument(pageSize) {
   const limit = Math.min(clamp(pageSize), 12);
-  const values = parseListing(await fetchText(`${base}/label/new.html`)).slice(0, limit);
+  const values = parseCategory(await fetchText(`${base}/label/new.html`), "today", "今日更新")[0].items.slice(0, limit);
   const items = values.map((content) => frozen({ content, rank: null, metric: null, recommendation: null }));
   const components = [];
   if (items.length > 0) {
@@ -529,20 +561,14 @@ function parseChapterId(id, content) {
   }
   return { line: String(line), episode: String(episode) };
 }
-function discoveryPage(cursor, target) {
-  if (cursor === null) return 1;
-  const page = Number(new RegExp(`^${escape(target)}:(\\d+)$`, "u").exec(cursor)?.[1]);
-  if (!Number.isSafeInteger(page) || page < 2 || page > 50) throw new Error("Discovery cursor is invalid.");
-  return page;
-}
 function searchPage(cursor) {
   if (cursor === null) return 1;
   const page = Number(/^search:(\d+)$/u.exec(cursor)?.[1]);
   if (!Number.isSafeInteger(page) || page < 2 || page > 50) throw new Error("Search cursor is invalid.");
   return page;
 }
-function pagedRoute(route, page) {
-  return page === 1 ? route : route.replace(/\.html$/u, `/${page}.html`);
+function parseCategory(html, id, title) {
+  return categoryPanels(html, id, title).map((panel) => ({ ...panel, items: parseListing(panel.html) }));
 }
 function detailUrl(id) {
   return `${base}/v/${id}.html`;

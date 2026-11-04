@@ -5,12 +5,13 @@
  * line ordering, HTML parsing and MCUE player decryption. This upstream rejects
  * proxies, so source requests and Runtime-proxied covers/media explicitly use
  * direct Runtime routing; resource bytes still remain in Runtime's resource proxy.
- * The hot ranking is a complete single-page list, independent of page-size hints.
+ * Category panels are complete single-page lists; only the anime library paginates.
  */
 import { createDecipheriv, createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { MgReadPluginContext } from '@mgread/source-api';
 import { libraryFilters, libraryHasNext, libraryRoute, libraryState } from './library.mjs';
+import { categoryPanels } from './discovery.mjs';
 
 type Json = Record<string, unknown>;
 type Context = MgReadPluginContext;
@@ -54,7 +55,7 @@ export async function search(request: { query: string; cursor: string | null; pa
   const primary = parseListing(await fetchText(`${base}${path}`));
   let values = primary;
   if (page === 1 && !primary.some((item) => sameSearchTitle(item.title, query))) {
-    const currentMatches = parseListing(await fetchText(`${base}/label/new.html`))
+    const currentMatches = parseCategory(await fetchText(`${base}/label/new.html`), 'today', '今日更新')[0]!.items
       .filter((item) => sameSearchTitle(item.title, query));
     values = uniqueById([...currentMatches, ...primary]);
   }
@@ -102,30 +103,28 @@ export async function discover(request: {
   }
   const category = categories.find(([id]) => request.target === `category:${id}`);
   if (category === undefined) throw new Error('Discovery target is invalid.');
-  const singlePage = category[0] === 'hot';
-  if (singlePage && request.cursor !== null) throw new Error('Discovery cursor is invalid.');
-  const page = discoveryPage(request.cursor, request.target);
+  if (request.cursor !== null) throw new Error('Discovery cursor is invalid.');
   const [, title, route] = category;
-  const collectionId = `video:${category[0]}`;
-  const listing = parseListing(await fetchText(`${base}${pagedRoute(route, page)}`));
-  const values = listing.slice(0, singlePage ? 50 : clamp(request.pageSize));
-  const items = values.map((content) => frozen({ content, rank: null, metric: null, recommendation: null }));
-  const continuation = !singlePage && values.length >= clamp(request.pageSize) && page < 50
-    ? frozen({ target: request.target, cursor: `${request.target}:${page + 1}` })
-    : null;
-  if (request.collectionId !== null) {
-    if (request.collectionId !== collectionId) throw new Error('Discovery collection is invalid.');
-    return frozen({ kind: 'append' as const, collectionId, items, continuation });
-  }
-  return frozen({
-    kind: 'document' as const,
-    document: {
-      components: [{
-        type: 'section', id: `${collectionId}:section`, title, subtitle: null, icon: 'video',
-        children: [{ type: 'contentCollection', id: collectionId, layout: 'coverGrid', items, continuation }],
-      }],
-    },
+  const panels = parseCategory(await fetchText(`${base}${route}`), category[0], title);
+  const components = panels.map(panel => {
+    const children = [];
+    // Respect the public 50-item collection limit without dropping the remainder
+    // or pretending a complete upstream page has another network page.
+    for (let start = 0; start < Math.max(1, panel.items.length); start += 50) {
+      children.push({
+        type: 'contentCollection', id: `video:${panel.id}${start === 0 ? '' : `:part:${start / 50 + 1}`}`,
+        layout: 'coverGrid', continuation: null,
+        items: panel.items.slice(start, start + 50).map(content => frozen({ content, rank: null, metric: null, recommendation: null })),
+      });
+    }
+    return { type: 'section', id: `video:${panel.id}:section`, title: panel.title, subtitle: null, icon: 'video', children };
   });
+  if (request.collectionId !== null) {
+    const collection = components.flatMap(component => component.children).find(value => value.id === request.collectionId);
+    if (collection === undefined) throw new Error('Discovery collection is invalid.');
+    return frozen({ kind: 'append' as const, collectionId: collection.id, items: collection.items, continuation: null });
+  }
+  return frozen({ kind: 'document' as const, document: { components } });
 }
 
 export async function getDetail(request: { id: string }) {
@@ -174,7 +173,7 @@ export async function getContent(request: { id: string; chapterId: string }) {
 
 async function rootDocument(pageSize: number) {
   const limit = Math.min(clamp(pageSize), 12);
-  const values = parseListing(await fetchText(`${base}/label/new.html`)).slice(0, limit);
+  const values = parseCategory(await fetchText(`${base}/label/new.html`), 'today', '今日更新')[0]!.items.slice(0, limit);
   const items = values.map((content) => frozen({ content, rank: null, metric: null, recommendation: null }));
   const components: object[] = [];
   if (items.length > 0) {
@@ -492,13 +491,6 @@ function parseChapterId(id: string, content: string) {
   return { line: String(line), episode: String(episode) };
 }
 
-function discoveryPage(cursor: string | null, target: string): number {
-  if (cursor === null) return 1;
-  const page = Number(new RegExp(`^${escape(target)}:(\\d+)$`, 'u').exec(cursor)?.[1]);
-  if (!Number.isSafeInteger(page) || page < 2 || page > 50) throw new Error('Discovery cursor is invalid.');
-  return page;
-}
-
 function searchPage(cursor: string | null): number {
   if (cursor === null) return 1;
   const page = Number(/^search:(\d+)$/u.exec(cursor)?.[1]);
@@ -506,8 +498,8 @@ function searchPage(cursor: string | null): number {
   return page;
 }
 
-function pagedRoute(route: string, page: number): string {
-  return page === 1 ? route : route.replace(/\.html$/u, `/${page}.html`);
+function parseCategory(html: string, id: string, title: string) {
+  return categoryPanels(html, id, title).map(panel => ({ ...panel, items: parseListing(panel.html) }));
 }
 
 function detailUrl(id: string): string { return `${base}/v/${id}.html`; }

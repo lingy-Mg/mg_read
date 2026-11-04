@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/yinghuadongman",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "private": true,
   "description": "MgRead video source for Yinghua Dongman.",
   "type": "module",
@@ -16,8 +16,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && node tools/mgread.mjs build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --test test/contract.test.mjs test/runtime-contract.test.mjs test/source.test.mjs test/library.test.mjs",
-    "test:live": "npm run build && node --use-env-proxy --test test/live-source.test.mjs",
+    "test": "npm run build && node --test test/contract.test.mjs test/runtime-contract.test.mjs test/source.test.mjs test/library.test.mjs test/discovery.test.mjs",
+    "test:live": "npm run build && node --use-env-proxy --test test/live-source.test.mjs test/discovery-live.test.mjs",
     "pack:plugin": "npm run build && node tools/mgread.mjs pack",
     "verify": "npm run typecheck && npm test && npm run pack:plugin"
   },
