@@ -2,6 +2,7 @@
 /// 首屏遮罩由 AppStartupGate 持有；Runtime、更新和设备同步在首屏绘制后启动。
 /// 异步完成后必须检查 mounted；全局订阅随根组件销毁而取消。
 /// TV 根页面始终接管 Android 返回，防止关闭详情后系统直接退出 Activity。
+/// TV 手机连接入口在根导航可返回时隐藏，避免覆盖弹窗和沉浸式子页面。
 library;
 
 import 'package:mg_read/features/local_import/application/local_import_controller.dart';
@@ -55,6 +56,7 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
   StreamSubscription<RuntimeInitializationProgress>? _runtimeInitializationSubscription;
   bool _tvMode = false;
   bool _navigatorCanHandlePop = false;
+  final _companionEntryVisible = ValueNotifier(true);
   bool _companionKey(KeyEvent event) {
     if (_tvMode && (event is KeyDownEvent || event is KeyRepeatEvent)) ref.read(companionControllerProvider).localInteraction();
     return false;
@@ -62,6 +64,7 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
 
   bool _handleNavigationNotification(NavigationNotification notification) {
     _navigatorCanHandlePop = notification.canHandlePop;
+    _companionEntryVisible.value = !(appRootNavigatorKey.currentState?.canPop() ?? false);
     _syncFrameworkBack();
     return true;
   }
@@ -220,6 +223,7 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
     unawaited(_runtimeInitializationSubscription?.cancel());
     WidgetsBinding.instance.removeObserver(this);
     HardwareKeyboard.instance.removeHandler(_companionKey);
+    _companionEntryVisible.dispose();
     super.dispose();
   }
 
@@ -312,13 +316,18 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
               const AppBackgroundTasks(),
               const ChapterCacheTaskBar(),
               SourceAudioPlaybackNavigator(backButtonDispatcher: router.backButtonDispatcher),
-              CompanionEntry(
-                tvMode: tvMode,
-                overlayContext: () => appRootNavigatorKey.currentContext,
-                onOpen: () {
-                  final navigator = appRootNavigatorKey.currentState;
-                  if (navigator != null) unawaited(openCompanionPage(navigator.context));
-                },
+              ValueListenableBuilder(
+                valueListenable: _companionEntryVisible,
+                builder: (context, visible, _) => !tvMode || visible
+                    ? CompanionEntry(
+                        tvMode: tvMode,
+                        overlayContext: () => appRootNavigatorKey.currentContext,
+                        onOpen: () {
+                          final navigator = appRootNavigatorKey.currentState;
+                          if (navigator != null) unawaited(openCompanionPage(navigator.context));
+                        },
+                      )
+                    : const SizedBox.shrink(),
               ),
             ],
           ),
