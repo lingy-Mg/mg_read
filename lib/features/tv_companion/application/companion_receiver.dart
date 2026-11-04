@@ -14,11 +14,24 @@ extension CompanionReceiver on CompanionController {
   }
 
   Future<bool> _acceptRequest(HttpRequest request) async {
+    if (request.uri.path == '/companion/v1/identity') {
+      final remote = request.connectionInfo?.remoteAddress.address;
+      if (request.method != 'GET' || !_isPrivateLanAddress(remote) || !receiverEnabled || !_foreground || _disposed || identity == null) {
+        request.response.statusCode = HttpStatus.notFound;
+      } else {
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(jsonEncode({'deviceId': identity!.deviceId, 'label': identity!.label}));
+      }
+      await request.response.close();
+      return true;
+    }
     if (request.uri.path != '/companion/v1/ws') return false;
+    final remoteAddress = request.connectionInfo?.remoteAddress.address;
     if (!receiverEnabled ||
         !_foreground ||
         _disposed ||
         identity == null ||
+        !_isPrivateLanAddress(remoteAddress) ||
         _peers.length + _pendingHandshakes >= 4 ||
         !WebSocketTransformer.isUpgradeRequest(request)) {
       request.response.statusCode = HttpStatus.serviceUnavailable;
@@ -32,8 +45,9 @@ extension CompanionReceiver on CompanionController {
         socket: socket,
         localDeviceId: identity!.deviceId,
         resolvePeerSecret: (id) async => await _trusted(id) ? _identities.readPeerSecret(id) : null,
+        allowLanSession: true,
       );
-      if (!await _trusted(channel.peerDeviceId)) {
+      if (!await _trusted(channel.peerDeviceId, lanSession: channel.isLanSession)) {
         await channel.close();
         return true;
       }
@@ -68,7 +82,7 @@ extension CompanionReceiver on CompanionController {
         _disconnectPeer(peer.id);
         return;
       }
-      if (!await _trusted(peer.id)) {
+      if (!await _peerAuthorized(peer.id)) {
         _disconnectPeer(peer.id, expected: peer);
         return;
       }
@@ -101,7 +115,7 @@ extension CompanionReceiver on CompanionController {
                   },
                 );
             if (utf8.encode(jsonEncode(result)).length > 60 * 1024) throw const CompanionFailure('response_too_large');
-            if (await _trusted(peer.id)) await _sendPeer(peer, {'kind': 'response', 'id': id, 'result': result});
+            if (await _peerAuthorized(peer.id)) await _sendPeer(peer, {'kind': 'response', 'id': id, 'result': result});
           } on Object catch (error) {
             await _sendPeer(peer, {'kind': 'response', 'id': id, 'error': _safeCode(error)});
           } finally {
@@ -205,14 +219,23 @@ extension CompanionReceiver on CompanionController {
       if (getLibrary == null) return;
       final library = await getLibrary();
       final history = await library.listVideoHistory(limit: 500);
-      final allowHistory = (await _repository.policy(peer.id)).browseLibrary;
+      final lanSession = _isLanSession(peer.id);
+      final allowHistory = lanSession || (await _repository.policy(peer.id)).browseLibrary;
+      final normalItems = await library.listLibrary(const LibraryQuery(limit: bookshelfMaxItemCount, visibility: LibraryVisibility.normal));
+      final normalVideoKeys = {
+        for (final item in normalItems.items.where((item) => item.kind == ContentKind.video))
+          videoHistorySourceKey(item.source.pluginId, item.source.remoteContentId),
+      };
       final allowed = history
           .where(
             (entry) =>
                 entry.checkpoint.originDeviceId == identity?.deviceId &&
                 (entry.checkpoint.controllerDeviceId == peer.id ||
                     entry.checkpoint.playbackSessionId == _media.active?.sessionId ||
-                    allowHistory),
+                    allowHistory) &&
+                (normalVideoKeys.contains(entry.checkpoint.sourceKey) ||
+                    entry.checkpoint.controllerDeviceId == peer.id ||
+                    (entry.checkpoint.playbackSessionId == _media.active?.sessionId && _media.active?.privateContent != true)),
           )
           .toList();
       final keys = {
@@ -238,7 +261,7 @@ extension CompanionReceiver on CompanionController {
   }
 
   Future<CompanionReceipt> _executeCommand(String peerId, CompanionCommand command, CompanionExecutionContext context) async {
-    if (!await _trusted(peerId)) throw const CompanionFailure('authorization_revoked');
+    if (!await _peerAuthorized(peerId)) throw const CompanionFailure('authorization_revoked');
     context.ensureCurrent();
     final args = command.arguments;
     final binding = _media.active?.privateContent == true ? null : _media.active;
@@ -375,6 +398,12 @@ extension CompanionReceiver on CompanionController {
       : error is VideoPlayerLoadException
       ? error.code
       : 'operation_failed';
+}
+
+bool _isPrivateLanAddress(String? address) {
+  if (address == null) return false;
+  final normalized = address.startsWith('::ffff:') ? address.substring(7) : address;
+  return isLanSyncPrivateIpv4(normalized) || normalized == '127.0.0.1';
 }
 
 final companionOpenSearchProvider = Provider<Future<void> Function()>(

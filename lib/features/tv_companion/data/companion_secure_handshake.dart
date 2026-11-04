@@ -1,11 +1,7 @@
-// Wire contract for companion secure-channel authentication (v1).
-// Client hello: {type, version, clientId, serverId, session, clientNonce}.
-// Server challenge: {type, version, session, serverNonce}.
-// Client/server finished proofs HMAC the canonical transcript containing both
-// identities, session and fresh 32-byte nonces; server proof also binds client
-// proof. HKDF-SHA256 over the PSK and transcript hash yields independent AES-256
-// keys and 32-bit nonce prefixes for each direction. No business JSON is sent
-// until both proofs have been checked.
+// Wire contract for companion secure sessions (v1). Legacy PSK clients retain
+// mutual proof authentication; LAN clients exchange fresh X25519 keys and prove
+// possession of the shared ephemeral secret. Both modes bind identities, session
+// and nonces into independent directional AES-GCM keys before business data.
 import 'dart:convert';
 import 'dart:math';
 
@@ -17,6 +13,8 @@ const _protocol = 'mgread-companion-ws-v1';
 final _random = Random.secure();
 final _hmac = Hmac.sha256();
 final _hkdf = Hkdf(hmac: Hmac.sha256(), outputLength: 72);
+final _x25519 = X25519();
+const _lanProtocol = 'mgread-companion-lan-ws-v1';
 
 final class CompanionHandshakeKeys {
   const CompanionHandshakeKeys({
@@ -35,9 +33,10 @@ final class CompanionHandshakeKeys {
 }
 
 final class CompanionServerHandshakeResult {
-  const CompanionServerHandshakeResult({required this.peerId, required this.keys});
+  const CompanionServerHandshakeResult({required this.peerId, required this.keys, this.lanSession = false});
   final String peerId;
   final CompanionHandshakeKeys keys;
+  final bool lanSession;
 }
 
 final class CompanionHandshakeClientResult {
@@ -54,6 +53,7 @@ abstract final class CompanionSecureHandshake {
     required Future<Object?> Function() receive,
     required Duration timeout,
   }) async {
+    if (secret.isEmpty) return _lanClient(localId: localId, remoteId: remoteId, send: send, receive: receive, timeout: timeout);
     final sessionBytes = _randomBytes(16);
     final clientNonce = _randomBytes(32);
     final session = _encode(sessionBytes);
@@ -88,6 +88,7 @@ abstract final class CompanionSecureHandshake {
     required void Function(Object message) send,
     required Future<Object?> Function() receive,
     required Duration timeout,
+    bool allowLanSession = false,
   }) async {
     final hello = await _readObject(receive, timeout);
     if (hello['type'] != 'hello' || hello['version'] != _handshakeVersion || hello['serverId'] != localId) {
@@ -101,6 +102,20 @@ abstract final class CompanionSecureHandshake {
     final clientNonceText = hello['clientNonce'];
     _decode(clientNonceText, 32);
     if (_decode(session, 16).length != 16) throw const _HandshakeFailure();
+    if (hello['mode'] == 'lan') {
+      if (!allowLanSession) throw const _HandshakeFailure();
+      return _lanServer(
+        localId: localId,
+        peerId: peerId,
+        session: session,
+        clientNonceText: clientNonceText as String,
+        clientPublicText: hello['clientKey'],
+        send: send,
+        receive: receive,
+        timeout: timeout,
+      );
+    }
+    if (hello['mode'] != null && hello['mode'] != 'psk') throw const _HandshakeFailure();
     final secret = await resolvePeerSecret(peerId).timeout(timeout);
     if (secret == null || secret.length < 32 || secret.length > 128 || secret.any((b) => b < 0 || b > 255)) {
       throw const _HandshakeFailure();
@@ -120,6 +135,118 @@ abstract final class CompanionSecureHandshake {
     return CompanionServerHandshakeResult(peerId: peerId, keys: keys);
   }
 
+  static Future<CompanionHandshakeClientResult> _lanClient({
+    required String localId,
+    required String remoteId,
+    required void Function(Object) send,
+    required Future<Object?> Function() receive,
+    required Duration timeout,
+  }) async {
+    final keyPair = await _x25519.newKeyPair();
+    final publicKey = await keyPair.extractPublicKey();
+    final session = _encode(_randomBytes(16));
+    final clientNonceText = _encode(_randomBytes(32));
+    final clientKeyText = _encode(publicKey.bytes);
+    send(<String, Object?>{
+      'type': 'hello',
+      'version': _handshakeVersion,
+      'mode': 'lan',
+      'clientId': localId,
+      'serverId': remoteId,
+      'session': session,
+      'clientNonce': clientNonceText,
+      'clientKey': clientKeyText,
+    });
+    final challenge = await _readObject(receive, timeout);
+    if (challenge['type'] != 'challenge' ||
+        challenge['version'] != _handshakeVersion ||
+        challenge['mode'] != 'lan' ||
+        challenge['session'] != session) {
+      throw const _HandshakeFailure();
+    }
+    final serverNonceText = challenge['serverNonce'];
+    _decode(serverNonceText, 32);
+    final serverKeyText = challenge['serverKey'];
+    final serverKey = SimplePublicKey(_decode(serverKeyText, 32), type: KeyPairType.x25519);
+    final transcript = _lanTranscript(
+      localId,
+      remoteId,
+      session,
+      clientNonceText,
+      serverNonceText as String,
+      clientKeyText,
+      serverKeyText as String,
+    );
+    final shared = await _x25519.sharedSecretKey(keyPair: keyPair, remotePublicKey: serverKey);
+    final secret = await _lanSecret(shared, transcript);
+    final proof = await _proof(secret, 'client-finished', transcript);
+    send(<String, Object?>{'type': 'client-finished', 'proof': _encode(proof)});
+    final finished = await _readObject(receive, timeout);
+    if (finished['type'] != 'server-finished' ||
+        !_constantTimeEqual(await _proof(secret, 'server-finished', <int>[...transcript, ...proof]), _decode(finished['proof'], 32))) {
+      throw const _HandshakeFailure();
+    }
+    return CompanionHandshakeClientResult(await _derive(secret, transcript, session, protocol: _lanProtocol));
+  }
+
+  static Future<CompanionServerHandshakeResult> _lanServer({
+    required String localId,
+    required String peerId,
+    required String session,
+    required String clientNonceText,
+    required Object? clientPublicText,
+    required void Function(Object) send,
+    required Future<Object?> Function() receive,
+    required Duration timeout,
+  }) async {
+    final clientKeyText = clientPublicText;
+    final clientKey = SimplePublicKey(_decode(clientKeyText, 32), type: KeyPairType.x25519);
+    final keyPair = await _x25519.newKeyPair();
+    final publicKey = await keyPair.extractPublicKey();
+    final serverNonceText = _encode(_randomBytes(32));
+    final serverKeyText = _encode(publicKey.bytes);
+    send(<String, Object?>{
+      'type': 'challenge',
+      'version': _handshakeVersion,
+      'mode': 'lan',
+      'session': session,
+      'serverNonce': serverNonceText,
+      'serverKey': serverKeyText,
+    });
+    final transcript = _lanTranscript(peerId, localId, session, clientNonceText, serverNonceText, clientKeyText as String, serverKeyText);
+    final shared = await _x25519.sharedSecretKey(keyPair: keyPair, remotePublicKey: clientKey);
+    final secret = await _lanSecret(shared, transcript);
+    final finished = await _readObject(receive, timeout);
+    if (finished['type'] != 'client-finished') throw const _HandshakeFailure();
+    final proof = _decode(finished['proof'], 32);
+    if (!_constantTimeEqual(await _proof(secret, 'client-finished', transcript), proof)) throw const _HandshakeFailure();
+    final keys = await _derive(secret, transcript, session, protocol: _lanProtocol);
+    send(<String, Object?>{
+      'type': 'server-finished',
+      'proof': _encode(await _proof(secret, 'server-finished', <int>[...transcript, ...proof])),
+    });
+    return CompanionServerHandshakeResult(peerId: peerId, keys: keys, lanSession: true);
+  }
+
+  static List<int> _lanTranscript(
+    String clientId,
+    String serverId,
+    String session,
+    String clientNonce,
+    String serverNonce,
+    String clientKey,
+    String serverKey,
+  ) => utf8.encode(jsonEncode(<String>[_lanProtocol, clientId, serverId, session, clientNonce, serverNonce, clientKey, serverKey]));
+
+  static Future<List<int>> _lanSecret(SecretKey shared, List<int> transcript) async {
+    final salt = (await Sha256().hash(transcript)).bytes;
+    final key = await Hkdf(
+      hmac: Hmac.sha256(),
+      outputLength: 32,
+    ).deriveKey(secretKey: shared, nonce: salt, info: utf8.encode('$_lanProtocol\u0000key-confirmation'));
+    return key.extractBytes();
+  }
+
   static Future<Map<String, Object?>> _readObject(Future<Object?> Function() receive, Duration timeout) async {
     final value = await receive().timeout(timeout);
     if (value is! String || utf8.encode(value).length > _maxHandshakeBytes) throw const _HandshakeFailure();
@@ -137,12 +264,17 @@ abstract final class CompanionSecureHandshake {
   static Future<List<int>> _proof(List<int> secret, String label, List<int> transcript) async =>
       (await _hmac.calculateMac(<int>[...utf8.encode('$_protocol\u0000$label\u0000'), ...transcript], secretKey: SecretKey(secret))).bytes;
 
-  static Future<CompanionHandshakeKeys> _derive(List<int> secret, List<int> transcript, String session) async {
+  static Future<CompanionHandshakeKeys> _derive(
+    List<int> secret,
+    List<int> transcript,
+    String session, {
+    String protocol = _protocol,
+  }) async {
     final salt = (await Sha256().hash(transcript)).bytes;
     final material = await _hkdf.deriveKey(
       secretKey: SecretKey(secret),
       nonce: salt,
-      info: utf8.encode('$_protocol\u0000keys\u0000$session'),
+      info: utf8.encode('$protocol\u0000keys\u0000$session'),
     );
     final bytes = await material.extractBytes();
     return CompanionHandshakeKeys(

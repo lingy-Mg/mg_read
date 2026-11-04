@@ -15,6 +15,10 @@
 ///   terminal errors and the view's first-frame deadline still report failure.
 /// - The host may select a direct Android codec surface for verified hardware;
 ///   TV presentation mode never determines this native output policy.
+/// - Volume can be configured before the first open; apply it before autoplay
+///   so off-route prepared candidates never emit an audible startup fragment.
+/// - Local media bypasses inherited system proxies unless the host explicitly
+///   supplied a proxy, preserving direct LAN and Runtime resource playback.
 library;
 
 import 'dart:async';
@@ -186,8 +190,10 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
     if (!_isCurrent(session, generation)) return;
 
     try {
-      await session.applyProxy();
+      await session.applyProxy(Uri.parse(uri));
       await session.setEnhancementMode(_enhancementMode);
+      await session.player.setVolume(_volume);
+      if (!_isCurrent(session, generation)) return;
       _debugPlaybackRequest('open', episode);
       await session.player.open(
         Media(
@@ -448,7 +454,13 @@ final class MediaKitVideoPlaybackBackend implements VideoPlaybackBackend {
 
   @override
   Future<void> setVolume(double volume) async {
-    final session = _activeSession();
+    _ensureActive();
+    final session = _session;
+    if (session == null) {
+      _volume = volume;
+      _emit(_value.copyWith(volume: volume));
+      return;
+    }
     await session.player.setVolume(volume);
     if (_disposed || !identical(_session, session)) return;
     _volume = volume;
@@ -558,10 +570,28 @@ final class _MediaKitEpisodeSession {
     _closed.future.then((_) => false),
   ]);
 
-  Future<void> applyProxy() async {
+  Future<void> applyProxy(Uri resource) async {
     final proxy = proxyUri;
     final platform = player.platform;
-    if (proxy == null || platform is! NativePlayer) return;
+    if (platform is! NativePlayer) return;
+    if (proxy == null) {
+      final address = InternetAddress.tryParse(resource.host);
+      final bytes = address?.rawAddress;
+      final privateIpv4 =
+          address?.type == InternetAddressType.IPv4 &&
+          (bytes![0] == 10 ||
+              (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) ||
+              (bytes[0] == 192 && bytes[1] == 168));
+      if (resource.host != 'localhost' &&
+          address?.isLoopback != true &&
+          !privateIpv4) {
+        return;
+      }
+      await platform.setProperty('http-proxy', '');
+      await platform.setProperty('stream-lavf-o', 'http_proxy=');
+      await platform.setProperty('demuxer-lavf-o', 'http_proxy=');
+      return;
+    }
     await platform.setProperty('http-proxy', proxy.toString());
     await platform.setProperty('demuxer-lavf-o', 'http_proxy=$proxy');
   }

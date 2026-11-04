@@ -1,6 +1,6 @@
-/// App-lifetime phone/TV coordinator over existing device trust. The peer host
-/// owns sockets; media routes own playback; this service owns leases, pending
-/// commands, discovery projections and reconnect state, never media resources.
+/// App-lifetime phone/TV coordinator over encrypted LAN sessions and legacy
+/// device trust. The peer host owns sockets and media routes own playback; this
+/// service owns leases, pending commands, discovery projections and reconnect state.
 library;
 
 import 'dart:async';
@@ -72,7 +72,12 @@ String companionToken() {
 final class CompanionController extends ChangeNotifier implements LanPeerService {
   CompanionController(this.ref) {
     _textInput = ref.read(companionTextInputProvider);
-    _engine = CompanionCommandEngine(hostEpoch: hostEpoch, handler: _dispatchCommand, nowMs: () => _clock.elapsedMilliseconds);
+    _engine = CompanionCommandEngine(
+      hostEpoch: hostEpoch,
+      handler: _dispatchCommand,
+      nowMs: () => _clock.elapsedMilliseconds,
+      allowAutomaticTakeover: true,
+    );
     _receiptSubscription = _engine.receipts.listen((receipt) {
       final peer = _peers[receipt.peerId];
       if (peer != null) unawaited(_sendPeer(peer, {'kind': 'receipt', 'receipt': receipt.toJson()}));
@@ -116,6 +121,7 @@ final class CompanionController extends ChangeNotifier implements LanPeerService
   int _reconnectAttempts = 0;
   CompanionSecureChannel? _client;
   StreamSubscription<Map<String, Object?>>? _clientSubscription;
+  Completer<void>? _authoritativeStateReady;
   CompanionConnectionStatus connectionStatus = CompanionConnectionStatus.disconnected;
   CompanionPlaybackSnapshot? remoteState;
   DateTime? remoteStateAt;
@@ -144,7 +150,13 @@ final class CompanionController extends ChangeNotifier implements LanPeerService
   }
 
   @override
-  bool get requiresHost => receiverEnabled || _discoveryUsers > 0;
+  bool get requiresHost =>
+      receiverEnabled ||
+      _discoveryUsers > 0 ||
+      (_selectedId != null &&
+          (connectionStatus == CompanionConnectionStatus.connecting ||
+              connectionStatus == CompanionConnectionStatus.connected ||
+              connectionStatus == CompanionConnectionStatus.reconnecting));
   @override
   Map<String, Object?> get advertisement => {'companion': 1, 'receiving': receiverEnabled && _foreground};
   @override
@@ -235,6 +247,12 @@ final class CompanionController extends ChangeNotifier implements LanPeerService
     });
     _receiverTail = operation.catchError((Object _) {});
     return operation;
+  }
+
+  /// Enables or disables the authorization-free LAN TV receiver for this app role.
+  /// Phone mode is the default and does not start a receiver.
+  Future<void> setTvMode(bool enabled) async {
+    await setReceiverEnabled(enabled);
   }
 
   Future<void> setPolicy(String id, CompanionPolicy policy) {
@@ -336,7 +354,7 @@ final class CompanionController extends ChangeNotifier implements LanPeerService
       final now = DateTime.now();
       endpoints.removeWhere((_, endpoint) => endpoint.expiresAt.isBefore(now));
       for (final peer in _peers.values.toList()) {
-        if (now.difference(peer.lastSeen) > const Duration(seconds: 10) || !await _trusted(peer.id)) {
+        if (now.difference(peer.lastSeen) > const Duration(seconds: 10) || !await _peerAuthorized(peer.id)) {
           _disconnectPeer(peer.id);
           continue;
         }
@@ -361,13 +379,19 @@ final class CompanionController extends ChangeNotifier implements LanPeerService
     }
   }
 
-  Future<bool> _trusted(String id) async {
-    if (!receiverEnabled || !_foreground || _revokedPeers.contains(id) || await _devices.read(id) == null) return false;
+  Future<bool> _trusted(String id, {bool lanSession = false}) async {
+    if (!receiverEnabled || !_foreground || _disposed) return false;
+    if (lanSession) return true;
+    if (_revokedPeers.contains(id) || await _devices.read(id) == null) return false;
     final secret = await _identities.readPeerSecret(id);
     if (secret == null) return false;
     final policy = await _repository.policy(id);
     return !_disposed && receiverEnabled && _foreground && !_revokedPeers.contains(id) && policy.allowsSecret(secret);
   }
+
+  bool _isLanSession(String id) => _peers[id]?.channel.isLanSession == true;
+
+  Future<bool> _peerAuthorized(String id) => _trusted(id, lanSession: _isLanSession(id));
 
   Future<void> _sendPeer(_CompanionPeer peer, Map<String, Object?> value) async {
     try {

@@ -49,6 +49,7 @@ final class VideoPlayerStage extends StatelessWidget {
     required this.activeEpisode,
     required this.focusNode,
     this.tvMode = false,
+    this.topRightAction,
     this.tvPlayFocus,
     required this.exitAuthorized,
     required this.onPopAttempt,
@@ -83,6 +84,7 @@ final class VideoPlayerStage extends StatelessWidget {
   final VideoEpisode? activeEpisode;
   final FocusNode focusNode;
   final bool tvMode;
+  final Widget? topRightAction;
   final FocusNode? tvPlayFocus;
   final bool exitAuthorized;
   final VoidCallback onPopAttempt;
@@ -200,6 +202,19 @@ final class VideoPlayerStage extends StatelessWidget {
                       if (snapshot.status == VideoPlayerStatus.ready)
                         VideoPlayerBufferingIndicator(
                           buffering: snapshot.buffering && !snapshot.completed,
+                        ),
+                      if (!tvMode &&
+                          snapshot.status == VideoPlayerStatus.ready &&
+                          topRightAction != null)
+                        Align(
+                          alignment: Alignment.topRight,
+                          child: SafeArea(
+                            minimum: EdgeInsets.only(
+                              top: snapshot.controlsVisible ? 64 : 8,
+                              right: 12,
+                            ),
+                            child: topRightAction!,
+                          ),
                         ),
                       if (snapshot.status == VideoPlayerStatus.ready &&
                           snapshot.completed &&

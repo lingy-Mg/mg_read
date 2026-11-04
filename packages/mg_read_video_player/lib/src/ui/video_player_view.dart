@@ -46,6 +46,7 @@ final class VideoPlayerView extends StatefulWidget {
     this.progressSaveThrottle = const Duration(seconds: 2),
     this.controlsAutoHideDelay = const Duration(seconds: 3),
     this.firstFrameTimeout = const Duration(seconds: 25),
+    this.topRightAction,
     super.key,
   });
 
@@ -73,9 +74,7 @@ final class VideoPlayerView extends StatefulWidget {
   /// Optional externally owned imperative controller.
   final VideoPlayerController? controller;
 
-  /// Playback backend factory sampled when the view is first mounted.
-  ///
-  /// Tests should inject a deterministic fake and remount to replace it.
+  /// Playback backend factory sampled at mount; tests may inject a fake.
   final VideoPlaybackBackendFactory backendFactory;
 
   /// Whether the restored episode should start automatically.
@@ -95,6 +94,9 @@ final class VideoPlayerView extends StatefulWidget {
 
   /// Maximum wait after backend open before a missing first frame can retry.
   final Duration firstFrameTimeout;
+
+  /// Optional host action shown in the player's upper-right corner.
+  final Widget? topRightAction;
 
   @override
   State<VideoPlayerView> createState() => _VideoPlayerViewState();
@@ -690,6 +692,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
     snapshot: _snapshot,
     activeEpisode: _episode,
     tvMode: widget.tvMode,
+    topRightAction: widget.topRightAction,
     tvPlayFocus: _tvPlayFocus,
     focusNode: _focusNode,
     exitAuthorized: _exitAuthorized,

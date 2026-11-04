@@ -1,6 +1,6 @@
-// Owns one authenticated phone-to-TV WebSocket session. The caller owns peer
-// authorization and the long-term PSK; this class keeps only derived session
-// keys, bounds all JSON frames, and closes the socket on protocol failure.
+// Owns one encrypted phone-to-TV WebSocket session. The handshake supports
+// ephemeral LAN key exchange and legacy caller-authorized PSKs; this class keeps
+// only derived session keys, bounds frames, and closes on protocol failure.
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
@@ -33,6 +33,7 @@ final class CompanionSecureChannel {
     this._httpClient,
     required this.peerDeviceId,
     required this.sessionId,
+    required this.isLanSession,
     required this._sendKey,
     required this._receiveKey,
     required this._sendNoncePrefix,
@@ -74,6 +75,7 @@ final class CompanionSecureChannel {
 
   final String peerDeviceId;
   final String sessionId;
+  final bool isLanSession;
   Future<void> _sendTail = Future<void>.value();
   Future<void> _receiveTail = Future<void>.value();
   int _sendSequence = 0;
@@ -113,6 +115,7 @@ final class CompanionSecureChannel {
         httpClient: client,
         peerDeviceId: remoteDeviceId,
         sessionId: result.keys.sessionId,
+        isLanSession: sharedSecret.isEmpty,
         sendKey: result.keys.clientToServerKey,
         receiveKey: result.keys.serverToClientKey,
         sendNoncePrefix: result.keys.clientNoncePrefix,
@@ -135,6 +138,7 @@ final class CompanionSecureChannel {
     required String localDeviceId,
     required Future<List<int>?> Function(String peerId) resolvePeerSecret,
     Duration timeout = const Duration(seconds: 5),
+    bool allowLanSession = false,
   }) async {
     _validateLocalId(localDeviceId);
     final inbox = _SocketInbox(socket);
@@ -145,12 +149,14 @@ final class CompanionSecureChannel {
         send: (message) => socket.add(utf8.decode(CompanionSecureHandshake.encodeMessage(message))),
         receive: () => inbox.next(timeout),
         timeout: timeout,
+        allowLanSession: allowLanSession,
       );
       return CompanionSecureChannel._(
         socket: socket,
         inbox: inbox,
         peerDeviceId: result.peerId,
         sessionId: result.keys.sessionId,
+        isLanSession: result.lanSession,
         sendKey: result.keys.serverToClientKey,
         receiveKey: result.keys.clientToServerKey,
         sendNoncePrefix: result.keys.serverNoncePrefix,
@@ -330,7 +336,7 @@ final class CompanionSecureChannel {
   }
 
   static void _validateSecret(List<int> secret) {
-    if (secret.length < 32 || secret.length > 128 || secret.any((b) => b < 0 || b > 255)) {
+    if ((secret.isNotEmpty && secret.length < 32) || secret.length > 128 || secret.any((b) => b < 0 || b > 255)) {
       throw const CompanionSecureChannelException();
     }
   }

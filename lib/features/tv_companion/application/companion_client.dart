@@ -56,23 +56,28 @@ extension CompanionClient on CompanionController {
 
   Future<void> connect(CompanionEndpoint endpoint, {bool automatic = false}) async {
     final generation = ++_connectionGeneration;
+    await _prepareClientConnect(generation, automatic: automatic);
+    if (_disposed || generation != _connectionGeneration) return;
+    await _connectEndpoint(endpoint, generation, automatic: automatic);
+  }
+
+  Future<void> _prepareClientConnect(int generation, {required bool automatic}) async {
     await initialize();
     if (_disposed || generation != _connectionGeneration) return;
     if (!automatic && !await _network.ensurePermission()) throw const CompanionFailure('local_network_permission_required');
     if (_disposed || generation != _connectionGeneration) return;
     if (!await _network.available()) throw const CompanionFailure('local_network_unavailable');
+  }
+
+  Future<void> _connectEndpoint(CompanionEndpoint endpoint, int generation, {required bool automatic}) async {
     if (_disposed || generation != _connectionGeneration) return;
-    final peer = await _devices.read(endpoint.deviceId);
-    final key = await _identities.readPeerSecret(endpoint.deviceId);
-    if (_disposed || generation != _connectionGeneration) return;
-    if (peer == null || key == null) throw const CompanionFailure('not_paired');
     await _detachClient(generation, rememberSelection: true);
     if (_disposed || generation != _connectionGeneration) return;
-    _selectedId = peer.deviceId;
-    endpoints[peer.deviceId] = endpoint;
-    await _repository.setSelectedDevice(peer.deviceId);
+    _selectedId = endpoint.deviceId;
+    endpoints[endpoint.deviceId] = endpoint;
+    await _repository.setSelectedDevice(endpoint.deviceId);
     if (_disposed || generation != _connectionGeneration) return;
-    _knownLabels[peer.deviceId] = peer.label;
+    _knownLabels[endpoint.deviceId] = endpoint.label;
     connectionStatus = automatic ? CompanionConnectionStatus.reconnecting : CompanionConnectionStatus.connecting;
     errorCode = null;
     _notify();
@@ -80,10 +85,10 @@ extension CompanionClient on CompanionController {
       final channel = await ref.read(companionChannelConnectorProvider)(
         uri: endpoint.uri,
         localDeviceId: identity!.deviceId,
-        remoteDeviceId: peer.deviceId,
-        sharedSecret: key,
+        remoteDeviceId: endpoint.deviceId,
+        sharedSecret: const <int>[],
       );
-      if (_disposed || _selectedId != peer.deviceId || generation != _connectionGeneration) {
+      if (_disposed || _selectedId != endpoint.deviceId || generation != _connectionGeneration) {
         await channel.close();
         return;
       }
@@ -94,6 +99,8 @@ extension CompanionClient on CompanionController {
       remoteState = null;
       remoteStateAt = null;
       _remoteStateTick = null;
+      final stateReady = Completer<void>();
+      _authoritativeStateReady = stateReady;
       _clientSubscription = channel.messages.listen(
         (message) {
           if (identical(_client, channel)) unawaited(_receiveClient(message, channel));
@@ -105,6 +112,11 @@ extension CompanionClient on CompanionController {
           if (identical(_client, channel)) unawaited(_lostConnection('connection_lost'));
         },
       );
+      await stateReady.future.timeout(const Duration(seconds: 5));
+      if (_disposed || generation != _connectionGeneration || !identical(_client, channel)) {
+        await channel.close();
+        return;
+      }
       connectionStatus = CompanionConnectionStatus.connected;
       _reconnectAttempts = 0;
       _notify();
@@ -113,23 +125,69 @@ extension CompanionClient on CompanionController {
       errorCode = 'connection_or_authorization_failed';
       connectionStatus = CompanionConnectionStatus.unauthorized;
       _notify();
+      await _detachClient(generation, rememberSelection: true);
       if (automatic) _scheduleReconnect();
       rethrow;
     }
   }
 
-  Future<void> connectManual({required String address, required int port, required String deviceId}) async {
+  Future<void> connectManual({required String address, required int port, String? deviceId}) async {
     if (!isLanSyncPrivateIpv4(address) || port < 1 || port > 65535) throw const CompanionFailure('invalid_lan_endpoint');
-    await connect(
+    final generation = ++_connectionGeneration;
+    await _prepareClientConnect(generation, automatic: false);
+    if (_disposed || generation != _connectionGeneration) return;
+    var resolvedId = deviceId;
+    var label = _knownLabels[deviceId] ?? 'TV';
+    if (resolvedId == null || resolvedId.trim().isEmpty) {
+      final result = await _readLanIdentity(address, port);
+      if (_disposed || generation != _connectionGeneration) return;
+      resolvedId = result.deviceId;
+      label = result.label;
+    }
+    if (resolvedId.isEmpty || resolvedId.length > 128 || resolvedId == identity?.deviceId) {
+      throw const CompanionFailure('invalid_remote_identity');
+    }
+    await _connectEndpoint(
       CompanionEndpoint(
-        deviceId: deviceId,
-        label: _knownLabels[deviceId] ?? 'TV',
+        deviceId: resolvedId,
+        label: label,
         address: address,
         port: port,
         expiresAt: DateTime.now().add(const Duration(seconds: 30)),
         receiving: true,
       ),
+      generation,
+      automatic: false,
     );
+  }
+
+  Future<({String deviceId, String label})> _readLanIdentity(String address, int port) async {
+    final client = HttpClient()..findProxy = (_) => 'DIRECT';
+    try {
+      final request = await client
+          .getUrl(Uri(scheme: 'http', host: address, port: port, path: '/companion/v1/identity'))
+          .timeout(const Duration(seconds: 5));
+      final response = await request.close().timeout(const Duration(seconds: 5));
+      if (response.statusCode != HttpStatus.ok) throw const CompanionFailure('remote_identity_unavailable');
+      final bytes = await (() async {
+        final result = <int>[];
+        await for (final chunk in response) {
+          if (result.length + chunk.length > 2048) throw const CompanionFailure('invalid_remote_identity');
+          result.addAll(chunk);
+        }
+        return result;
+      })().timeout(const Duration(seconds: 5));
+      final decoded = jsonDecode(utf8.decode(bytes));
+      if (decoded is! Map<String, dynamic> || decoded['deviceId'] is! String || decoded['label'] is! String) {
+        throw const CompanionFailure('invalid_remote_identity');
+      }
+      final remoteId = decoded['deviceId'] as String;
+      final remoteLabel = decoded['label'] as String;
+      if (remoteId.isEmpty || remoteId.length > 128 || remoteLabel.length > 128) throw const CompanionFailure('invalid_remote_identity');
+      return (deviceId: remoteId, label: remoteLabel.isEmpty ? 'TV' : remoteLabel);
+    } finally {
+      client.close(force: true);
+    }
   }
 
   Future<void> disconnect({bool rememberSelection = false}) async {
@@ -144,6 +202,11 @@ extension CompanionClient on CompanionController {
     _clientSubscription = null;
     final channel = _client;
     _client = null;
+    final stateReady = _authoritativeStateReady;
+    _authoritativeStateReady = null;
+    if (stateReady != null && !stateReady.isCompleted) {
+      stateReady.completeError(const CompanionFailure('connection_lost'));
+    }
     for (final pending in _commands.values) {
       if (!pending.isCompleted) pending.completeError(const CompanionFailure('connection_lost_result_unknown'));
     }
@@ -216,6 +279,8 @@ extension CompanionClient on CompanionController {
           remoteState = state;
           remoteStateAt = DateTime.now();
           _remoteStateTick = _clock.elapsedMilliseconds;
+          final ready = _authoritativeStateReady;
+          if (ready != null && !ready.isCompleted) ready.complete();
         case 'receipt':
           final receipt = CompanionReceipt.fromJson(message['receipt']);
           if (receipt.peerId != identity?.deviceId) return;

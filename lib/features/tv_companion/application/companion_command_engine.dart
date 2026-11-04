@@ -54,6 +54,7 @@ final class CompanionCommandEngine {
     this.maxCacheEntries = 2048,
     this.maxPendingCommands = 64,
     this.localPriorityDuration = const Duration(seconds: 3),
+    this.allowAutomaticTakeover = false,
     Duration Function(CompanionCommandType)? executionBudget,
   }) : _nowMs = nowMs ?? _defaultMonotonicMs,
        _executionBudget = executionBudget ?? _defaultExecutionBudget {
@@ -76,6 +77,7 @@ final class CompanionCommandEngine {
   final int maxCacheEntries;
   final int maxPendingCommands;
   final Duration localPriorityDuration;
+  final bool allowAutomaticTakeover;
   final Duration Function(CompanionCommandType) _executionBudget;
 
   final StreamController<CompanionReceipt> _receipts = StreamController<CompanionReceipt>.broadcast(sync: true);
@@ -162,7 +164,7 @@ final class CompanionCommandEngine {
     return completer.future;
   }
 
-  /// Explicitly grant a takeover after the TV UI has approved it.
+  /// Grant control, invalidating every command tied to the previous owner.
   void grantControl(String peerId) {
     _ensureOpen();
     if (peerId.isEmpty) throw ArgumentError.value(peerId, 'peerId');
@@ -249,7 +251,7 @@ final class CompanionCommandEngine {
     if (command.type == CompanionCommandType.acquireControl) {
       if (now < _localPriorityUntilMs) return (CompanionCommandPhase.failed, 'local_control_active');
       _expireLeaseIfNeeded();
-      if (_controlOwnerId != null && _controlOwnerId != peerId) {
+      if (_controlOwnerId != null && _controlOwnerId != peerId && !allowAutomaticTakeover) {
         return (CompanionCommandPhase.failed, 'control_owned');
       }
       if (command.controlGeneration != _controlGeneration) {
@@ -304,13 +306,22 @@ final class CompanionCommandEngine {
 
     if (command.type == CompanionCommandType.acquireControl) {
       _expireLeaseIfNeeded();
-      if (_controlOwnerId != null && _controlOwnerId != peerId) {
+      if (_controlOwnerId != null && _controlOwnerId != peerId && !allowAutomaticTakeover) {
         return _receipt(peerId, command, CompanionCommandPhase.failed, code: 'control_owned');
       }
       if (command.controlGeneration != _controlGeneration) {
         return _receipt(peerId, command, CompanionCommandPhase.failed, code: 'stale_control_generation');
       }
-      if (_controlOwnerId == null) _controlGeneration++;
+      if (_controlOwnerId != null && _controlOwnerId != peerId) {
+        _globalToken++;
+        for (final peer in _peerTokens.keys.toList()) {
+          _peerTokens[peer] = (_peerTokens[peer] ?? 0) + 1;
+        }
+        _cancelQueued((_) => true, 'control_taken_over');
+        _controlGeneration++;
+      } else if (_controlOwnerId == null) {
+        _controlGeneration++;
+      }
       _controlOwnerId = peerId;
       _renewLease();
       return _receipt(peerId, command, CompanionCommandPhase.applied, details: {'controlGeneration': _controlGeneration});

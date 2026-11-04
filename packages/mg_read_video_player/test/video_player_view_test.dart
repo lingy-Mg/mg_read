@@ -449,6 +449,44 @@ void main() {
   });
 
   testWidgets(
+    'renders an optional host action in the upper-right player corner',
+    (WidgetTester tester) async {
+      final backend = _FakeVideoBackend();
+      await tester.binding.setSurfaceSize(const Size(390, 320));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: VideoPlayerView(
+            contentId: 'show',
+            dataSource: const _ImmediateDataSource(),
+            stateStore: _RecordingStore(),
+            backendFactory: () => backend,
+            topRightAction: FilledButton(
+              onPressed: () {},
+              child: const Text('在电视上播放'),
+            ),
+            controlsAutoHideDelay: const Duration(hours: 1),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('在电视上播放'), findsOneWidget);
+      expect(find.byKey(const Key('video-player-controls')), findsOneWidget);
+      final actionRect = tester.getRect(find.text('在电视上播放'));
+      final fullscreenRect = tester.getRect(
+        find.byKey(const Key('video-player-fullscreen')),
+      );
+      final settingsRect = tester.getRect(
+        find.byKey(const Key('video-player-settings')),
+      );
+      expect(actionRect.right, greaterThan(350));
+      expect(actionRect.overlaps(fullscreenRect), isFalse);
+      expect(actionRect.overlaps(settingsRect), isFalse);
+    },
+  );
+
+  testWidgets(
     'system back exits fullscreen first and never bypasses the observer',
     (WidgetTester tester) async {
       final backend = _FakeVideoBackend();

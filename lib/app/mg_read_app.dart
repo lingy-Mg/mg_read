@@ -124,6 +124,8 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
       if (mounted && (lifecycle == null || lifecycle == AppLifecycleState.resumed)) {
         await ref.read(companionControllerProvider).initialize();
         if (!mounted) return;
+        await ref.read(companionControllerProvider).setTvMode(_tvMode);
+        if (!mounted) return;
         await ref.read(deviceSyncControllerProvider.notifier).start();
         startup.recordStage('deviceSyncReady', resultState: ref.read(deviceSyncControllerProvider).started ? 'ready' : 'failure');
       }
@@ -227,6 +229,19 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
     super.dispose();
   }
 
+  Future<void> _updateCompanionRole(bool tvMode) async {
+    final service = ref.read(companionControllerProvider);
+    if (!service.initialized) return;
+    try {
+      await service.setTvMode(tvMode);
+      if (mounted && _tvMode == tvMode) {
+        await ref.read(deviceSyncControllerProvider.notifier).ensurePeerServices();
+      }
+    } on Object {
+      // The companion page exposes permission/network failures and retry.
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen(localImportControllerProvider, (_, controller) {
@@ -245,7 +260,10 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
     if (_tvMode != tvMode) {
       _tvMode = tvMode;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _syncFrameworkBack();
+        if (mounted) {
+          _syncFrameworkBack();
+          unawaited(_updateCompanionRole(tvMode));
+        }
       });
     }
     final AppThemeColor themeColor = AppThemeColor.fromId(settings.get(AppSettingKeys.themeColor));

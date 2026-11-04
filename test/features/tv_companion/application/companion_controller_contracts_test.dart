@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/tv_companion/application/companion_controller.dart';
-import 'package:mg_read/features/tv_companion/data/companion_repository.dart';
 import 'package:mg_read/features/tv_companion/data/companion_network.dart';
 import 'package:mg_read/features/tv_companion/domain/companion_command.dart';
 import 'package:mg_read/features/tv_companion/domain/companion_models.dart';
@@ -163,7 +162,7 @@ void main() {
     expect(fixture.phone.hasControl, isFalse);
   });
 
-  test('favorites and history require browse permission, then return only after explicit grant', () async {
+  test('LAN browsing exposes normal video favorites and history without per-device grants', () async {
     final directory = await Directory.systemTemp.createTemp('companion-library-permission-');
     tempDirs.add(directory);
     final library = await ContentLibrary.open(dataRoot: directory);
@@ -171,14 +170,6 @@ void main() {
     await fixture.connect();
     await fixture.waitFor(() => fixture.phone.remoteState != null);
 
-    for (final method in ['favorites', 'history']) {
-      await expectLater(
-        fixture.phone.request(method),
-        throwsA(isA<CompanionFailure>().having((error) => error.code, 'code', 'library_permission_required')),
-      );
-    }
-
-    await fixture.tv.setPolicy(companionTestPhoneId, const CompanionPolicy(control: true, browseLibrary: true));
     expect((await fixture.phone.request('favorites'))['items'], isEmpty);
     expect((await fixture.phone.request('history'))['entries'], isEmpty);
   });

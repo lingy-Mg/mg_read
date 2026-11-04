@@ -119,7 +119,8 @@ android {
                 java.setSrcDirs([])
             }
             nativeRuntime {
-                kotlin.setSrcDirs(['src/nativeRuntime/kotlin'])
+                // Keep the registration delegate alongside the native engine.
+                kotlin.setSrcDirs(['src/nativeOnly/kotlin', 'src/nativeRuntime/kotlin'])
                 jniLibs.srcDirs = ['src/native/jniLibs']
                 jniLibs.excludes += ['**/libnode.so', '**/libmgread_node_bridge.so']
             }

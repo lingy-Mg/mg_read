@@ -18,6 +18,7 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/lan_sync/application/device_identity_store.dart';
 import 'package:mg_read/features/lan_sync/domain/paired_device_models.dart';
 import 'package:mg_read/features/tv_companion/application/companion_command_engine.dart';
+import 'package:mg_read/features/tv_companion/application/companion_media_host.dart';
 import 'package:mg_read/features/tv_companion/domain/companion_command.dart';
 import 'package:mg_read/features/tv_companion/domain/companion_models.dart';
 import 'package:mg_read_video_player/mg_read_video_player.dart';
@@ -216,7 +217,52 @@ void main() {
     expect(receipt.phase, CompanionCommandPhase.started);
     expect(find.byKey(const Key('source-video-player')), findsOneWidget);
     expect(find.text('Old route'), findsNothing);
-    expect(backendCreations, 1);
+    final mediaHost = container.read(companionMediaHostProvider);
+    final firstBinding = mediaHost.active!;
+    expect(firstBinding.controller.snapshot.status, VideoPlayerStatus.ready);
+    expect(firstBinding.controller.snapshot.playing, isTrue);
+
+    final secondResult = Completer<CompanionReceipt>();
+    await tester.runAsync(() async {
+      engine
+          .execute(
+            'phone-a',
+            CompanionCommand(
+              id: 'positive-handoff-2',
+              hostEpoch: 'test-epoch',
+              clientSeq: 2,
+              controlGeneration: engine.controlGeneration,
+              playbackGeneration: engine.playbackGeneration,
+              deadlineMs: 5000,
+              type: CompanionCommandType.handoff,
+              arguments: const CompanionContentRef(
+                pluginId: 'tv-fixture',
+                pluginVersion: '1.0',
+                contentId: 'show',
+                title: 'Show',
+                groupId: 'a',
+                episodeId: 'a-0',
+                positionMs: 5678,
+                useTvProgress: false,
+              ).toJson(),
+            ),
+          )
+          .then(secondResult.complete, onError: secondResult.completeError);
+    });
+    for (var i = 0; i < 80 && !secondResult.isCompleted; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+    }
+    expect(secondResult.isCompleted, isTrue, reason: 'the second prepared handoff should settle');
+    expect((await secondResult.future).phase, CompanionCommandPhase.started);
+    await tester.pumpAndSettle();
+
+    final secondBinding = mediaHost.active;
+    expect(secondBinding, isNotNull);
+    expect(identical(secondBinding!.owner, firstBinding.owner), isFalse);
+    expect(secondBinding.controller.snapshot.status, VideoPlayerStatus.ready);
+    expect(secondBinding.controller.snapshot.playing, isTrue);
+    expect(backendCreations, 2);
     await engine.close();
     await tester.pumpWidget(const SizedBox.shrink());
     await settings.close();

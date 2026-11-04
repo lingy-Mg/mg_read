@@ -27,30 +27,26 @@ void main() {
     expect(fixture.phone.remoteState?.controllerId, companionTestPhoneId);
   });
 
-  test('paired identity and PSK without companion control policy cannot authenticate as a receiver', () async {
+  test('LAN connection is independent of paired identity and companion control policy', () async {
     fixture = await CompanionPairFixture.create(allowControl: false);
 
-    await expectLater(fixture.connect(), throwsA(anything));
-    expect(fixture.tv.connectedControllerIds, isEmpty);
-    expect(fixture.phone.connectionStatus, CompanionConnectionStatus.unauthorized);
+    await fixture.connect();
+    expect(fixture.tv.connectedControllerIds, [companionTestPhoneId]);
+    expect(fixture.phone.connectionStatus, CompanionConnectionStatus.connected);
+    expect(fixture.phone.remoteState?.hostEpoch, fixture.tv.hostEpoch);
   });
 
-  test('re-pairing the same device id with a new PSK requires fresh TV approval', () async {
+  test('re-pairing the same ID does not gate ephemeral LAN access or create companion trust', () async {
     fixture = await CompanionPairFixture.create();
     await fixture.rotatePhonePairing(companionTestRotatedPsk);
 
-    await expectLater(fixture.connect(), throwsA(anything));
-    expect(fixture.phone.connectionStatus, CompanionConnectionStatus.unauthorized);
-    expect(fixture.tv.connectedControllerIds, isEmpty);
-
-    await fixture.tv.setPolicy(companionTestPhoneId, const CompanionPolicy(control: true));
     await fixture.connect();
     await fixture.waitFor(() => fixture.phone.remoteState != null);
     expect(fixture.phone.connectionStatus, CompanionConnectionStatus.connected);
     expect(fixture.tv.connectedControllerIds, [companionTestPhoneId]);
   });
 
-  test('revoking receiver control closes an authenticated client and denies its next handshake', () async {
+  test('legacy policy refresh closes an active LAN channel but does not authorize-gate reconnect', () async {
     fixture = await CompanionPairFixture.create();
     await fixture.connect();
     await fixture.waitFor(() => fixture.phone.remoteState != null);
@@ -61,8 +57,10 @@ void main() {
     await fixture.phone.disconnect(rememberSelection: true);
     expect(fixture.phone.connectionStatus, CompanionConnectionStatus.disconnected);
 
-    await expectLater(fixture.connect(), throwsA(anything));
-    expect(fixture.tv.connectedControllerIds, isEmpty);
+    await fixture.connect();
+    await fixture.waitFor(() => fixture.phone.remoteState != null);
+    expect(fixture.tv.connectedControllerIds, [companionTestPhoneId]);
+    expect(fixture.phone.connectionStatus, CompanionConnectionStatus.connected);
   });
 
   test('a real command reaches the TV handler only after the snapshot grants control', () async {

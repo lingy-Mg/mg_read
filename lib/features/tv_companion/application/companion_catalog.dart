@@ -159,14 +159,24 @@ extension CompanionCatalog on CompanionController {
       };
     }
     if (method == 'favorites' || method == 'history') {
-      if (!(await _repository.policy(peerId)).browseLibrary) throw const CompanionFailure('library_permission_required');
+      if (!_isLanSession(peerId) && !(await _repository.policy(peerId)).browseLibrary) {
+        throw const CompanionFailure('library_permission_required');
+      }
       final getLibrary = ref.read(companionLibraryProvider);
       if (getLibrary == null) throw const CompanionFailure('library_unavailable');
       final library = await getLibrary();
       final offset = args['offset'] ?? 0;
       if (offset is! int || offset < 0 || offset > 500) throw const CompanionFailure('invalid_page');
       if (method == 'history') {
-        final entries = await library.listVideoHistory(limit: 500);
+        final history = await library.listVideoHistory(limit: 500);
+        final normalItems = await library.listLibrary(
+          const LibraryQuery(limit: bookshelfMaxItemCount, visibility: LibraryVisibility.normal),
+        );
+        final visibleVideoKeys = {
+          for (final item in normalItems.items.where((item) => item.kind == ContentKind.video))
+            videoHistorySourceKey(item.source.pluginId, item.source.remoteContentId),
+        };
+        final entries = history.where((entry) => visibleVideoKeys.contains(entry.checkpoint.sourceKey)).toList();
         return {
           ..._boundedRows(
             'entries',

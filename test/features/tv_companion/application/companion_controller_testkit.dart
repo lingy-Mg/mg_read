@@ -200,6 +200,7 @@ final class CompanionPairFixture {
     CompanionNetwork? phoneNetwork,
     ContentLibrary? phoneLibrary,
     ContentLibrary? tvLibrary,
+    InternetAddress? serverAddress,
   }) async {
     final phoneIdentity = CompanionTestIdentityStore(companionTestPhoneId, 'Phone');
     final tvIdentity = CompanionTestIdentityStore(companionTestTvId, 'TV');
@@ -259,7 +260,7 @@ final class CompanionPairFixture {
       phoneContainer.read(companionControllerProvider).initialize(),
       tvContainer.read(companionControllerProvider).initialize(),
     ]);
-    final tvServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final tvServer = await HttpServer.bind(serverAddress ?? InternetAddress.loopbackIPv4, 0);
     tvServer.listen((request) => unawaited(tvContainer.read(companionControllerProvider).handleRequest(request)));
     final fixture = CompanionPairFixture._(
       phoneContainer: phoneContainer,
@@ -293,7 +294,7 @@ final class CompanionPairFixture {
     CompanionEndpoint(
       deviceId: companionTestTvId,
       label: label,
-      address: '127.0.0.1',
+      address: tvServer.address.address,
       port: tvServer.port,
       expiresAt: DateTime.now().add(const Duration(minutes: 1)),
       receiving: true,

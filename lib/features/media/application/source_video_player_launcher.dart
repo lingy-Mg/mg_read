@@ -9,6 +9,7 @@
 /// video output independently of the TV layout setting.
 /// User decoder/output overrides are also sampled once; rebuilds never replace
 /// the live player's native configuration.
+/// Covered routes cannot reclaim the companion binding from a newer player.
 library;
 
 import 'dart:async';
@@ -39,6 +40,7 @@ import 'package:mg_read/features/network_proxy/application/network_proxy_setting
 import 'package:mg_read/features/lan_sync/application/device_identity_store.dart';
 import 'package:mg_read/features/tv_companion/application/companion_media_host.dart';
 import 'package:mg_read/features/tv_companion/domain/companion_models.dart';
+import 'package:mg_read/features/tv_companion/presentation/video_play_on_tv_action.dart';
 
 /// Opens one selected neutral video group/episode in the video player.
 Future<void> openTransientSourceVideoPlayer(
@@ -264,6 +266,7 @@ final class SourceVideoPlayerDestinationState extends State<SourceVideoPlayerDes
     if (!mounted) return;
     final host = widget.container.read(companionMediaHostProvider);
     final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return;
     if (_registeredWithCompanion && host.active?.owner == this && host.active?.route == route) return;
     _registeredWithCompanion = true;
     host.register(
@@ -415,6 +418,7 @@ final class SourceVideoPlayerDestinationState extends State<SourceVideoPlayerDes
         dataSource: setup.dataSource,
         stateStore: setup.stateStore,
         controller: _playerController,
+        topRightAction: setup.privateContent ? null : const VideoPlayOnTvAction(),
         preparedSession: widget.preparedSession,
         autoPlay: widget.autoPlay,
         observer: _VideoEntryObserver(
