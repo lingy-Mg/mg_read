@@ -113,6 +113,9 @@ class AppSecondaryPageIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    if (TvModeScope.isEnabled(context)) {
+      return TvFocusable(label: label, onPressed: onPressed, child: Icon(icon));
+    }
     return Semantics(
       button: true,
       label: label,

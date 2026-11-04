@@ -167,6 +167,7 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
                         homeSelected: _filter == TvLibraryFilter.all,
                         autofocus: hero == null,
                         onHomeSelected: () => _select(TvLibraryFilter.all),
+                        onHomeReselected: () => _run(widget.onRefresh),
                         onSelected: (destination) => widget.callbacks.onNavigationSelected?.call(destination),
                       ),
                     ),

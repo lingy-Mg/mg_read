@@ -72,6 +72,7 @@ class _AppTvSourceNavigationState extends ConsumerState<AppTvSourceNavigation> {
           target: controller?.tvPrimaryTarget,
           entries: [for (final entry in navigation?.tabs ?? []) TvSourceNavigationEntry(label: entry.label, target: entry.target)],
           showContent: uri.path == '/discover' && uri.queryParameters['tv'] == 'content',
+          onRefresh: controller == null ? null : () => unawaited(controller.refresh()),
           onSelected: (target) {
             if (controller == null) return;
             if (controller.tvPrimaryTarget != target || uri.path != '/discover' || uri.queryParameters['tv'] != 'content') {

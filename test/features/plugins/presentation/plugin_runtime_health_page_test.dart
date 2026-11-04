@@ -1,12 +1,38 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/app/app_tv_theme.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_health_page.dart';
 
 void main() {
+  testWidgets('TV can traverse diagnostics down to the final source on a short screen', (tester) async {
+    tester.view.physicalSize = const Size(640, 360);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [pluginRuntimeStatusProvider.overrideWith((ref) async => _statusFixture)],
+        child: MaterialApp(
+          theme: appTvTheme(AppTheme.light()),
+          builder: (_, child) => TvModeScope(enabled: true, onChanged: (_) {}, child: child!),
+          home: PluginRuntimeHealthPage(onBackRequested: () {}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 20; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('测试数据源').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('renders Node health, memory and plugin sections', (WidgetTester tester) async {
     await tester.pumpWidget(
       ProviderScope(

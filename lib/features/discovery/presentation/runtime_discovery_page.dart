@@ -16,6 +16,7 @@
 /// - TV 页面使用独立焦点域；内容过渡中的旧页面不参与遥控遍历。
 /// - TV 二级分类使用屏幕可用宽度；普通模式保留窄列表阅读宽度。
 /// - TV 一级标签由共享外栏显示；内容页只保留二级分类与筛选，按一级标签保存滚动位置。
+/// - TV 当前标签的重复标题隐藏，刷新由外栏标签的确认操作触发。
 ///
 library;
 
@@ -114,7 +115,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
     final tv = TvModeScope.isEnabled(context);
     final outer = TvSourceNavigationScope.maybeOf(context);
     final tvContent = tv && outer?.showContent == true;
-    final tvTitle = outer?.entries.where((entry) => entry.target == outer.target).firstOrNull?.label ?? resolvedSourceName;
+    final activeTvTitle = outer?.entries.where((entry) => entry.target == outer.target).firstOrNull?.label;
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return BookCoverSourceScope(
       pluginId: result?.pluginId ?? 'unavailable',
@@ -187,25 +188,22 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                                         AppSpacing.bottomNavigationContentBottomPadding + MediaQuery.viewPaddingOf(context).bottom,
                                       ),
                                       children: <Widget>[
-                                        DiscoveryTopBar(
-                                          title: isNestedPage
-                                              ? _nestedPageTitle(components) ?? '发现'
-                                              : tvContent
-                                              ? tvTitle
-                                              : '发现',
-                                          sourceName: resolvedSourceName,
-                                          onSourcePressed: onSourcePressed,
-                                          onSearchPressed:
-                                              onSearchRequested ?? () => onDestinationRequested(AppNavigationDestination.search),
-                                          onToggleTheme: () => AppThemeModeScope.of(context).onToggleTheme(Theme.of(context).brightness),
-                                          onRefreshPressed: onRefreshRequested,
-                                          onBackPressed: isNestedPage ? onBackRequested : null,
-                                          barKey: isNestedPage ? const Key('runtime-discovery-nested-header') : null,
-                                          backButtonKey: isNestedPage ? const Key('runtime-discovery-back') : null,
-                                          showSourceSelector: !isNestedPage && !tvContent,
-                                          showSearchAction: !tvContent,
-                                          showThemeToggle: false,
-                                        ),
+                                        if (!tvContent || isNestedPage)
+                                          DiscoveryTopBar(
+                                            title: isNestedPage ? _nestedPageTitle(components) ?? '发现' : '发现',
+                                            sourceName: resolvedSourceName,
+                                            onSourcePressed: onSourcePressed,
+                                            onSearchPressed:
+                                                onSearchRequested ?? () => onDestinationRequested(AppNavigationDestination.search),
+                                            onToggleTheme: () => AppThemeModeScope.of(context).onToggleTheme(Theme.of(context).brightness),
+                                            onRefreshPressed: onRefreshRequested,
+                                            onBackPressed: isNestedPage ? onBackRequested : null,
+                                            barKey: isNestedPage ? const Key('runtime-discovery-nested-header') : null,
+                                            backButtonKey: isNestedPage ? const Key('runtime-discovery-back') : null,
+                                            showSourceSelector: !isNestedPage && !tvContent,
+                                            showSearchAction: !tvContent,
+                                            showThemeToggle: false,
+                                          ),
                                         if (result != null && isContentLoading)
                                           const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: LinearProgressIndicator()),
                                         if (result != null && contentFailureMessage != null)
@@ -239,7 +237,9 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                                               key: ValueKey(components[index].id),
                                               pluginId: result.pluginId,
                                               component: components[index],
-                                              hideSectionTitle: isNestedPage && index == 0,
+                                              hideSectionTitle:
+                                                  (isNestedPage && index == 0) ||
+                                                  (tvContent && _repeatsTvTitle(components[index], activeTvTitle)),
                                               onTabSelected: onTabSelected,
                                               onCategorySelected: onCategorySelected,
                                               onContentPressed: onContentPressed,
@@ -284,6 +284,9 @@ class RuntimeDiscoveryPage extends StatelessWidget {
 }
 
 Future<void> _copyDiscoveryFailure(String payload) => Clipboard.setData(ClipboardData(text: payload));
+
+bool _repeatsTvTitle(PluginDiscoveryComponent component, String? title) =>
+    title != null && component is PluginDiscoverySectionComponent && component.title == title;
 
 bool _neverInBookshelf(PluginContentSummary _) => false;
 

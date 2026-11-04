@@ -48,14 +48,17 @@ void main() {
   });
 
   for (final destination in ['discover', 'search', 'settings']) {
-    testWidgets('TV $destination back returns home before double-back exit', (tester) async {
-      await _startTvApp(tester);
+    testWidgets('TV $destination back restores its own tab before double-back exit', (tester) async {
+      final router = await _startTvApp(tester);
       await tester.tap(find.byKey(Key('app-nav-${destination == 'settings' ? 'profile' : destination}')));
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pumpAndSettle();
 
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
-      expect(find.byType(TvLibraryShell), findsOneWidget);
+      expect(router.routeInformationProvider.value.uri.path, destination == 'settings' ? '/profile' : '/$destination');
+      expect(_navFocus(tester, destination == 'settings' ? 'profile' : destination).hasFocus, isTrue);
       expect(find.text('再按一次返回键退出应用'), findsNothing);
       expect(exitCount, 0);
 
@@ -71,20 +74,23 @@ void main() {
   }
 
   for (final key in [LogicalKeyboardKey.escape, LogicalKeyboardKey.goBack]) {
-    testWidgets('TV runtime discovery ${key.keyLabel} returns home', (tester) async {
-      await _startTvApp(tester, runtimeDiscovery: true);
+    testWidgets('TV runtime discovery ${key.keyLabel} restores its own tab', (tester) async {
+      final router = await _startTvApp(tester, runtimeDiscovery: true);
       await tester.tap(find.byKey(const Key('app-nav-discover')));
       await tester.pumpAndSettle();
       expect(find.text('测试发现内容'), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
 
       await tester.sendKeyEvent(key, physicalKey: PhysicalKeyboardKey.escape);
       await tester.pumpAndSettle();
-      expect(find.byType(TvLibraryShell), findsOneWidget);
+      expect(router.routeInformationProvider.value.uri.path, '/discover');
+      expect(_navFocus(tester, 'discover').hasFocus, isTrue);
       expect(exitCount, 0);
     });
   }
 
-  testWidgets('TV detail back retains discovery, then home requires its own double back', (tester) async {
+  testWidgets('TV detail back retains discovery and exit still needs two root backs', (tester) async {
     final router = await _startTvApp(tester, runtimeDiscovery: true);
     await tester.tap(find.byKey(const Key('app-nav-discover')));
     await tester.pumpAndSettle();
@@ -109,11 +115,13 @@ void main() {
     expect(frameworkBack.last, isTrue);
     expect(exitCount, 0);
 
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(find.byType(TvLibraryShell), findsOneWidget);
+    expect(router.routeInformationProvider.value.uri.path, '/discover');
+    expect(_navFocus(tester, 'discover').hasFocus, isTrue);
     expect(find.text('再按一次返回键退出应用'), findsNothing);
-    expect(exitCount, 0);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(find.text('再按一次返回键退出应用'), findsOneWidget);
@@ -145,7 +153,8 @@ void main() {
         expect(find.text('测试发现内容'), findsOneWidget);
         await tester.sendKeyEvent(key, physicalKey: PhysicalKeyboardKey.escape);
         await tester.pumpAndSettle();
-        expect(find.byType(TvLibraryShell), findsOneWidget);
+        expect(router.routeInformationProvider.value.uri.path, '/discover');
+        expect(_navFocus(tester, 'discover').hasFocus, isTrue);
         expect(exitCount, 0);
       });
     }
@@ -213,7 +222,7 @@ void main() {
     expect(router.routeInformationProvider.value.uri.path, '/discover');
     await tester.sendKeyEvent(LogicalKeyboardKey.goBack, physicalKey: PhysicalKeyboardKey.escape);
     await tester.pumpAndSettle();
-    expect(find.byType(TvLibraryShell), findsOneWidget);
+    expect(router.routeInformationProvider.value.uri.path, '/discover');
   });
 
   testWidgets('TV home exit confirmation expires after two seconds', (tester) async {
@@ -231,10 +240,12 @@ void main() {
   });
 
   testWidgets('holding TV back does not cross multiple destinations or confirm exit', (tester) async {
-    await _startTvApp(tester, runtimeDiscovery: true);
+    final router = await _startTvApp(tester, runtimeDiscovery: true);
     await tester.tap(find.byKey(const Key('app-nav-discover')));
     await tester.pumpAndSettle();
 
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
     await tester.sendKeyDownEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
     for (var i = 0; i < 3; i++) {
@@ -243,7 +254,8 @@ void main() {
     }
     await tester.sendKeyUpEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
-    expect(find.byType(TvLibraryShell), findsOneWidget);
+    expect(router.routeInformationProvider.value.uri.path, '/discover');
+    expect(_navFocus(tester, 'discover').hasFocus, isTrue);
     expect(find.text('再按一次返回键退出应用'), findsNothing);
     expect(exitCount, 0);
 
@@ -267,8 +279,6 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('app-nav-discover')));
-    await tester.pumpAndSettle();
-    await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
@@ -333,7 +343,7 @@ void main() {
     });
   }
 
-  testWidgets('TV secondary settings back returns to settings before home', (tester) async {
+  testWidgets('TV secondary settings back returns to settings before the exit prompt', (tester) async {
     final router = await _startTvApp(tester);
     router.go('/profile/about');
     await tester.pumpAndSettle();
@@ -342,7 +352,7 @@ void main() {
     expect(router.routeInformationProvider.value.uri.path, '/profile');
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(find.byType(TvLibraryShell), findsOneWidget);
+    expect(router.routeInformationProvider.value.uri.path, '/profile');
     expect(exitCount, 0);
   });
 
@@ -425,3 +435,6 @@ class _LoadedDiscoveryController extends DiscoveryPageController {
     target: null,
   );
 }
+
+FocusNode _navFocus(WidgetTester tester, String id) =>
+    tester.widget<Focus>(find.descendant(of: find.byKey(Key('app-nav-$id')), matching: find.byType(Focus)).first).focusNode!;

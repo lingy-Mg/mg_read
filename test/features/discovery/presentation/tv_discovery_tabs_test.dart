@@ -10,6 +10,7 @@ import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/discovery/application/discovery_page_controller.dart';
 import 'package:mg_read/features/discovery/application/discovery_source_selection_store.dart';
 import 'package:mg_read/features/library/presentation/widgets/tv_library_shell.dart';
+import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import '../../../support/tv_discovery_test_fixture.dart';
 import '../../../app/mg_read_app_test_support.dart';
 
@@ -57,6 +58,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(controller.tvPrimaryTarget, 'library');
     expect(find.byKey(const Key('tv-open-filters')), findsOneWidget);
+    expect(find.text('动漫库'), findsOneWidget, reason: 'the active outer tab is the only duplicate title');
     expect(find.descendant(of: outer, matching: find.text('日本动漫')), findsNothing);
     final before = gateway.requests.length;
     _focus(tester, find.byKey(const ValueKey(('discovery-filter', 'type', 'jp')))).requestFocus();
@@ -96,12 +98,44 @@ void main() {
     expect(container.read(discoveryPageControllerProvider).target, 'library');
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(container.read(discoveryPageControllerProvider).target, isNull);
-    expect(FocusManager.instance.primaryFocus, _focus(tester, find.byKey(const ValueKey<Object>(('tv-source-tab', 'sakura', null)))));
+    expect(container.read(discoveryPageControllerProvider).target, 'library');
+    expect(FocusManager.instance.primaryFocus, _focus(tester, find.byKey(const ValueKey<Object>(('tv-source-tab', 'sakura', 'library')))));
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(router.routeInformationProvider.value.uri.path, '/');
+    expect(router.routeInformationProvider.value.uri.toString(), '/discover?tv=content');
+    expect(find.text('再按一次返回键退出应用'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+  testWidgets('source tab confirms refresh while upward focus and back retain the active tab', (tester) async {
+    final gateway = TvDiscoveryTestGateway()..autoComplete = true;
+    await _mount(tester, gateway);
+    final container = ProviderScope.containerOf(tester.element(find.byType(TvLibraryShell)));
+    final tab = find.byKey(const ValueKey<Object>(('tv-source-tab', 'sakura', 'hot')));
+    _focus(tester, tab).requestFocus();
+    await tester.pumpAndSettle();
+    expect(find.byType(DiscoveryTopBar), findsNothing);
+    final before = gateway.requests.where((value) => value == 'sakura/hot').length;
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(gateway.requests.where((value) => value == 'sakura/hot').length, before + 1);
+    // Down enters the actual content grid; repeated Up must never select a neighbour.
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    expect(_focus(tester, tab).hasFocus, isFalse);
+    for (var i = 0; i < 4; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pumpAndSettle();
+    }
+    expect(_focus(tester, tab).hasFocus, isTrue);
+    expect(container.read(discoveryPageControllerProvider.notifier).tvPrimaryTarget, 'hot');
+    expect(gateway.requests.where((value) => value == 'sakura/hot').length, before + 1);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(_focus(tester, tab).hasFocus, isTrue);
+    expect(container.read(discoveryPageControllerProvider.notifier).tvPrimaryTarget, 'hot');
+    expect(find.text('再按一次返回键退出应用'), findsNothing);
   });
   testWidgets('changing source in Discovery updates the outer source name and categories', (tester) async {
     final gateway = TvDiscoveryTestGateway()

@@ -9,6 +9,7 @@ import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'source_management_tv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -56,7 +57,7 @@ class _SourceVerificationPageState extends ConsumerState<SourceVerificationPage>
     if (_confirmingExit || _leaving) return;
     if (_running) {
       _confirmingExit = true;
-      final confirmed = await showDialog<bool>(
+      final confirmed = await showSourceManagementDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('中断检测并退出？'),

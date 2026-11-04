@@ -7,6 +7,7 @@
 /// 注意：
 /// - 页面只调用应用层窄端口，不接触 Runtime HTTP 或资源 token。
 /// - 低频工具统一收纳到更多面板；安装和卸载互斥，调试持久化仍归 Runtime 所有。
+/// - TV 列表提供独立遥控操作，添加、筛选和管理面板保持明确焦点。
 ///
 library;
 
@@ -16,9 +17,14 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focus_traversal.dart';
+import 'source_management_tv.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_text_input_navigation.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/plugins/application/source_collection_import.dart';
+import 'package:mg_read/features/plugins/application/source_plugin_transfer_gateway.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
@@ -58,10 +64,8 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
       ref.read(pluginRuntimeSourceImportProvider).isImporting || ref.read(pluginRuntimeSourceActionProvider).isNotEmpty;
 
   Future<void> _openManagementTools(BuildContext context, WidgetRef ref) async {
-    final action = await showModalBottomSheet<DataSourceManagementAction>(
+    final action = await showSourceManagementSheet<DataSourceManagementAction>(
       context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
       builder: (_) => Consumer(
         builder: (context, sheetRef, _) {
           final connection = sheetRef.watch(pluginRuntimeConnectionProvider).asData?.value;
@@ -106,7 +110,7 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
 
   Future<void> _clearAllSources(BuildContext context, WidgetRef ref, List<DataSourceManagementRowData> sources) async {
     final installedSourceCount = sources.where((source) => !source.isDevelopment).length;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSourceManagementDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
         title: const Text('卸载全部数据源？'),
@@ -239,6 +243,7 @@ class _DataSourceContent extends ConsumerStatefulWidget {
 
 class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _addFocus = FocusNode(debugLabel: 'Add data source');
   _DataSourceFilter _filter = _DataSourceFilter.all;
   String _query = '';
   bool _compactSources = true;
@@ -246,6 +251,7 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
   @override
   void dispose() {
     _searchController.dispose();
+    _addFocus.dispose();
     super.dispose();
   }
 
@@ -276,19 +282,17 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
               ? await ref.read(onlineSourceCatalogServiceProvider).loadCatalog()
               : await ref.read(sourceCollectionImportServiceProvider).pickCollection();
           if (collection == null || !mounted) return null;
-          final plan = await ref
-              .read(pluginRuntimeFacadeProvider)
-              .invoke(
-                PluginTransferPlanInvocation(artifacts: <PluginTransferArtifact>[for (final item in collection.plugins) item.artifact]),
-              );
+          final plan = await ref.read(sourcePluginTransferGatewayProvider).plan(<PluginTransferArtifact>[
+            for (final item in collection.plugins) item.artifact,
+          ]);
           final connection = await ref.read(pluginRuntimeConnectionProvider.future);
           candidates = planSourceCollection(collection: collection, plan: plan, installed: connection.plugins);
           if (!mounted) return null;
           final selection = await showSourceCollectionImportSheet(context, candidates!, onlineRepository: useOnlineRepository);
           if (selection == null || !mounted) return null;
           return ref
-              .read(pluginRuntimeFacadeProvider)
-              .importPluginArtifacts(selection.artifacts, forceUpgradePluginIds: selection.forceUpgradePluginIds);
+              .read(sourcePluginTransferGatewayProvider)
+              .importArtifacts(selection.artifacts, forceUpgradePluginIds: selection.forceUpgradePluginIds);
         }, initialMessage: useOnlineRepository ? '正在读取在线插件仓库' : '正在准备数据源合集');
         if (!mounted || results == null) return;
         await showSourceCollectionImportResults(
@@ -307,7 +311,7 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
     } on Object catch (error) {
       if (!mounted) return;
       if (choice == DataSourceImportChoice.collection || choice == DataSourceImportChoice.onlineRepository) {
-        await showDialog<void>(
+        await showSourceManagementDialog<void>(
           context: context,
           builder: (dialogContext) => AlertDialog(
             title: Text(choice == DataSourceImportChoice.onlineRepository ? '在线插件仓库无法使用' : '数据源合集无法导入'),
@@ -324,6 +328,11 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
       } else {
         await showPluginImportErrorDialog(context, error);
       }
+    } finally {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && TvModeScope.isEnabled(context) && ModalRoute.of(context)?.isCurrent != false) requestTvFocus(_addFocus);
+      });
+      WidgetsBinding.instance.ensureVisualUpdate();
     }
   }
 
@@ -365,6 +374,7 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               _DataSourceOverviewCard(
+                addFocusNode: _addFocus,
                 sourceCount: widget.sources.length,
                 importState: importState,
                 onAddPressed: importState.isImporting || pendingSourceIds.isNotEmpty ? null : _importDataSource,
@@ -512,6 +522,7 @@ class _DataSourceOverviewCard extends StatelessWidget {
     required this.onAddPressed,
     required this.isClearingAll,
     required this.removalProgress,
+    required this.addFocusNode,
   });
 
   final int sourceCount;
@@ -519,6 +530,7 @@ class _DataSourceOverviewCard extends StatelessWidget {
   final VoidCallback? onAddPressed;
   final bool isClearingAll;
   final PluginSourceRemovalProgress removalProgress;
+  final FocusNode addFocusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -531,7 +543,7 @@ class _DataSourceOverviewCard extends StatelessWidget {
           Expanded(
             child: Text('$sourceCount 个数据源', key: const Key('data-source-enabled-count'), style: theme.textTheme.titleMedium),
           ),
-          _AddDataSourceButton(isImporting: false, onPressed: onAddPressed),
+          _AddDataSourceButton(isImporting: false, onPressed: onAddPressed, focusNode: addFocusNode),
         ],
       );
     }
@@ -554,7 +566,7 @@ class _DataSourceOverviewCard extends StatelessWidget {
             style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
           ),
           const SizedBox(height: AppSpacing.unit),
-          _AddDataSourceButton(isImporting: importState.isImporting, onPressed: onAddPressed),
+          _AddDataSourceButton(isImporting: importState.isImporting, onPressed: onAddPressed, focusNode: addFocusNode),
           if (isClearingAll) ...[const SizedBox(height: AppSpacing.regular), _DataSourceRemovalProgress(progress: removalProgress)],
           if (importState.isImporting) ...[
             const SizedBox(height: AppSpacing.regular),
@@ -658,20 +670,28 @@ class _DataSourceFilterBar extends StatelessWidget {
       spacing: AppSpacing.compact,
       children: <Widget>[
         for (final _DataSourceFilter filter in _DataSourceFilter.values)
-          ChoiceChip(
-            key: Key('data-source-filter-${filter.name}'),
-            label: Text(_filterLabel(filter)),
-            selected: selected == filter,
-            showCheckmark: false,
-            side: BorderSide(color: selected == filter ? tokens.dataSourceAccent.withValues(alpha: 0.26) : tokens.divider),
-            selectedColor: tokens.accentSoft,
-            backgroundColor: tokens.surface,
-            labelStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: selected == filter ? tokens.dataSourceAccent : tokens.mutedText,
-              fontWeight: selected == filter ? FontWeight.w600 : FontWeight.w400,
+          if (TvModeScope.isEnabled(context))
+            TvFocusable(
+              key: Key('data-source-filter-${filter.name}'),
+              selected: selected == filter,
+              onPressed: () => onSelected(filter),
+              child: Text(_filterLabel(filter)),
+            )
+          else
+            ChoiceChip(
+              key: Key('data-source-filter-${filter.name}'),
+              label: Text(_filterLabel(filter)),
+              selected: selected == filter,
+              showCheckmark: false,
+              side: BorderSide(color: selected == filter ? tokens.dataSourceAccent.withValues(alpha: 0.26) : tokens.divider),
+              selectedColor: tokens.accentSoft,
+              backgroundColor: tokens.surface,
+              labelStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: selected == filter ? tokens.dataSourceAccent : tokens.mutedText,
+                fontWeight: selected == filter ? FontWeight.w600 : FontWeight.w400,
+              ),
+              onSelected: (_) => onSelected(filter),
             ),
-            onSelected: (_) => onSelected(filter),
-          ),
       ],
     );
   }
@@ -692,12 +712,13 @@ class _DataSourceListHeader extends StatelessWidget {
     return Row(
       children: <Widget>[
         Expanded(child: Text('我的数据源', style: theme.textTheme.titleMedium)),
-        IconButton(
-          key: const Key('data-source-density'),
-          tooltip: compact ? '切换详细视图' : '切换紧凑视图',
-          onPressed: onToggle,
-          icon: Icon(compact ? Icons.view_agenda_outlined : Icons.view_list_outlined),
-        ),
+        if (!TvModeScope.isEnabled(context))
+          IconButton(
+            key: const Key('data-source-density'),
+            tooltip: compact ? '切换详细视图' : '切换紧凑视图',
+            onPressed: onToggle,
+            icon: Icon(compact ? Icons.view_agenda_outlined : Icons.view_list_outlined),
+          ),
         Text(
           visibleCount == totalCount ? '共 $totalCount 个' : '$visibleCount / $totalCount',
           style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
@@ -743,14 +764,23 @@ class _DataSourceEmptyState extends StatelessWidget {
 }
 
 class _AddDataSourceButton extends StatelessWidget {
-  const _AddDataSourceButton({required this.isImporting, this.onPressed});
+  const _AddDataSourceButton({required this.isImporting, required this.focusNode, this.onPressed});
 
   final bool isImporting;
   final VoidCallback? onPressed;
+  final FocusNode focusNode;
 
   @override
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
+    if (TvModeScope.isEnabled(context)) {
+      return TvFocusable(
+        key: const Key('data-source-add'),
+        focusNode: focusNode,
+        onPressed: onPressed,
+        child: Text(isImporting ? '正在导入…' : '添加数据源'),
+      );
+    }
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: AppSpacing.minimumTouchTarget),
       child: TextButton.icon(

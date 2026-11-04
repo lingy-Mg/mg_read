@@ -9,6 +9,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
+import 'source_management_tv.dart';
 
 enum DataSourceManagementAction { checkUpdates, verify, diagnostics, help, uninstall }
 
@@ -21,10 +24,8 @@ bool get supportsNativeSourceImport =>
 
 bool get supportsSourceCollectionImport => !const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME');
 
-Future<DataSourceImportChoice?> showDataSourceImportSheet(BuildContext context) => showModalBottomSheet<DataSourceImportChoice>(
+Future<DataSourceImportChoice?> showDataSourceImportSheet(BuildContext context) => showSourceManagementSheet<DataSourceImportChoice>(
   context: context,
-  isScrollControlled: true,
-  showDragHandle: true,
   builder: (context) => _ActionSheet(
     title: '添加数据源',
     description: '从 GitHub 仓库或设备文件安装数据源。',
@@ -152,6 +153,7 @@ class _ActionSheet extends StatelessWidget {
             Text(description, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppThemeTokens.of(context).mutedText)),
             const SizedBox(height: AppSpacing.regular),
             ...children,
+            if (TvModeScope.isEnabled(context)) TvFocusable(onPressed: () => Navigator.of(context).pop(), child: const Text('取消')),
           ],
         ),
       ),
@@ -177,14 +179,40 @@ class _ActionTile extends StatelessWidget {
   final bool destructive;
 
   @override
-  Widget build(BuildContext context) => ListTile(
-    key: actionKey,
-    contentPadding: const EdgeInsets.symmetric(vertical: AppSpacing.unit),
-    enabled: onTap != null,
-    leading: Icon(icon, color: onTap != null && destructive ? AppThemeTokens.of(context).notification : null),
-    title: Text(title, style: TextStyle(color: onTap != null && destructive ? AppThemeTokens.of(context).notification : null)),
-    subtitle: Text(subtitle),
-    trailing: const Icon(Icons.chevron_right_rounded, size: 20),
-    onTap: onTap,
-  );
+  Widget build(BuildContext context) {
+    if (TvModeScope.isEnabled(context)) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: TvFocusable(
+          key: actionKey,
+          onPressed: onTap,
+          child: Row(
+            children: [
+              Icon(icon),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: Theme.of(context).textTheme.titleLarge),
+                    Text(subtitle, style: Theme.of(context).textTheme.bodyLarge),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return ListTile(
+      key: actionKey,
+      contentPadding: const EdgeInsets.symmetric(vertical: AppSpacing.unit),
+      enabled: onTap != null,
+      leading: Icon(icon, color: onTap != null && destructive ? AppThemeTokens.of(context).notification : null),
+      title: Text(title, style: TextStyle(color: onTap != null && destructive ? AppThemeTokens.of(context).notification : null)),
+      subtitle: Text(subtitle),
+      trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+      onTap: onTap,
+    );
+  }
 }

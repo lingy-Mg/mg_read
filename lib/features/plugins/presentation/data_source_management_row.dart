@@ -14,6 +14,8 @@ import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/shared/presentation/source_branding.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'data_source_management_tv_row.dart';
 
 enum DataSourceBrand { qidian, tomato, qimao, zongheng, jinjiang, seventeenK, generic }
 
@@ -71,6 +73,17 @@ class DataSourceManagementRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (TvModeScope.isEnabled(context)) {
+      return TvDataSourceManagementRow(
+        source: source,
+        pending: isPending,
+        onDetail: onPressed,
+        onToggle: () => onChanged(!source.enabled),
+        onDiscover: onDiscover,
+        onSearch: onSearch,
+        onOpenSourceUrl: onOpenSourceUrl,
+      );
+    }
     final theme = Theme.of(context);
     final tokens = AppThemeTokens.of(context);
     final available = source.enabled && source.canOpen && !isPending;

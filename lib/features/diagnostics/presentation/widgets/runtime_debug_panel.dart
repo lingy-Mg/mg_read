@@ -12,6 +12,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_debug_http.dart';
 
@@ -76,17 +78,27 @@ class RuntimeDebugPanel extends ConsumerWidget {
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
             ),
             const SizedBox(height: AppSpacing.compact),
-            Material(
-              type: MaterialType.transparency,
-              child: SwitchListTile.adaptive(
+            if (TvModeScope.isEnabled(context))
+              TvFocusable(
                 key: const Key('runtime-debug-http-toggle'),
-                contentPadding: EdgeInsets.zero,
-                title: Text(value.configuredEnabled ? 'Runtime 检查页已开启' : '开启 Runtime 检查页'),
-                subtitle: Text(value.enabled ? '监听正常，可从下方地址打开。' : '保存设置后 Runtime 会启动本机调试 listener。'),
-                value: value.configuredEnabled,
-                onChanged: state.isLoading ? null : (enabled) => ref.read(pluginRuntimeDebugHttpProvider.notifier).setEnabled(enabled),
+                selected: value.configuredEnabled,
+                onPressed: state.isLoading
+                    ? null
+                    : () => ref.read(pluginRuntimeDebugHttpProvider.notifier).setEnabled(!value.configuredEnabled),
+                child: Text(value.configuredEnabled ? '关闭 Runtime 检查页' : '开启 Runtime 检查页'),
+              )
+            else
+              Material(
+                type: MaterialType.transparency,
+                child: SwitchListTile.adaptive(
+                  key: const Key('runtime-debug-http-toggle'),
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(value.configuredEnabled ? 'Runtime 检查页已开启' : '开启 Runtime 检查页'),
+                  subtitle: Text(value.enabled ? '监听正常，可从下方地址打开。' : '保存设置后 Runtime 会启动本机调试 listener。'),
+                  value: value.configuredEnabled,
+                  onChanged: state.isLoading ? null : (enabled) => ref.read(pluginRuntimeDebugHttpProvider.notifier).setEnabled(enabled),
+                ),
               ),
-            ),
             if (state.hasError)
               Text('Runtime 调试状态读取失败，请确认 Runtime 已正常启动。', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.warning)),
             if (value.configuredEnabled && !value.enabled)

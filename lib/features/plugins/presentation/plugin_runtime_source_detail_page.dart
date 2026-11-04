@@ -1,6 +1,11 @@
+/// Source details keep Runtime IO in application ports. TV metadata and commands
+/// are separate remote stops; overlays restore focus to their originating page.
+library;
+
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'source_management_tv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
@@ -10,6 +15,8 @@ import 'package:mg_read/features/plugins/application/plugin_runtime_connection.d
 import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 import 'package:mg_read/shared/presentation/source_branding.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 
 import 'plugin_content_kind_labels.dart';
 
@@ -228,7 +235,7 @@ class _DetailContent extends ConsumerWidget {
   }
 
   Future<void> _uninstall(BuildContext context, WidgetRef ref, PluginRuntimePlugin source) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSourceManagementDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
         title: const Text('删除数据源？'),
@@ -384,6 +391,22 @@ class _DetailField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AppThemeTokens.of(context);
+    if (TvModeScope.isEnabled(context)) {
+      return SizedBox(
+        width: width,
+        child: TvFocusable(
+          key: field.expandable ? const Key('data-source-detail-version') : null,
+          onPressed: () => _showFullValue(context),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(field.label, style: Theme.of(context).textTheme.titleMedium),
+              Text(field.value, maxLines: 3, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodyLarge),
+            ],
+          ),
+        ),
+      );
+    }
     return SizedBox(
       width: width,
       child: DecoratedBox(
@@ -430,25 +453,27 @@ class _DetailField extends StatelessWidget {
     );
   }
 
-  Future<void> _showFullValue(BuildContext context) => showDialog<void>(
+  Future<void> _showFullValue(BuildContext context) => showSourceManagementDialog<void>(
     context: context,
     builder: (BuildContext dialogContext) => AlertDialog(
       title: Text(field.label),
-      content: SizedBox(
-        height: 48,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: SelectableText(
-              field.value,
-              key: const Key('data-source-detail-full-version'),
-              maxLines: 1,
-              style: Theme.of(context).textTheme.bodyMedium,
+      content: TvModeScope.isEnabled(context)
+          ? SingleChildScrollView(child: Text(field.value, key: const Key('data-source-detail-full-version')))
+          : SizedBox(
+              height: 48,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: SelectableText(
+                    field.value,
+                    key: const Key('data-source-detail-full-version'),
+                    maxLines: 1,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
-      ),
       actions: <Widget>[TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('关闭'))],
     ),
   );

@@ -20,6 +20,7 @@ import 'source_debug_page.dart';
 
 import 'package:flutter/material.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focus_region.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
@@ -153,35 +154,37 @@ class DiscoveryDestinationPage extends ConsumerWidget {
     };
 
     return _TvDiscoveryLifecycle(
-      child: Scaffold(
-        extendBody: !TvModeScope.isEnabled(context),
-        appBar: TvModeScope.isEnabled(context) && !SourcePreviewScope.active(context)
-            ? AppBottomNavigation(selected: AppNavigationDestination.discover, onSelected: onDestinationRequested)
-            : AppBar(
-                toolbarHeight: AppSpacing.pageHeaderHeight,
-                title: const AppPageTitle(title: '发现'),
+      child: TvFocusRegion(
+        child: Scaffold(
+          extendBody: !TvModeScope.isEnabled(context),
+          appBar: TvModeScope.isEnabled(context) && !SourcePreviewScope.active(context)
+              ? AppBottomNavigation(selected: AppNavigationDestination.discover, onSelected: onDestinationRequested)
+              : AppBar(
+                  toolbarHeight: AppSpacing.pageHeaderHeight,
+                  title: const AppPageTitle(title: '发现'),
+                ),
+          body: SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: SingleChildScrollView(padding: const EdgeInsets.all(AppSpacing.section), child: content),
               ),
-        body: SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
-              child: SingleChildScrollView(padding: const EdgeInsets.all(AppSpacing.section), child: content),
             ),
           ),
-        ),
-        bottomNavigationBar: TvModeScope.isEnabled(context) || SourcePreviewScope.active(context)
-            ? null
-            : SafeArea(
-                top: false,
-                child: AppBottomNavigation(
-                  selected: AppNavigationDestination.discover,
-                  onSelected: (destination) {
-                    if (destination != AppNavigationDestination.discover) {
-                      onDestinationRequested(destination);
-                    }
-                  },
+          bottomNavigationBar: TvModeScope.isEnabled(context) || SourcePreviewScope.active(context)
+              ? null
+              : SafeArea(
+                  top: false,
+                  child: AppBottomNavigation(
+                    selected: AppNavigationDestination.discover,
+                    onSelected: (destination) {
+                      if (destination != AppNavigationDestination.discover) {
+                        onDestinationRequested(destination);
+                      }
+                    },
+                  ),
                 ),
-              ),
+        ),
       ),
     );
   }
@@ -300,19 +303,8 @@ class _DiscoveryRuntimeLayer extends ConsumerWidget {
       onContentPressed: (content) => unawaited(openContent(content)),
       onRefreshRequested: () => unawaited(controller.refresh()),
       onLoadMore: (collection) => unawaited(controller.loadMore(collection)),
-      canNavigateBack: canNavigateBack || (controller.tvNavigation != null && visualDepth == 0 && controller.tvPrimaryTarget != null),
-      onBackRequested: controller.tvNavigation != null && visualDepth == 0 && controller.tvPrimaryTarget != null
-          ? () {
-              final outer = TvSourceNavigationScope.maybeOf(context);
-              if (outer != null) {
-                outer.onSelected(null);
-              } else {
-                unawaited(controller.selectTvTab(null));
-              }
-            }
-          : isPredictiveBackRoute
-          ? () => Navigator.of(context).pop()
-          : controller.goBack,
+      canNavigateBack: canNavigateBack,
+      onBackRequested: isPredictiveBackRoute ? () => Navigator.of(context).pop() : controller.goBack,
       loadingCollectionId: isActiveLayer ? state.loadingCollectionId : null,
       navigationDepth: visualDepth,
       allowsRoutePop: isPredictiveBackRoute,

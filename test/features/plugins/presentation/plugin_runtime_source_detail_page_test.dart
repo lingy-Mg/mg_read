@@ -2,15 +2,47 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/app/app_tv_theme.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_source_detail_page.dart';
 
 void main() {
+  testWidgets('TV metadata and delete confirmation are reachable by remote on a short screen', (tester) async {
+    await _setViewport(tester, const Size(640, 360));
+    final gateway = _DirectoryGateway(_installedConnection);
+    await tester.pumpWidget(_host(gateway, 'org.example.installed', tv: true, textScaler: const TextScaler.linear(1.6)));
+    await tester.pumpAndSettle();
+    final remove = find.byKey(const Key('data-source-detail-remove'));
+    var reached = false;
+    for (var i = 0; i < 30; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+      final primary = FocusManager.instance.primaryFocus?.context;
+      if (primary != null && primary.findAncestorWidgetOfExactType<OutlinedButton>()?.key == const Key('data-source-detail-remove')) {
+        reached = true;
+        break;
+      }
+      expect(tester.takeException(), isNull);
+    }
+    expect(reached, isTrue);
+    expect(remove.hitTestable(), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(find.text('删除数据源？'), findsOneWidget);
+    expect(gateway.uninstalledPluginIds, isEmpty);
+    await tester.sendKeyEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(find.text('删除数据源？'), findsNothing);
+    expect(gateway.uninstalledPluginIds, isEmpty, reason: 'confirmation initially focuses Cancel');
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('keeps the shared header visible while detail is loading', (WidgetTester tester) async {
     final completer = Completer<PluginRuntimeConnection>();
     await tester.pumpWidget(
@@ -211,21 +243,26 @@ void main() {
   });
 }
 
-Widget _host(_DirectoryGateway gateway, String pluginId, {ValueChanged<String>? onVerificationRequested, TextScaler? textScaler}) =>
-    ProviderScope(
-      overrides: [
-        pluginRuntimeGatewayProvider.overrideWithValue(gateway),
-        pluginRuntimeConnectionProvider.overrideWith((Ref ref) async => gateway.connection),
-      ],
-      child: MaterialApp(
-        theme: AppTheme.light(),
-        builder: (BuildContext context, Widget? child) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(textScaler: textScaler ?? MediaQuery.textScalerOf(context)),
-          child: child ?? const SizedBox.shrink(),
-        ),
-        home: PluginRuntimeSourceDetailPage(pluginId: pluginId, onBackRequested: () {}, onVerificationRequested: onVerificationRequested),
-      ),
-    );
+Widget _host(
+  _DirectoryGateway gateway,
+  String pluginId, {
+  ValueChanged<String>? onVerificationRequested,
+  TextScaler? textScaler,
+  bool tv = false,
+}) => ProviderScope(
+  overrides: [
+    pluginRuntimeGatewayProvider.overrideWithValue(gateway),
+    pluginRuntimeConnectionProvider.overrideWith((Ref ref) async => gateway.connection),
+  ],
+  child: MaterialApp(
+    theme: tv ? appTvTheme(AppTheme.light()) : AppTheme.light(),
+    builder: (BuildContext context, Widget? child) => MediaQuery(
+      data: MediaQuery.of(context).copyWith(textScaler: textScaler ?? MediaQuery.textScalerOf(context)),
+      child: TvModeScope(enabled: tv, onChanged: (_) {}, child: child ?? const SizedBox.shrink()),
+    ),
+    home: PluginRuntimeSourceDetailPage(pluginId: pluginId, onBackRequested: () {}, onVerificationRequested: onVerificationRequested),
+  ),
+);
 
 Future<void> _setViewport(WidgetTester tester, Size size) async {
   tester.view.physicalSize = size;

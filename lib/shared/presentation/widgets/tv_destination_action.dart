@@ -49,6 +49,7 @@ class TvDestinationAction extends StatefulWidget {
     this.autofocus = false,
     this.focusNode,
     this.navigationId,
+    this.onReselected,
     super.key,
   });
   final AppNavigationDestination destination;
@@ -59,6 +60,7 @@ class TvDestinationAction extends StatefulWidget {
   final bool autofocus;
   final FocusNode? focusNode;
   final Object? navigationId;
+  final VoidCallback? onReselected;
 
   @override
   State<TvDestinationAction> createState() => _TvDestinationActionState();
@@ -119,10 +121,10 @@ class _TvDestinationActionState extends State<TvDestinationAction> {
     autofocus: widget.autofocus,
     selected: widget.selected,
     activateOnFocus: widget.destination != AppNavigationDestination.search,
+    onConfirmed: widget.selected ? widget.onReselected : null,
     onPressed: () {
-      if (!widget.selected) {
-        context.getInheritedWidgetOfExactType<_NavigationScope>()?.intent.pending = _id;
-      }
+      if (widget.selected) return;
+      context.getInheritedWidgetOfExactType<_NavigationScope>()?.intent.pending = _id;
       widget.onPressed();
     },
     child: widget.child,

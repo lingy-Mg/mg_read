@@ -18,6 +18,7 @@ class TvSourceNavigationScope extends InheritedWidget {
     required this.target,
     required this.showContent,
     required this.onSelected,
+    this.onRefresh,
     required super.child,
     super.key,
   });
@@ -26,6 +27,7 @@ class TvSourceNavigationScope extends InheritedWidget {
   final String? target;
   final bool showContent;
   final ValueChanged<String?> onSelected;
+  final VoidCallback? onRefresh;
 
   static TvSourceNavigationScope? maybeOf(BuildContext context) => context.dependOnInheritedWidgetOfExactType<TvSourceNavigationScope>();
 

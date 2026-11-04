@@ -21,6 +21,8 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/diagnostics/presentation/widgets/runtime_debug_panel.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'source_management_tv.dart';
 
 /// Dedicated page opened by the data-source management help button.
 class PluginRuntimeHelpPage extends ConsumerStatefulWidget {
@@ -89,7 +91,9 @@ class _PluginRuntimeHelpPageState extends ConsumerState<PluginRuntimeHelpPage> {
                     _HelpSection(
                       icon: Icons.auto_stories_outlined,
                       title: '管理数据源',
-                      body: const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME')
+                      body: TvModeScope.isEnabled(context)
+                          ? '使用方向键选择“添加数据源”，按确定进入在线插件仓库或本地安装。仓库中按确定勾选，再选择“导入”。列表中可浏览、搜索、查看详情和启停数据源；返回键关闭面板并回到原操作。'
+                          : const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME')
                           ? '点击“添加数据源”，选择原生 .mgplugin 文件导入；列表右侧开关控制启用状态。'
                           : Platform.isMacOS || const bool.fromEnvironment('MGREAD_NODE_ONLY')
                           ? '点击“添加数据源”，选择 Node 数据源并导入 .mgplugin.js 或 .mgplugin 文件；列表右侧开关控制启用状态。'
@@ -157,7 +161,14 @@ class _HelpSection extends StatelessWidget {
                 children: <Widget>[
                   Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                   const SizedBox(height: AppSpacing.unit),
-                  Text(body, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+                  SourceManagementInfo(
+                    child: Text(
+                      body,
+                      style:
+                          (TvModeScope.isEnabled(context) ? Theme.of(context).textTheme.bodyLarge : Theme.of(context).textTheme.bodySmall)
+                              ?.copyWith(color: tokens.mutedText),
+                    ),
+                  ),
                   if (action != null) ...<Widget>[const SizedBox(height: AppSpacing.compact), action!],
                 ],
               ),

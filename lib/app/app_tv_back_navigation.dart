@@ -1,6 +1,7 @@
 /// TV root back policy, shared by platform, keyboard and mouse back inputs.
 /// Page-owned stacks and overlays consume back before the TV root fallback.
 /// The exit window is transient and cleared on navigation, mode or lifecycle changes.
+/// At any root tab, back first restores its top and focus, then offers exit.
 library;
 
 import 'dart:async';
@@ -11,6 +12,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:mg_read/app/app_router.dart';
 import 'package:mg_read/shared/presentation/widgets/app_back_navigation_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focus_region.dart';
 
 class AppTvBackNavigation extends StatefulWidget {
   const AppTvBackNavigation({required this.router, required this.enabled, required this.child, super.key});
@@ -63,7 +65,11 @@ class _AppTvBackNavigationState extends State<AppTvBackNavigation> with WidgetsB
       return true;
     }
     if (!mounted || !widget.enabled) return false;
-    if (widget.router.routerDelegate.currentConfiguration.uri.path != '/') {
+    if (TvFocusRegion.returnToNavigation()) {
+      _clearExit();
+      return true;
+    }
+    if (!const {'/', '/discover', '/profile', '/search'}.contains(widget.router.routerDelegate.currentConfiguration.uri.path)) {
       _clearExit();
       widget.router.go(const LibraryRoute().location);
       return true;

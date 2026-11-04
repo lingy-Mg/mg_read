@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
+import 'source_management_tv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -89,7 +92,7 @@ class _PluginCacheManagementPageState extends ConsumerState<PluginCacheManagemen
   }
 
   Future<bool> _confirm(BuildContext context, {required String title, required String content, required String action}) async =>
-      await showDialog<bool>(
+      await showSourceManagementDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: Text(title),
@@ -204,17 +207,29 @@ class _CacheEntryCard extends StatelessWidget {
             PluginCacheEntryStatus.failed => '暂时无法读取缓存用量',
             PluginCacheEntryStatus.loaded => _formatBytes(entry.bytes),
           }),
-          trailing: TextButton(
-            key: ValueKey<String>('plugin-cache-clear-${entry.pluginId}'),
-            onPressed: isClearing || entry.isScanning ? null : onClear,
-            child: Text(
-              isClearing
-                  ? '正在清理'
-                  : entry.isScanning
-                  ? '读取中'
-                  : '清理',
-            ),
-          ),
+          trailing: TvModeScope.isEnabled(context)
+              ? TvFocusable(
+                  key: ValueKey<String>('plugin-cache-clear-${entry.pluginId}'),
+                  onPressed: isClearing || entry.isScanning ? null : onClear,
+                  child: Text(
+                    isClearing
+                        ? '正在清理'
+                        : entry.isScanning
+                        ? '读取中'
+                        : '清理',
+                  ),
+                )
+              : TextButton(
+                  key: ValueKey<String>('plugin-cache-clear-${entry.pluginId}'),
+                  onPressed: isClearing || entry.isScanning ? null : onClear,
+                  child: Text(
+                    isClearing
+                        ? '正在清理'
+                        : entry.isScanning
+                        ? '读取中'
+                        : '清理',
+                  ),
+                ),
         ),
       ),
     );

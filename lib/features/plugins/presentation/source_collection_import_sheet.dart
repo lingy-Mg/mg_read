@@ -1,4 +1,5 @@
 /// Selection and result dialogs for importing a Node source collection.
+/// TV selection owns one scrollable list and a persistent confirmation footer.
 library;
 
 import 'package:flutter/material.dart';
@@ -6,21 +7,24 @@ import 'package:flutter/material.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/plugins/application/source_collection_import.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
+import 'source_management_tv.dart';
+
+part 'source_collection_import_tv.dart';
 
 Future<SourceCollectionSelection?> showSourceCollectionImportSheet(
   BuildContext context,
   List<SourceCollectionCandidate> candidates, {
   bool onlineRepository = false,
-}) => showModalBottomSheet<SourceCollectionSelection>(
+}) => showSourceManagementSheet<SourceCollectionSelection>(
   context: context,
-  isScrollControlled: true,
-  showDragHandle: true,
   builder: (_) => _SourceCollectionSelector(candidates: candidates, onlineRepository: onlineRepository),
 );
 
 Future<bool> showSourceUpdatesConfirmationDialog(BuildContext context, List<SourceCollectionCandidate> updates) async {
   if (updates.isEmpty) return false;
-  final confirmed = await showDialog<bool>(
+  final confirmed = await showSourceManagementDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
       title: Text('发现 ${updates.length} 个数据源更新'),
@@ -36,9 +40,11 @@ Future<bool> showSourceUpdatesConfirmationDialog(BuildContext context, List<Sour
               for (final update in updates)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: AppSpacing.unit),
-                  child: Text(
-                    '${update.plugin.name}  v${_displayVersion(update.plan.receiverVersion ?? '--')} → v${_displayVersion(update.plugin.version)}',
-                    style: Theme.of(dialogContext).textTheme.bodyMedium,
+                  child: SourceManagementInfo(
+                    child: Text(
+                      '${update.plugin.name}  v${_displayVersion(update.plan.receiverVersion ?? '--')} → v${_displayVersion(update.plugin.version)}',
+                      style: Theme.of(dialogContext).textTheme.bodyMedium,
+                    ),
                   ),
                 ),
             ],
@@ -46,7 +52,11 @@ Future<bool> showSourceUpdatesConfirmationDialog(BuildContext context, List<Sour
         ),
       ),
       actions: <Widget>[
-        TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('暂不更新')),
+        TextButton(
+          autofocus: TvModeScope.isEnabled(context),
+          onPressed: () => Navigator.of(dialogContext).pop(false),
+          child: const Text('暂不更新'),
+        ),
         FilledButton(
           key: const Key('source-updates-confirm-overwrite'),
           onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -65,7 +75,7 @@ Future<void> showSourceCollectionImportResults(
   bool onlineRepository = false,
   bool updating = false,
   Set<String> pendingPluginIds = const {},
-}) => showDialog<void>(
+}) => showSourceManagementDialog<void>(
   context: context,
   builder: (dialogContext) {
     final failed = results.where((item) => item.status == PluginTransferImportStatus.failed).length;
@@ -93,15 +103,19 @@ Future<void> showSourceCollectionImportResults(
               for (final result in results)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: AppSpacing.unit),
-                  child: Text(
-                    '${result.status == PluginTransferImportStatus.installed ? '✓' : '×'}  ${names[result.pluginId] ?? result.pluginId}  v${_displayVersion(result.version)}  ${result.status == PluginTransferImportStatus.installed ? (updating ? '已更新' : '已安装') : (updating ? '更新失败或已隔离' : '安装失败或已隔离')}',
+                  child: SourceManagementInfo(
+                    child: Text(
+                      '${result.status == PluginTransferImportStatus.installed ? '✓' : '×'}  ${names[result.pluginId] ?? result.pluginId}  v${_displayVersion(result.version)}  ${result.status == PluginTransferImportStatus.installed ? (updating ? '已更新' : '已安装') : (updating ? '更新失败或已隔离' : '安装失败或已隔离')}',
+                    ),
                   ),
                 ),
             ],
           ),
         ),
       ),
-      actions: <Widget>[TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('知道了'))],
+      actions: <Widget>[
+        TextButton(autofocus: TvModeScope.isEnabled(context), onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('知道了')),
+      ],
     );
   },
 );
@@ -129,6 +143,17 @@ class _SourceCollectionSelectorState extends State<_SourceCollectionSelector> {
 
   @override
   Widget build(BuildContext context) {
+    if (TvModeScope.isEnabled(context)) {
+      return _TvSourceCollectionSelector(
+        candidates: widget.candidates,
+        online: widget.onlineRepository,
+        selected: _selectedIds,
+        onToggle: (id) => setState(() => _selectedIds.contains(id) ? _selectedIds.remove(id) : _selectedIds.add(id)),
+        onSelectAll: _importableIds.isEmpty ? null : () => setState(() => _selectedIds.addAll(_importableIds)),
+        onClear: _selectedIds.isEmpty ? null : () => setState(_selectedIds.clear),
+        onSubmit: _selectedIds.isEmpty ? null : () => Navigator.of(context).pop(sourceCollectionSelection(widget.candidates, _selectedIds)),
+      );
+    }
     final selectedInstalled = widget.candidates
         .where((item) => item.requiresOverwriteChoice && _selectedIds.contains(item.plugin.id))
         .length;

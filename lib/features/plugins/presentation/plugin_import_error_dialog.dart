@@ -9,12 +9,13 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'source_management_tv.dart';
 
 import 'package:mg_read/core/errors/app_error.dart';
 
 Future<void> showPluginImportErrorDialog(BuildContext context, Object error) {
   final appError = AppError.fromUnknown(error);
-  return showDialog<void>(
+  return showSourceManagementDialog<void>(
     context: context,
     builder: (BuildContext dialogContext) => AlertDialog(
       title: const Text('数据源导入失败'),

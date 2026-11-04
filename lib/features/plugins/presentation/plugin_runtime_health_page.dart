@@ -1,5 +1,6 @@
 /// Runtime status projection for both source engines. Native cards show
 /// measured process RSS; V8-only counters remain specific to the Node backend.
+/// TV makes each value and source row a remote-readable scroll stop.
 library;
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
+import 'source_management_tv.dart';
 
 /// A small, expandable Flutter-native status page for the source Runtime.
 ///
@@ -202,7 +204,7 @@ class _RuntimePluginsCard extends StatelessWidget {
                 final plugin = plugins[index];
                 return Column(
                   children: <Widget>[
-                    _RuntimePluginRow(plugin: plugin),
+                    SourceManagementInfo(child: _RuntimePluginRow(plugin: plugin)),
                     if (index < plugins.length - 1) Divider(color: AppThemeTokens.of(context).divider),
                   ],
                 );
@@ -303,21 +305,23 @@ class _StatusValue extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AppThemeTokens.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.unit),
-      child: Row(
-        children: <Widget>[
-          Expanded(
-            child: Text(label, style: TextStyle(color: tokens.mutedText)),
-          ),
-          Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+    return SourceManagementInfo(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.unit),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(label, style: TextStyle(color: tokens.mutedText)),
             ),
-          ),
-        ],
+            Flexible(
+              child: Text(
+                value,
+                textAlign: TextAlign.end,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

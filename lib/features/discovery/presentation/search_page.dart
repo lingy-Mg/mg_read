@@ -46,6 +46,7 @@ import 'package:mg_read/shared/presentation/widgets/app_page_backdrop.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_text_input_navigation.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focus_region.dart';
 
 /// Search destination. Runtime data remains outside this presentation shell.
 class SearchPage extends ConsumerStatefulWidget {
@@ -179,104 +180,106 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       );
     }
 
-    return Scaffold(
-      appBar: TvModeScope.isEnabled(context) && !SourcePreviewScope.active(context)
-          ? AppBottomNavigation(selected: AppNavigationDestination.search, onSelected: widget.onDestinationRequested)
-          : null,
-      extendBody: !TvModeScope.isEnabled(context),
-      body: AppPageBackdrop(
-        style: AppPageBackdropStyle.search,
-        child: SafeArea(
-          bottom: false,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: AppSpacing.contentMaxWidth),
-              child: ListView(
-                key: const Key('search-page-scroll'),
-                controller: _scrollController,
-                padding: EdgeInsets.fromLTRB(
-                  AppSpacing.searchPageHorizontalPadding,
-                  AppSpacing.pageHeaderTopPaddingFor(context),
-                  AppSpacing.searchPageHorizontalPadding,
-                  AppSpacing.bottomNavigationContentBottomPadding + MediaQuery.viewPaddingOf(context).bottom,
+    return TvFocusRegion(
+      child: Scaffold(
+        appBar: TvModeScope.isEnabled(context) && !SourcePreviewScope.active(context)
+            ? AppBottomNavigation(selected: AppNavigationDestination.search, onSelected: widget.onDestinationRequested)
+            : null,
+        extendBody: !TvModeScope.isEnabled(context),
+        body: AppPageBackdrop(
+          style: AppPageBackdropStyle.search,
+          child: SafeArea(
+            bottom: false,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: AppSpacing.contentMaxWidth),
+                child: ListView(
+                  key: const Key('search-page-scroll'),
+                  controller: _scrollController,
+                  padding: EdgeInsets.fromLTRB(
+                    AppSpacing.searchPageHorizontalPadding,
+                    AppSpacing.pageHeaderTopPaddingFor(context),
+                    AppSpacing.searchPageHorizontalPadding,
+                    AppSpacing.bottomNavigationContentBottomPadding + MediaQuery.viewPaddingOf(context).bottom,
+                  ),
+                  children: <Widget>[
+                    SizedBox(
+                      height: TvModeScope.isEnabled(context) ? null : AppSpacing.pageHeaderHeight,
+                      child: _SearchPageHeader(onSourceManagementRequested: widget.onSourceManagementRequested),
+                    ),
+                    const SizedBox(height: AppSpacing.compact),
+                    _SearchTopBar(
+                      queryController: _queryController,
+                      queryFocusNode: _queryFocusNode,
+                      submitFocusNode: _submitFocusNode,
+                      isSearching: state.status == SearchPageStatus.searching,
+                      onSearch: () => _search(controller),
+                      onCancel: controller.cancelSearch,
+                      onClear: _clearQuery,
+                    ),
+                    const SizedBox(height: AppSpacing.compact),
+                    AnimatedBuilder(
+                      animation: ref.read(companionTextInputProvider),
+                      builder: (context, _) => ref.read(companionTextInputProvider).active
+                          ? Padding(
+                              padding: EdgeInsets.all(8),
+                              child: Semantics(liveRegion: true, child: Text('手机正在输入，提交后搜索；在 TV 修改文字会结束手机输入。')),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                    SearchSuggestionSections(
+                      history: List<String>.unmodifiable(_history),
+                      onHistorySelected: (String value) => _selectSuggestion(value, controller),
+                      onHistoryCleared: _clearHistory,
+                      onHotSearchSelected: (String value) => _selectSuggestion(value, controller),
+                      hotSearches: state.hotSearches,
+                      isSearchStarted: state.query.isNotEmpty,
+                      onHotSearchRefreshed: () => unawaited(controller.refreshSuggestions()),
+                    ),
+                    const SizedBox(height: AppSpacing.regular),
+                    SearchResultsSection(
+                      hasSources: state.sources.isNotEmpty,
+                      onManageSources: widget.onSourceManagementRequested,
+                      result: displayedResult,
+                      status: state.status,
+                      query: state.query,
+                      error: state.error,
+                      sortOrder: state.sortOrder,
+                      onSortOrderChanged: controller.setSortOrder,
+                      isInBookshelf: (item) =>
+                          bookshelfMembership.contains(pluginId: item.primary.pluginId, title: item.primary.content.title),
+                      onContentPressed: (AggregatedSearchItem item) => unawaited(openContent(item)),
+                      onRetry: () {
+                        if (state.sources.isEmpty) {
+                          unawaited(controller.retrySources());
+                        } else if (state.result?.failedSources.isNotEmpty ?? false) {
+                          unawaited(controller.retryFailedSources());
+                        } else {
+                          _search(controller);
+                        }
+                      },
+                      onLoadMore: () => unawaited(controller.loadMore()),
+                    ),
+                  ],
                 ),
-                children: <Widget>[
-                  SizedBox(
-                    height: TvModeScope.isEnabled(context) ? null : AppSpacing.pageHeaderHeight,
-                    child: _SearchPageHeader(onSourceManagementRequested: widget.onSourceManagementRequested),
-                  ),
-                  const SizedBox(height: AppSpacing.compact),
-                  _SearchTopBar(
-                    queryController: _queryController,
-                    queryFocusNode: _queryFocusNode,
-                    submitFocusNode: _submitFocusNode,
-                    isSearching: state.status == SearchPageStatus.searching,
-                    onSearch: () => _search(controller),
-                    onCancel: controller.cancelSearch,
-                    onClear: _clearQuery,
-                  ),
-                  const SizedBox(height: AppSpacing.compact),
-                  AnimatedBuilder(
-                    animation: ref.read(companionTextInputProvider),
-                    builder: (context, _) => ref.read(companionTextInputProvider).active
-                        ? Padding(
-                            padding: EdgeInsets.all(8),
-                            child: Semantics(liveRegion: true, child: Text('手机正在输入，提交后搜索；在 TV 修改文字会结束手机输入。')),
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                  SearchSuggestionSections(
-                    history: List<String>.unmodifiable(_history),
-                    onHistorySelected: (String value) => _selectSuggestion(value, controller),
-                    onHistoryCleared: _clearHistory,
-                    onHotSearchSelected: (String value) => _selectSuggestion(value, controller),
-                    hotSearches: state.hotSearches,
-                    isSearchStarted: state.query.isNotEmpty,
-                    onHotSearchRefreshed: () => unawaited(controller.refreshSuggestions()),
-                  ),
-                  const SizedBox(height: AppSpacing.regular),
-                  SearchResultsSection(
-                    hasSources: state.sources.isNotEmpty,
-                    onManageSources: widget.onSourceManagementRequested,
-                    result: displayedResult,
-                    status: state.status,
-                    query: state.query,
-                    error: state.error,
-                    sortOrder: state.sortOrder,
-                    onSortOrderChanged: controller.setSortOrder,
-                    isInBookshelf: (item) =>
-                        bookshelfMembership.contains(pluginId: item.primary.pluginId, title: item.primary.content.title),
-                    onContentPressed: (AggregatedSearchItem item) => unawaited(openContent(item)),
-                    onRetry: () {
-                      if (state.sources.isEmpty) {
-                        unawaited(controller.retrySources());
-                      } else if (state.result?.failedSources.isNotEmpty ?? false) {
-                        unawaited(controller.retryFailedSources());
-                      } else {
-                        _search(controller);
-                      }
-                    },
-                    onLoadMore: () => unawaited(controller.loadMore()),
-                  ),
-                ],
               ),
             ),
           ),
         ),
-      ),
-      bottomNavigationBar: TvModeScope.isEnabled(context) || SourcePreviewScope.active(context)
-          ? null
-          : SafeArea(
-              top: false,
-              child: AppBottomNavigation(
-                selected: AppNavigationDestination.search,
-                onSelected: (AppNavigationDestination destination) {
-                  if (destination != AppNavigationDestination.search) {
-                    widget.onDestinationRequested(destination);
-                  }
-                },
+        bottomNavigationBar: TvModeScope.isEnabled(context) || SourcePreviewScope.active(context)
+            ? null
+            : SafeArea(
+                top: false,
+                child: AppBottomNavigation(
+                  selected: AppNavigationDestination.search,
+                  onSelected: (AppNavigationDestination destination) {
+                    if (destination != AppNavigationDestination.search) {
+                      widget.onDestinationRequested(destination);
+                    }
+                  },
+                ),
               ),
-            ),
+      ),
     );
   }
 

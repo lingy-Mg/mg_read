@@ -14,6 +14,7 @@ class TvTopNavigation extends StatelessWidget {
     required this.onSelected,
     this.homeFocusNode,
     this.onHomeSelected,
+    this.onHomeReselected,
     this.homeSelected,
     this.autofocus = true,
     super.key,
@@ -23,6 +24,7 @@ class TvTopNavigation extends StatelessWidget {
   final FocusNode? homeFocusNode;
   final bool autofocus;
   final VoidCallback? onHomeSelected;
+  final VoidCallback? onHomeReselected;
   final bool? homeSelected;
 
   @override
@@ -39,6 +41,7 @@ class TvTopNavigation extends StatelessWidget {
         selected: active,
         autofocus: autofocus && active,
         focusNode: value == AppNavigationDestination.home ? homeFocusNode : null,
+        onReselected: value == AppNavigationDestination.home ? onHomeReselected : null,
         onPressed: () {
           if (value == AppNavigationDestination.home && onHomeSelected != null) {
             onHomeSelected!();
@@ -82,6 +85,7 @@ class TvTopNavigation extends StatelessWidget {
                             source.showContent &&
                             source.target == entry.target,
                         onPressed: () => source.onSelected(entry.target),
+                        onReselected: source.onRefresh,
                         child: Text(entry.label, style: Theme.of(context).textTheme.titleLarge),
                       ),
                     ],

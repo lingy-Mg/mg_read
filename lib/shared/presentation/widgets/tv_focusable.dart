@@ -2,6 +2,7 @@
 /// Owns focus, keep-alive and feedback; traversal owns scrolling.
 /// Commands and data remain caller-owned.
 /// Callers choose focus activation for navigation; content commands require OK.
+/// Navigation may provide a separate confirmation callback for refreshing itself.
 /// Focused lazy children stay alive until focus moves to another control.
 /// Caller-supplied focus nodes remain caller-owned.
 /// Actions with a menu defer OK until release; holding OK opens the menu once.
@@ -23,6 +24,7 @@ class TvFocusable extends StatefulWidget {
     this.autofocus = false,
     this.selected = false,
     this.activateOnFocus = false,
+    this.onConfirmed,
     this.label,
     this.padding = const EdgeInsets.all(12),
     super.key,
@@ -34,6 +36,7 @@ class TvFocusable extends StatefulWidget {
   final bool autofocus;
   final bool selected;
   final bool activateOnFocus;
+  final VoidCallback? onConfirmed;
   final String? label;
   final EdgeInsetsGeometry padding;
 
@@ -72,6 +75,14 @@ class _TvFocusableState extends State<TvFocusable> with AutomaticKeepAliveClient
     if (widget.onPressed != null) widget.onPressed!();
   }
 
+  void _confirm() {
+    if (widget.activateOnFocus) {
+      widget.onConfirmed?.call();
+    } else {
+      _activate();
+    }
+  }
+
   void _cancelHold() {
     _holdTimer?.cancel();
     _holdTimer = null;
@@ -104,10 +115,10 @@ class _TvFocusableState extends State<TvFocusable> with AutomaticKeepAliveClient
         });
       } else if (event is KeyUpEvent && _heldKey == key) {
         _cancelHold();
-        if (!widget.activateOnFocus) _activate();
+        _confirm();
       }
-    } else if (event is KeyDownEvent && !widget.activateOnFocus) {
-      _activate();
+    } else if (event is KeyDownEvent) {
+      _confirm();
     }
     return KeyEventResult.handled;
   }
@@ -121,7 +132,7 @@ class _TvFocusableState extends State<TvFocusable> with AutomaticKeepAliveClient
       actions: <Type, Action<Intent>>{
         ActivateIntent: CallbackAction<ActivateIntent>(
           onInvoke: (_) {
-            if (!widget.activateOnFocus) _activate();
+            _confirm();
             return null;
           },
         ),
@@ -152,7 +163,7 @@ class _TvFocusableState extends State<TvFocusable> with AutomaticKeepAliveClient
                 ? null
                 : () {
                     _node.requestFocus();
-                    if (!widget.activateOnFocus) _activate();
+                    _confirm();
                   },
             onLongPress: widget.onMore,
             child: AnimatedScale(
