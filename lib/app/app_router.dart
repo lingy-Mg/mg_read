@@ -3,6 +3,7 @@
 /// 职责：
 /// - 将稳定路由参数映射为页面。
 /// - 仅为顶层目的地提供可被返回打断的空间过渡。
+/// - TV 顶层页面支持触屏横滑切换外栏标签，详情与弹窗保留自己的手势。
 ///
 /// 注意：
 /// - 路由不携带可变依赖或内容正文。
@@ -60,6 +61,7 @@ import 'package:mg_read/features/reader/presentation/reader_destination_page.dar
 
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_tab_swipe_navigation.dart';
 
 part 'app_router.g.dart';
 
@@ -166,7 +168,16 @@ Page<void> _topLevelDestinationPage({required BuildContext context, required GoR
     key: state.pageKey,
     transitionDuration: AppMotion.effectiveDuration(context, AppMotion.destinationTransition),
     reverseTransitionDuration: AppMotion.effectiveDuration(context, AppMotion.destinationReverseTransition),
-    child: child,
+    child: TvTabSwipeNavigation(
+      selected: switch (state.uri.path) {
+        '/search' => AppNavigationDestination.search,
+        '/discover' => AppNavigationDestination.discover,
+        '/profile' => AppNavigationDestination.profile,
+        _ => AppNavigationDestination.home,
+      },
+      onSelected: (destination) => _goToDestination(context, destination),
+      child: child,
+    ),
     transitionsBuilder: (BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation, Widget child) =>
         AppTopLevelTransition(animation: animation, child: child),
   );
