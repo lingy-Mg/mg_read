@@ -275,7 +275,7 @@ class _TvSourceSearchDialogState extends State<_TvSourceSearchDialog> {
   void _apply() => Navigator.of(context).pop(_controller.text.trim());
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => SourceManagementDialog(
     title: const Text('搜索数据源'),
     content: SizedBox(
       width: 480,

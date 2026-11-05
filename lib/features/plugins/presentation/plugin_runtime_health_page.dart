@@ -10,6 +10,7 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'source_management_tv.dart';
 
 /// A small, expandable Flutter-native status page for the source Runtime.
@@ -80,6 +81,37 @@ class _RuntimeHealthContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (TvModeScope.isEnabled(context)) {
+      return TvSourceSections(
+        key: const Key('runtime-health-content'),
+        sections: [
+          TvSourceSection(
+            id: 'health',
+            title: '运行状态',
+            icon: Icons.monitor_heart_outlined,
+            children: [
+              _RuntimeSummaryCard(status: status),
+              if (status.nativeStatus case final native?) _RuntimeSummaryCard(status: native),
+            ],
+          ),
+          TvSourceSection(
+            id: 'memory',
+            title: '内存占用',
+            icon: Icons.data_usage_rounded,
+            children: [
+              _RuntimeMemoryCard(memory: status.memory, runtimeKind: status.runtimeKind),
+              if (status.nativeStatus case final native?) _RuntimeMemoryCard(memory: native.memory, runtimeKind: native.runtimeKind),
+            ],
+          ),
+          TvSourceSection(
+            id: 'plugins',
+            title: '数据源状态',
+            icon: Icons.extension_outlined,
+            children: [_RuntimePluginsCard(plugins: status.plugins)],
+          ),
+        ],
+      );
+    }
     return ListView(
       key: const Key('runtime-health-content'),
       padding: const EdgeInsets.fromLTRB(

@@ -57,6 +57,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('tv-source-section-plugins')));
+    await tester.pumpAndSettle();
     for (var i = 0; i < 20; i++) {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pumpAndSettle();

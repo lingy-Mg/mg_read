@@ -10,6 +10,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_tv_theme.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_source_detail_page.dart';
 
@@ -25,7 +26,7 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pumpAndSettle();
       final primary = FocusManager.instance.primaryFocus?.context;
-      if (primary != null && primary.findAncestorWidgetOfExactType<OutlinedButton>()?.key == const Key('data-source-detail-remove')) {
+      if (primary != null && primary.findAncestorWidgetOfExactType<TvFocusable>()?.key == const Key('data-source-detail-remove')) {
         reached = true;
         break;
       }

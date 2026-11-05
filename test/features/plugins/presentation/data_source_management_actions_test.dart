@@ -59,9 +59,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pump(const Duration(milliseconds: 400));
     expect(gateway.importCalls, 0);
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pump(const Duration(milliseconds: 400));
     expect(_tvFocus(tester, 'source-collection-org.mgread.qidian').hasFocus, isTrue);
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pump(const Duration(milliseconds: 400));

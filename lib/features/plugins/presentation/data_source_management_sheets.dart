@@ -138,27 +138,57 @@ class _ActionSheet extends StatelessWidget {
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) => SafeArea(
-    top: false,
-    child: ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.8),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(AppSpacing.comfortable, 0, AppSpacing.comfortable, AppSpacing.comfortable),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: AppSpacing.compact),
-            Text(description, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppThemeTokens.of(context).mutedText)),
-            const SizedBox(height: AppSpacing.regular),
-            ...children,
-            if (TvModeScope.isEnabled(context)) TvFocusable(onPressed: () => Navigator.of(context).pop(), child: const Text('取消')),
-          ],
+  Widget build(BuildContext context) {
+    if (TvModeScope.isEnabled(context)) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: 12),
+          Expanded(
+            child: TvSourceWorkspace(
+              sidebar: TvSourceScrollBody(
+                child: TvSourcePanel(
+                  title: title == '添加数据源' ? '选择安装方式' : '管理与维护',
+                  icon: title == '添加数据源' ? Icons.add_to_queue_rounded : Icons.tune_rounded,
+                  child: Text(description, style: Theme.of(context).textTheme.bodyLarge),
+                ),
+              ),
+              child: ListView(padding: const EdgeInsets.all(4), children: children),
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TvFocusable(
+              key: const Key('tv-source-actions-cancel'),
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消'),
+            ),
+          ),
+        ],
+      );
+    }
+    return SafeArea(
+      top: false,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.8),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(AppSpacing.comfortable, 0, AppSpacing.comfortable, AppSpacing.comfortable),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: AppSpacing.compact),
+              Text(description, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppThemeTokens.of(context).mutedText)),
+              const SizedBox(height: AppSpacing.regular),
+              ...children,
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _ActionTile extends StatelessWidget {
@@ -185,6 +215,7 @@ class _ActionTile extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 12),
         child: TvFocusable(
           key: actionKey,
+          autofocus: actionKey == const Key('data-source-add-node') || actionKey == const Key('data-source-check-updates'),
           onPressed: onTap,
           child: Row(
             children: [

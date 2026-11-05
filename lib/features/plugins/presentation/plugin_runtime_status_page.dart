@@ -114,7 +114,8 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
     final installedSourceCount = sources.where((source) => !source.isDevelopment).length;
     final confirmed = await showSourceManagementDialog<bool>(
       context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
+      builder: (BuildContext dialogContext) => SourceManagementDialog(
+        destructive: true,
         title: const Text('卸载全部数据源？'),
         content: Text('将删除 $installedSourceCount 个已安装数据源及其运行数据、缓存和安装包。书架内容和开发数据源项目会保留。此操作无法撤销。'),
         actions: <Widget>[
@@ -331,7 +332,7 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
       if (choice == DataSourceImportChoice.collection || choice == DataSourceImportChoice.onlineRepository) {
         await showSourceManagementDialog<void>(
           context: context,
-          builder: (dialogContext) => AlertDialog(
+          builder: (dialogContext) => SourceManagementDialog(
             title: Text(choice == DataSourceImportChoice.onlineRepository ? '在线插件仓库无法使用' : '数据源合集无法导入'),
             content: SelectableText(
               error is SourceCollectionImportException

@@ -22,7 +22,10 @@ import 'package:mg_read/features/diagnostics/presentation/widgets/runtime_debug_
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 import 'source_management_tv.dart';
+
+part 'plugin_runtime_help_tv.dart';
 
 /// Dedicated page opened by the data-source management help button.
 class PluginRuntimeHelpPage extends ConsumerStatefulWidget {
@@ -79,44 +82,46 @@ class _PluginRuntimeHelpPageState extends ConsumerState<PluginRuntimeHelpPage> {
                 onBack: () => Navigator.of(context).pop(),
               ),
               Expanded(
-                child: ListView(
-                  key: const Key('data-source-help-content'),
-                  padding: const EdgeInsets.fromLTRB(
-                    AppDetailMetrics.horizontalPadding,
-                    AppSpacing.regular,
-                    AppDetailMetrics.horizontalPadding,
-                    AppSpacing.comfortable,
-                  ),
-                  children: <Widget>[
-                    _HelpSection(
-                      icon: Icons.auto_stories_outlined,
-                      title: '管理数据源',
-                      body: TvModeScope.isEnabled(context)
-                          ? '使用方向键选择“添加数据源”，按确定进入在线插件仓库或本地安装。仓库中按确定勾选，再选择“导入”。列表中可浏览、搜索、查看详情和启停数据源；返回键关闭面板并回到原操作。'
-                          : const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME')
-                          ? '点击“添加数据源”，选择原生 .mgplugin 文件导入；列表右侧开关控制启用状态。'
-                          : Platform.isMacOS || const bool.fromEnvironment('MGREAD_NODE_ONLY')
-                          ? '点击“添加数据源”，选择 Node 数据源并导入 .mgplugin.js 或 .mgplugin 文件；列表右侧开关控制启用状态。'
-                          : '点击“添加数据源”，按提供方说明选择 Node 或原生类型，两类可以同时使用。Node 支持 .mgplugin.js 和 .mgplugin；原生支持 .mgplugin。列表右侧开关控制启用状态。',
-                    ),
-                    if (canSelectDevelopmentDirectory) ...<Widget>[
-                      const SizedBox(height: AppSpacing.regular),
-                      _DevelopmentDirectorySection(
-                        isSelecting: ref.watch(pluginRuntimeDevelopmentDirectoryProvider),
-                        onPressed: () => unawaited(_selectDevelopmentDirectory()),
+                child: TvModeScope.isEnabled(context)
+                    ? _buildTvHelp(canSelectDevelopmentDirectory, canOpenPrivateDirectory)
+                    : ListView(
+                        key: const Key('data-source-help-content'),
+                        padding: const EdgeInsets.fromLTRB(
+                          AppDetailMetrics.horizontalPadding,
+                          AppSpacing.regular,
+                          AppDetailMetrics.horizontalPadding,
+                          AppSpacing.comfortable,
+                        ),
+                        children: <Widget>[
+                          _HelpSection(
+                            icon: Icons.auto_stories_outlined,
+                            title: '管理数据源',
+                            body: TvModeScope.isEnabled(context)
+                                ? '使用方向键选择“添加数据源”，按确定进入在线插件仓库或本地安装。仓库中按确定勾选，再选择“导入”。列表中可浏览、搜索、查看详情和启停数据源；返回键关闭面板并回到原操作。'
+                                : const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME')
+                                ? '点击“添加数据源”，选择原生 .mgplugin 文件导入；列表右侧开关控制启用状态。'
+                                : Platform.isMacOS || const bool.fromEnvironment('MGREAD_NODE_ONLY')
+                                ? '点击“添加数据源”，选择 Node 数据源并导入 .mgplugin.js 或 .mgplugin 文件；列表右侧开关控制启用状态。'
+                                : '点击“添加数据源”，按提供方说明选择 Node 或原生类型，两类可以同时使用。Node 支持 .mgplugin.js 和 .mgplugin；原生支持 .mgplugin。列表右侧开关控制启用状态。',
+                          ),
+                          if (canSelectDevelopmentDirectory) ...<Widget>[
+                            const SizedBox(height: AppSpacing.regular),
+                            _DevelopmentDirectorySection(
+                              isSelecting: ref.watch(pluginRuntimeDevelopmentDirectoryProvider),
+                              onPressed: () => unawaited(_selectDevelopmentDirectory()),
+                            ),
+                          ],
+                          if (canOpenPrivateDirectory) ...<Widget>[
+                            const SizedBox(height: AppSpacing.regular),
+                            _RuntimePrivateDirectorySection(
+                              isOpening: ref.watch(pluginRuntimePrivateDirectoryProvider),
+                              onPressed: () => unawaited(_openRuntimePrivateDirectory()),
+                            ),
+                          ],
+                          const SizedBox(height: AppSpacing.regular),
+                          RuntimeDebugPanel(endpointLauncher: widget.debugEndpointLauncher),
+                        ],
                       ),
-                    ],
-                    if (canOpenPrivateDirectory) ...<Widget>[
-                      const SizedBox(height: AppSpacing.regular),
-                      _RuntimePrivateDirectorySection(
-                        isOpening: ref.watch(pluginRuntimePrivateDirectoryProvider),
-                        onPressed: () => unawaited(_openRuntimePrivateDirectory()),
-                      ),
-                    ],
-                    const SizedBox(height: AppSpacing.regular),
-                    RuntimeDebugPanel(endpointLauncher: widget.debugEndpointLauncher),
-                  ],
-                ),
               ),
             ],
           ),
@@ -124,6 +129,49 @@ class _PluginRuntimeHelpPageState extends ConsumerState<PluginRuntimeHelpPage> {
       ),
     );
   }
+
+  Widget _buildTvHelp(bool canDevelop, bool canOpenDirectory) => TvSourceSections(
+    sections: [
+      const TvSourceSection(
+        id: 'guide',
+        title: '遥控器操作',
+        icon: Icons.settings_remote_outlined,
+        children: [
+          _TvHelpCard(title: '添加与安装', icon: Icons.add_to_queue_rounded, body: '在数据源页选择「添加数据源」。打开在线仓库或选择本地安装包，按确认勾选数据源，再选择底部的「导入」。'),
+          _TvHelpCard(title: '浏览与管理', icon: Icons.movie_outlined, body: '左侧选择内容分类，向右进入列表。按确认浏览内容；长按确认或按菜单键可搜索、查看详情、启用或停用。'),
+          _TvHelpCard(title: '返回与阅读', icon: Icons.keyboard_return_rounded, body: '返回键先关闭弹窗，焦点回到原操作。长文字可按确认展开，再用上下键逐屏阅读。'),
+        ],
+      ),
+      const TvSourceSection(
+        id: 'questions',
+        title: '常见问题',
+        icon: Icons.help_outline,
+        children: [
+          _TvHelpCard(title: '没有内容或加载失败', icon: Icons.wifi_off_outlined, body: '检查数据源是否启用，再通过数据源工具打开运行诊断。网络异常时先检查连接；单个来源不可用时，可尝试其他数据源。'),
+          _TvHelpCard(title: '安装与更新', icon: Icons.system_update_alt, body: '安装前核对来源和版本。更新确认会列出本地与新版本；覆盖安装需要明确确认。部分更新保存后需要重启才能生效。'),
+          _TvHelpCard(title: '删除与缓存', icon: Icons.delete_outline, body: '删除数据源会移除它的运行数据、缓存和安装包。书架内容会保留；若只是暂时不用，可以先停用。'),
+        ],
+      ),
+      TvSourceSection(
+        id: 'advanced',
+        title: '开发与调试',
+        icon: Icons.code_rounded,
+        children: [
+          if (canDevelop)
+            _DevelopmentDirectorySection(
+              isSelecting: ref.watch(pluginRuntimeDevelopmentDirectoryProvider),
+              onPressed: () => unawaited(_selectDevelopmentDirectory()),
+            ),
+          if (canOpenDirectory)
+            _RuntimePrivateDirectorySection(
+              isOpening: ref.watch(pluginRuntimePrivateDirectoryProvider),
+              onPressed: () => unawaited(_openRuntimePrivateDirectory()),
+            ),
+          RuntimeDebugPanel(endpointLauncher: widget.debugEndpointLauncher),
+        ],
+      ),
+    ],
+  );
 }
 
 class _HelpSection extends StatelessWidget {
@@ -191,14 +239,20 @@ class _DevelopmentDirectorySection extends StatelessWidget {
     icon: Icons.code_rounded,
     title: '开发数据源插件',
     body: '请选择数据源插件集合目录，例如 …${Platform.pathSeparator}plugins${Platform.pathSeparator}sources。Runtime 只读取它的第一层子目录；不要选择单个数据源插件目录。',
-    action: OutlinedButton.icon(
-      key: const Key('data-source-add-development-directory'),
-      onPressed: isSelecting ? null : onPressed,
-      icon: isSelecting
-          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-          : const Icon(Icons.folder_open_outlined),
-      label: Text(isSelecting ? '正在识别开发数据源插件…' : '选择数据源插件集合目录'),
-    ),
+    action: TvModeScope.isEnabled(context)
+        ? TvFocusable(
+            key: const Key('data-source-add-development-directory'),
+            onPressed: isSelecting ? null : onPressed,
+            child: Text(isSelecting ? '正在识别…' : '选择数据源插件集合目录'),
+          )
+        : OutlinedButton.icon(
+            key: const Key('data-source-add-development-directory'),
+            onPressed: isSelecting ? null : onPressed,
+            icon: isSelecting
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.folder_open_outlined),
+            label: Text(isSelecting ? '正在识别开发数据源插件…' : '选择数据源插件集合目录'),
+          ),
   );
 }
 
@@ -213,13 +267,19 @@ class _RuntimePrivateDirectorySection extends StatelessWidget {
     icon: Icons.folder_outlined,
     title: 'Runtime 私有目录',
     body: '用于查看 Runtime 保存的插件安装版本、私有数据和缓存。应用不会显示或复制该目录路径。',
-    action: OutlinedButton.icon(
-      key: const Key('data-source-open-runtime-directory'),
-      onPressed: isOpening ? null : onPressed,
-      icon: isOpening
-          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-          : const Icon(Icons.folder_open_outlined),
-      label: Text(isOpening ? '正在打开…' : '打开 Runtime 私有目录'),
-    ),
+    action: TvModeScope.isEnabled(context)
+        ? TvFocusable(
+            key: const Key('data-source-open-runtime-directory'),
+            onPressed: isOpening ? null : onPressed,
+            child: Text(isOpening ? '正在打开…' : '打开 Runtime 私有目录'),
+          )
+        : OutlinedButton.icon(
+            key: const Key('data-source-open-runtime-directory'),
+            onPressed: isOpening ? null : onPressed,
+            icon: isOpening
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.folder_open_outlined),
+            label: Text(isOpening ? '正在打开…' : '打开 Runtime 私有目录'),
+          ),
   );
 }

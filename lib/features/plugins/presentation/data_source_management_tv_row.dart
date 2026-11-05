@@ -39,7 +39,7 @@ class TvDataSourceManagementRow extends StatelessWidget {
     ];
     final action = await showSourceManagementDialog<VoidCallback>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => SourceManagementDialog(
         title: Text(source.name),
         content: SizedBox(
           width: 420,

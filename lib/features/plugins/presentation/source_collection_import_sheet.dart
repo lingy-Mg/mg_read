@@ -12,6 +12,7 @@ import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 import 'source_management_tv.dart';
 
 part 'source_collection_import_tv.dart';
+part 'source_collection_report_tv.dart';
 
 Future<SourceCollectionSelection?> showSourceCollectionImportSheet(
   BuildContext context,
@@ -26,44 +27,63 @@ Future<bool> showSourceUpdatesConfirmationDialog(BuildContext context, List<Sour
   if (updates.isEmpty) return false;
   final confirmed = await showSourceManagementDialog<bool>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: Text('发现 ${updates.length} 个数据源更新'),
-      content: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.55),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              const Text('确认后将覆盖已安装版本并更新数据源。'),
-              const SizedBox(height: AppSpacing.compact),
-              for (final update in updates)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.unit),
-                  child: SourceManagementInfo(
-                    child: Text(
-                      '${update.plugin.name}  v${_displayVersion(update.plan.receiverVersion ?? '--')} → v${_displayVersion(update.plugin.version)}',
-                      style: Theme.of(dialogContext).textTheme.bodyMedium,
-                    ),
-                  ),
+    builder: (dialogContext) => TvModeScope.isEnabled(context)
+        ? _TvSourceCollectionReview(
+            title: '发现 ${updates.length} 个数据源更新',
+            summary: '${updates.length} 项待更新',
+            message: '确认后覆盖已安装版本。',
+            icon: Icons.system_update_alt,
+            rows: [
+              for (final item in updates)
+                (item.plugin.name, 'v${_displayVersion(item.plan.receiverVersion ?? '--')} → v${_displayVersion(item.plugin.version)}'),
+            ],
+            actions: [
+              TvFocusable(autofocus: true, onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('暂不更新')),
+              TvFocusable(
+                key: const Key('source-updates-confirm-overwrite'),
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('确认覆盖更新'),
+              ),
+            ],
+          )
+        : SourceManagementDialog(
+            title: Text('发现 ${updates.length} 个数据源更新'),
+            content: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.55),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Text('确认后将覆盖已安装版本并更新数据源。'),
+                    const SizedBox(height: AppSpacing.compact),
+                    for (final update in updates)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: AppSpacing.unit),
+                        child: SourceManagementInfo(
+                          child: Text(
+                            '${update.plugin.name}  v${_displayVersion(update.plan.receiverVersion ?? '--')} → v${_displayVersion(update.plugin.version)}',
+                            style: Theme.of(dialogContext).textTheme.bodyMedium,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                autofocus: TvModeScope.isEnabled(context),
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('暂不更新'),
+              ),
+              FilledButton(
+                key: const Key('source-updates-confirm-overwrite'),
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('确认覆盖更新'),
+              ),
             ],
           ),
-        ),
-      ),
-      actions: <Widget>[
-        TextButton(
-          autofocus: TvModeScope.isEnabled(context),
-          onPressed: () => Navigator.of(dialogContext).pop(false),
-          child: const Text('暂不更新'),
-        ),
-        FilledButton(
-          key: const Key('source-updates-confirm-overwrite'),
-          onPressed: () => Navigator.of(dialogContext).pop(true),
-          child: const Text('确认覆盖更新'),
-        ),
-      ],
-    ),
   );
   return confirmed == true;
 }
@@ -88,7 +108,30 @@ Future<void> showSourceCollectionImportResults(
       (false, _, true) => '合集导入完成',
       (false, _, false) => '合集导入部分失败',
     };
-    return AlertDialog(
+    if (TvModeScope.isEnabled(context)) {
+      return _TvSourceCollectionReview(
+        title: title,
+        summary: '成功 ${results.length - failed} 项\n失败 $failed 项',
+        message: pendingPluginIds.isEmpty ? '完成后可返回数据源列表。' : '部分更新已保存，重启后生效。',
+        icon: failed == 0 ? Icons.check_circle_outline : Icons.error_outline,
+        rows: [
+          for (final result in results)
+            (
+              names[result.pluginId] ?? result.pluginId,
+              'v${_displayVersion(result.version)} · ${result.status == PluginTransferImportStatus.installed ? (updating ? '已更新' : '已安装') : '失败或已隔离'}',
+            ),
+        ],
+        actions: [
+          TvFocusable(
+            autofocus: true,
+            key: const Key('tv-source-import-result-close'),
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      );
+    }
+    return SourceManagementDialog(
       title: Text(title),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxHeight: 360),

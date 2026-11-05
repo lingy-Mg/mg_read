@@ -20,6 +20,8 @@ import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 
 import 'plugin_content_kind_labels.dart';
 
+part 'plugin_runtime_source_detail_tv.dart';
+
 /// 单个数据源的 Runtime 详情页面。
 ///
 /// 职责：
@@ -95,6 +97,23 @@ class _DetailContent extends ConsumerWidget {
     final opening = ref.watch(pluginRuntimeSourceDirectoryProvider).contains(source.id);
     final packaging = ref.watch(pluginRuntimeDevelopmentPackageProvider).contains(source.id);
     final removing = ref.watch(pluginRuntimeSourceActionProvider).contains(source.id);
+    final actions = _DetailActions(
+      isDesktop: isDesktop,
+      isDevelopment: isDevelopment,
+      isWindows: isWindows,
+      opensArchive: opensArchive,
+      opening: opening,
+      packaging: packaging,
+      removing: removing,
+      canVerify: isDesktop && source.enabled && source.activeVersion != null && onVerificationRequested != null,
+      onVerify: onVerificationRequested == null ? null : () => onVerificationRequested!(source.id),
+      onOpenDirectory: () => _openDirectory(context, ref, source, isDevelopment),
+      onPackage: () => _packageDevelopmentSource(context, ref, source),
+      onRemove: () => _uninstall(context, ref, source),
+    );
+    if (TvModeScope.isEnabled(context)) {
+      return _TvSourceDetail(source: source, dataUsage: dataUsage, archiveUsage: archiveUsage, actions: actions);
+    }
     return ListView(
       key: const Key('data-source-detail-content'),
       padding: const EdgeInsets.fromLTRB(AppDetailMetrics.horizontalPadding, 0, AppDetailMetrics.horizontalPadding, AppSpacing.comfortable),
@@ -184,20 +203,7 @@ class _DetailContent extends ConsumerWidget {
         const SizedBox(height: AppSpacing.comfortable),
         if (!isDevelopment) _InstallationSizeCard(archiveUsage: archiveUsage!, dataUsage: dataUsage!),
         if (!isDevelopment) const SizedBox(height: AppSpacing.comfortable),
-        _DetailActions(
-          isDesktop: isDesktop,
-          isDevelopment: isDevelopment,
-          isWindows: isWindows,
-          opensArchive: opensArchive,
-          opening: opening,
-          packaging: packaging,
-          removing: removing,
-          canVerify: isDesktop && source.enabled && source.activeVersion != null && onVerificationRequested != null,
-          onVerify: onVerificationRequested == null ? null : () => onVerificationRequested!(source.id),
-          onOpenDirectory: () => _openDirectory(context, ref, source, isDevelopment),
-          onPackage: () => _packageDevelopmentSource(context, ref, source),
-          onRemove: () => _uninstall(context, ref, source),
-        ),
+        actions,
       ],
     );
   }
@@ -237,7 +243,8 @@ class _DetailContent extends ConsumerWidget {
   Future<void> _uninstall(BuildContext context, WidgetRef ref, PluginRuntimePlugin source) async {
     final confirmed = await showSourceManagementDialog<bool>(
       context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
+      builder: (BuildContext dialogContext) => SourceManagementDialog(
+        destructive: true,
         title: const Text('删除数据源？'),
         content: Text('将立即删除“${source.displayName}”及其 Runtime 私有数据。已保存到书架的内容不会受到影响。'),
         actions: <Widget>[
@@ -455,7 +462,7 @@ class _DetailField extends StatelessWidget {
 
   Future<void> _showFullValue(BuildContext context) => showSourceManagementDialog<void>(
     context: context,
-    builder: (BuildContext dialogContext) => AlertDialog(
+    builder: (BuildContext dialogContext) => SourceManagementDialog(
       title: Text(field.label),
       content: TvModeScope.isEnabled(context)
           ? SingleChildScrollView(child: Text(field.value, key: const Key('data-source-detail-full-version')))
@@ -540,6 +547,29 @@ class _DetailActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (TvModeScope.isEnabled(context)) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _tvAction('verify', Icons.fact_check_outlined, '检测数据源', canVerify ? onVerify : null),
+          if (!isDesktop) const Padding(padding: EdgeInsets.all(12), child: Text('全链路检测需在电脑运行')),
+          if (isDevelopment && isWindows)
+            _tvAction('package', Icons.inventory_2_outlined, packaging ? '正在打包…' : '打包数据源', packaging ? null : onPackage),
+          if (isDesktop)
+            _tvAction(
+              'open-directory',
+              Icons.folder_open_outlined,
+              opening
+                  ? '正在打开…'
+                  : opensArchive
+                  ? '打开安装包目录'
+                  : '打开代码目录',
+              opening ? null : onOpenDirectory,
+            ),
+          if (!isDevelopment) _tvAction('remove', Icons.delete_outline, removing ? '正在删除…' : '删除数据源', removing ? null : onRemove),
+        ],
+      );
+    }
     final tokens = AppThemeTokens.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -596,6 +626,21 @@ class _DetailActions extends StatelessWidget {
       ),
     );
   }
+
+  Widget _tvAction(String id, IconData icon, String label, VoidCallback? callback) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: TvFocusable(
+      key: Key('data-source-detail-$id'),
+      onPressed: callback,
+      child: Row(
+        children: [
+          Icon(icon),
+          const SizedBox(width: 12),
+          Expanded(child: Text(label)),
+        ],
+      ),
+    ),
+  );
 }
 
 String _formatInstallationBytes(int bytes) {

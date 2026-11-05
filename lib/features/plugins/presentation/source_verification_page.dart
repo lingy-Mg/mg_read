@@ -15,8 +15,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/plugins/application/source_verification.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 
 part 'source_verification_widgets.dart';
+part 'source_verification_tv.dart';
 
 class SourceVerificationPage extends ConsumerStatefulWidget {
   const SourceVerificationPage({required this.onBackRequested, this.pluginId, super.key});
@@ -41,6 +44,8 @@ class _SourceVerificationPageState extends ConsumerState<SourceVerificationPage>
   Completer<void>? _runFinished;
   _ResultFilter _filter = _ResultFilter.all;
 
+  void _selectFilter(_ResultFilter value) => setState(() => _filter = value);
+
   @override
   void dispose() {
     _cancellationToken?.cancel();
@@ -59,7 +64,7 @@ class _SourceVerificationPageState extends ConsumerState<SourceVerificationPage>
       _confirmingExit = true;
       final confirmed = await showSourceManagementDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => SourceManagementDialog(
           title: const Text('中断检测并退出？'),
           content: const Text('当前检测尚未完成。退出将中断正在进行的请求，并停止后续检测。'),
           actions: [
@@ -216,6 +221,7 @@ class _SourceVerificationPageState extends ConsumerState<SourceVerificationPage>
         .toList(growable: false);
     final current = _progress;
     final active = _running && current != null && !completed.any((source) => source.pluginId == current.pluginId);
+    if (TvModeScope.isEnabled(context)) return _buildTvResults(visible, completed.length, active);
     return ListView(
       key: const Key('source-verification-content'),
       padding: const EdgeInsets.fromLTRB(

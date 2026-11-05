@@ -17,7 +17,7 @@ Future<void> showPluginImportErrorDialog(BuildContext context, Object error) {
   final appError = AppError.fromUnknown(error);
   return showSourceManagementDialog<void>(
     context: context,
-    builder: (BuildContext dialogContext) => AlertDialog(
+    builder: (BuildContext dialogContext) => SourceManagementDialog(
       title: const Text('数据源导入失败'),
       content: SelectableText(
         '${pluginImportErrorMessage(appError.code)}\n\n'

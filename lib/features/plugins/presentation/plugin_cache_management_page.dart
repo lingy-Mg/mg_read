@@ -1,3 +1,6 @@
+/// 数据源缓存维护。IO 与反馈由应用层持有；TV 将总量/批量操作与逐源清单分栏。
+library;
+
 import 'package:flutter/material.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
@@ -94,7 +97,7 @@ class _PluginCacheManagementPageState extends ConsumerState<PluginCacheManagemen
   Future<bool> _confirm(BuildContext context, {required String title, required String content, required String action}) async =>
       await showSourceManagementDialog<bool>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) => SourceManagementDialog(
           title: Text(title),
           content: Text(content),
           actions: <Widget>[
@@ -120,6 +123,67 @@ class _CacheContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AppThemeTokens.of(context);
+    if (TvModeScope.isEnabled(context)) {
+      return TvSourceWorkspace(
+        key: const Key('plugin-cache-content'),
+        sidebar: ListView(
+          padding: const EdgeInsets.all(4),
+          children: [
+            TvSourcePanel(
+              title: _formatBytes(state.totalBytes),
+              icon: Icons.storage_rounded,
+              child: Text(state.isRefreshing ? '正在刷新缓存用量' : '${state.entries.length} 个数据源'),
+            ),
+            const SizedBox(height: 16),
+            TvFocusable(
+              key: const Key('plugin-cache-clear-all'),
+              onPressed: state.isClearing || state.entries.isEmpty ? null : onClearAll,
+              child: Text(state.isClearing ? '正在清理…' : '清理全部缓存'),
+            ),
+            const SizedBox(height: 16),
+            const SourceManagementInfo(child: Text('清理临时缓存，已保存到书架的内容会保留。')),
+          ],
+        ),
+        child: ListView(
+          padding: const EdgeInsets.all(4),
+          children: [
+            if (state.feedback != null) _FeedbackCard(feedback: state.feedback!),
+            if (state.entries.isEmpty) const TvSourcePanel(title: '暂无缓存', child: Text('暂无已安装数据源的缓存。')),
+            for (final entry in state.entries)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: TvFocusable(
+                  key: ValueKey('plugin-cache-clear-${entry.pluginId}'),
+                  onPressed: state.isClearing || entry.isScanning ? null : () => onClearPlugin(entry),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.folder_outlined),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(entry.displayName, style: Theme.of(context).textTheme.titleLarge),
+                            const SizedBox(height: 8),
+                            Text(
+                              entry.isScanning
+                                  ? '正在读取缓存用量…'
+                                  : entry.status == PluginCacheEntryStatus.failed
+                                  ? '暂时无法读取缓存用量'
+                                  : _formatBytes(entry.bytes),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.delete_outline),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+    }
     return ListView(
       key: const Key('plugin-cache-content'),
       padding: const EdgeInsets.all(AppDetailMetrics.horizontalPadding),
