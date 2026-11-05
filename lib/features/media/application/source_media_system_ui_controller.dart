@@ -1,25 +1,28 @@
-/// Shared host ownership for transient media system UI.
+/// Shared host ownership for TV orientation and transient media system UI.
 ///
 /// Responsibilities:
 /// - Merge overlapping audio and video immersive requests without allowing one
 ///   retiring host to restore system bars underneath another active host.
 /// - Serialize portrait, landscape and normal app-chrome platform changes.
+/// - Keep the app-root TV landscape lease above media portrait requests;
+///   preserve normal system bars when no immersive media host is active.
 ///
 /// Notes:
 /// - Player packages remain independent; only the app host shares this
 ///   platform boundary.
-/// - Every lease must be released when its owning host is minimized or closed.
+/// - Every lease must be released when its owning host is minimized or closed;
+///   the app-root TV lease lasts until TV mode is disabled or the root closes.
 library;
 
 import 'package:flutter/services.dart';
 
-enum SourceMediaSystemUiMode { portraitImmersive, landscapeImmersive }
+enum SourceMediaSystemUiMode { portraitImmersive, landscapeImmersive, landscapeEdgeToEdge }
 
 /// Platform operations used by [SourceMediaSystemUiCoordinator].
 abstract interface class SourceMediaSystemUiPlatform {
   Future<void> enterPortrait();
 
-  Future<void> enterLandscape();
+  Future<void> enterLandscape({bool immersive = true});
 
   Future<void> restore();
 }
@@ -35,12 +38,12 @@ final class SystemSourceMediaSystemUiPlatform implements SourceMediaSystemUiPlat
   }
 
   @override
-  Future<void> enterLandscape() async {
+  Future<void> enterLandscape({bool immersive = true}) async {
     await SystemChrome.setPreferredOrientations(const <DeviceOrientation>[
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    await SystemChrome.setEnabledSystemUIMode(immersive ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge);
   }
 
   @override
@@ -50,7 +53,7 @@ final class SystemSourceMediaSystemUiPlatform implements SourceMediaSystemUiPlat
   }
 }
 
-/// Serializes the effective system UI requested by all active media hosts.
+/// Serializes system UI requested by active media hosts and the app TV baseline.
 final class SourceMediaSystemUiCoordinator {
   SourceMediaSystemUiCoordinator._(this._platform);
 
@@ -61,7 +64,7 @@ final class SourceMediaSystemUiCoordinator {
   final SourceMediaSystemUiPlatform _platform;
   final Map<Object, SourceMediaSystemUiMode> _requests = <Object, SourceMediaSystemUiMode>{};
 
-  Future<void> _tail = Future<void>.value();
+  Future<void>? _tail;
   SourceMediaSystemUiMode? _appliedMode;
   bool _restoreNeeded = false;
 
@@ -82,6 +85,11 @@ final class SourceMediaSystemUiCoordinator {
   SourceMediaSystemUiMode? get _targetMode {
     if (_requests.values.contains(SourceMediaSystemUiMode.landscapeImmersive)) {
       return SourceMediaSystemUiMode.landscapeImmersive;
+    }
+    if (_requests.values.contains(SourceMediaSystemUiMode.landscapeEdgeToEdge)) {
+      return _requests.values.contains(SourceMediaSystemUiMode.portraitImmersive)
+          ? SourceMediaSystemUiMode.landscapeImmersive
+          : SourceMediaSystemUiMode.landscapeEdgeToEdge;
     }
     if (_requests.isNotEmpty) {
       return SourceMediaSystemUiMode.portraitImmersive;
@@ -105,18 +113,22 @@ final class SourceMediaSystemUiCoordinator {
         await _platform.enterPortrait();
       case SourceMediaSystemUiMode.landscapeImmersive:
         await _platform.enterLandscape();
+      case SourceMediaSystemUiMode.landscapeEdgeToEdge:
+        await _platform.enterLandscape(immersive: false);
     }
     _appliedMode = target;
   }
 
   Future<void> _append(Future<void> Function() operation) {
-    final next = _tail.then<void>((_) => operation(), onError: (_, _) => operation());
+    final next = (_tail ?? Future<void>.value()).then<void>((_) => operation(), onError: (_, _) => operation());
     _tail = next;
-    return next;
+    return next.whenComplete(() {
+      if (identical(_tail, next)) _tail = null;
+    });
   }
 }
 
-/// One media host's idempotent request handle.
+/// One media host or app root's idempotent request handle.
 final class SourceMediaSystemUiLease {
   SourceMediaSystemUiLease() : _coordinator = SourceMediaSystemUiCoordinator.instance;
 

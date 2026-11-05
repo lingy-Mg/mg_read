@@ -148,7 +148,7 @@ final class _FakeFullscreenPlatform implements SourceVideoFullscreenPlatform {
   final List<String> calls = <String>[];
 
   @override
-  Future<void> enterLandscape() async {
+  Future<void> enterLandscape({bool immersive = true}) async {
     calls.add('landscape');
     await landscapeGate?.future;
     if (failLandscape) throw StateError('landscape failed');

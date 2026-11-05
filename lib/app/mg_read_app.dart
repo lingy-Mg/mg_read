@@ -3,6 +3,7 @@
 /// 异步完成后必须检查 mounted；全局订阅随根组件销毁而取消。
 /// TV 根页面始终接管 Android 返回，防止关闭详情后系统直接退出 Activity。
 /// 手机辅助 TV 从设置进入，根组件不挂载常驻连接悬浮入口。
+/// TV 模式由根组件持有横屏租约，和媒体方向请求统一仲裁；关闭模式或销毁时释放。
 library;
 
 import 'package:mg_read/features/local_import/application/local_import_controller.dart';
@@ -35,6 +36,7 @@ import 'app_background_tasks.dart';
 import 'package:mg_read/features/lan_sync/application/device_sync_controller.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/media/presentation/source_audio_playback_host.dart';
+import 'package:mg_read/features/media/application/source_media_system_ui_controller.dart';
 import 'package:mg_read/features/reader/presentation/chapter_cache_task_bar.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
@@ -52,6 +54,7 @@ class MgReadApp extends ConsumerStatefulWidget {
 class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserver {
   Timer? _developmentSyncDebounce;
   StreamSubscription<RuntimeInitializationProgress>? _runtimeInitializationSubscription;
+  final SourceMediaSystemUiLease _tvOrientation = SourceMediaSystemUiLease();
   bool _tvMode = false;
   bool _navigatorCanHandlePop = false;
   bool _companionKey(KeyEvent event) {
@@ -221,6 +224,7 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
     unawaited(_runtimeInitializationSubscription?.cancel());
     WidgetsBinding.instance.removeObserver(this);
     HardwareKeyboard.instance.removeHandler(_companionKey);
+    unawaited(_tvOrientation.releaseAndClose());
     super.dispose();
   }
 
@@ -255,7 +259,8 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
     if (_tvMode != tvMode) {
       _tvMode = tvMode;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
+        if (mounted && _tvMode == tvMode) {
+          unawaited(tvMode ? _tvOrientation.setMode(SourceMediaSystemUiMode.landscapeEdgeToEdge) : _tvOrientation.release());
           _syncFrameworkBack();
           unawaited(_updateCompanionRole(tvMode));
         }

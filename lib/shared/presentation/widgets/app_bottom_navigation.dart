@@ -9,6 +9,7 @@
 /// - 跨路由移动、减少动态效果和资源释放属于 sibling MotionScope。
 /// - 本模块不处理导航路由或业务状态。
 /// - TV 搜索排最右且需 OK；其余目的地焦点到达即切换。
+/// - TV 顶栏在固定内容高度外预留系统安全区，避免状态栏重叠或压缩导航。
 ///
 library;
 
@@ -57,9 +58,12 @@ class AppBottomNavigation extends StatelessWidget implements PreferredSizeWidget
   @override
   Widget build(BuildContext context) {
     if (TvModeScope.isEnabled(context)) {
-      return SizedBox(
-        height: height,
-        child: TvTopNavigation(selected: selected, onSelected: onSelected),
+      return SafeArea(
+        bottom: false,
+        child: SizedBox(
+          height: height,
+          child: TvTopNavigation(selected: selected, onSelected: onSelected),
+        ),
       );
     }
     final AppBottomNavigationMotion? motion = AppBottomNavigationMotionScope.maybeOf(context);

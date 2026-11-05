@@ -39,7 +39,7 @@ final class SystemSourceVideoFullscreenPlatform implements SourceVideoFullscreen
   Future<void> enterPortrait() => _delegate.enterPortrait();
 
   @override
-  Future<void> enterLandscape() => _delegate.enterLandscape();
+  Future<void> enterLandscape({bool immersive = true}) => _delegate.enterLandscape(immersive: immersive);
 
   @override
   Future<void> restore() => _delegate.restore();

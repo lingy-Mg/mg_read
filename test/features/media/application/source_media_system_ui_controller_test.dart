@@ -1,4 +1,4 @@
-/// Verifies shared audio/video ownership of immersive system UI.
+/// Verifies shared TV/audio/video ownership of orientation and immersive UI.
 library;
 
 import 'dart:async';
@@ -48,6 +48,39 @@ void main() {
     expect(platform.calls, <String>['portrait', 'restore']);
   });
 
+  test('TV keeps landscape through media entry, fullscreen exit and media cleanup', () async {
+    final platform = _FakeSystemUiPlatform();
+    final coordinator = SourceMediaSystemUiCoordinator.withPlatform(platform);
+    final tv = SourceMediaSystemUiLease.withCoordinator(coordinator);
+    final audio = SourceMediaSystemUiLease.withCoordinator(coordinator);
+    final video = SourceMediaSystemUiLease.withCoordinator(coordinator);
+
+    await tv.setMode(SourceMediaSystemUiMode.landscapeEdgeToEdge);
+    await audio.setMode(SourceMediaSystemUiMode.portraitImmersive);
+    await video.setMode(SourceMediaSystemUiMode.landscapeImmersive);
+    await video.setMode(SourceMediaSystemUiMode.portraitImmersive);
+    await audio.releaseAndClose();
+    await video.releaseAndClose();
+    expect(platform.calls, <String>['landscape:edgeToEdge', 'landscape', 'landscape:edgeToEdge']);
+
+    await tv.releaseAndClose();
+    expect(platform.calls.last, 'restore');
+  });
+
+  test('TV toggles while media is active and restores its portrait request', () async {
+    final platform = _FakeSystemUiPlatform();
+    final coordinator = SourceMediaSystemUiCoordinator.withPlatform(platform);
+    final tv = SourceMediaSystemUiLease.withCoordinator(coordinator);
+    final audio = SourceMediaSystemUiLease.withCoordinator(coordinator);
+
+    await audio.setMode(SourceMediaSystemUiMode.portraitImmersive);
+    await tv.setMode(SourceMediaSystemUiMode.landscapeEdgeToEdge);
+    await tv.releaseAndClose();
+    await audio.releaseAndClose();
+
+    expect(platform.calls, <String>['portrait', 'landscape', 'portrait', 'restore']);
+  });
+
   test('serializes release after an in-flight orientation change', () async {
     final gate = Completer<void>();
     final platform = _FakeSystemUiPlatform(landscapeGate: gate);
@@ -74,8 +107,8 @@ final class _FakeSystemUiPlatform implements SourceMediaSystemUiPlatform {
   final List<String> calls = <String>[];
 
   @override
-  Future<void> enterLandscape() async {
-    calls.add('landscape');
+  Future<void> enterLandscape({bool immersive = true}) async {
+    calls.add(immersive ? 'landscape' : 'landscape:edgeToEdge');
     await landscapeGate?.future;
   }
 
