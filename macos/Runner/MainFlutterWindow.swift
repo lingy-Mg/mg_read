@@ -1,7 +1,10 @@
+// Owns the Flutter window and forwards registered file drops to LocalImportBridge.
+// NSWindow does not implement the Swift NSDraggingDestination methods; declare
+// protocol conformance so AppKit can dispatch them without an invalid override.
 import Cocoa
 import FlutterMacOS
 
-class MainFlutterWindow: NSWindow {
+class MainFlutterWindow: NSWindow, NSDraggingDestination {
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     let windowFrame = self.frame
@@ -15,11 +18,11 @@ class MainFlutterWindow: NSWindow {
     super.awakeFromNib()
   }
 
-  override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+  func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
     LocalImportBridge.acceptsDrop(sender) ? .copy : []
   }
 
-  override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+  func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
     LocalImportBridge.handleDrop(sender)
   }
 }
