@@ -29,6 +29,7 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_focus_traversal.dart';
+import 'widgets/tv_discovery_workspace.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/errors/app_error.dart';
@@ -37,7 +38,6 @@ import 'package:mg_read/features/discovery/application/source_content_cover_hand
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
-import 'package:mg_read/features/discovery/presentation/discovery_composite_components.dart';
 import 'package:mg_read/features/discovery/presentation/source_content_detail_variant_picker.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_book_cover.dart';
 import 'package:mg_read/features/library/presentation/widgets/bookshelf_removal_confirmation.dart';
@@ -163,10 +163,10 @@ Future<void> showSourceContentDetailSheet(
     onRecommendationRequested: onRecommendationRequested,
     onCopyFailure: onCopyFailure,
     isCoverBlurred: isCoverBlurred,
-    isModalSheet: useModalBottomSheet,
+    isModalSheet: useModalBottomSheet && !TvModeScope.isEnabled(context),
     refreshInitialContent: refreshInitialContent,
   );
-  if (useModalBottomSheet) {
+  if (useModalBottomSheet && !TvModeScope.isEnabled(context)) {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -429,7 +429,10 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                       AppSpacing.discoveryPagePadding,
                       AppSpacing.pageHeaderTopPadding,
                     ),
-                    child: _DetailHeader(isModalSheet: widget.isModalSheet, readerOwnedTheme: readerOwnedTheme),
+                    child: Align(
+                      alignment: TvModeScope.isEnabled(context) ? Alignment.centerLeft : Alignment.center,
+                      child: _DetailHeader(isModalSheet: widget.isModalSheet, readerOwnedTheme: readerOwnedTheme),
+                    ),
                   ),
                   Expanded(
                     child: FutureBuilder<_SourceDetailBundle>(
@@ -579,6 +582,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
         ),
       ),
     );
+    if (TvModeScope.isEnabled(context)) return FocusTraversalGroup(policy: TvPageTraversalPolicy(), child: detailScreen);
     return readerOwnedTheme ? Theme(data: AppTheme.novelReader(), child: detailScreen) : detailScreen;
   }
 }
@@ -631,7 +635,9 @@ class _SourceDetailView extends StatefulWidget {
 }
 
 class _SourceDetailViewState extends State<_SourceDetailView> {
-  bool get _tvVideo => TvModeScope.isEnabled(context) && widget.bundle.detail.summary.contentKind == PluginContentKind.video;
+  bool get _tvCollection =>
+      TvModeScope.isEnabled(context) &&
+      (widget.bundle.detail.summary.contentKind == PluginContentKind.video || widget.onShelfAction == null);
   late final List<PluginChapterSummary> _chapters;
   late SourceDetailShelfState _shelfState;
   var _visibleChapterCount = 20;
@@ -669,13 +675,13 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
         _isSavingToShelf = false;
         _shelfState = SourceDetailShelfState.alreadyAdded;
       });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_tvVideo ? '已加入收藏。' : '已加入书架。')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_tvCollection ? '已加入收藏。' : '已加入书架。')));
     } on Object catch (error) {
       if (!mounted) return;
       setState(() => _isSavingToShelf = false);
       final message = error is BookshelfCapacityExceededException
-          ? (_tvVideo ? '收藏已满，请先清理。' : '书架已满，请先清理书籍。')
-          : (_tvVideo ? '暂时无法加入收藏，请稍后重试。' : '暂时无法加入书架，请稍后重试。');
+          ? (_tvCollection ? '收藏已满，请先清理。' : '书架已满，请先清理书籍。')
+          : (_tvCollection ? '暂时无法加入收藏，请稍后重试。' : '暂时无法加入书架，请稍后重试。');
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     }
   }
@@ -683,7 +689,7 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
   Future<void> _removeFromShelf(PluginContentSummary content) async {
     final remove = widget.onRemoveFromShelf;
     if (remove == null || _isSavingToShelf || _isRemovingFromShelf || _shelfState == SourceDetailShelfState.canAdd) return;
-    final confirmed = _tvVideo
+    final confirmed = _tvCollection
         ? await _confirmTvFavoriteRemoval(context, content.title)
         : await showBookshelfRemovalConfirmation(context, title: content.title);
     if (!mounted || !confirmed) return;
@@ -695,11 +701,11 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
         _isRemovingFromShelf = false;
         _shelfState = SourceDetailShelfState.canAdd;
       });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已从${_tvVideo ? '收藏' : '书架'}移出《${content.title}》')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已从${_tvCollection ? '收藏' : '书架'}移出《${content.title}》')));
     } on Object {
       if (!mounted) return;
       setState(() => _isRemovingFromShelf = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_tvVideo ? '移出收藏失败，请稍后重试。' : '移出书架失败，请稍后重试。')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_tvCollection ? '移出收藏失败，请稍后重试。' : '移出书架失败，请稍后重试。')));
     }
   }
 

@@ -3,8 +3,7 @@
 /// Owns source search, pinning, selection, and the management
 /// hand-off. Runtime installation details remain outside this presentation
 /// boundary; visual controls and list rows live in focused part files.
-/// TV header, list and footer share a lazy scroll viewport that respects keyboard
-/// insets; normal mode keeps its fixed header/footer and independent source list.
+/// TV 使用全屏两栏，来源列表独立滚动并避让键盘；普通模式保持底部选择面板。
 library;
 
 import 'dart:async';
@@ -17,8 +16,12 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/shared/presentation/source_branding.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_text_input_navigation.dart';
-import 'package:mg_read/shared/presentation/widgets/tv_focus_traversal.dart';
 
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focus_region.dart';
+import 'widgets/tv_discovery_workspace.dart';
+
+part 'source_picker_tv.dart';
 part 'source_picker_sheet_controls.dart';
 part 'source_picker_sheet_list.dart';
 
@@ -67,6 +70,19 @@ Future<DiscoverySourcePickerResult?> showDiscoverySourcePicker(
   Iterable<String> pinnedSourceIds = const <String>[],
   Future<void> Function(String sourceId, bool pinned)? onPinChanged,
 }) {
+  if (TvModeScope.isEnabled(context)) {
+    return Navigator.of(context).push<DiscoverySourcePickerResult>(
+      MaterialPageRoute(
+        builder: (_) => _DiscoverySourcePickerSheet(
+          sources: sources,
+          selectedSourceId: selectedSourceId,
+          allowAllSources: allowAllSources,
+          pinnedSourceIds: pinnedSourceIds,
+          onPinChanged: onPinChanged,
+        ),
+      ),
+    );
+  }
   return showModalBottomSheet<DiscoverySourcePickerResult>(
     context: context,
     isScrollControlled: true,
@@ -158,6 +174,8 @@ class _DiscoverySourcePickerSheetState extends State<_DiscoverySourcePickerSheet
     return '未选择';
   }
 
+  void _setTvQuery(String value) => setState(() => _query = value);
+
   void _clearQuery() {
     _searchController.clear();
     setState(() => _query = '');
@@ -220,6 +238,7 @@ class _DiscoverySourcePickerSheetState extends State<_DiscoverySourcePickerSheet
       onWebViewAction: (sourceId, action) =>
           Navigator.of(context).pop(DiscoverySourceWebViewActionRequested(sourceId: sourceId, action: action)),
     );
+    if (tv) return _buildTvPicker(sourceList);
     final footer = _SourcePickerFooter(
       onManagePressed: () => Navigator.of(context).pop(const DiscoverySourceManagementRequested()),
       onAddPressed: () => Navigator.of(context).pop(const DiscoverySourceManagementRequested()),

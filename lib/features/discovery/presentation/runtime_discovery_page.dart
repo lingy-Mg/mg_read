@@ -14,7 +14,7 @@
 /// - 分类列表标签需与复用的发现内容列表项保持一致的视觉规格。
 /// - 根发现页的返回交给应用；只有本地层级拦截 Escape。
 /// - TV 页面使用独立焦点域；内容过渡中的旧页面不参与遥控遍历。
-/// - TV 二级分类使用屏幕可用宽度；普通模式保留窄列表阅读宽度。
+/// - TV 二级分类使用屏幕可用宽度并固定返回、刷新、搜索栏；普通模式保留窄列表阅读宽度。
 /// - TV 一级标签由共享外栏显示；内容页只保留二级分类与筛选，按一级标签保存滚动位置。
 /// - TV 当前标签的重复标题隐藏，刷新由外栏标签的确认操作触发。
 /// - TV 列表接近集合末尾自动分页；分页保持内容焦点，失败只提供重试。
@@ -48,6 +48,7 @@ import 'package:mg_read/shared/presentation/tv_source_navigation_scope.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_focus_region.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 
 /// Host-controlled, lossless renderer for a validated source discovery tree.
 class RuntimeDiscoveryPage extends StatelessWidget {
@@ -143,6 +144,37 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                 extendBody: !TvModeScope.isEnabled(context),
                 appBar: tv && !isNestedPage && !SourcePreviewScope.active(context)
                     ? AppBottomNavigation(selected: AppNavigationDestination.discover, onSelected: onDestinationRequested)
+                    : tv && isNestedPage
+                    ? AppBar(
+                        automaticallyImplyLeading: false,
+                        toolbarHeight: 76,
+                        title: Row(
+                          key: const Key('runtime-discovery-nested-header'),
+                          children: [
+                            TvFocusable(
+                              key: const Key('runtime-discovery-back'),
+                              label: '返回上一级',
+                              onPressed: onBackRequested,
+                              child: const Icon(Icons.arrow_back_rounded),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(child: Text(_nestedPageTitle(components) ?? '发现', maxLines: 1, overflow: TextOverflow.ellipsis)),
+                            TvFocusable(
+                              key: const Key('discovery-refresh-action'),
+                              label: '刷新',
+                              onPressed: onRefreshRequested,
+                              child: const Icon(Icons.refresh_rounded),
+                            ),
+                            const SizedBox(width: 12),
+                            TvFocusable(
+                              key: const Key('discovery-search-action'),
+                              label: '搜索',
+                              onPressed: onSearchRequested ?? () => onDestinationRequested(AppNavigationDestination.search),
+                              child: const Icon(Icons.search_rounded),
+                            ),
+                          ],
+                        ),
+                      )
                     : null,
                 body: SafeArea(
                   bottom: false,
@@ -199,10 +231,11 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                                           pagePadding,
                                           AppSpacing.pageHeaderTopPaddingFor(context),
                                           pagePadding,
-                                          AppSpacing.bottomNavigationContentBottomPadding + MediaQuery.viewPaddingOf(context).bottom,
+                                          (tv ? 24 : AppSpacing.bottomNavigationContentBottomPadding) +
+                                              MediaQuery.viewPaddingOf(context).bottom,
                                         ),
                                         children: <Widget>[
-                                          if (!tvContent || isNestedPage)
+                                          if ((!tvContent || isNestedPage) && !(tv && isNestedPage))
                                             DiscoveryTopBar(
                                               title: isNestedPage ? _nestedPageTitle(components) ?? '发现' : '发现',
                                               sourceName: resolvedSourceName,

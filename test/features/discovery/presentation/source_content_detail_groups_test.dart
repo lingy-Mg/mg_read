@@ -12,6 +12,7 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_tv_theme.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/discovery/presentation/source_content_detail_sheet.dart';
 
@@ -39,8 +40,16 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    // Enter from the route's first focusable control, then traverse vertically.
+    // Cross from the summary into the independent catalog, then traverse vertically.
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pumpAndSettle();
     for (var i = 0; i < 16; i++) {
+      if (FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvFocusable>()?.key.toString().contains(
+            'source-detail-episode-',
+          ) ==
+          true) {
+        break;
+      }
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pumpAndSettle();
     }

@@ -57,8 +57,7 @@ class _DetailCatalogSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         const SizedBox(height: AppSpacing.section),
-        Divider(color: tokens.divider, height: 1),
-        const SizedBox(height: AppSpacing.comfortable),
+        if (!TvModeScope.isEnabled(context)) ...[Divider(color: tokens.divider, height: 1), const SizedBox(height: AppSpacing.comfortable)],
         Text(isVideo ? '选集播放' : '目录', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
         if (isRefreshing && catalog.items.isEmpty) ...<Widget>[
           const SizedBox(height: AppSpacing.compact),
@@ -87,16 +86,16 @@ class _DetailCatalogSection extends StatelessWidget {
               onEpisodeSelected: onChapterSelected,
             )
           else ...<Widget>[
-            if (isVideo && TvModeScope.isEnabled(context))
-              _TvDetailEpisodes(
-                episodes: catalog.items.take(visibleChapterCount),
-                groupId: 'default',
+            if (TvModeScope.isEnabled(context))
+              _TvUngroupedCatalog(
+                key: ValueKey(contentId),
+                episodes: catalog.items,
                 onSelected: (chapter) => onChapterSelected(chapter, catalog),
               )
             else
               for (final chapter in catalog.items.take(visibleChapterCount))
                 _ChapterRow(chapter: chapter, onRead: () => onChapterSelected(chapter, catalog), onOpenUrl: onOpenUrl),
-            if (onLoadMore != null)
+            if (onLoadMore != null && !TvModeScope.isEnabled(context))
               Padding(
                 padding: const EdgeInsets.only(top: AppSpacing.regular),
                 child: OutlinedButton(

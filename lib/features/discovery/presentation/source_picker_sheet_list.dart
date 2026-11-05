@@ -369,6 +369,7 @@ class _SourcePickerRow extends StatelessWidget {
       tokens.accent.withValues(alpha: theme.brightness == Brightness.dark ? 0.14 : 0.065),
       tokens.surface,
     );
+    if (TvModeScope.isEnabled(context)) return _TvSourcePickerRow(owner: this);
     FocusNode? menuFocus;
     return Semantics(
       button: true,

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -42,7 +43,7 @@ void main() {
     await tester.enterText(find.byKey(const Key('source-search-query')), '影视');
     await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pump();
-    final submit = tester.widget<TextButton>(find.byKey(const Key('source-search-submit'))).focusNode!;
+    final submit = tester.widget<TvFocusable>(find.byKey(const Key('source-search-submit'))).focusNode!;
     expect(submit.hasFocus, isTrue);
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pump();

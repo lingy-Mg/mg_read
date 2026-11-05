@@ -14,9 +14,13 @@ import 'package:mg_read/features/discovery/presentation/runtime_discovery_page.d
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 void main() {
-  for (final size in [const Size(1280, 720), const Size(1920, 1080)]) {
+  for (final size in [const Size(640, 360), const Size(1280, 720), const Size(1920, 1080)]) {
     testWidgets('TV nested category uses the available screen width at $size', (tester) async {
       await tester.binding.setSurfaceSize(size);
+      if (size.width == 640) {
+        tester.platformDispatcher.textScaleFactorTestValue = 1.6;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      }
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
         _host(
@@ -52,6 +56,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      final header = find.byKey(const Key('runtime-discovery-nested-header'));
+      final headerTop = tester.getTopLeft(header);
       final category = find.byType(DiscoveryCategoryCollection);
       final rect = tester.getRect(category);
       expect(rect.width, greaterThan(size.width * .85));
@@ -64,6 +70,12 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.pumpAndSettle();
       expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvFocusable>(), isNotNull);
+      for (var i = 0; i < 12; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.pumpAndSettle();
+      }
+      expect(tester.getTopLeft(header), headerTop);
+      expect(find.byKey(const Key('runtime-discovery-back')).hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }

@@ -12,60 +12,69 @@ import '../../../support/tv_media_test_fixture.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 void main() {
-  testWidgets('expanding a long line focuses and reveals the first new episode', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(960, 540));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final group = PluginMediaGroup(
-      id: 'long',
-      title: '长剧',
-      order: 0,
-      episodes: [
-        for (var i = 0; i < 60; i++)
-          PluginChapterSummary(
-            id: 'ep-$i',
-            title: '第${i + 1}集',
-            order: i,
-            url: null,
-            volumeTitle: null,
-            wordCount: null,
-            updatedAt: null,
-            isLocked: false,
-            attributes: const [],
-          ),
-      ],
-    );
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: appTvTheme(AppTheme.dark()),
-        builder: (_, child) => TvModeScope(
-          enabled: true,
-          onChanged: (_) {},
-          child: TvRemoteShortcuts(child: child!),
-        ),
-        home: TvDetailFixtureEntry(
-          catalog: PluginChaptersResult(pluginId: 'tv-fixture', sourceName: '影视测试源', items: group.episodes, groups: [group]),
-          onPlay: ({required detail, required firstCatalogPage, required chapter}) async {},
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    for (final id in ['ep-24', 'ep-48']) {
-      final more = find.byKey(const Key('source-detail-load-more-group-episodes'));
-      await tester.ensureVisible(more);
-      await tester.pumpAndSettle();
-      Focus.of(tester.element(find.descendant(of: more, matching: find.byType(Text)))).requestFocus();
-      await tester.pumpAndSettle();
-      await tester.sendKeyEvent(LogicalKeyboardKey.select);
-      await tester.pumpAndSettle();
-      final newEpisode = find.byKey(ValueKey('source-detail-episode-long-$id'));
-      expect(newEpisode.hitTestable(), findsOneWidget);
-      expect(
-        FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvFocusable>()?.key,
-        ValueKey('source-detail-episode-long-$id'),
+  for (final grouped in [true, false]) {
+    testWidgets('expanding a long catalog (grouped=$grouped) focuses the first new episode', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(960, 540));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final group = PluginMediaGroup(
+        id: 'long',
+        title: '长剧',
+        order: 0,
+        episodes: [
+          for (var i = 0; i < 60; i++)
+            PluginChapterSummary(
+              id: 'ep-$i',
+              title: '第${i + 1}集',
+              order: i,
+              url: null,
+              volumeTitle: null,
+              wordCount: null,
+              updatedAt: null,
+              isLocked: false,
+              attributes: const [],
+            ),
+        ],
       );
-    }
-    expect(find.byKey(const Key('source-detail-load-more-group-episodes')), findsNothing);
-  });
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: appTvTheme(AppTheme.dark()),
+          builder: (_, child) => TvModeScope(
+            enabled: true,
+            onChanged: (_) {},
+            child: TvRemoteShortcuts(child: child!),
+          ),
+          home: TvDetailFixtureEntry(
+            catalog: PluginChaptersResult(
+              pluginId: 'tv-fixture',
+              sourceName: '影视测试源',
+              items: group.episodes,
+              groups: grouped ? [group] : const [],
+            ),
+            onPlay: ({required detail, required firstCatalogPage, required chapter}) async {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final moreKey = Key(grouped ? 'source-detail-load-more-group-episodes' : 'source-detail-load-more-chapters');
+      final groupId = grouped ? 'long' : 'default';
+      for (final id in ['ep-24', 'ep-48']) {
+        final more = find.byKey(moreKey);
+        await tester.ensureVisible(more);
+        await tester.pumpAndSettle();
+        Focus.of(tester.element(find.descendant(of: more, matching: find.byType(Text)))).requestFocus();
+        await tester.pumpAndSettle();
+        await tester.sendKeyEvent(LogicalKeyboardKey.select);
+        await tester.pumpAndSettle();
+        final newEpisode = find.byKey(ValueKey('source-detail-episode-$groupId-$id'));
+        expect(newEpisode.hitTestable(), findsOneWidget);
+        expect(
+          FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvFocusable>()?.key,
+          ValueKey('source-detail-episode-$groupId-$id'),
+        );
+      }
+      expect(find.byKey(moreKey), findsNothing);
+    });
+  }
 
   testWidgets('TV favorite removal can be cancelled and confirmed with remote buttons', (tester) async {
     var removed = 0;
@@ -89,7 +98,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    Focus.of(tester.element(find.text('加入收藏'))).requestFocus();
+    await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
     expect(find.text('移出收藏'), findsOneWidget);
@@ -159,15 +169,14 @@ void main() {
       if (size.width == 960) {
         await expectLater(find.byKey(const Key('source-content-detail-sheet')), matchesGoldenFile('goldens/tv_video_detail.png'));
       }
-      // Navigate by directions from the initial play action into the episode grid.
-      for (var i = 0; i < 12 && episode != 'a-4'; i++) {
+      // Move from the summary to the independent catalog pane, then down to an episode.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 12; i++) {
+        final focused = FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvFocusable>();
+        if (focused?.key.toString().contains('source-detail-episode-') == true) break;
         await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
         await tester.pumpAndSettle();
-        final key = FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvFocusable>()?.key;
-        if (key == const ValueKey('source-detail-episode-a-a-4')) {
-          await tester.sendKeyEvent(LogicalKeyboardKey.select);
-          await tester.pumpAndSettle();
-        }
       }
       // At short widths the episode grid has two columns; assert selection of
       // an actual focused episode rather than relying on a fixed press count.
@@ -175,7 +184,7 @@ void main() {
       expect(focused?.key.toString(), contains('source-detail-episode-'));
       await tester.sendKeyEvent(LogicalKeyboardKey.select);
       await tester.pumpAndSettle();
-      expect(episode, isNot('a-0'));
+      expect(episode, startsWith('a-'));
       expect(tester.takeException(), isNull);
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();

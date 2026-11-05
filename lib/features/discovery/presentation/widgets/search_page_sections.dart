@@ -13,6 +13,12 @@ import 'package:mg_read/features/discovery/application/search_page_state.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
 import 'package:mg_read/features/discovery/presentation/widgets/discovery_content_list_item.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
+import '../widgets/discovery_book_cover.dart';
+import 'tv_discovery_workspace.dart';
+
+part 'search_results_tv.dart';
 
 /// The local interaction-only content above a source search result list.
 class SearchSuggestionSections extends StatelessWidget {
@@ -232,7 +238,7 @@ class _SearchResultsSectionState extends State<SearchResultsSection> {
                 message: status == SearchPageStatus.loadingSources
                     ? '正在读取可用数据源。'
                     : error == null
-                    ? (hasSources ? '输入书名、作者，或点选上方关键词。' : '添加并启用数据源后，即可搜索喜欢的内容。')
+                    ? (hasSources ? (TvModeScope.isEnabled(context) ? '输入关键词，或选择左侧搜索记录。' : '输入书名、作者，或点选上方关键词。') : '添加并启用数据源后，即可搜索喜欢的内容。')
                     : '稳定错误码：${error.code.wireValue}',
                 loading: status == SearchPageStatus.loadingSources,
                 onRetry: error == null ? null : onRetry,
@@ -252,6 +258,7 @@ class _SearchResultsSectionState extends State<SearchResultsSection> {
     final known = _visibleKeys.toSet();
     _visibleKeys.addAll(ordered.where((item) => known.add(item.key)).map((item) => item.key));
     final sortedItems = _visibleKeys.map((key) => byKey[key]!).toList(growable: false);
+    if (TvModeScope.isEnabled(context)) return _TvSearchResults(owner: widget, items: sortedItems);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -639,8 +646,14 @@ class _SearchResultMessage extends StatelessWidget {
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
             ),
-            if (onRetry != null) TextButton(onPressed: onRetry, child: const Text('重试')),
-            if (onManageSources != null) TextButton(onPressed: onManageSources, child: const Text('添加数据源')),
+            if (onRetry != null)
+              TvModeScope.isEnabled(context)
+                  ? TvFocusable(onPressed: onRetry, child: const Text('重试'))
+                  : TextButton(onPressed: onRetry, child: const Text('重试')),
+            if (onManageSources != null)
+              TvModeScope.isEnabled(context)
+                  ? TvFocusable(onPressed: onManageSources, child: const Text('添加数据源'))
+                  : TextButton(onPressed: onManageSources, child: const Text('添加数据源')),
           ],
         ),
       ),

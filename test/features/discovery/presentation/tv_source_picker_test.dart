@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_tv_theme.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 import 'package:mg_read/features/discovery/presentation/source_picker_sheet.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -57,7 +58,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(FocusManager.instance.primaryFocus, same(focus));
       expect(pin.hitTestable(), findsOneWidget);
-      expect(tester.widget<IconButton>(pin).tooltip, i == 0 ? '取消置顶' : '置顶');
+      expect(tester.widget<TvFocusable>(pin).label, i == 0 ? '取消置顶' : '置顶');
     }
     final menu = find.byKey(const ValueKey('discovery-source-picker-actions-source-20'));
     Focus.of(tester.element(find.descendant(of: menu, matching: find.byType(Icon)).first)).requestFocus();
@@ -66,10 +67,13 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
     expect(find.text('置顶'), findsOneWidget);
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    // Dialog starts on Cancel. Move up through the action list to pin.
+    final pinAction = find.text('置顶');
+    Focus.of(tester.element(pinAction)).requestFocus();
+    await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
-    expect(tester.widget<IconButton>(pin).tooltip, '取消置顶');
+    expect(tester.widget<TvFocusable>(pin).label, '取消置顶');
     expect(FocusManager.instance.primaryFocus, same(menuFocus));
     expect(menu.hitTestable(), findsOneWidget);
   });
@@ -140,10 +144,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.widget<EditableText>(find.descendant(of: field, matching: find.byType(EditableText))).focusNode.hasFocus, isFalse);
       final source = find.byKey(const ValueKey('discovery-source-picker-video'));
-      for (var i = 0; i < 8; i++) {
-        final focused = FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<InkWell>();
+      // The filter lives in the left pane; move right into the source list.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 4; i++) {
+        final focused = FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvFocusable>();
         if (focused?.key == const ValueKey('discovery-source-picker-video')) break;
-        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
         await tester.pumpAndSettle();
       }
       expect(source.hitTestable(), findsOneWidget);

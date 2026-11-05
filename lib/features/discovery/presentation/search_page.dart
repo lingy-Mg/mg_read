@@ -47,6 +47,10 @@ import 'package:mg_read/shared/presentation/widgets/app_page_title.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_text_input_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_focus_region.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
+import 'widgets/tv_discovery_workspace.dart';
+
+part 'search_page_tv.dart';
 
 /// Search destination. Runtime data remains outside this presentation shell.
 class SearchPage extends ConsumerStatefulWidget {
@@ -180,6 +184,30 @@ class _SearchPageState extends ConsumerState<SearchPage> {
       );
     }
 
+    final results = SearchResultsSection(
+      hasSources: state.sources.isNotEmpty,
+      onManageSources: widget.onSourceManagementRequested,
+      result: displayedResult,
+      status: state.status,
+      query: state.query,
+      error: state.error,
+      sortOrder: state.sortOrder,
+      onSortOrderChanged: controller.setSortOrder,
+      isInBookshelf: (item) => bookshelfMembership.contains(pluginId: item.primary.pluginId, title: item.primary.content.title),
+      onContentPressed: (AggregatedSearchItem item) => unawaited(openContent(item)),
+      onRetry: () {
+        if (state.sources.isEmpty) {
+          unawaited(controller.retrySources());
+        } else if (state.result?.failedSources.isNotEmpty ?? false) {
+          unawaited(controller.retryFailedSources());
+        } else {
+          _search(controller);
+        }
+      },
+      onLoadMore: () => unawaited(controller.loadMore()),
+    );
+    if (TvModeScope.isEnabled(context)) return _buildTvSearch(state, controller, results);
+
     return TvFocusRegion(
       child: Scaffold(
         appBar: TvModeScope.isEnabled(context) && !SourcePreviewScope.active(context)
@@ -237,29 +265,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
                       onHotSearchRefreshed: () => unawaited(controller.refreshSuggestions()),
                     ),
                     const SizedBox(height: AppSpacing.regular),
-                    SearchResultsSection(
-                      hasSources: state.sources.isNotEmpty,
-                      onManageSources: widget.onSourceManagementRequested,
-                      result: displayedResult,
-                      status: state.status,
-                      query: state.query,
-                      error: state.error,
-                      sortOrder: state.sortOrder,
-                      onSortOrderChanged: controller.setSortOrder,
-                      isInBookshelf: (item) =>
-                          bookshelfMembership.contains(pluginId: item.primary.pluginId, title: item.primary.content.title),
-                      onContentPressed: (AggregatedSearchItem item) => unawaited(openContent(item)),
-                      onRetry: () {
-                        if (state.sources.isEmpty) {
-                          unawaited(controller.retrySources());
-                        } else if (state.result?.failedSources.isNotEmpty ?? false) {
-                          unawaited(controller.retryFailedSources());
-                        } else {
-                          _search(controller);
-                        }
-                      },
-                      onLoadMore: () => unawaited(controller.loadMore()),
-                    ),
+                    results,
                   ],
                 ),
               ),
@@ -476,12 +482,21 @@ class _SearchTopBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: AppSpacing.unit),
-          TextButton(
-            key: const Key('source-search-submit'),
-            focusNode: submitFocusNode,
-            onPressed: isSearching ? onCancel : onSearch,
-            child: Text(isSearching ? '取消搜索' : '搜索'),
-          ),
+          if (TvModeScope.isEnabled(context))
+            TvFocusable(
+              key: const Key('source-search-submit'),
+              focusNode: submitFocusNode,
+              autofocus: true,
+              onPressed: isSearching ? onCancel : onSearch,
+              child: Text(isSearching ? '取消搜索' : '搜索'),
+            )
+          else
+            TextButton(
+              key: const Key('source-search-submit'),
+              focusNode: submitFocusNode,
+              onPressed: isSearching ? onCancel : onSearch,
+              child: Text(isSearching ? '取消搜索' : '搜索'),
+            ),
         ],
       ),
     );
