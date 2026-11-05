@@ -14,6 +14,7 @@ import { HlsManifestWarmup, type HlsWarmupEvent } from "./hls-manifest-warmup.js
 import type { PluginManagerEventSink, PluginRuntimeHttpClient } from "./plugin-manager-contract.js";
 import { openSourceProxyResource, type SourceProxyEntry, type SourceProxyResource } from "./source-resource-proxy.js";
 import { decodeSourceResourceToken } from "./source-resource-token.js";
+import { filterSourceHlsResource } from "./hls-ad-filter.js";
 
 export class SourceResourceCoordinator {
   readonly #warmup: HlsManifestWarmup;
@@ -72,8 +73,9 @@ export class SourceResourceCoordinator {
       proxy: (request) => proxy(decoded.pluginId, request),
       request: decoded.request,
     };
-    const resource = await this.#warmup.open(decoded.pluginId, entry, requestHeaders, signal);
-    if (resource === undefined) return undefined;
+    const upstream = await this.#warmup.open(decoded.pluginId, entry, requestHeaders, signal);
+    if (upstream === undefined) return undefined;
+    const resource = await filterSourceHlsResource(upstream, entry, signal);
     return Object.freeze({
       ...resource,
       onServed: (status: number, bytes: number, durationMs: number) => {

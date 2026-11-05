@@ -133,6 +133,16 @@ function modulePanels(html) {
   return panels;
 }
 
+// src/hls-policy.mts
+var hlsAdFilter = Object.freeze({
+  algorithm: "sequence-islands-v1",
+  maximumInterstitialSeconds: 90,
+  maximumInterstitialSegments: 32,
+  minimumContentSegments: 30,
+  minimumContentDurationRatio: 0.85,
+  minimumFeatureContrast: 0.2
+});
+
 // src/index.mts
 var base = "https://www.yinhuadm.xyz";
 var playerBase = "https://player.mcue.cc";
@@ -265,7 +275,8 @@ async function getContent(request) {
         kind: resourceType,
         url: resolved.url,
         headers: mediaHeaders,
-        proxyMode: directProxyMode
+        proxyMode: directProxyMode,
+        ...resourceType === "hls" ? { hlsAdFilter } : {}
       }),
       resourceType,
       resourcePolicy: "sessionOnly",

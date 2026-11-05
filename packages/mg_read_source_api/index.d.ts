@@ -135,9 +135,27 @@ export type PluginResourceTransform =
  * A Runtime resource-proxy descriptor. `proxyMode` applies when Runtime
  * retrieves the upstream media bytes, including HLS playlists and segments.
  */
+export type PluginHlsAdFilter = {
+  /** Opt-in structural VOD analysis; no directory, domain or ad marker blacklist.
+   * Runtime requires a short foreign sequence enclosed by the dominant content
+   * family, consecutive original filenames when numbered, and bounded MPEG-TS
+   * timestamp probes proving that the original stream resumes without the island.
+   * Unsupported, encrypted, live and ambiguous manifests remain unchanged.
+   */
+  readonly algorithm: "sequence-islands-v1";
+  readonly maximumInterstitialSeconds: number;
+  readonly maximumInterstitialSegments: number;
+  readonly minimumContentSegments: number;
+  readonly minimumContentDurationRatio: number;
+  /** Required separation from the content's 95th-percentile feature distance. */
+  readonly minimumFeatureContrast: number;
+};
+
 export type PluginResourceProxyRequest = PluginJsonObject & {
   readonly proxyMode?: "direct";
   readonly resourceTransform?: PluginResourceTransform;
+  /** Inherited by child HLS playlists only; media bytes remain Runtime-owned. */
+  readonly hlsAdFilter?: PluginHlsAdFilter;
   /** Optional source-owned image handler invoked when the loopback URL is read. */
   readonly handler?: string;
   readonly params?: PluginJsonObject;

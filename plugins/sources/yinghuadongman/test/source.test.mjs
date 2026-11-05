@@ -78,6 +78,7 @@ test('fixture flow covers discovery, search, detail, neutral groups and both pla
   assert.equal(direct.media.resourcePolicy, 'sessionOnly');
   assert.equal(directMedia.url, 'https://media.invalid/fixture-direct.mp4');
   assert.equal(directMedia.proxyMode, 'direct');
+  assert.equal(directMedia.hlsAdFilter, undefined);
   const mcueRequestsBeforePlayback = requests.length;
   const decrypted = await plugin.getContent({ id: info.id, chapterId: 'video:101:5:1' });
   const hlsMedia = resources.find((resource) => resource.kind === 'hls');
@@ -87,6 +88,8 @@ test('fixture flow covers discovery, search, detail, neutral groups and both pla
   assert.equal(decrypted.media.resourceType, 'hls');
   assert.equal(hlsMedia.url, upstream);
   assert.equal(hlsMedia.proxyMode, 'direct');
+  assert.equal(hlsMedia.hlsAdFilter.algorithm, 'sequence-islands-v1');
+  assert.equal(hlsMedia.hlsAdFilter.minimumFeatureContrast, 0.2);
   assert.equal(new URL(hlsMedia.headers.Referer).origin, 'https://player.mcue.cc');
   const coverResources = resources.filter((resource) => resource.kind === 'image');
   assert.ok(coverResources.length > 0);

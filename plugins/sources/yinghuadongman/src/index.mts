@@ -6,12 +6,15 @@
  * proxies, so source requests and Runtime-proxied covers/media explicitly use
  * direct Runtime routing; resource bytes still remain in Runtime's resource proxy.
  * Category panels are complete single-page lists; only the anime library paginates.
+ * HLS resources opt into the source's structural policy; Runtime validates and
+ * removes confirmed foreign insertions before rewriting child resource URLs.
  */
 import { createDecipheriv, createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { MgReadPluginContext } from '@mgread/source-api';
 import { libraryFilters, libraryHasNext, libraryRoute, libraryState } from './library.mjs';
 import { categoryPanels } from './discovery.mjs';
+import { hlsAdFilter } from './hls-policy.mjs';
 
 type Json = Record<string, unknown>;
 type Context = MgReadPluginContext;
@@ -161,6 +164,7 @@ export async function getContent(request: { id: string; chapterId: string }) {
         url: resolved.url,
         headers: mediaHeaders,
         proxyMode: directProxyMode,
+        ...(resourceType === 'hls' ? { hlsAdFilter } : {}),
       }),
       resourceType,
       resourcePolicy: 'sessionOnly',

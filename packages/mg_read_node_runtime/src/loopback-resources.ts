@@ -126,12 +126,11 @@ async function readManifest(response: Response): Promise<string> {
 }
 
 function rewriteHls(text: string, base: string, request: JsonObject, createProxy: (request: JsonObject) => string): string {
-  const proxy = (raw: string, kind: "hls" | "video", resourceRole: "hlsKey" | "hlsMedia" | "hlsPlaylist") => createProxy({
-    ...request,
-    kind,
-    resourceRole,
-    url: new URL(raw, base).toString(),
-  });
+  const proxy = (raw: string, kind: "hls" | "video", resourceRole: "hlsKey" | "hlsMedia" | "hlsPlaylist") => {
+    const { hlsAdFilter, ...inherited } = request;
+    return createProxy({ ...inherited, ...(kind === "hls" && hlsAdFilter !== undefined ? { hlsAdFilter } : {}),
+      kind, resourceRole, url: new URL(raw, base).toString() });
+  };
   let nextPlainUriIsPlaylist = false;
   return text.split(/\r?\n/u).map((line) => {
     if (line === "") return line;

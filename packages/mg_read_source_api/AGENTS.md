@@ -13,3 +13,5 @@
 不复制 Node Context，也不通过 JS 适配器执行。公开内容语义仍与 Flutter `PluginRuntime` 保持一致。
 
 来源维护状态 `PluginSourceState` 的元数据缺省为 available；disabled/invalid 仅拦截发现、搜索与建议，已缓存内容归主应用所有。
+
+`PluginHlsAdFilter` 为可选的声明式 VOD 差异分析策略。Runtime 在清单数据面做统计筛选和有界 TS 时钟复核；不增加媒体字节回调，不允许来源提交任意匹配代码。旧宿主可忽略该可选描述，只有包含对应 Runtime 支持的宿主才会实际过滤。

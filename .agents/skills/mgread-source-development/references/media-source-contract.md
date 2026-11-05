@@ -34,6 +34,8 @@
 - `audio`、`video`、`hls` 是不同资源类型。大文件与 Range 由 Runtime 流式转发；HLS manifest、variant、key
   和 segment URI 都留在代理数据面。
 - 插件不整体读取媒体、不 `arrayBuffer()`、不 Base64 化或缓存媒体主体。
+- 来源可在 HLS 资源描述中提供 `PluginHlsAdFilter`。Runtime 对完整 VOD 清单学习主分片族，计算路径、命名模式、长度、字符组成、时长差异和直方图阈值；候选必须是被主序列包围的短异类区间，并由三次各不超过 64 KiB 的 TS 前缀证明正片时钟可直接接续、插入流时钟不同。编号可识别时还要求前后连续。最多抽查四个区间、共用六秒探测期限；失败或不支持的状态保留原内容。
+- 此策略在主/子清单代理之间继承，二进制资源不继承；不存在域名、路径或注释黑名单。testkit 的媒体前缀可达只能证明资源可达，不能证明实际执行了过滤；过滤验收需包含生产 Runtime 代理和实际播放证据。
 - 只有来源能确认过期边界时使用 `refreshable + expiresAt`；否则用 `sessionOnly`。失效后由宿主重新调用
   `getContent`。
 
