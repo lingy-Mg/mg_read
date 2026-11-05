@@ -52,22 +52,30 @@ test('live IPTV traverses every category and probes stratified covers and media'
     const detail = await plugin.getDetail({ id: first.id });
     assert.equal(detail.contentKind, 'video');
     report.chain.push({ stage: 'search/detail', status: 'passed', items: search.items.length, sameId: true });
-    const contentSamples = (await Promise.all([...samples.values()].map(async (item) => {
+    const jobs = [], contentSamples = [];
+    for (const item of samples.values()) {
       const catalog = await plugin.getChapters({ id: item.id });
       assert.ok(catalog.items.length > 0);
       assert.deepEqual(new Set(catalog.items.map((entry) => entry.id)), new Set(catalog.groups.flatMap((group) => group.episodes.map((entry) => entry.id))));
-      return Promise.all(catalog.groups.map(async (group) => {
+      for (const group of catalog.groups) jobs.push({ item, group });
+    }
+    const omitted = Math.max(0, jobs.length - 48);
+    jobs.splice(48);
+    async function resolveWorker() {
+      while (jobs.length) {
+        const { item, group } = jobs.shift();
         try {
           const content = await plugin.getContent({ id: item.id, chapterId: group.episodes[0].id });
           assert.equal(content.chapterId, group.episodes[0].id);
           assert.equal(content.contentKind, 'video');
-          return { item, group, content };
+          contentSamples.push({ item, group, content });
         } catch (error) {
           report.media.push({ channel: item.title, id: item.id, group: group.title, status: 'failed', stage: 'content', failureCode: failureCode(error) });
-          return null;
         }
-      }));
-    }))).flat().filter(Boolean);
+      }
+    }
+    await Promise.all(Array.from({ length: 4 }, resolveWorker));
+    if (omitted) report.media.push({ status: 'notTested', reason: 'content_sample_limit', samples: omitted });
     report.chain.push({ stage: 'catalog/content', status: report.media.length === 0 ? 'passed' : 'partial', channels: samples.size, media: contentSamples.length });
     // Keep at most two declared cover resources per surface, retaining original item/declared counts.
     const coverValues = new Set([...surfaces, { items: search.items }, { items: [detail] }].flatMap((surface) => surface.items.map((item) => item.coverUrl).filter(Boolean).slice(0, 2)));
@@ -82,12 +90,16 @@ test('live IPTV traverses every category and probes stratified covers and media'
         if (!sample) return;
         const request = harness.resourceRequests.find((entry) => entry.projectedUrl === sample.content.media.url);
         assert.ok(request);
-        const base = { channel: sample.item.title, id: sample.item.id, categories: sample.item.categories, group: sample.group.title, type: sample.content.media.resourceType };
+        const base = { channel: sample.item.title, id: sample.item.id, categories: sample.item.categories, group: sample.group.title, type: sample.content.media.resourceType, route: request.proxyMode ?? 'default' };
+        const mediaFetch = (url, init = {}) => harness.context.http.fetch(url, {
+          ...init, ...(request.proxyMode ? { proxyMode: request.proxyMode } : {}),
+          signal: init.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(8000)]) : AbortSignal.timeout(8000),
+        });
         try {
           let result;
-          if (request.kind === 'hls') result = await probeHls(request, fetchBounded);
+          if (request.kind === 'hls') result = await probeHls(request, mediaFetch);
           else {
-            const groups = await probeResourceGroups({ requests: [request], contents: [sample.content], contentKind: 'video', fetch: fetchBounded });
+            const groups = await probeResourceGroups({ requests: [request], contents: [sample.content], contentKind: 'video', fetch: mediaFetch });
             result = sanitize(groups.video);
           }
           report.media.push({ ...base, ...result });

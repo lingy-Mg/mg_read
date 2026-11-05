@@ -7,16 +7,17 @@
 import type { MgReadPluginContext } from '@mgread/source-api';
 import { safeHttpUrl } from './playlist.mjs';
 
-type Media = { url: string; resourceType: 'hls' | 'video'; mimeType: string | null };
+type Media = { url: string; resourceType: 'hls' | 'video'; mimeType: string | null; proxyMode?: 'direct' };
 
-export async function resolveMedia(context: MgReadPluginContext, url: string, title = '该频道'): Promise<Media> {
+export async function resolveMedia(context: MgReadPluginContext, url: string, title = '该频道', signal?: AbortSignal, proxyMode?: 'direct'): Promise<Media> {
   const path = new URL(url).pathname;
-  if (/\.m3u8?$/iu.test(path)) return inspectHls(context, url, title);
+  if (/\.m3u8?$/iu.test(path)) return inspectHls(context, url, title, signal, proxyMode);
   if (/\.flv$/iu.test(path)) return { url, resourceType: 'video', mimeType: 'video/x-flv' };
   if (/\.mp4$/iu.test(path)) return { url, resourceType: 'video', mimeType: 'video/mp4' };
   const response = await context.http.fetch(url, {
     headers: { Accept: '*/*', Range: 'bytes=0-1023' },
-    signal: AbortSignal.timeout(10_000),
+    signal: requestSignal(10_000, signal),
+    ...(proxyMode ? { proxyMode } : {}),
   });
   const finalUrl = safeHttpUrl(response.url || url);
   const reader = response.body?.getReader();
@@ -46,12 +47,13 @@ export async function resolveMedia(context: MgReadPluginContext, url: string, ti
   }
 }
 
-async function inspectHls(context: MgReadPluginContext, url: string, title: string): Promise<Media> {
+async function inspectHls(context: MgReadPluginContext, url: string, title: string, signal?: AbortSignal, proxyMode?: 'direct'): Promise<Media> {
   let response: Response;
   try {
     response = await context.http.fetch(url, {
       headers: { Accept: 'application/vnd.apple.mpegurl,application/x-mpegurl,text/plain,*/*' },
-      signal: AbortSignal.timeout(8000),
+      signal: requestSignal(8000, signal),
+      ...(proxyMode ? { proxyMode } : {}),
     });
   } catch {
     return failHls(context, url, title, '直播服务器连接失败或超时。');
@@ -93,4 +95,8 @@ function failHls(context: MgReadPluginContext, url: string, title: string, reaso
     message: `${title}：${reason}`,
     annotation: `${new URL(url).hostname.startsWith('[') ? '这条上游线路使用 IPv6。' : ''}当前直播尚未成功打开；请更换有效线路，或等待上游更新。`,
   });
+}
+
+function requestSignal(timeout: number, signal?: AbortSignal): AbortSignal {
+  return signal ? AbortSignal.any([AbortSignal.timeout(timeout), signal]) : AbortSignal.timeout(timeout);
 }

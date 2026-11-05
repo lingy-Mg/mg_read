@@ -6,16 +6,19 @@
  */
 import { createHash } from 'node:crypto';
 
-export type Stream = { id: string; url: string; ipv6: boolean };
+export type Stream = { id: string; url: string; ipv6: boolean; providers?: string[] };
 export type Channel = {
   id: string;
   title: string;
   name: string | null;
+  epgId: string | null;
   cover: string | null;
   categories: string[];
   streams: Stream[];
+  aliases?: string[];
+  searchNames?: string[];
 };
-export type Playlist = { channels: Channel[]; revision: string };
+export type Playlist = { channels: Channel[]; revision: string; notice?: string | null };
 type Entry = { title: string; name: string | null; epgId: string | null; cover: string | null; group: string };
 
 const volatileParameter = /^(?:_+|token|access_token|auth|auth_key|authkey|sign|signature|sig|expires?|expiration|timestamp|ts|t|session|sessionid|livekey|playkey|accountinfo|guardenctype|wssecret|wstime|txsecret|txtime|hdnts)$/iu;
@@ -69,7 +72,7 @@ export function parsePlaylist(text: string): Playlist {
     const id = `channel:${digest(entry.epgId === null ? `resource:${stableResource}` : `tvg-id:${entry.epgId}`)}`;
     let channel = channels.get(id);
     if (channel === undefined) {
-      channel = { id, title: entry.title, name: entry.name, cover: entry.cover, categories: [], streams: [] };
+      channel = { id, title: entry.title, name: entry.name, epgId: entry.epgId, cover: entry.cover, categories: [], streams: [] };
       channels.set(id, channel);
     }
     if (!channel.categories.includes(entry.group)) channel.categories.push(entry.group);

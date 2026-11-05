@@ -4,7 +4,7 @@ import test from 'node:test';
 import { collectDiscoveryContent, collectDiscoveryContinuations, collectDiscoveryTargets } from '@mgread/source-testkit';
 import * as plugin from '../dist/index.mjs';
 import { parsePlaylist, safeHttpUrl } from '../dist/playlist.mjs';
-import { createPlaylistStore, playlistUrls } from '../dist/store.mjs';
+import { createPlaylistStore, playlistUrls, playlistProviders } from '../dist/store.mjs';
 import { resolveMedia } from '../dist/media.mjs';
 import { playlist, hlsManifest, contextFixture, discoveryRequest } from './fixtures.mjs';
 
@@ -89,11 +89,12 @@ test('catalog lines map one-to-one to episodes; content refresh preserves author
   const search = await plugin.search({ query: '测试卫视', cursor: null, pageSize: 20 });
   const id = search.items[0].id;
   const catalog = await plugin.getChapters({ id });
-  assert.equal(catalog.items.length, 2);
+  assert.equal(catalog.items.length, 3);
   assert.deepEqual(catalog.groups.flatMap((group) => group.episodes), catalog.items);
-  assert.match(catalog.groups[1].title, /IPv6/u);
+  assert.equal(catalog.groups[0].title, '自动线路（含直连）');
+  assert.match(catalog.groups.at(-1).title, /IPv6/u);
   latest = playlist.replaceAll('first', 'renewed');
-  const content = await plugin.getContent({ id, chapterId: catalog.items[0].id });
+  const content = await plugin.getContent({ id, chapterId: catalog.groups[1].episodes[0].id });
   assert.equal(content.media.resourceType, 'hls');
   assert.equal(content.media.resourcePolicy, 'sessionOnly');
   assert.equal(content.media.expiresAt, null);
@@ -115,14 +116,14 @@ test('playlist fetch is single-flight, falls back on invalid acceleration respon
     requested.push(url);
     return new Response(url === playlistUrls[0] ? '<html>error</html>' : playlist);
   });
-  const store = createPlaylistStore(fixture.context);
+  const store = createPlaylistStore(fixture.context, Date.now, [playlistProviders[0]]);
   const result = await Promise.all([store.load(), store.load(), store.load(true)]);
   assert.equal(result[0], result[1]);
   assert.deepEqual(requested, playlistUrls);
   let failures = 0;
-  const failing = createPlaylistStore(contextFixture(async () => { failures += 1; return new Response('', { status: 503 }); }).context);
-  await assert.rejects(failing.load(), /暂时无法获取/u);
-  await assert.rejects(failing.load(), /暂时无法获取/u);
+  const failing = createPlaylistStore(contextFixture(async () => { failures += 1; return new Response('', { status: 503 }); }).context, Date.now, [playlistProviders[0]]);
+  await assert.rejects(failing.load(true), /暂时无法获取/u);
+  await assert.rejects(failing.load(true), /暂时无法获取/u);
   assert.equal(failures, 4);
 });
 
@@ -133,16 +134,21 @@ test('cached list has bounded TTL and stale lifetime; failed refresh does not ex
     if (offline) throw new Error('offline');
     return new Response(playlist);
   });
-  const store = createPlaylistStore(fixture.context, () => time);
+  const store = createPlaylistStore(fixture.context, () => time, [playlistProviders[0]]);
   const original = await store.load();
   time = 299_999;
   assert.equal(await store.load(), original);
   assert.equal(requests, 1);
   time = 300_000;
   offline = true;
-  assert.equal(await store.load(), original);
+  const stale = await store.load();
+  assert.deepEqual(stale.channels, original.channels);
+  assert.match(stale.notice, /zhi35/u);
   assert.equal(requests, 3);
-  assert.equal(await store.load(), original);
+  assert.equal(await store.load(), stale);
+  assert.equal(requests, 3);
+  time += 60_000;
+  assert.equal(await store.load(), stale);
   assert.equal(requests, 5);
   time = 24 * 60 * 60_000;
   await assert.rejects(store.load(), /暂时无法获取/u);
@@ -151,7 +157,7 @@ test('cached list has bounded TTL and stale lifetime; failed refresh does not ex
 test('oversized list cancels the response and can recover from the repository fallback', async () => {
   let cancelled = false;
   const fixture = contextFixture(async (url) => url === playlistUrls[0] ? new Response(new ReadableStream({
-    start(controller) { controller.enqueue(new Uint8Array(2 * 1024 * 1024 + 1)); },
+    start(controller) { controller.enqueue(new Uint8Array(3 * 1024 * 1024 + 1)); },
     cancel() { cancelled = true; },
   })) : new Response(playlist));
   assert.equal((await createPlaylistStore(fixture.context).load()).channels.length, 5);

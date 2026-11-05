@@ -1,15 +1,16 @@
 import { safeHttpUrl } from './playlist.mjs';
-export async function resolveMedia(context, url, title = '该频道') {
+export async function resolveMedia(context, url, title = '该频道', signal, proxyMode) {
     const path = new URL(url).pathname;
     if (/\.m3u8?$/iu.test(path))
-        return inspectHls(context, url, title);
+        return inspectHls(context, url, title, signal, proxyMode);
     if (/\.flv$/iu.test(path))
         return { url, resourceType: 'video', mimeType: 'video/x-flv' };
     if (/\.mp4$/iu.test(path))
         return { url, resourceType: 'video', mimeType: 'video/mp4' };
     const response = await context.http.fetch(url, {
         headers: { Accept: '*/*', Range: 'bytes=0-1023' },
-        signal: AbortSignal.timeout(10_000),
+        signal: requestSignal(10_000, signal),
+        ...(proxyMode ? { proxyMode } : {}),
     });
     const finalUrl = safeHttpUrl(response.url || url);
     const reader = response.body?.getReader();
@@ -48,12 +49,13 @@ export async function resolveMedia(context, url, title = '该频道') {
         }
     }
 }
-async function inspectHls(context, url, title) {
+async function inspectHls(context, url, title, signal, proxyMode) {
     let response;
     try {
         response = await context.http.fetch(url, {
             headers: { Accept: 'application/vnd.apple.mpegurl,application/x-mpegurl,text/plain,*/*' },
-            signal: AbortSignal.timeout(8000),
+            signal: requestSignal(8000, signal),
+            ...(proxyMode ? { proxyMode } : {}),
         });
     }
     catch {
@@ -106,4 +108,7 @@ function failHls(context, url, title, reason, blocked = false) {
         message: `${title}：${reason}`,
         annotation: `${new URL(url).hostname.startsWith('[') ? '这条上游线路使用 IPv6。' : ''}当前直播尚未成功打开；请更换有效线路，或等待上游更新。`,
     });
+}
+function requestSignal(timeout, signal) {
+    return signal ? AbortSignal.any([AbortSignal.timeout(timeout), signal]) : AbortSignal.timeout(timeout);
 }

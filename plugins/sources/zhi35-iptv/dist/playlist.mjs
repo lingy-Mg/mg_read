@@ -62,7 +62,7 @@ export function parsePlaylist(text) {
         const id = `channel:${digest(entry.epgId === null ? `resource:${stableResource}` : `tvg-id:${entry.epgId}`)}`;
         let channel = channels.get(id);
         if (channel === undefined) {
-            channel = { id, title: entry.title, name: entry.name, cover: entry.cover, categories: [], streams: [] };
+            channel = { id, title: entry.title, name: entry.name, epgId: entry.epgId, cover: entry.cover, categories: [], streams: [] };
             channels.set(id, channel);
         }
         if (!channel.categories.includes(entry.group))

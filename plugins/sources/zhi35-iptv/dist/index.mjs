@@ -71,7 +71,7 @@ function parsePlaylist(text) {
     const id = `channel:${digest(entry.epgId === null ? `resource:${stableResource}` : `tvg-id:${entry.epgId}`)}`;
     let channel = channels.get(id);
     if (channel === void 0) {
-      channel = { id, title: entry.title, name: entry.name, cover: entry.cover, categories: [], streams: [] };
+      channel = { id, title: entry.title, name: entry.name, epgId: entry.epgId, cover: entry.cover, categories: [], streams: [] };
       channels.set(id, channel);
     }
     if (!channel.categories.includes(entry.group)) channel.categories.push(entry.group);
@@ -85,7 +85,7 @@ function parsePlaylist(text) {
   }
   const result = [...channels.values()];
   if (result.length === 0) throw new Error("IPTV 播放列表中没有有效频道。");
-  const revision = digest(JSON.stringify(result.map(({ id, title, name, categories }) => [id, title, name, categories])));
+  const revision = digest(JSON.stringify(result.map(({ id, title, name, categories: categories2 }) => [id, title, name, categories2])));
   return { channels: result, revision };
 }
 function parseEntry(line) {
@@ -120,26 +120,170 @@ function parseEntry(line) {
   };
 }
 
+// src/merge.mts
+var priority = { "iptv-org": 0, yuechan: 1, "free-tv": 2, zhi35: 3 };
+var mislabeledCctv1 = /* @__PURE__ */ new Set(["stream:4b60b42947402afdf4f89c3d"]);
+var cctvSuffixes = ["", "综合", "财经", "综艺", "中文国际", "体育", "电影", "国防军事", "电视剧", "纪录", "科教", "戏曲", "社会与法", "新闻", "少儿", "音乐", "奥林匹克", "农业农村"];
+var cgtnNames = {
+  cgtn: "english",
+  cgtn英语: "english",
+  cgtnenglish: "english",
+  cgtn记录: "documentary",
+  cgtn纪录: "documentary",
+  cgtndocumentary: "documentary",
+  cgtn西语: "spanish",
+  cgtn西班牙语: "spanish",
+  cgtnespanol: "spanish",
+  cgtnespañol: "spanish",
+  cgtnspanish: "spanish",
+  cgtn阿语: "arabic",
+  cgtn阿拉伯语: "arabic",
+  cgtnarabic: "arabic",
+  cgtn法语: "french",
+  cgtnfrancais: "french",
+  cgtnfrançais: "french",
+  cgtnfrench: "french",
+  cgtn俄语: "russian",
+  cgtnrussian: "russian"
+};
+function normalizedTitle(value) {
+  return value.normalize("NFKC").toLowerCase().replace(/\((?:\d{3,4}[pi](?:\d+)?|full\s*hd|fhd|hd|sd)\)|\[(?:geo-blocked|not 24\/7)\]/gu, "").replace(/(?:高清|超清|标清)(?:频道)?$/u, "").replace(/[ⓢ❌]/gu, "").replace(/\s+/gu, "").trim();
+}
+function knownChannel(value) {
+  const name = normalizedTitle(value);
+  if (cgtnNames[name]) return `cgtn:${cgtnNames[name]}`;
+  const cctv = /^cctv-?(1[0-7]|[1-9])(\+)?(.*)$/u.exec(name);
+  if (!cctv) return null;
+  const number = Number(cctv[1]), plus = cctv[2] === "+", suffix = cctv[3];
+  if (plus) return number === 5 && ["", "体育赛事", "体育赛事频道"].includes(suffix) ? "cctv:5plus" : null;
+  if (number === 4) {
+    if (["", "中文国际", "中文国际(亚)", "中文国际(亚洲)", "亚洲", "asia"].includes(suffix)) return "cctv:4asia";
+    if (["中文国际(欧)", "中文国际(欧洲)", "欧洲", "europe"].includes(suffix)) return "cctv:4europe";
+    if (["中文国际(美)", "中文国际(美洲)", "美洲", "america"].includes(suffix)) return "cctv:4america";
+    return null;
+  }
+  return ["", cctvSuffixes[number], `${cctvSuffixes[number]}频道`, ...number === 9 ? ["记录", "记录频道"] : []].includes(suffix) ? `cctv:${number}` : null;
+}
+function standardEpg(value) {
+  const id = value?.normalize("NFKC").toLowerCase().replace(/@(?:sd|hd|fhd|uhd|\d{3,4}[pi])$/u, "") ?? "";
+  return /^[\w+-]+\.[a-z]{2,3}(?:@[\w+-]+)?$/u.test(id) ? id : null;
+}
+function epgChannel(id) {
+  if (!id.endsWith(".cn")) return null;
+  const name = id.slice(0, -3);
+  if (name === "cctv5plus") return "cctv:5plus";
+  if (/^cctv4(?:asia|europe|america)$/u.test(name)) return `cctv:${name.slice(4)}`;
+  return knownChannel(name);
+}
+function eligibleEpg(channel) {
+  const epg = standardEpg(channel.epgId);
+  const known = knownChannel(channel.title), epgKnown = epg === null ? null : epgChannel(epg);
+  return known !== null && epgKnown !== null && known !== epgKnown ? null : epg;
+}
+function region(member) {
+  if (member.provider.id !== "free-tv") return "chinese";
+  const countries = member.channel.categories;
+  if (countries.some((value) => /^(?:China|Taiwan|Hong Kong|Macau|Macao)$/iu.test(value))) return "chinese";
+  return countries.slice().sort().join("|").toLowerCase();
+}
+function keys(member) {
+  const { channel, provider } = member;
+  const result = channel.streams.map((stream) => stream.id);
+  const known = knownChannel(channel.title);
+  const epg = eligibleEpg(channel);
+  const epgKnown = epg === null ? null : epgChannel(epg);
+  if (epg !== null && (known === null || epgKnown === null || epgKnown === known)) result.push(`epg:${epg}`);
+  if (known !== null) result.push(`known:${known}`);
+  else if (epgKnown !== null) result.push(`known:${epgKnown}`);
+  const title = normalizedTitle(channel.title);
+  if (title.length >= 3 && !/^(?:新闻综合|综合新闻|新闻|综合|公共|都市|生活|经济|体育|少儿|影视|电影|news|general|sports|tv)(?:频道|台)?$/u.test(title)) {
+    result.push(`name:${region(member)}:${title}`);
+  }
+  result.push(`local:${provider.id}:${channel.id}`);
+  return result;
+}
+function categories(member) {
+  if (member.provider.id === "iptv-org") return [knownChannel(member.channel.title) !== null ? "央视频道" : "国内频道"];
+  if (member.provider.id !== "free-tv") return member.channel.categories;
+  return [region(member) === "chinese" ? member.channel.categories.includes("China") ? "国内频道" : "港台频道" : "国际频道"];
+}
+function mergePlaylists(sources) {
+  const members = sources.flatMap(({ provider, playlist }) => playlist.channels.flatMap((channel) => {
+    const streams = knownChannel(channel.title) === "cctv:1" ? channel.streams.filter((stream) => !mislabeledCctv1.has(stream.id)) : channel.streams;
+    return streams.length ? [{ provider, channel: { ...channel, streams } }] : [];
+  }));
+  const parent = members.map((_, index) => index), owners = /* @__PURE__ */ new Map();
+  const root = (index) => {
+    while (parent[index] !== index) {
+      parent[index] = parent[parent[index]];
+      index = parent[index];
+    }
+    return index;
+  };
+  members.forEach((member, index) => {
+    for (const key of keys(member)) {
+      const other = owners.get(key);
+      if (other === void 0) owners.set(key, index);
+      else parent[root(index)] = root(other);
+    }
+  });
+  const buckets = /* @__PURE__ */ new Map();
+  members.forEach((member, index) => {
+    const key = root(index);
+    const group = buckets.get(key) ?? [];
+    group.push(member);
+    buckets.set(key, group);
+  });
+  const channels = [...buckets.values()].map((group) => {
+    const originals = group.filter((entry) => entry.provider.id === "zhi35");
+    const anchor = (originals.length ? originals : group).slice().sort((a, b) => a.channel.id.localeCompare(b.channel.id))[0];
+    const epg = group.map((member) => eligibleEpg(member.channel)).filter((value) => value !== null).sort()[0];
+    const id = originals.length ? anchor.channel.id : epg ? `channel:${digest(`tvg-id:${epg}`)}` : anchor.channel.epgId ? `channel:${digest(`${anchor.provider.id}:${anchor.channel.id}`)}` : anchor.channel.id;
+    const streams = /* @__PURE__ */ new Map();
+    for (const member of group.slice().sort((a, b) => (priority[a.provider.id] ?? 9) - (priority[b.provider.id] ?? 9))) {
+      for (const stream of member.channel.streams) {
+        const existing = streams.get(stream.id);
+        if (existing) {
+          if (!existing.providers.includes(member.provider.title)) existing.providers.push(member.provider.title);
+        } else streams.set(stream.id, { ...stream, providers: [member.provider.title] });
+      }
+    }
+    if (streams.size > 64) throw new Error("频道备用线路超出大小限制。");
+    return {
+      ...anchor.channel,
+      id,
+      cover: anchor.channel.cover ?? group.find((entry) => entry.channel.cover !== null)?.channel.cover ?? null,
+      categories: [...new Set(group.flatMap(categories))],
+      aliases: [...new Set(group.map((entry) => entry.channel.id))],
+      searchNames: [...new Set(group.flatMap(({ channel }) => [channel.title, channel.name ?? ""]).filter(Boolean))],
+      streams: [...streams.values()].sort((a, b) => Number(a.ipv6) - Number(b.ipv6))
+    };
+  });
+  if (channels.length === 0 || channels.length > 5e3) throw new Error("IPTV 聚合列表中没有有效频道或超出大小限制。");
+  return { channels, revision: digest(JSON.stringify(channels.map(({ id, title, searchNames, categories: values, streams }) => [id, title, searchNames, values, streams.map((stream) => stream.id)]))) };
+}
+
 // src/store.mts
 var playlistUrls = [
   "https://live.zhi35.com/iptv.m3u",
   "https://raw.githubusercontent.com/zhi35/iptv/master/iptv.m3u"
 ];
-var maximumBytes = 2 * 1024 * 1024;
-function createPlaylistStore(context, now = Date.now) {
-  let cached;
+var playlistProviders = [
+  { id: "zhi35", title: "zhi35", urls: playlistUrls },
+  { id: "iptv-org", title: "iptv-org", urls: ["https://raw.githubusercontent.com/iptv-org/iptv/master/streams/cn.m3u"] },
+  { id: "yuechan", title: "YueChan", urls: ["https://raw.githubusercontent.com/YueChan/Live/main/GNTV.m3u"] },
+  { id: "free-tv", title: "Free-TV", urls: ["https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8"] }
+];
+var maximumBytes = 3 * 1024 * 1024;
+function createPlaylistStore(context, now = Date.now, providers = playlistProviders) {
+  const caches = /* @__PURE__ */ new Map();
+  const retryAt = /* @__PURE__ */ new Map();
   let pending;
+  let merged;
   return { load };
   async function load(refresh = false) {
-    if (!refresh && cached !== void 0 && now() - cached.time < 5 * 6e4) return cached.playlist;
     if (pending !== void 0) return pending;
-    const current = fetchPlaylist().catch((error) => {
-      if (cached !== void 0 && now() - cached.time < 24 * 60 * 6e4) {
-        context.log.warn("iptv_playlist_stale");
-        return cached.playlist;
-      }
-      throw error;
-    });
+    const current = collect(refresh);
     pending = current;
     try {
       return await current;
@@ -147,26 +291,46 @@ function createPlaylistStore(context, now = Date.now) {
       if (pending === current) pending = void 0;
     }
   }
-  async function fetchPlaylist() {
-    for (let index = 0; index < playlistUrls.length; index += 1) {
+  async function collect(refresh) {
+    const inputs = await Promise.all(providers.map((provider) => loadProvider(provider, refresh)));
+    const sources = inputs.flatMap((playlist2, index) => playlist2 ? [{ provider: providers[index], playlist: playlist2 }] : []);
+    if (!sources.length) throw new Error("IPTV 播放列表暂时无法获取，请稍后重试。");
+    const degraded = providers.filter((provider) => !caches.has(provider.id) || now() - caches.get(provider.id).time >= 5 * 6e4);
+    const notice = degraded.length ? `${degraded.map((provider) => provider.title).join("、")} 暂时无法更新，正在使用其他来源或已有缓存。` : null;
+    if (merged && notice === merged.notice && inputs.every((value, index) => value === merged.inputs[index])) return merged.playlist;
+    const playlist = { ...mergePlaylists(sources), notice };
+    merged = { inputs, playlist, notice };
+    return playlist;
+  }
+  async function loadProvider(provider, refresh) {
+    const cached = caches.get(provider.id);
+    if (!refresh && cached && now() - cached.time < 5 * 6e4) return cached.playlist;
+    if (!refresh && now() < (retryAt.get(provider.id) ?? 0)) return cached && now() - cached.time < 24 * 60 * 6e4 ? cached.playlist : void 0;
+    for (let index = 0; index < provider.urls.length; index += 1) {
       try {
-        const response = await context.http.fetch(playlistUrls[index], {
+        const response = await context.http.fetch(provider.urls[index], {
           headers: { Accept: "application/vnd.apple.mpegurl,audio/x-mpegurl,text/plain,*/*" },
-          signal: AbortSignal.timeout(12e3)
+          signal: AbortSignal.timeout(8e3)
         });
         if (!response.ok) {
           await response.body?.cancel();
           throw new Error("playlist_http_failed");
         }
         const playlist = parsePlaylist(await readBoundedText(response));
-        cached = { playlist, time: now() };
-        context.log.info(`iptv_playlist_loaded channels=${playlist.channels.length} endpoint=${index + 1}`);
+        caches.set(provider.id, { playlist, time: now() });
+        retryAt.delete(provider.id);
+        context.log.info(`iptv_playlist_loaded provider=${provider.id} channels=${playlist.channels.length}`);
         return playlist;
       } catch {
-        context.log.warn(`iptv_playlist_request_failed endpoint=${index + 1}`);
+        context.log.warn(`iptv_playlist_request_failed provider=${provider.id} endpoint=${index + 1}`);
       }
     }
-    throw new Error("IPTV 播放列表暂时无法获取，请稍后重试。");
+    retryAt.set(provider.id, now() + 6e4);
+    if (cached && now() - cached.time < 24 * 60 * 6e4) {
+      context.log.warn(`iptv_playlist_stale provider=${provider.id}`);
+      return cached.playlist;
+    }
+    return void 0;
   }
 }
 async function readBoundedText(response) {
@@ -195,14 +359,15 @@ async function readBoundedText(response) {
 }
 
 // src/media.mts
-async function resolveMedia(context, url, title = "该频道") {
+async function resolveMedia(context, url, title = "该频道", signal, proxyMode) {
   const path = new URL(url).pathname;
-  if (/\.m3u8?$/iu.test(path)) return inspectHls(context, url, title);
+  if (/\.m3u8?$/iu.test(path)) return inspectHls(context, url, title, signal, proxyMode);
   if (/\.flv$/iu.test(path)) return { url, resourceType: "video", mimeType: "video/x-flv" };
   if (/\.mp4$/iu.test(path)) return { url, resourceType: "video", mimeType: "video/mp4" };
   const response = await context.http.fetch(url, {
     headers: { Accept: "*/*", Range: "bytes=0-1023" },
-    signal: AbortSignal.timeout(1e4)
+    signal: requestSignal(1e4, signal),
+    ...proxyMode ? { proxyMode } : {}
   });
   const finalUrl = safeHttpUrl(response.url || url);
   const reader = response.body?.getReader();
@@ -235,12 +400,13 @@ async function resolveMedia(context, url, title = "该频道") {
     }
   }
 }
-async function inspectHls(context, url, title) {
+async function inspectHls(context, url, title, signal, proxyMode) {
   let response;
   try {
     response = await context.http.fetch(url, {
       headers: { Accept: "application/vnd.apple.mpegurl,application/x-mpegurl,text/plain,*/*" },
-      signal: AbortSignal.timeout(8e3)
+      signal: requestSignal(8e3, signal),
+      ...proxyMode ? { proxyMode } : {}
     });
   } catch {
     return failHls(context, url, title, "直播服务器连接失败或超时。");
@@ -289,6 +455,51 @@ function failHls(context, url, title, reason, blocked = false) {
     message: `${title}：${reason}`,
     annotation: `${new URL(url).hostname.startsWith("[") ? "这条上游线路使用 IPv6。" : ""}当前直播尚未成功打开；请更换有效线路，或等待上游更新。`
   });
+}
+function requestSignal(timeout, signal) {
+  return signal ? AbortSignal.any([AbortSignal.timeout(timeout), signal]) : AbortSignal.timeout(timeout);
+}
+
+// src/playback.mts
+function createPlaybackResolver(context) {
+  const preferred = /* @__PURE__ */ new Map();
+  return { resolve };
+  async function resolve(channel, selected) {
+    if (selected) {
+      const media = await resolveMedia(context, selected.url, channel.title);
+      remember(channel.id, selected.id);
+      return media;
+    }
+    const last = preferred.get(channel.id);
+    const candidates = channel.streams.flatMap((stream) => [
+      { stream, proxyMode: void 0 },
+      { stream, proxyMode: "direct" }
+    ]).sort((a, b) => Number(`${b.stream.id}:${b.proxyMode ?? "default"}` === last) - Number(`${a.stream.id}:${a.proxyMode ?? "default"}` === last)).slice(0, 8);
+    const deadline = AbortSignal.timeout(1e4);
+    let attempted = 0;
+    for (const { stream, proxyMode } of candidates) {
+      if (deadline.aborted) break;
+      attempted += 1;
+      try {
+        const media = await resolveMedia(context, stream.url, channel.title, AbortSignal.any([deadline, AbortSignal.timeout(4e3)]), proxyMode);
+        remember(channel.id, stream.id, proxyMode);
+        context.log.info(`iptv_auto_line_resolved attempts=${attempted} direct=${proxyMode === "direct"}`);
+        return { ...media, ...proxyMode ? { proxyMode } : {} };
+      } catch {
+        context.log.warn(`iptv_auto_line_failed attempt=${attempted}`);
+      }
+    }
+    return context.errors.raise({
+      code: "source_media_resolution_failed",
+      message: `${channel.title}：已尝试 ${attempted} 次线路连接，暂时无法打开直播。`,
+      annotation: "请在“选集 / 线路”中手动选择其他线路，或稍后刷新；自动选择只检查打开前的直播清单。"
+    });
+  }
+  function remember(channelId, streamId, proxyMode) {
+    preferred.delete(channelId);
+    preferred.set(channelId, `${streamId}:${proxyMode ?? "default"}`);
+    if (preferred.size > 512) preferred.delete(preferred.keys().next().value);
+  }
 }
 
 // src/logos.mts
@@ -462,16 +673,16 @@ async function readCatalogHtml(response) {
 // src/index.mts
 var active;
 async function activate(context) {
-  active = { context, store: createPlaylistStore(context), logos: createLogoResolver(context) };
+  active = { context, store: createPlaylistStore(context), logos: createLogoResolver(context), playback: createPlaybackResolver(context) };
   context.log.info("source_activated");
 }
 async function discover(request) {
   const { context, store, logos } = requireActive();
   if (request.target === null && (request.cursor !== null || request.collectionId !== null)) throw new Error("发现请求无效。");
   const playlist = await store.load();
-  const categories = categoryList(playlist);
+  const categories2 = categoryList(playlist);
   const target = request.target ?? "all";
-  const category = categories.find((entry) => entry.target === target);
+  const category = categories2.find((entry) => entry.target === target);
   if (target !== "all" && category === void 0) throw new Error("频道分类不存在，请刷新。");
   const channels = target === "all" ? playlist.channels : playlist.channels.filter((channel) => channel.categories.includes(category.title));
   const page = paginate(channels, request.cursor, request.pageSize, target, playlist.revision);
@@ -484,7 +695,7 @@ async function discover(request) {
     type: "section",
     id: `${collectionId}:section`,
     title: category?.title ?? "全部频道",
-    subtitle: null,
+    subtitle: playlist.notice ?? null,
     icon: "video",
     children: [{ type: "contentCollection", id: collectionId, layout: "list", items, continuation }]
   };
@@ -495,7 +706,7 @@ async function discover(request) {
       { type: "section", id: "iptv:categories", title: "频道分类", subtitle: null, icon: "category", children: [
         { type: "categoryCollection", id: "iptv:category-list", layout: "chips", categories: [
           { id: "all", title: "全部频道", target: "all", count: playlist.channels.length, url: null, icon: "video" },
-          ...categories
+          ...categories2
         ] }
       ] },
       listing
@@ -513,8 +724,9 @@ async function search(request) {
   const playlist = await store.load();
   const terms = query.split(/\s+/u);
   const channels = playlist.channels.filter((channel) => {
-    const title = [channel.title, channel.name ?? "", ...channel.categories].join(" ").normalize("NFKC").toLocaleLowerCase("zh-CN");
-    return terms.every((term) => title.includes(term));
+    const title = [channel.title, channel.name ?? "", ...channel.searchNames ?? [], ...channel.categories].join(" ").normalize("NFKC").toLocaleLowerCase("zh-CN");
+    const compact = normalizedTitle(title).replaceAll("-", "");
+    return terms.every((term) => title.includes(term) || compact.includes(normalizedTitle(term).replaceAll("-", "")));
   });
   const page = paginate(channels, request.cursor, request.pageSize, `search:${digest(query)}`, playlist.revision);
   return { items: (await logos.prepare(page.items)).map((channel) => summary(context, channel)), nextCursor: page.cursor, totalCount: channels.length };
@@ -530,20 +742,25 @@ async function getDetail(request) {
 async function getChapters(request) {
   const { store } = requireActive();
   const channel = locate(await store.load(request.refresh === true), request.id);
-  const items = channel.streams.map((stream, index) => chapter(channel, stream, index));
-  return { items, groups: channel.streams.map((stream, index) => ({
-    id: `group:${stream.id}`,
-    title: lineTitle(stream, index),
-    order: index,
-    episodes: [items[index]]
-  })) };
+  const manual = channel.streams.map((stream, index) => chapter(channel, stream, index));
+  const auto = channel.streams.length > 1 ? [{ ...manual[0], id: `${channel.id}:auto`, volumeTitle: "自动线路（含直连）" }] : [];
+  return { items: [...auto, ...manual], groups: [
+    ...auto.map((item) => ({ id: "group:auto", title: item.volumeTitle, order: 0, episodes: [item] })),
+    ...channel.streams.map((stream, index) => ({
+      id: `group:${stream.id}`,
+      title: lineTitle(stream, index),
+      order: index + auto.length,
+      episodes: [manual[index]]
+    }))
+  ] };
 }
 async function getContent(request) {
-  const { context, store } = requireActive();
+  const { context, store, playback } = requireActive();
   const channel = locate(await store.load(true), request.id);
-  const stream = channel.streams.find((entry) => chapterId(channel, entry) === request.chapterId);
-  if (stream === void 0) throw new Error("直播线路不存在，请刷新频道。");
-  const media = await resolveMedia(context, stream.url, channel.title);
+  const automatic = channel.streams.length > 1 && [channel.id, request.id].some((id) => `${id}:auto` === request.chapterId);
+  const stream = channel.streams.find((entry) => [channel.id, request.id].some((id) => `${id}:${entry.id}` === request.chapterId));
+  if (!automatic && stream === void 0) throw new Error("直播线路不存在，请刷新频道。");
+  const media = await playback.resolve(channel, automatic ? void 0 : stream);
   const headers = { Accept: "*/*" };
   return {
     chapterId: request.chapterId,
@@ -553,7 +770,7 @@ async function getContent(request) {
     text: null,
     pages: [],
     media: {
-      url: context.resource.proxy({ kind: media.resourceType, url: media.url, headers }),
+      url: context.resource.proxy({ kind: media.resourceType, url: media.url, headers, ...media.proxyMode ? { proxyMode: media.proxyMode } : {} }),
       resourceType: media.resourceType,
       resourcePolicy: "sessionOnly",
       expiresAt: null,
@@ -576,7 +793,7 @@ function summary(context, channel) {
     status: "ongoing",
     access: "unknown",
     wordCount: null,
-    chapterCount: channel.streams.length,
+    chapterCount: channel.streams.length + (channel.streams.length > 1 ? 1 : 0),
     publishedAt: null,
     updatedAt: null,
     latestChapter: null,
@@ -589,7 +806,7 @@ function chapterId(channel, stream) {
   return `${channel.id}:${stream.id}`;
 }
 function lineTitle(stream, index) {
-  return `线路 ${index + 1}${stream.ipv6 ? " · IPv6" : ""}`;
+  return `${stream.providers?.join(" / ") ?? "zhi35"} · 线路 ${index + 1}${stream.ipv6 ? " · IPv6" : ""}`;
 }
 function chapter(channel, stream, index) {
   return {
@@ -606,7 +823,7 @@ function chapter(channel, stream, index) {
 }
 function locate(playlist, id) {
   if (!/^channel:[\da-f]{24}$/u.test(id)) throw new Error("频道标识无效。");
-  const channel = playlist.channels.find((entry) => entry.id === id);
+  const channel = playlist.channels.find((entry) => entry.id === id || entry.aliases?.includes(id));
   if (channel === void 0) throw new Error("上游已移除此频道，请刷新播放列表。");
   return channel;
 }

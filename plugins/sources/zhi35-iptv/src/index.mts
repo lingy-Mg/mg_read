@@ -1,23 +1,24 @@
 /**
- * zhi35 IPTV 视频数据源公开入口。
+ * 保留 zhi35 插件身份的四仓库 IPTV 聚合公开入口。
  * 职责：真实分类/频道发现、本地分页检索、频道详情、多线路目录和 Runtime 媒体登记。
  * 生命周期：activate 只注入公开 Context 并替换内存列表缓存；所有请求由调用触发，无启动 IO。
  * 所有权：来源持有频道/线路/游标，Runtime 持有资源流，宿主持有播放器；不生成节目单、回看或热门词。
  * 台标：各内容表面共用激活周期内的修复器；仅确认缺图才输出 null，频道身份与播放列表保持原样。
- * 注意：IPv6 线路依赖用户网络；上游标记 ❌ 和失效资源照实保留，不宣称全源可播。
+ * 多线路通过中性 groups 交给现有播放器切换，另提供有界自动选择；不宣称全源可播。
  */
 import type { MgReadPluginContext } from '@mgread/source-api';
 import { digest, type Channel, type Playlist, type Stream } from './playlist.mjs';
 import { createPlaylistStore } from './store.mjs';
-import { resolveMedia } from './media.mjs';
+import { createPlaybackResolver } from './playback.mjs';
 import { createLogoResolver } from './logos.mjs';
+import { normalizedTitle } from './merge.mjs';
 
 type DiscoveryRequest = { target: string | null; cursor: string | null; collectionId: string | null; pageSize: number };
 type SearchRequest = { query: string; cursor: string | null; pageSize: number };
-let active: { context: MgReadPluginContext; store: ReturnType<typeof createPlaylistStore>; logos: ReturnType<typeof createLogoResolver> } | undefined;
+let active: { context: MgReadPluginContext; store: ReturnType<typeof createPlaylistStore>; logos: ReturnType<typeof createLogoResolver>; playback: ReturnType<typeof createPlaybackResolver> } | undefined;
 
 export async function activate(context: MgReadPluginContext): Promise<void> {
-  active = { context, store: createPlaylistStore(context), logos: createLogoResolver(context) };
+  active = { context, store: createPlaylistStore(context), logos: createLogoResolver(context), playback: createPlaybackResolver(context) };
   context.log.info('source_activated');
 }
 
@@ -37,7 +38,7 @@ export async function discover(request: DiscoveryRequest) {
   const continuation = page.cursor === null ? null : { target, cursor: page.cursor };
   if (request.collectionId !== null) return { kind: 'append' as const, collectionId, items, continuation };
   const listing = {
-    type: 'section', id: `${collectionId}:section`, title: category?.title ?? '全部频道', subtitle: null, icon: 'video',
+    type: 'section', id: `${collectionId}:section`, title: category?.title ?? '全部频道', subtitle: playlist.notice ?? null, icon: 'video',
     children: [{ type: 'contentCollection', id: collectionId, layout: 'list', items, continuation }],
   };
   if (request.target !== null) return { kind: 'document' as const, document: { components: [listing] } };
@@ -66,8 +67,9 @@ export async function search(request: SearchRequest) {
   const playlist = await store.load();
   const terms = query.split(/\s+/u);
   const channels = playlist.channels.filter((channel) => {
-    const title = [channel.title, channel.name ?? '', ...channel.categories].join(' ').normalize('NFKC').toLocaleLowerCase('zh-CN');
-    return terms.every((term) => title.includes(term));
+    const title = [channel.title, channel.name ?? '', ...channel.searchNames ?? [], ...channel.categories].join(' ').normalize('NFKC').toLocaleLowerCase('zh-CN');
+    const compact = normalizedTitle(title).replaceAll('-', '');
+    return terms.every((term) => title.includes(term) || compact.includes(normalizedTitle(term).replaceAll('-', '')));
   });
   const page = paginate(channels, request.cursor, request.pageSize, `search:${digest(query)}`, playlist.revision);
   return { items: (await logos.prepare(page.items)).map((channel) => summary(context, channel)), nextCursor: page.cursor, totalCount: channels.length };
@@ -86,23 +88,28 @@ export async function getDetail(request: { id: string }) {
 export async function getChapters(request: { id: string; refresh?: boolean }) {
   const { store } = requireActive();
   const channel = locate(await store.load(request.refresh === true), request.id);
-  const items = channel.streams.map((stream, index) => chapter(channel, stream, index));
-  return { items, groups: channel.streams.map((stream, index) => ({
-    id: `group:${stream.id}`, title: lineTitle(stream, index), order: index, episodes: [items[index]!],
-  })) };
+  const manual = channel.streams.map((stream, index) => chapter(channel, stream, index));
+  const auto = channel.streams.length > 1 ? [{ ...manual[0]!, id: `${channel.id}:auto`, volumeTitle: '自动线路（含直连）' }] : [];
+  return { items: [...auto, ...manual], groups: [
+    ...auto.map((item) => ({ id: 'group:auto', title: item.volumeTitle, order: 0, episodes: [item] })),
+    ...channel.streams.map((stream, index) => ({
+      id: `group:${stream.id}`, title: lineTitle(stream, index), order: index + auto.length, episodes: [manual[index]!],
+    })),
+  ] };
 }
 
 export async function getContent(request: { id: string; chapterId: string }) {
-  const { context, store } = requireActive();
+  const { context, store, playback } = requireActive();
   const channel = locate(await store.load(true), request.id);
-  const stream = channel.streams.find((entry) => chapterId(channel, entry) === request.chapterId);
-  if (stream === undefined) throw new Error('直播线路不存在，请刷新频道。');
-  const media = await resolveMedia(context, stream.url, channel.title);
+  const automatic = channel.streams.length > 1 && [channel.id, request.id].some((id) => `${id}:auto` === request.chapterId);
+  const stream = channel.streams.find((entry) => [channel.id, request.id].some((id) => `${id}:${entry.id}` === request.chapterId));
+  if (!automatic && stream === undefined) throw new Error('直播线路不存在，请刷新频道。');
+  const media = await playback.resolve(channel, automatic ? undefined : stream);
   const headers = { Accept: '*/*' };
   return {
     chapterId: request.chapterId, contentKind: 'video', title: channel.title, updatedAt: null, text: null, pages: [],
     media: {
-      url: context.resource.proxy({ kind: media.resourceType, url: media.url, headers }),
+      url: context.resource.proxy({ kind: media.resourceType, url: media.url, headers, ...(media.proxyMode ? { proxyMode: media.proxyMode } : {}) }),
       resourceType: media.resourceType, resourcePolicy: 'sessionOnly', expiresAt: null, mimeType: media.mimeType, headers,
     },
   };
@@ -113,13 +120,13 @@ function summary(context: MgReadPluginContext, channel: Channel) {
     id: channel.id, title: channel.title, contentKind: 'video', coverOrientation: 'square', author: null, url: null,
     coverUrl: channel.cover === null ? null : context.resource.proxy({ kind: 'image', url: channel.cover, headers: { Accept: 'image/*' } }),
     description: channel.streams.every((stream) => stream.ipv6) ? '此频道的直播线路需要 IPv6 网络。' : null,
-    language: null, status: 'ongoing', access: 'unknown', wordCount: null, chapterCount: channel.streams.length,
+    language: null, status: 'ongoing', access: 'unknown', wordCount: null, chapterCount: channel.streams.length + (channel.streams.length > 1 ? 1 : 0),
     publishedAt: null, updatedAt: null, latestChapter: null, categories: channel.categories, tags: [], attributes: [],
   };
 }
 
 function chapterId(channel: Channel, stream: Stream): string { return `${channel.id}:${stream.id}`; }
-function lineTitle(stream: Stream, index: number): string { return `线路 ${index + 1}${stream.ipv6 ? ' · IPv6' : ''}`; }
+function lineTitle(stream: Stream, index: number): string { return `${stream.providers?.join(' / ') ?? 'zhi35'} · 线路 ${index + 1}${stream.ipv6 ? ' · IPv6' : ''}`; }
 function chapter(channel: Channel, stream: Stream, index: number) {
   return {
     id: chapterId(channel, stream), title: '直播', order: 0, url: null, volumeTitle: lineTitle(stream, index),
@@ -129,7 +136,7 @@ function chapter(channel: Channel, stream: Stream, index: number) {
 
 function locate(playlist: Playlist, id: string): Channel {
   if (!/^channel:[\da-f]{24}$/u.test(id)) throw new Error('频道标识无效。');
-  const channel = playlist.channels.find((entry) => entry.id === id);
+  const channel = playlist.channels.find((entry) => entry.id === id || entry.aliases?.includes(id));
   if (channel === undefined) throw new Error('上游已移除此频道，请刷新播放列表。');
   return channel;
 }
