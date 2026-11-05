@@ -1,5 +1,6 @@
 /// Source details keep Runtime IO in application ports. TV metadata and commands
 /// are separate remote stops; overlays restore focus to their originating page.
+/// Standard-mode metadata uses aligned label/value rows without nested cards.
 library;
 
 import 'dart:io';
@@ -184,7 +185,6 @@ class _DetailContent extends ConsumerWidget {
                 const SizedBox(height: AppSpacing.regular),
                 _DetailMetadataGrid(
                   fields: <_DetailFieldData>[
-                    _DetailFieldData(label: '名称', value: source.displayName),
                     _DetailFieldData(label: '来源网址', value: source.sourceUrl ?? '缺少', wide: true),
                     _DetailFieldData(label: '来源方式', value: isDevelopment ? '工作区开发数据源插件' : 'Runtime 已安装数据源插件'),
                     _DetailFieldData(label: '类型', value: pluginContentKindsLabel(source.contentKinds)),
@@ -414,45 +414,46 @@ class _DetailField extends StatelessWidget {
         ),
       );
     }
-    return SizedBox(
-      width: width,
-      child: DecoratedBox(
-        decoration: BoxDecoration(color: tokens.featureSurface, borderRadius: AppRadii.discoveryTile),
-        child: Material(
-          color: Colors.transparent,
-          child: Semantics(
-            button: field.expandable,
-            label: field.expandable ? '${field.label}，点击查看完整内容' : null,
-            child: InkWell(
-              key: field.expandable ? const Key('data-source-detail-version') : null,
-              borderRadius: AppRadii.discoveryTile,
-              onTap: field.expandable ? () => _showFullValue(context) : null,
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.regular),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: Text(field.label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: tokens.mutedText)),
-                        ),
-                        if (field.expandable) Icon(Icons.open_in_full, size: 14, color: tokens.mutedText),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.unit),
-                    Text(
-                      field.value,
-                      maxLines: field.expandable ? 1 : null,
-                      overflow: field.expandable ? TextOverflow.ellipsis : TextOverflow.clip,
-                      softWrap: !field.expandable,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w500),
-                    ),
-                  ],
+    final label = Text(field.label, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText));
+    final value = Text(
+      field.value,
+      maxLines: field.expandable ? 1 : null,
+      softWrap: !field.expandable,
+      overflow: field.expandable ? TextOverflow.ellipsis : TextOverflow.clip,
+      style: Theme.of(context).textTheme.bodyMedium,
+    );
+    final stacked = width < 280 || MediaQuery.textScalerOf(context).scale(1) > 1.3;
+    return Material(
+      color: Colors.transparent,
+      child: Semantics(
+        button: field.expandable,
+        label: field.expandable ? '${field.label}，点击查看完整内容' : null,
+        child: InkWell(
+          key: field.expandable ? const Key('data-source-detail-version') : null,
+          onTap: field.expandable ? () => _showFullValue(context) : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.regular),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (!stacked) ...[SizedBox(width: 80, child: label), const SizedBox(width: AppSpacing.regular)],
+                Expanded(
+                  child: stacked
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            label,
+                            const SizedBox(height: AppSpacing.unit),
+                            value,
+                          ],
+                        )
+                      : value,
                 ),
-              ),
+                if (field.expandable) ...[
+                  const SizedBox(width: AppSpacing.unit),
+                  Icon(Icons.open_in_full, size: 14, color: tokens.mutedText),
+                ],
+              ],
             ),
           ),
         ),
@@ -503,6 +504,17 @@ class _DetailMetadataGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (BuildContext context, BoxConstraints constraints) {
+      if (!TvModeScope.isEnabled(context)) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < fields.length; i++) ...[
+              if (i > 0) Divider(height: 1, color: AppThemeTokens.of(context).divider),
+              _DetailField(field: fields[i], width: constraints.maxWidth),
+            ],
+          ],
+        );
+      }
       final double gap = AppSpacing.regular;
       final double halfWidth = (constraints.maxWidth - gap) / 2;
       return Wrap(

@@ -1,13 +1,13 @@
 /// TV settings dashboard with a persistent category rail and real setting links.
 /// Selection and scroll belong to this view; mutations and routing use callbacks.
 /// Outgoing category panels never retain focus during their fade transition.
+/// The top navigation is the sole header; category panels use the remaining height.
 library;
 
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/profile/presentation/profile_video_settings.dart';
 import 'package:mg_read/features/profile/presentation/profile_view_data.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
@@ -126,7 +126,6 @@ class _TvProfilePageState extends State<TvProfilePage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final tokens = AppThemeTokens.of(context);
     final duration = MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 220);
     return TvFocusRegion(
       child: Scaffold(
@@ -138,10 +137,6 @@ class _TvProfilePageState extends State<TvProfilePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('设置', style: theme.textTheme.headlineMedium),
-                const SizedBox(height: 8),
-                Text('方向键选择 · OK 确认 · 返回键返回', style: theme.textTheme.bodyLarge?.copyWith(color: tokens.mutedText)),
-                const SizedBox(height: 20),
                 Expanded(
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,

@@ -15,6 +15,13 @@ import 'package:mg_read/features/plugins/application/plugin_runtime_connection.d
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_source_detail_page.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() async {
+    await (FontLoader(
+      'packages/novel_reader_ui/MiSans',
+    )..addFont(rootBundle.load('packages/novel_reader_ui/assets/fonts/MiSansVF.ttf'))).load();
+    await (FontLoader('MaterialIcons')..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
+  });
   testWidgets('TV metadata and delete confirmation are reachable by remote on a short screen', (tester) async {
     await _setViewport(tester, const Size(640, 360));
     final gateway = _DirectoryGateway(_installedConnection);
@@ -190,6 +197,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
+    await expectLater(find.byType(PluginRuntimeSourceDetailPage), matchesGoldenFile('goldens/source_detail_metadata_phone.png'));
     expect(find.text(longVersion), findsOneWidget);
     final Text version = tester.widget<Text>(find.text(longVersion));
     expect(version.maxLines, 1);
