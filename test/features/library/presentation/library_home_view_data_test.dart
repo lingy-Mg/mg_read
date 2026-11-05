@@ -5,6 +5,50 @@ import 'package:mg_read/features/library/domain/library_overview.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
 
 void main() {
+  test('counts only chapters after a known position without inventing missing progress', () {
+    final cases = <({int? count, int? position, double? progress, int unread})>[
+      (count: 120, position: null, progress: null, unread: 120),
+      (count: 120, position: 0, progress: 0.01, unread: 119),
+      (count: 120, position: 119, progress: 1, unread: 0),
+      (count: 120, position: 130, progress: 1, unread: 0),
+      (count: 120, position: -1, progress: null, unread: 0),
+      (count: 120, position: null, progress: 0.4, unread: 0),
+      (count: null, position: 2, progress: 0.4, unread: 0),
+      (count: 0, position: null, progress: null, unread: 0),
+    ];
+    for (final kind in ContentKind.values) {
+      for (final sample in cases) {
+        final book = LibraryItemSummary(
+          id: 'count-test',
+          title: '数量测试',
+          contentKind: kind,
+          chapterCount: sample.count,
+          readingChapterIndex: sample.position,
+          readingProgress: sample.progress,
+        );
+        final data = LibraryHomeViewData.fromLocalOverview(LibraryOverview(items: [book]));
+        expect(
+          data.books.single.unreadChapterCount,
+          kind == ContentKind.novel || kind == ContentKind.manga ? sample.unread : 0,
+          reason: '$kind / $sample',
+        );
+        expect(
+          LibraryHomeViewData.fromLocalOverview(LibraryOverview(items: [book]), showUnreadBadges: false).books.single.unreadChapterCount,
+          0,
+        );
+      }
+    }
+  });
+
+  test('does not report a previously read item with an unknown position as entirely unread', () {
+    final data = LibraryHomeViewData.fromLocalOverview(
+      LibraryOverview(
+        items: [LibraryItemSummary(id: 'unknown-position', title: '进度待恢复', chapterCount: 120, lastReadAtUtc: DateTime.utc(2026, 11, 5))],
+      ),
+    );
+    expect(data.books.single.unreadChapterCount, 0);
+  });
+
   test('keeps the current book author and description in the home projection', () {
     final data = LibraryHomeViewData.fromLocalOverview(
       LibraryOverview(

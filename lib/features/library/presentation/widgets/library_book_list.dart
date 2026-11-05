@@ -7,6 +7,7 @@
 /// 注意：
 /// - 条目移除只改变局部展示高度，不替换父滚动容器或控制器。
 /// - 业务持久化由调用方负责；本组件只转发不可变数据与动作。
+/// - 类型标签不依赖封面；未读角标与菜单分区，缩略数量通过提示保留精确值。
 ///
 library;
 
@@ -290,7 +291,7 @@ class LibraryBookListItem extends StatelessWidget {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     final bool showAttentionIndicator = presentation.showAttentionIndicator && data.hasAttentionIndicator;
     final String semanticLabel = _bookListItemLabel(
-      title: data.title,
+      title: '${data.title}，${data.contentKindLabel}',
       subtitle: data.subtitle,
       activityLabel: presentation.showActivityLabel ? data.activityLabel : null,
       hasAttentionIndicator: showAttentionIndicator,
@@ -434,17 +435,23 @@ class _BookListDetails extends StatelessWidget {
               style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText, fontWeight: FontWeight.w400, height: 1.2),
             ),
           ),
-        if (data.tags.isNotEmpty)
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Wrap(
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
               spacing: AppSpacing.compact,
-              runSpacing: AppSpacing.unit,
-              children: data.tags.map((LibraryMetadataTagViewData tag) => LibraryMetadataTag(data: tag)).toList(growable: false),
+              children: <Widget>[
+                LibraryMetadataTag(
+                  data: LibraryMetadataTagViewData(label: data.contentKindLabel, tone: LibraryMetadataTone.accent),
+                ),
+                ...data.tags.map((LibraryMetadataTagViewData tag) => LibraryMetadataTag(data: tag)),
+              ],
             ),
           ),
+        ),
       ],
     );
   }
@@ -533,33 +540,42 @@ class _BookListTrailing extends StatelessWidget {
             ),
           if (!isPreparing && (showAttentionIndicator || data.unreadChapterCount > 0))
             Positioned(
-              top: AppSpacing.section + AppSpacing.unit,
+              top: data.unreadChapterCount > 0 || showMoreAction ? null : AppSpacing.section + AppSpacing.unit,
+              bottom: data.unreadChapterCount > 0 || showMoreAction ? 0 : null,
               right: AppSpacing.compact,
               child: Semantics(
-                label: data.unreadChapterCount > 0 ? '未读${data.unreadChapterCount}章' : '有更新',
-                child: ExcludeSemantics(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: tokens.notification,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: tokens.surface, width: 0.5),
-                    ),
-                    child: data.unreadChapterCount > 0
-                        ? SizedBox.square(
-                            dimension: AppSpacing.unreadDotSize + 14,
-                            child: Center(
-                              child: Text(
-                                data.unreadChapterCount > 99 ? '99' : '${data.unreadChapterCount}',
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: Colors.white,
-                                  fontSize: 9,
-                                  height: 1,
-                                  fontWeight: FontWeight.w700,
+                label: data.unreadChapterCount > 0 ? data.unreadCountLabel : '有更新',
+                child: Tooltip(
+                  message: data.unreadChapterCount > 0 ? data.unreadCountLabel : '有更新',
+                  excludeFromSemantics: true,
+                  child: ExcludeSemantics(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: tokens.notification,
+                        borderRadius: AppRadii.pill,
+                        border: Border.all(color: tokens.surface, width: 0.5),
+                      ),
+                      child: data.unreadChapterCount > 0
+                          ? Container(
+                              constraints: const BoxConstraints(minWidth: 28),
+                              height: 20,
+                              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.unit),
+                              child: Center(
+                                widthFactor: 1,
+                                heightFactor: 1,
+                                child: Text(
+                                  data.unreadChapterCount > 99 ? '99+' : '${data.unreadChapterCount}',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    height: 1,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
-                            ),
-                          )
-                        : const SizedBox.square(dimension: AppSpacing.unreadDotSize),
+                            )
+                          : const SizedBox.square(dimension: AppSpacing.unreadDotSize),
+                    ),
                   ),
                 ),
               ),

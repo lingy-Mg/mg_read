@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_list.dart';
@@ -21,7 +22,7 @@ void main() {
 
       final Finder row = find.byType(LibraryBookListItem);
       final Finder cover = find.byType(LibraryBookCover);
-      final Finder tag = find.byType(LibraryMetadataTag);
+      final Finder tag = find.byType(LibraryMetadataTag).first;
       final Rect rowRect = tester.getRect(row);
       final Rect coverRect = tester.getRect(cover);
       final Rect tagRect = tester.getRect(tag);
@@ -51,7 +52,7 @@ void main() {
     expect(find.byWidgetPredicate((Widget widget) => widget is Semantics && widget.properties.label == '有更新'), findsOneWidget);
   });
 
-  testWidgets('caps unread counts at 99 in a fixed circular badge with a fine outline', (WidgetTester tester) async {
+  testWidgets('shows 99+ with the exact unread count and keeps the badge below the menu', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 300));
     final book = LibraryBookListItemViewData(
       id: 'unread-badge-book',
@@ -67,11 +68,31 @@ void main() {
     final Finder badge = find.descendant(of: badgeSemantics, matching: find.byType(DecoratedBox));
     final BoxDecoration decoration = tester.widget<DecoratedBox>(badge).decoration as BoxDecoration;
 
-    expect(tester.getSize(badge), const Size(AppSpacing.unreadDotSize + 14, AppSpacing.unreadDotSize + 14));
-    expect(decoration.shape, BoxShape.circle);
+    expect(tester.getSize(badge).height, 20);
+    expect(decoration.borderRadius, AppRadii.pill);
     expect(decoration.border!.top.width, 0.5);
-    expect(tester.widget<Text>(find.text('99')).style!.fontSize, 9);
-    expect(find.textContaining('+'), findsNothing);
+    expect(find.text('99+'), findsOneWidget);
+    expect(find.byTooltip('未读128章'), findsOneWidget);
+    expect(tester.getRect(badge).overlaps(tester.getRect(find.byType(IconButton))), isFalse);
+  });
+
+  testWidgets('labels every content type and uses manga units on a narrow shelf', (WidgetTester tester) async {
+    await _setViewport(tester, const Size(320, 300));
+    for (final kind in ContentKind.values) {
+      final book = LibraryBookListItemViewData(
+        id: 'type-${kind.code}',
+        title: '类型测试',
+        contentKind: kind,
+        coverVariant: LibraryCoverVariant.dusk,
+        status: LibraryBookStatus.ongoing,
+        unreadChapterCount: kind == ContentKind.manga ? 3 : 0,
+      );
+      await tester.pumpWidget(_host(presentation: LibraryBookListPresentation.shelf, book: book));
+      await tester.pumpAndSettle();
+      expect(find.descendant(of: find.byType(LibraryMetadataTag), matching: find.text(book.contentKindLabel)), findsOneWidget);
+      if (kind == ContentKind.manga) expect(find.byTooltip('未读3话'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    }
   });
 
   testWidgets('forwards book and overflow intents with the original item', (WidgetTester tester) async {

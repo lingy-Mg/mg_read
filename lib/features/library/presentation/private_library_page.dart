@@ -8,6 +8,8 @@
 /// 注意：
 /// - 业务持久化由书架 application adapter 负责。
 /// - 页面操作必须通过显式回调和稳定的书籍 ID 执行。
+/// - 空状态与列表共用可刷新滚动区；操作反馈不随最后一项移除而消失。
+/// - 封面模糊和未读角标遵循全局书架设置，列表条目按需构建。
 ///
 library;
 
@@ -19,6 +21,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/core/errors/app_error.dart';
+import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/library/application/library_book_remover.dart';
 import 'package:mg_read/features/library/application/library_book_visibility_changer.dart';
 import 'package:mg_read/features/library/application/library_catalog_refresh_coordinator.dart';
@@ -150,39 +153,70 @@ class _PrivateLibraryBodyState extends ConsumerState<_PrivateLibraryBody> {
   @override
   Widget build(BuildContext context) {
     final state = widget.state;
-    if (state.status == LibraryPageStatus.initialLoading) {
-      return const AppLoadingState(label: '正在加载隐私书架', message: '正在加载隐私书架');
-    }
-    if (state.overview == null) {
-      return _PrivateLibraryFailure(error: state.error!, onRetry: widget.controller.refresh);
-    }
-    final books = LibraryHomeViewData.fromLocalOverview(state.overview!).books;
-    if (books.isEmpty) return const _PrivateLibraryEmpty();
+    ref.watch(appSettingsStatusProvider);
+    final settings = ref.read(appSettingsProvider);
+    final books = state.overview == null
+        ? const <LibraryBookListItemViewData>[]
+        : LibraryHomeViewData.fromLocalOverview(
+            state.overview!,
+            blurredBookIds: settings.get(AppSettingKeys.blurredCoverBookIds),
+            showUnreadBadges: settings.get(AppSettingKeys.bookshelfUnreadBadgeEnabled),
+          ).books;
     final actions = <LibraryBookListAction>[
       if (widget.visibilityChanger != null) _restoreBookAction,
       if (widget.remover != null) _deleteBookAction,
     ];
     return RefreshIndicator(
       onRefresh: widget.controller.refresh,
-      child: ListView(
+      child: CustomScrollView(
         key: const Key('private-library-content'),
-        padding: EdgeInsets.fromLTRB(
-          AppSpacing.compactPagePadding,
-          AppSpacing.compact,
-          AppSpacing.compactPagePadding,
-          AppSpacing.bottomNavigationContentBottomPadding + MediaQuery.viewPaddingOf(context).bottom,
-        ),
-        children: <Widget>[
-          if (_feedback != null) ...<Widget>[
-            _PrivateLibraryFeedback(message: _feedback!, onDismiss: () => setState(() => _feedback = null)),
-            const SizedBox(height: AppSpacing.compact),
-          ],
-          LibraryBookList(
-            books: books,
-            onOpenBook: (book) => widget.onReaderRequested(book.id),
-            actions: actions,
-            onBookAction: _handleAction,
-            presentation: LibraryBookListPresentation.shelf,
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: <Widget>[
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(
+              AppSpacing.compactPagePadding,
+              AppSpacing.compact,
+              AppSpacing.compactPagePadding,
+              AppSpacing.bottomNavigationContentBottomPadding + MediaQuery.viewPaddingOf(context).bottom,
+            ),
+            sliver: SliverMainAxisGroup(
+              slivers: <Widget>[
+                if (_feedback != null || (state.hasFailure && state.hasRetainedData))
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: AppSpacing.compact),
+                      child: Column(
+                        children: <Widget>[
+                          if (_feedback != null)
+                            _PrivateLibraryFeedback(message: _feedback!, onDismiss: () => setState(() => _feedback = null)),
+                          if (state.hasFailure && state.hasRetainedData)
+                            _PrivateLibraryFeedback(message: '刷新失败，仍显示上次加载的内容。', onRetry: () => unawaited(widget.controller.refresh())),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (state.status == LibraryPageStatus.initialLoading)
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: AppLoadingState(label: '正在加载隐私书架', message: '正在加载隐私书架'),
+                  )
+                else if (state.overview == null)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _PrivateLibraryFailure(error: state.error!, onRetry: widget.controller.refresh),
+                  )
+                else if (books.isEmpty)
+                  const SliverFillRemaining(hasScrollBody: false, child: _PrivateLibraryEmpty())
+                else
+                  LibraryBookSliverList(
+                    books: books,
+                    onOpenBook: (book) => widget.onReaderRequested(book.id),
+                    actions: actions,
+                    onBookAction: _handleAction,
+                    presentation: LibraryBookListPresentation.shelf,
+                  ),
+              ],
+            ),
           ),
         ],
       ),
@@ -203,15 +237,17 @@ class _PrivateLibraryBodyState extends ConsumerState<_PrivateLibraryBody> {
   }
 
   Future<void> _restoreBook(LibraryBookListItemViewData book, LibraryBookVisibilityChanger changer) async {
-    widget.controller.beginRemoval(book.id);
+    final controller = widget.controller;
+    final normalController = ref.read(libraryPageControllerProvider.notifier);
+    controller.beginRemoval(book.id);
     try {
       await changer.setBookVisibility(book.id, LibraryVisibility.normal);
-      widget.controller.commitRemoval(book.id);
-      unawaited(ref.read(libraryPageControllerProvider.notifier).refresh());
+      controller.commitRemoval(book.id);
+      unawaited(normalController.refresh());
       if (!mounted) return;
       setState(() => _feedback = '已取消《${book.title}》的隐私设置');
     } on Object {
-      widget.controller.rollbackRemoval(book.id);
+      controller.rollbackRemoval(book.id);
       if (!mounted) return;
       setState(() => _feedback = '取消隐私未能完成，请稍后刷新。');
     }
@@ -242,16 +278,16 @@ class _PrivateLibraryEmpty extends StatelessWidget {
     final tokens = AppThemeTokens.of(context);
     return Center(
       child: Semantics(
-        label: '暂无隐私书籍',
+        container: true,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Icon(Icons.visibility_off_outlined, size: 40, color: tokens.mutedText),
             const SizedBox(height: AppSpacing.regular),
-            Text('暂无隐私书籍', style: Theme.of(context).textTheme.titleMedium),
+            Text('暂无隐私内容', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: AppSpacing.unit),
             Text(
-              '在首页书籍的侧滑操作中设置隐私后，会显示在这里。',
+              '在首页通过条目的更多菜单或侧滑操作设为隐私，小说、漫画、音频和视频都会显示在这里。',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
             ),
@@ -287,34 +323,39 @@ class _PrivateLibraryFailure extends StatelessWidget {
 }
 
 class _PrivateLibraryFeedback extends StatelessWidget {
-  const _PrivateLibraryFeedback({required this.message, required this.onDismiss});
+  const _PrivateLibraryFeedback({required this.message, this.onDismiss, this.onRetry});
 
   final String message;
-  final VoidCallback onDismiss;
+  final VoidCallback? onDismiss;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
     final tokens = AppThemeTokens.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: tokens.accentSoft,
-        borderRadius: AppRadii.control,
-        border: Border.all(color: tokens.accent),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.only(
-          left: AppSpacing.regular,
-          top: AppSpacing.compact,
-          right: AppSpacing.compact,
-          bottom: AppSpacing.compact,
+    return Semantics(
+      liveRegion: true,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: tokens.accentSoft,
+          borderRadius: AppRadii.control,
+          border: Border.all(color: tokens.accent),
         ),
-        child: Row(
-          children: <Widget>[
-            Icon(Icons.info_outline_rounded, color: tokens.accent),
-            const SizedBox(width: AppSpacing.compact),
-            Expanded(child: Text(message)),
-            IconButton(tooltip: '关闭提示', onPressed: onDismiss, icon: const Icon(Icons.close_rounded)),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.only(
+            left: AppSpacing.regular,
+            top: AppSpacing.compact,
+            right: AppSpacing.compact,
+            bottom: AppSpacing.compact,
+          ),
+          child: Row(
+            children: <Widget>[
+              Icon(Icons.info_outline_rounded, color: tokens.accent),
+              const SizedBox(width: AppSpacing.compact),
+              Expanded(child: Text(message)),
+              if (onRetry != null) IconButton(tooltip: '重试刷新', onPressed: onRetry, icon: const Icon(Icons.refresh_rounded)),
+              if (onDismiss != null) IconButton(tooltip: '关闭提示', onPressed: onDismiss, icon: const Icon(Icons.close_rounded)),
+            ],
+          ),
         ),
       ),
     );

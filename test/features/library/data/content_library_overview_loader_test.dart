@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,60 @@ import 'package:mg_read/features/library/presentation/library_home_view_data.dar
 import 'package:mg_read/features/library/presentation/tv_library_data.dart';
 
 void main() {
+  test('keeps local logical chapters distinct from physical document chunks', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-local-shelf-counts-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    addTearDown(() async {
+      await library.close();
+      await root.delete(recursive: true);
+    });
+    final bytes = utf8.encode('第一章 起点\n${'甲' * 20000}\n${'乙' * 20000}\n第二章 远方\n结尾内容');
+    final preview = await library.prepareLocalImport(
+      LocalImportInput(fileName: '逻辑章节.txt', bytes: bytes.length, openRead: () => Stream.value(bytes)),
+    );
+    final imported = await library.commitLocalImport(preview.id);
+    expect(imported.status, LocalImportStatus.succeeded);
+    final projection = (await library.loadShelfProjection()).single;
+    expect(projection.catalogCount, greaterThan(2));
+    final overview = await ContentLibraryOverviewLoader(library).load();
+    expect(overview.items.single.chapterCount, 2);
+    expect(LibraryHomeViewData.fromLocalOverview(overview).books.single.unreadChapterCount, 2);
+  });
+
+  test('uses synchronized catalog counts instead of stale source totals for unread badges', () async {
+    final root = await Directory.systemTemp.createTemp('mg-read-shelf-counts-');
+    final library = await ContentLibrary.open(dataRoot: root);
+    addTearDown(() async {
+      await library.close();
+      await root.delete(recursive: true);
+    });
+    for (final sourceCount in [0, 2, 200]) {
+      final item = await library.addLibraryItem(
+        BookshelfAddRequest(
+          pluginId: 'test-source',
+          pluginVersion: '1.0.0',
+          remoteContentId: 'count-$sourceCount',
+          title: '目录数量测试',
+          author: null,
+          kind: ContentKind.novel,
+          chapterCount: sourceCount,
+        ),
+      );
+      await library.syncNovelCatalog(
+        itemId: item.id,
+        chapters: [
+          for (var index = 0; index < 10; index++)
+            SourceNovelCatalogChapter(remoteIdentity: 'chapter-$index', title: '第${index + 1}章', index: index),
+        ],
+      );
+      await library.saveProgress(_progress(item.id, 1));
+      await library.setLibraryItemVisibility(item.id, LibraryVisibility.private);
+    }
+    final overview = await ContentLibraryOverviewLoader(library).load(visibility: LibraryVisibility.private);
+    expect(overview.items.map((item) => item.chapterCount), everyElement(10));
+    expect(LibraryHomeViewData.fromLocalOverview(overview).books.map((book) => book.unreadChapterCount), everyElement(9));
+  });
+
   test('reads persisted bookshelf items through the feature projection', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-library-home-');
     final library = await ContentLibrary.open(dataRoot: root);

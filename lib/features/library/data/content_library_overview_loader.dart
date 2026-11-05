@@ -7,6 +7,7 @@
 /// 注意：
 /// - 持久化细节只保留在 Content Library 内部。
 /// - 封面由展示层在主体显示后异步解析。
+/// - 在线章节数优先使用已同步目录，与阅读位置同口径；本地文档保留逻辑章节数。
 ///
 library;
 
@@ -46,7 +47,11 @@ final class ContentLibraryOverviewLoader implements LibraryOverviewLoader {
           for (final attribute in item.attributes)
             LibraryItemSummaryAttribute(key: attribute.key, label: attribute.label, value: attribute.value),
         ],
-        chapterCount: item.sourceChapterCount ?? item.catalogCount,
+        chapterCount: source.isLocal
+            ? item.sourceChapterCount ?? item.catalogCount
+            : item.catalogCount > 0
+            ? item.catalogCount
+            : item.sourceChapterCount,
         readingProgress: item.bookFraction,
         readingChapterIndex: item.chapterPosition,
         lastReadAtUtc: item.progressUpdatedAtUtc,

@@ -50,6 +50,17 @@ final class LibraryBookListItemViewData {
   /// Content family used by type-aware local cover artwork and destinations.
   final ContentKind contentKind;
 
+  /// Visible even when a source supplies its own cover artwork.
+  String get contentKindLabel => switch (contentKind) {
+    ContentKind.novel => '小说',
+    ContentKind.manga => '漫画',
+    ContentKind.audio => '音频',
+    ContentKind.video => '视频',
+  };
+
+  /// Full count for tooltips and accessibility; compact badges may use 99+.
+  String get unreadCountLabel => '未读$unreadChapterCount${contentKind == ContentKind.manga ? '话' : '章'}';
+
   /// Optional source cover retained by the app-owned shelf projection.
   final Uri? coverUrl;
   final CoverOrientation coverOrientation;

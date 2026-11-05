@@ -7,6 +7,7 @@
 /// 注意：
 /// - 页面构建不得在此处触发封面、Runtime 或持久化读取。
 /// - 无来源身份的封面由组件使用本地降级插画。
+/// - 未读数量表示当前位置之后的章节；进度位置未知时不把整本书误报为未读。
 ///
 library;
 
@@ -146,7 +147,12 @@ int _unreadChapterCount(LibraryItemSummary item) {
   if (item.contentKind != ContentKind.novel && item.contentKind != ContentKind.manga) return 0;
   final count = item.chapterCount;
   if (count == null || count <= 0) return 0;
-  return (count - ((item.readingChapterIndex ?? -1) + 1)).clamp(0, count);
+  final position = item.readingChapterIndex;
+  if (position == null) {
+    return item.lastReadAtUtc == null && item.readingProgress == null ? count : 0;
+  }
+  if (position < 0) return 0;
+  return (count - (position + 1)).clamp(0, count);
 }
 
 BookCoverRequest? _coverRequest(LibraryItemSummary item) {
