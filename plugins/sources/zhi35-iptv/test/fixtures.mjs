@@ -14,12 +14,15 @@ https://media.example/scenic/index.m3u8
 https://media.example/local.flv
 `;
 
+export const hlsManifest = '#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:1\n#EXTINF:6,\nsegment.ts\n';
+
 export function contextFixture(fetch) {
   const resources = [], logs = [];
   return {
     resources, logs,
     context: {
       http: { fetch },
+      errors: { raise(value) { const error = new Error(value.message); error.code = value.code; error.annotation = value.annotation; throw error; } },
       resource: { proxy(request) { resources.push(request); return `http://127.0.0.1:1234/v1/source-resource/fixture-resource-${resources.length}`; } },
       log: Object.fromEntries(['info', 'warn', 'debug', 'error'].map((level) => [level, (event) => logs.push({ level, event })])),
     },

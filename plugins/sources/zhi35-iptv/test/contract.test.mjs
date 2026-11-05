@@ -10,7 +10,7 @@ import { build, stop } from 'esbuild';
 import { assertStandardSourceContract, collectDiscoveryContent, collectDiscoveryTargets } from '@mgread/source-testkit';
 import * as plugin from '../dist/index.mjs';
 import { buildPluginArtifact, buildPluginArtifactForProject } from '../tools/mgread.mjs';
-import { playlist, contextFixture, discoveryRequest } from './fixtures.mjs';
+import { playlist, hlsManifest, contextFixture, discoveryRequest } from './fixtures.mjs';
 
 const pluginId = 'org.mgread.zhi35-iptv';
 
@@ -44,7 +44,7 @@ test('standard exports and deterministic artifact with verifiable code/icon hash
 
 test('root, categories, append, search, details, catalogs and media pass current Runtime validators', async (t) => {
   const validators = await loadValidators(t);
-  await plugin.activate(contextFixture(async () => new Response(playlist)).context);
+  await plugin.activate(contextFixture(async (url) => new Response(new URL(url).pathname.endsWith('.m3u8') ? hlsManifest : playlist)).context);
   const check = (method, value) => validators[method](pluginId, 'zhi35 IPTV fixture', value);
   const root = await plugin.discover(discoveryRequest);
   check('validateDiscoverResult', root);

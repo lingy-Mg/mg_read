@@ -6,7 +6,7 @@ import * as plugin from '../dist/index.mjs';
 import { parsePlaylist, safeHttpUrl } from '../dist/playlist.mjs';
 import { createPlaylistStore, playlistUrls } from '../dist/store.mjs';
 import { resolveMedia } from '../dist/media.mjs';
-import { playlist, contextFixture, discoveryRequest } from './fixtures.mjs';
+import { playlist, hlsManifest, contextFixture, discoveryRequest } from './fixtures.mjs';
 
 test('M3U preserves names, missing metadata, IPv6 and distinct CCTV5 channels', () => {
   const result = parsePlaylist(playlist);
@@ -84,7 +84,7 @@ test('discovery/search paginate the same channels and reject cross-list cursors'
 
 test('catalog lines map one-to-one to episodes; content refresh preserves authorization and validates ownership', async () => {
   let latest = playlist;
-  const fixture = contextFixture(async () => new Response(latest));
+  const fixture = contextFixture(async (url) => new Response(new URL(url).pathname.endsWith('.m3u8') ? hlsManifest : latest));
   await plugin.activate(fixture.context);
   const search = await plugin.search({ query: '测试卫视', cursor: null, pageSize: 20 });
   const id = search.items[0].id;
@@ -185,4 +185,62 @@ test('unknown-extension media uses bounded sniffing, follows the real redirect U
   assert.equal(media.url, 'https://media.example/actual/index.m3u8?token=preserved');
   assert.equal(cancelled, true);
   await assert.rejects(resolveMedia(contextFixture(async () => new Response('<html>Error</html>', { headers: { 'content-type': 'text/html' } })).context, 'https://media.example/play'), /可识别/u);
+});
+
+test('known HLS validates playlist metadata, cancels immediately, and keeps the original refreshable address', async () => {
+  let cancelled = false;
+  const url = 'https://media.example/live.m3u8?token=preserved';
+  const fixture = contextFixture(async (input, init) => {
+    assert.equal(input, url);
+    assert.equal(init.proxyMode, undefined);
+    const response = new Response(new ReadableStream({
+      start(controller) { controller.enqueue(Buffer.from(hlsManifest)); },
+      cancel() { cancelled = true; },
+    }));
+    Object.defineProperty(response, 'url', { value: 'https://media.example/session.m3u8?token=temporary' });
+    return response;
+  });
+  const media = await resolveMedia(fixture.context, url, '测试直播');
+  assert.equal(media.url, url);
+  assert.equal(media.resourceType, 'hls');
+  assert.equal(cancelled, true);
+});
+
+test('upstream access denial is a public source error with the channel title and no upstream secrets', async () => {
+  const fixture = contextFixture(async () => new Response('Forbidden', { status: 403 }));
+  await assert.rejects(resolveMedia(fixture.context, 'https://media.example/live.m3u8?token=secret', 'CCTV-1综合'), (error) => {
+    assert.equal(error.code, 'source_access_blocked');
+    assert.match(error.message, /CCTV-1综合.*HTTP 403/u);
+    assert.ok(!`${error.message}${error.annotation}`.includes('secret'));
+    assert.ok(!`${error.message}${error.annotation}`.includes('media.example'));
+    return true;
+  });
+});
+
+test('IPv6 HTTP 502 is reported before player open instead of registering an unusable resource', async () => {
+  const fixture = contextFixture(async () => new Response(null, { status: 502 }));
+  await assert.rejects(resolveMedia(fixture.context, 'http://[2409:8087:8:21::18]:6610/live.m3u8', 'CCTV-1综合'), (error) => {
+    assert.equal(error.code, 'source_media_resolution_failed');
+    assert.match(error.message, /HTTP 502/u);
+    assert.match(error.annotation, /IPv6/u);
+    return true;
+  });
+  assert.equal(fixture.resources.length, 0);
+});
+
+test('HTML or IPTV lists with a misleading HLS extension are rejected by the source', async () => {
+  for (const body of ['<html>unavailable</html>', playlist]) {
+    const fixture = contextFixture(async () => new Response(body, { headers: { 'content-type': 'application/vnd.apple.mpegurl' } }));
+    await assert.rejects(resolveMedia(fixture.context, 'https://media.example/live.m3u8'), (error) => error.code === 'source_media_resolution_failed' && error.message.includes('HLS'));
+  }
+});
+
+test('HLS connection failures are bounded public errors without exposing request context', async () => {
+  const fixture = contextFixture(async () => { throw new Error('connect failed https://media.example/private?token=secret'); });
+  await assert.rejects(resolveMedia(fixture.context, 'https://media.example/live.m3u8'), (error) => {
+    assert.equal(error.code, 'source_media_resolution_failed');
+    assert.match(error.message, /连接失败或超时/u);
+    assert.ok(!error.message.includes('secret'));
+    return true;
+  });
 });

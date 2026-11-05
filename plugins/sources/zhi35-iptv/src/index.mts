@@ -97,7 +97,7 @@ export async function getContent(request: { id: string; chapterId: string }) {
   const channel = locate(await store.load(true), request.id);
   const stream = channel.streams.find((entry) => chapterId(channel, entry) === request.chapterId);
   if (stream === undefined) throw new Error('直播线路不存在，请刷新频道。');
-  const media = await resolveMedia(context, stream.url);
+  const media = await resolveMedia(context, stream.url, channel.title);
   const headers = { Accept: '*/*' };
   return {
     chapterId: request.chapterId, contentKind: 'video', title: channel.title, updatedAt: null, text: null, pages: [],
