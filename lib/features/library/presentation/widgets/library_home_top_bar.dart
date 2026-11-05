@@ -66,15 +66,16 @@ class LibraryHomeTopBar extends StatelessWidget {
             menuKey: const Key('library-top-overflow-menu'),
             actions: <LibraryAnchoredMenuAction>[
               if (TvModeScope.maybeOf(context) case final mode?)
-                LibraryAnchoredMenuAction(label: '切换到 TV 模式', onSelected: () => mode.onChanged(true)),
-              LibraryAnchoredMenuAction(label: '刷新书架', onSelected: onRefresh),
+                LibraryAnchoredMenuAction(label: '切换到 TV 模式', icon: Icons.tv_rounded, onSelected: () => mode.onChanged(true)),
+              LibraryAnchoredMenuAction(label: '刷新书架', icon: Icons.refresh_rounded, onSelected: onRefresh),
               LibraryAnchoredMenuAction(
                 label: layoutMode == LibraryHomeLayoutMode.list ? '切换为卡片模式' : '切换为列表模式',
+                icon: layoutMode == LibraryHomeLayoutMode.list ? Icons.grid_view_rounded : Icons.view_list_rounded,
                 onSelected: onLayoutModeToggle,
               ),
-              LibraryAnchoredMenuAction(label: '阅读记录', onSelected: onReadingHistory),
-              LibraryAnchoredMenuAction(label: '管理数据源', onSelected: onManageSources),
-              LibraryAnchoredMenuAction(label: '隐私书架', onSelected: onPrivacyLibrary),
+              LibraryAnchoredMenuAction(label: '阅读记录', icon: Icons.history_rounded, startsSection: true, onSelected: onReadingHistory),
+              LibraryAnchoredMenuAction(label: '管理数据源', icon: Icons.dns_outlined, onSelected: onManageSources),
+              LibraryAnchoredMenuAction(label: '隐私书架', icon: Icons.lock_outline_rounded, onSelected: onPrivacyLibrary),
             ],
             triggerBuilder: (BuildContext context, VoidCallback onPressed) =>
                 _LibraryTopBarAction(tooltip: '更多操作', onPressed: onPressed, icon: Icons.more_vert_rounded),

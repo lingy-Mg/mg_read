@@ -9,6 +9,7 @@
 /// - 卡片模式必须保留列表模式已有的书籍操作，不建立第二套业务回调。
 /// - 图片解码前使用来源方向作为占位比例；解码后高度跟随原图像素比例。
 /// - 更新数量使用主题表面色胶囊，避免封面上的高饱和色圆点；超过 99 显示 99+。
+/// - 更多菜单与列表共用锚点弹层，卡片只拥有触发按钮的悬停/焦点外观。
 ///
 library;
 
@@ -19,8 +20,10 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_anchored_menu.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_list_action.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_book_menu_action.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_removal_transition.dart';
 
 typedef LibraryBookGridActionSelected = void Function(LibraryBookListItemViewData book, LibraryBookListAction action);
@@ -403,27 +406,23 @@ class _GridBookMenuState extends State<_GridBookMenu> {
 
     final Widget button;
     if (widget.actions.isNotEmpty && widget.onAction != null) {
-      button = PopupMenuButton<LibraryBookListAction>(
+      button = LibraryAnchoredMenu(
         key: Key('library-grid-book-overflow-menu-${widget.book.id}'),
         tooltip: '书籍更多操作',
-        position: PopupMenuPosition.under,
-        shape: RoundedRectangleBorder(borderRadius: AppRadii.surface),
-        elevation: 4,
-        onOpened: () => setState(() => _isMenuOpen = true),
-        onCanceled: () => setState(() => _isMenuOpen = false),
-        onSelected: (LibraryBookListAction action) {
-          setState(() => _isMenuOpen = false);
-          widget.onAction!(action);
-        },
-        itemBuilder: (BuildContext context) => <PopupMenuEntry<LibraryBookListAction>>[
+        menuKey: Key('library-grid-book-popup-${widget.book.id}'),
+        onOpenChanged: (bool open) => setState(() => _isMenuOpen = open),
+        actions: <LibraryAnchoredMenuAction>[
           for (final LibraryBookListAction action in widget.actions)
-            PopupMenuItem<LibraryBookListAction>(
+            action.toMenuAction(
+              widget.book,
               key: Key('library-grid-book-action-${widget.book.id}-${action.id}'),
-              value: action,
-              child: Text(action.labelFor(widget.book)),
+              onSelected: () => widget.onAction!(action),
             ),
         ],
-        child: trigger,
+        triggerBuilder: (BuildContext context, VoidCallback onPressed) => Tooltip(
+          message: '书籍更多操作',
+          child: InkWell(onTap: onPressed, customBorder: const CircleBorder(), child: trigger),
+        ),
       );
     } else {
       button = IconButton(

@@ -17,6 +17,7 @@ import 'package:mg_read/features/library/presentation/library_book_list_view_dat
 import 'package:mg_read/features/library/presentation/widgets/library_anchored_menu.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_cover.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_list_action.dart';
+import 'package:mg_read/features/library/presentation/widgets/library_book_menu_action.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_removal_transition.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_swipe_actions.dart';
 
@@ -511,8 +512,7 @@ class _BookListTrailing extends StatelessWidget {
                         tooltip: '书籍更多操作',
                         menuKey: Key('library-book-overflow-menu-${data.id}'),
                         actions: <LibraryAnchoredMenuAction>[
-                          for (final action in actions)
-                            LibraryAnchoredMenuAction(label: action.labelFor(data), onSelected: () => onAction!(action)),
+                          for (final action in actions) action.toMenuAction(data, onSelected: () => onAction!(action)),
                         ],
                         triggerBuilder: (BuildContext context, VoidCallback onPressed) => IconButton(
                           tooltip: '书籍更多操作',
