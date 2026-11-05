@@ -3,24 +3,26 @@
  * 职责：真实分类/频道发现、本地分页检索、频道详情、多线路目录和 Runtime 媒体登记。
  * 生命周期：activate 只注入公开 Context 并替换内存列表缓存；所有请求由调用触发，无启动 IO。
  * 所有权：来源持有频道/线路/游标，Runtime 持有资源流，宿主持有播放器；不生成节目单、回看或热门词。
+ * 台标：各内容表面共用激活周期内的修复器；仅确认缺图才输出 null，频道身份与播放列表保持原样。
  * 注意：IPv6 线路依赖用户网络；上游标记 ❌ 和失效资源照实保留，不宣称全源可播。
  */
 import type { MgReadPluginContext } from '@mgread/source-api';
 import { digest, type Channel, type Playlist, type Stream } from './playlist.mjs';
 import { createPlaylistStore } from './store.mjs';
 import { resolveMedia } from './media.mjs';
+import { createLogoResolver } from './logos.mjs';
 
 type DiscoveryRequest = { target: string | null; cursor: string | null; collectionId: string | null; pageSize: number };
 type SearchRequest = { query: string; cursor: string | null; pageSize: number };
-let active: { context: MgReadPluginContext; store: ReturnType<typeof createPlaylistStore> } | undefined;
+let active: { context: MgReadPluginContext; store: ReturnType<typeof createPlaylistStore>; logos: ReturnType<typeof createLogoResolver> } | undefined;
 
 export async function activate(context: MgReadPluginContext): Promise<void> {
-  active = { context, store: createPlaylistStore(context) };
+  active = { context, store: createPlaylistStore(context), logos: createLogoResolver(context) };
   context.log.info('source_activated');
 }
 
 export async function discover(request: DiscoveryRequest) {
-  const { context, store } = requireActive();
+  const { context, store, logos } = requireActive();
   if (request.target === null && (request.cursor !== null || request.collectionId !== null)) throw new Error('发现请求无效。');
   const playlist = await store.load();
   const categories = categoryList(playlist);
@@ -31,7 +33,7 @@ export async function discover(request: DiscoveryRequest) {
   const page = paginate(channels, request.cursor, request.pageSize, target, playlist.revision);
   const collectionId = `iptv:${target}`;
   if (request.collectionId !== null && request.collectionId !== collectionId) throw new Error('频道列表标识无效。');
-  const items = page.items.map((channel) => ({ content: summary(context, channel), rank: null, metric: null, recommendation: null }));
+  const items = (await logos.prepare(page.items)).map((channel) => ({ content: summary(context, channel), rank: null, metric: null, recommendation: null }));
   const continuation = page.cursor === null ? null : { target, cursor: page.cursor };
   if (request.collectionId !== null) return { kind: 'append' as const, collectionId, items, continuation };
   const listing = {
@@ -60,7 +62,7 @@ export async function search(request: SearchRequest) {
     return { items: [], nextCursor: null, totalCount: 0 };
   }
   if (query.length > 256) throw new Error('搜索词过长。');
-  const { context, store } = requireActive();
+  const { context, store, logos } = requireActive();
   const playlist = await store.load();
   const terms = query.split(/\s+/u);
   const channels = playlist.channels.filter((channel) => {
@@ -68,7 +70,7 @@ export async function search(request: SearchRequest) {
     return terms.every((term) => title.includes(term));
   });
   const page = paginate(channels, request.cursor, request.pageSize, `search:${digest(query)}`, playlist.revision);
-  return { items: page.items.map((channel) => summary(context, channel)), nextCursor: page.cursor, totalCount: channels.length };
+  return { items: (await logos.prepare(page.items)).map((channel) => summary(context, channel)), nextCursor: page.cursor, totalCount: channels.length };
 }
 
 export async function searchSuggestions(_request: { cursor: string | null; pageSize: number }) {
@@ -76,8 +78,8 @@ export async function searchSuggestions(_request: { cursor: string | null; pageS
 }
 
 export async function getDetail(request: { id: string }) {
-  const { context, store } = requireActive();
-  const channel = locate(await store.load(), request.id);
+  const { context, store, logos } = requireActive();
+  const channel = (await logos.prepare([locate(await store.load(), request.id)]))[0]!;
   return { ...summary(context, channel), aliases: channel.name && channel.name !== channel.title ? [channel.name] : [], catalogUrl: null };
 }
 

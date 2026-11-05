@@ -1,6 +1,6 @@
 /** 真实来源全分类链路与分层资源抽样；失败也写报告，不能代替主程序首帧/进度验收。 */
 import assert from 'node:assert/strict';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   collectDiscoveryContent, collectDiscoveryContinuations, createSourceTestHarness, probeResourceGroups,
@@ -13,7 +13,8 @@ test('live IPTV traverses every category and probes stratified covers and media'
   const fetchBounded = (url, init = {}) => fetch(url, {
     ...init, signal: init.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(8000)]) : AbortSignal.timeout(8000),
   });
-  const harness = await createSourceTestHarness({ plugin, pluginId: 'org.mgread.zhi35-iptv', version: '1.0.0', fetch: fetchBounded });
+  const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const harness = await createSourceTestHarness({ plugin, pluginId: 'org.mgread.zhi35-iptv', version, fetch: fetchBounded });
   t.after(harness.cleanup);
   try {
     const root = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 20 });

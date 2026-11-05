@@ -236,14 +236,182 @@ async function resolveMedia(context, url) {
   }
 }
 
+// src/logos.mts
+var catalogUrl = "https://upload.112114.xyz/logo/";
+var day = 24 * 60 * 6e4;
+var maximumCatalogBytes = 3 * 1024 * 1024;
+function canonicalLogoUrl(value) {
+  const safe = safeHttpUrl(value);
+  if (safe === null) return null;
+  const url = new URL(safe);
+  if (["live.fanmingming.cn", "live.fanmingming.com"].includes(url.hostname) && /^\/tv\/[^/]+\.png$/iu.test(url.pathname)) {
+    return `https://raw.githubusercontent.com/fanmingming/live/main${url.pathname}`;
+  }
+  if (url.hostname !== "ghproxy.zhi35.com" && url.hostname !== "ghp.ci") return safe;
+  const embedded = url.pathname.slice(1).replace(/^raw\.githubusercontent\.com\//u, "https://raw.githubusercontent.com/");
+  const upstream = safeHttpUrl(embedded);
+  if (upstream === null) return null;
+  const raw = new URL(upstream);
+  if (raw.origin === "https://raw.githubusercontent.com" && raw.pathname === "/wanglindl/TVlogo/main/img/CTI3.pngg") {
+    raw.pathname = "/wanglindl/TVlogo/main/img/CTI3.png";
+  }
+  if (raw.origin !== "https://raw.githubusercontent.com" || !/^\/(?:wanglindl\/TVlogo\/main\/img|suxuang\/myIPTV\/main\/tvlog)\/[^/]+\.png$/iu.test(raw.pathname)) return null;
+  return raw.href;
+}
+function parseLogoCatalog(html) {
+  const result = /* @__PURE__ */ new Map();
+  for (const match of html.matchAll(/href\s*=\s*["']([^"']+\.png)["']/giu)) {
+    try {
+      const url = new URL(match[1].replaceAll("&amp;", "&"), catalogUrl);
+      if (url.origin !== new URL(catalogUrl).origin || !url.pathname.startsWith("/logo/") || url.search || url.hash) continue;
+      const filename = decodeURIComponent(url.pathname.slice("/logo/".length));
+      if (!filename || filename.length > 256 || /[\u0000-\u001f\u007f/\\]/u.test(filename) || !/\.png$/iu.test(filename)) continue;
+      result.set(filename, url.href);
+      if (result.size > 2e4) throw new Error("logo_catalog_too_many_entries");
+    } catch (error) {
+      if (error instanceof Error && error.message === "logo_catalog_too_many_entries") throw error;
+    }
+  }
+  if (result.size === 0) throw new Error("logo_catalog_empty");
+  return result;
+}
+function createLogoResolver(context, now = Date.now) {
+  const cache = /* @__PURE__ */ new Map();
+  const pending = /* @__PURE__ */ new Map();
+  let catalog;
+  let catalogExpires = 0;
+  let catalogPending;
+  let running = 0;
+  const waiting = [];
+  return { prepare };
+  async function prepare(channels) {
+    return Promise.all(channels.map(async (channel) => ({ ...channel, cover: await resolve(channel.cover) })));
+  }
+  async function resolve(cover) {
+    if (cover === null) return null;
+    const canonical = canonicalLogoUrl(cover);
+    if (canonical === null) return null;
+    const url = new URL(canonical);
+    if (url.hostname !== "tb.zbds.top" || !/^\/logo\/[^/]+\.png$/iu.test(url.pathname)) return canonical;
+    const cached = cache.get(canonical);
+    if (cached !== void 0 && cached.expires > now()) return cached.url;
+    const existing = pending.get(canonical);
+    if (existing !== void 0) return existing;
+    const current = limited(() => repairLocalLogo(canonical));
+    pending.set(canonical, current);
+    try {
+      return await current;
+    } finally {
+      if (pending.get(canonical) === current) pending.delete(canonical);
+    }
+  }
+  async function limited(action) {
+    if (running >= 4) await new Promise((done) => waiting.push(done));
+    else running += 1;
+    try {
+      return await action();
+    } finally {
+      const next = waiting.shift();
+      if (next !== void 0) next();
+      else running -= 1;
+    }
+  }
+  function remember(key, value, ttl) {
+    cache.delete(key);
+    cache.set(key, { url: value, expires: now() + ttl });
+    while (cache.size > 512) cache.delete(cache.keys().next().value);
+    return value;
+  }
+  async function inspect(url) {
+    try {
+      const response = await context.http.fetch(url, { method: "HEAD", headers: { Accept: "image/*" }, signal: AbortSignal.timeout(4e3) });
+      await response.body?.cancel();
+      const mime = (response.headers.get("content-type") ?? "").toLowerCase();
+      if (response.ok && /^image\/(?:png|jpeg|gif|webp)(?:;|$)/u.test(mime)) return "image";
+      if (response.status === 404 || response.status === 410 || response.ok && /^text\/html/u.test(mime)) return "missing";
+    } catch {
+      context.log.warn("iptv_logo_probe_unavailable");
+    }
+    return "unknown";
+  }
+  async function repairLocalLogo(original) {
+    const state = await inspect(original);
+    if (state === "image") return remember(original, original, day);
+    if (state === "unknown") return remember(original, original, 6e4);
+    const entries = await loadCatalog();
+    let filename;
+    try {
+      filename = decodeURIComponent(new URL(original).pathname.slice("/logo/".length));
+    } catch {
+      return remember(original, null, 5 * 6e4);
+    }
+    const fallback = entries?.get(filename);
+    if (fallback !== void 0 && await inspect(fallback) === "image") {
+      context.log.info("iptv_logo_recovered");
+      return remember(original, fallback, day);
+    }
+    context.log.info("iptv_logo_missing");
+    return remember(original, null, 5 * 6e4);
+  }
+  async function loadCatalog() {
+    if (catalogExpires > now()) return catalog;
+    if (catalogPending !== void 0) return catalogPending;
+    const current = (async () => {
+      try {
+        const response = await context.http.fetch(catalogUrl, { headers: { Accept: "text/html" }, signal: AbortSignal.timeout(8e3) });
+        if (!response.ok) {
+          await response.body?.cancel();
+          throw new Error("logo_catalog_http_failed");
+        }
+        catalog = parseLogoCatalog(await readCatalogHtml(response));
+        catalogExpires = now() + day;
+        context.log.info(`iptv_logo_catalog_loaded entries=${catalog.size}`);
+      } catch {
+        catalogExpires = now() + 5 * 6e4;
+        context.log.warn("iptv_logo_catalog_unavailable");
+      }
+      return catalog;
+    })();
+    catalogPending = current;
+    try {
+      return await current;
+    } finally {
+      if (catalogPending === current) catalogPending = void 0;
+    }
+  }
+}
+async function readCatalogHtml(response) {
+  if (Number(response.headers.get("content-length")) > maximumCatalogBytes || response.body === null) {
+    await response.body?.cancel();
+    throw new Error("logo_catalog_size_invalid");
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      size += chunk.value.byteLength;
+      if (size > maximumCatalogBytes) throw new Error("logo_catalog_too_large");
+      chunks.push(chunk.value);
+    }
+    return Buffer.concat(chunks).toString("utf8");
+  } finally {
+    await reader.cancel().catch(() => {
+    });
+    reader.releaseLock();
+  }
+}
+
 // src/index.mts
 var active;
 async function activate(context) {
-  active = { context, store: createPlaylistStore(context) };
+  active = { context, store: createPlaylistStore(context), logos: createLogoResolver(context) };
   context.log.info("source_activated");
 }
 async function discover(request) {
-  const { context, store } = requireActive();
+  const { context, store, logos } = requireActive();
   if (request.target === null && (request.cursor !== null || request.collectionId !== null)) throw new Error("发现请求无效。");
   const playlist = await store.load();
   const categories = categoryList(playlist);
@@ -254,7 +422,7 @@ async function discover(request) {
   const page = paginate(channels, request.cursor, request.pageSize, target, playlist.revision);
   const collectionId = `iptv:${target}`;
   if (request.collectionId !== null && request.collectionId !== collectionId) throw new Error("频道列表标识无效。");
-  const items = page.items.map((channel) => ({ content: summary(context, channel), rank: null, metric: null, recommendation: null }));
+  const items = (await logos.prepare(page.items)).map((channel) => ({ content: summary(context, channel), rank: null, metric: null, recommendation: null }));
   const continuation = page.cursor === null ? null : { target, cursor: page.cursor };
   if (request.collectionId !== null) return { kind: "append", collectionId, items, continuation };
   const listing = {
@@ -286,7 +454,7 @@ async function search(request) {
     return { items: [], nextCursor: null, totalCount: 0 };
   }
   if (query.length > 256) throw new Error("搜索词过长。");
-  const { context, store } = requireActive();
+  const { context, store, logos } = requireActive();
   const playlist = await store.load();
   const terms = query.split(/\s+/u);
   const channels = playlist.channels.filter((channel) => {
@@ -294,14 +462,14 @@ async function search(request) {
     return terms.every((term) => title.includes(term));
   });
   const page = paginate(channels, request.cursor, request.pageSize, `search:${digest(query)}`, playlist.revision);
-  return { items: page.items.map((channel) => summary(context, channel)), nextCursor: page.cursor, totalCount: channels.length };
+  return { items: (await logos.prepare(page.items)).map((channel) => summary(context, channel)), nextCursor: page.cursor, totalCount: channels.length };
 }
 async function searchSuggestions(_request) {
   return { items: [], nextCursor: null };
 }
 async function getDetail(request) {
-  const { context, store } = requireActive();
-  const channel = locate(await store.load(), request.id);
+  const { context, store, logos } = requireActive();
+  const channel = (await logos.prepare([locate(await store.load(), request.id)]))[0];
   return { ...summary(context, channel), aliases: channel.name && channel.name !== channel.title ? [channel.name] : [], catalogUrl: null };
 }
 async function getChapters(request) {

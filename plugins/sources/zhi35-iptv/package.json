@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/zhi35-iptv",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "MgRead IPTV source backed by zhi35/iptv public playlists.",
   "type": "module",
@@ -11,7 +11,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && node tools/mgread.mjs build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --test test/contract.test.mjs test/source.test.mjs",
+    "test": "npm run build && node --test test/contract.test.mjs test/source.test.mjs test/logos.test.mjs",
+    "test:logos": "npm run build && node --use-env-proxy --test test/live-logos.test.mjs",
     "test:live": "npm run build && node --use-env-proxy --test test/live-source.test.mjs",
     "pack:plugin": "npm run build && node tools/mgread.mjs pack",
     "verify": "npm run typecheck && npm test && npm run pack:plugin"

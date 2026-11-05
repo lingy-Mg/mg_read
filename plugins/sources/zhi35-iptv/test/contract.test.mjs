@@ -20,7 +20,7 @@ test('standard exports and deterministic artifact with verifiable code/icon hash
   const first = await buildPluginArtifact(), second = await buildPluginArtifact();
   assert.deepEqual(first.bytes, second.bytes);
   assert.equal(first.format, 'singleFile');
-  assert.equal(first.fileName, `${pluginId}-1.0.0.mgplugin.js`);
+  assert.equal(first.fileName, `${pluginId}-${packageJson.version}.mgplugin.js`);
   const newline = first.bytes.indexOf(10);
   const header = first.bytes.subarray(0, newline).toString('utf8');
   assert.ok(header.startsWith('// @mgread-plugin-v1 '));
@@ -34,8 +34,8 @@ test('standard exports and deterministic artifact with verifiable code/icon hash
   assert.equal(envelope.descriptor.mgread.sourceUrl, 'https://github.com/zhi35/iptv');
   assert.equal(envelope.descriptor.dependencies, undefined);
   assert.equal(envelope.descriptor.devDependencies, undefined);
-  const overridden = await buildPluginArtifactForProject(fileURLToPath(new URL('../', import.meta.url)), { versionOverride: '1.0.1' });
-  assert.equal(overridden.fileName, `${pluginId}-1.0.1.mgplugin.js`);
+  const overridden = await buildPluginArtifactForProject(fileURLToPath(new URL('../', import.meta.url)), { versionOverride: '9.9.9' });
+  assert.equal(overridden.fileName, `${pluginId}-9.9.9.mgplugin.js`);
   assert.deepEqual((await buildPluginArtifact()).bytes, first.bytes);
   const bundled = await loadIsolatedModule(first.bytes, t);
   await bundled.activate(contextFixture(async () => new Response(playlist)).context);
