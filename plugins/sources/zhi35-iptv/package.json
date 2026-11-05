@@ -1,0 +1,37 @@
+{
+  "name": "@mgread-plugin/zhi35-iptv",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MgRead IPTV source backed by zhi35/iptv public playlists.",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "bin": { "mgread": "tools/mgread.mjs" },
+  "packageManager": "npm@11.19.1",
+  "engines": { "node": ">=24", "npm": "11.19.1" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node tools/mgread.mjs build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/contract.test.mjs test/source.test.mjs",
+    "test:live": "npm run build && node --use-env-proxy --test test/live-source.test.mjs",
+    "pack:plugin": "npm run build && node tools/mgread.mjs pack",
+    "verify": "npm run typecheck && npm test && npm run pack:plugin"
+  },
+  "devDependencies": {
+    "@mgread/source-api": "file:../../../packages/mg_read_source_api",
+    "@mgread/source-testkit": "file:../../../packages/mg_read_source_testkit",
+    "@types/node": "24.13.3",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  },
+  "mgread": {
+    "schemaVersion": 1,
+    "id": "org.mgread.zhi35-iptv",
+    "displayName": "zhi35 IPTV",
+    "description": "浏览央视、卫视、地方频道、港澳台和直播中国，按频道名称搜索并观看公开直播。频道随上游播放列表更新，部分线路需要 IPv6 网络；可用性取决于上游和所在网络。",
+    "sourceUrl": "https://github.com/zhi35/iptv",
+    "pluginApi": 1,
+    "packageMode": "single-file",
+    "icon": "assets/icon.png",
+    "contentKinds": ["video"]
+  }
+}
