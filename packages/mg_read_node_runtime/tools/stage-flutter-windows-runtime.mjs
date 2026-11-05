@@ -1,7 +1,8 @@
 // @ts-check
 import { stageBunRuntime } from "./stage-bun-runtime.mjs";
+import { stageWindowsRuntimeCode } from "./bundle-windows-runtime.mjs";
 
-import { access, copyFile, cp, mkdir, rm } from "node:fs/promises";
+import { access, copyFile, mkdir, rm } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -89,7 +90,7 @@ await mkdir(assetsRoot, { recursive: true });
 await mkdir(stagedNodeDirectory, { recursive: true });
 await copyFile(sourceNodeExecutable, stagedNodeExecutable);
 await copyFile(sourceNodeLicense, stagedNodeLicense);
-await cp(sourceDist, stagedDist, { recursive: true });
+await stageWindowsRuntimeCode(stagedDist);
 await stageBunRuntime("windows-x64", stagedNodeDirectory);
 
 process.stdout.write("Staged the pinned Windows Node and Bun executables and Runtime assets; npm remains development-only.\n");

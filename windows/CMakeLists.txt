@@ -148,11 +148,13 @@ if(MGREAD_NATIVE_RUNTIME)
     COMPONENT Runtime)
 endif()
 
-# Desktop staging tests may have populated other platforms in this checkout.
-# Keep the delivered Windows bundle free of foreign Runtime executables.
-install(CODE
-  "file(REMOVE_RECURSE \"${INSTALL_BUNDLE_DATA_DIR}/${FLUTTER_ASSET_DIR_NAME}/packages/mgread_plugin_runtime/assets/runtime/macos-arm64\")"
-  COMPONENT Runtime)
+# Flutter declarations are shared across platforms. A Windows distribution only
+# needs its own bundled Core; Android also contains hundreds of compiler files.
+foreach(FOREIGN_RUNTIME android macos-arm64)
+  install(CODE
+    "file(REMOVE_RECURSE \"${INSTALL_BUNDLE_DATA_DIR}/${FLUTTER_ASSET_DIR_NAME}/packages/mgread_plugin_runtime/assets/runtime/${FOREIGN_RUNTIME}\")"
+    COMPONENT Runtime)
+endforeach()
 
 # Install the AOT library on non-Debug builds only.
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"

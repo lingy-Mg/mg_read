@@ -75,7 +75,9 @@ async function createProject(projectRoot, pluginId, prefix) {
     writeFile(join(projectRoot, "package.json"), `${JSON.stringify(packageJson, null, 2)}\n`),
     writeFile(
       join(projectRoot, "build.mjs"),
-      "import { copyFile } from 'node:fs/promises';\n" +
+      "import assert from 'node:assert/strict';\n" +
+        "assert.equal(process.versions.bun, undefined); assert.equal(process.versions.node, '26.10.0');\n" +
+        "import { copyFile } from 'node:fs/promises';\n" +
         "await copyFile(new URL('./src/index.mjs', import.meta.url), new URL('./dist/index.mjs', import.meta.url));\n",
     ),
     writeFile(join(projectRoot, "src", "index.mjs"), source(prefix)),
@@ -151,6 +153,14 @@ test(
   assert.match(buildFailure.buildOutput, /build stderr/);
   assert.match(buildFailure.buildOutput, /code=7/);
   assert.equal((await search(manager, "org.example.watched")).items[0].title, "第三版：测试");
+
+  packageJson.scripts.build = "node build.mjs";
+  await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
+  await writeFile(join(firstRoot, "src", "index.mjs"), source("修复后"));
+  await waitFor(() => events.filter((event) => event.code === "development_plugin_updated").length >= 3);
+  assert.equal((await search(manager, "org.example.watched")).items[0].title, "修复后：测试");
+  const recoveredArtifact = (await manager.listExportableArtifacts())[0];
+  assert.notEqual(recoveredArtifact.developmentFingerprint, updatedArtifact.developmentFingerprint);
 
   const secondRoot = join(developmentRoot, "second-source");
   await createProject(secondRoot, "org.example.added", "新增");

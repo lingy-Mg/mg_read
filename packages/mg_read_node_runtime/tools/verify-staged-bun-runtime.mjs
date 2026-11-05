@@ -27,7 +27,7 @@ test("staged Bun serves an installed source, reports its identity and shuts down
   // A caller's dotenv must never affect the runtime launch or trigger install.
   await writeFile(resolve(data, ".env"), "NODE_OPTIONS=--invalid-test-option\n");
   const child = spawn(executable, [
-    "--no-env-file", "--no-install", resolve(bundle, "dist/cli.js"), `--data-root=${data}`,
+    "--no-env-file", "--no-install", resolve(bundle, "dist/cli.js"), `--data-root=${data}`, '--debug-http-enabled=1',
   ], { cwd: data, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
   const exited = once(child, "exit");
   let diagnostics = "";
@@ -68,6 +68,15 @@ test("staged Bun serves an installed source, reports its identity and shuts down
   assert.equal(status.bunVersion, bunVersion);
   const result = await invoke("source.search.v1", { pluginId: "org.mgread.runtime.fixture", query: "交付验收", cursor: null, pageSize: 20 });
   assert.equal(result.items.length, 1);
+  const debug = await invoke("runtime.debugHttp.setEnabled.v1", { enabled: true });
+  const inspector = debug.endpoints.find(value => value.startsWith('http://127.0.0.1:'));
+  assert.ok(inspector);
+  for (const [route, marker] of [['', '<mg-debug-app'], ['/__debug/app.css', '.workspace-panel'], ['/__debug/app.js', 'customElements.define']]) {
+    const response = await fetch(new URL(route, inspector));
+    assert.equal(response.status, 200);
+    assert.ok((await response.text()).includes(marker), `Bundled inspector asset: ${route}`);
+  }
+  await invoke("runtime.debugHttp.setEnabled.v1", { enabled: false });
   await invoke("runtime.shutdown");
   const [code] = await exited;
   assert.equal(code, 0, diagnostics);

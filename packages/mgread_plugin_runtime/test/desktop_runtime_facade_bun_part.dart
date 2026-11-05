@@ -2,6 +2,55 @@
 part of 'desktop_runtime_facade_test.dart';
 
 void _registerBunRuntimeTests() {
+  test(
+    'Bun crash allows cold Node recovery with the same installed source',
+    () async {
+      final root = await _stageInstalledStandardPlugin();
+      addTearDown(() => root.delete(recursive: true));
+      final bun = PluginRuntime.desktopForTesting(
+        runtimeRepositoryRoot: nodeRuntimeRepositoryRoot,
+        runtimeDataRoot: root,
+        backend: DesktopRuntimeBackend.bun,
+        testExitAfterReady: const Duration(milliseconds: 600),
+      );
+      addTearDown(bun.debugDispose);
+      final fatalDiagnostics = <RuntimeDiagnostic>[];
+      final subscription = bun.fatalDiagnostics.listen(fatalDiagnostics.add);
+      addTearDown(subscription.cancel);
+      expect(
+        (await bun.invoke(const RuntimePingInvocation())).isHealthy,
+        isTrue,
+      );
+      await _waitForDiagnosticCodes(fatalDiagnostics, const [
+        'runtime_process_exited',
+      ]);
+      expect(bun.debugDesktopProcessStartCount, 1);
+      await bun.debugDispose();
+
+      final node = PluginRuntime.desktopForTesting(
+        runtimeRepositoryRoot: nodeRuntimeRepositoryRoot,
+        runtimeDataRoot: root,
+        backend: DesktopRuntimeBackend.node,
+      );
+      addTearDown(node.debugDispose);
+      expect(
+        (await node.invoke(const RuntimeStatusInvocation())).runtimeKind,
+        'desktop-node',
+      );
+      final search = await node.invoke(
+        const SourceSearchInvocation(
+          pluginId: 'org.mgread.flutter.fixture',
+          query: 'recovered',
+        ),
+      );
+      expect(search.items, hasLength(1));
+      expect(
+        (await node.invoke(const InstalledPluginsInvocation())).single.id,
+        'org.mgread.flutter.fixture',
+      );
+    },
+  );
+
   test('Node Bun Node roundtrip retains installed sources and content', () async {
     final root = await _stageInstalledStandardPlugin();
     addTearDown(() => root.delete(recursive: true));

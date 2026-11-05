@@ -18,6 +18,11 @@
   Bun 使用打包的 Undici Fetch，不能使用忽略 dispatcher 的 Bun 原生 fetch 代替来源代理传输；
   Bun 没有 `net.client.socket` 观测时如实输出 `not_observed`。来源 API 与数据根在两后端保持一致。
   桌面 staging 同时交付两套 helper；运行 `test:bun` 和 `verify:staged-bun`，macOS helper 签名包含 Bun。
+  Windows 发布 Core 由 `tools/bundle-windows-runtime.mjs` 合并为 `dist/cli.js`，另保留三个 inspector 静态文件；
+  调试映射只存于构建目录。Windows CMake 删除其他平台资产；最终包用 `MGREAD_WINDOWS_BUNDLE_ROOT` 和
+  `MGREAD_BUN_BUNDLE_ROOT` 执行两个 staged 验证，防止开发依赖、编译碎片和其他平台文件回流。
+  根 `tools/check_source_runtime_compatibility.mjs` 在固定 Node/Bun 上逐源运行同一套离线测试，CI 可用
+  `--install-dependencies` 从各源 lock 恢复开发依赖；其通过不等于真实站点或 App 的全链路通过。
 
 - 发现 `filters` 的分组/选项预算与选中 ID 关联由 `plugin-content-discovery.ts` 校验；`plugin-content-tree.test.mjs`
   保留 45 选项与非法选择/重复/超限回归。原有首个根 `tabs` 的约束不变。

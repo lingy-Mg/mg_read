@@ -34,14 +34,38 @@ Windows x64 和 macOS arm64 同包内置 Node 26.10.0 与 Bun 1.4.4，无需用�
 
 - `stage-bun-runtime.mjs` 下载精确官方 `@oven` 包并验证 SHA-512；缓存也重新校验、重新解包。
   helper 和 Bun 许可证跟随平台资产。Windows 正常包缺少任一 helper 时构建失败。
+- Windows Core 使用现有固定 esbuild 合并成一个 `cli.js`，另带三个调试页静态文件；编译声明和
+  sourcemap 留在开发目录，Android/macOS 资产不进入 Windows 包。保留 Node/Bun 两个二进制及许可证，
+  因此精简主要减少文件数量，不能把二进制占用宣称为已消除。
 - macOS 将两种 helper 放入 `Contents/MacOS`，使用专用 JIT entitlements 及 hardened runtime 签名，
   然后重新签名被修改的 `App.framework`。JIT 权限依据
   [Bun 官方签名指南](https://bun.sh/guides/runtime/codesign-macos-executable)，不包含调试 task 权限。
 - `npm run test:bun` 执行共享桌面行为用例；Android 和 Node 专用工具链测试继续由 Node 套件承担。
 - `npm run verify:staged-bun` 从独立目录启动已打包 helper，验证身份、健康、真实来源调用和关闭。
   CI 还把 `MGREAD_BUN_BUNDLE_ROOT` 与 macOS 的 `MGREAD_BUN_EXECUTABLE` 指向最终 App，检查签名后的产物。
+- Windows 最终包还设置 `MGREAD_WINDOWS_BUNDLE_ROOT` 执行 `verify:staged-windows`，验证 Core 字节、
+  四个发布代码文件、两个 helper/许可证和其他平台资产裁剪；Bun 检查同时请求调试页的 HTML/CSS/JS。
 - Flutter 直接测试覆盖偏好持久化、设置页、重启等待、并发单次启动、Node → Bun → Node 共用数据、
   来源发现/搜索/详情/目录/内容/导出、代理重绑及 Bun 与原生引擎并存。
 
 Windows 命令使用仓库固定 Node；先完成 staging 再构建 Flutter，禁止并发重写构建正在读取的资产。
 macOS 签名执行、Gatekeeper、公证和实机结论必须来自 macOS 运行证据，Windows 字节一致性测试不能替代。
+
+## 数据源兼容与开发
+
+来源继续使用标准 Source API 和内联第三方依赖的单文件 ESM，不需要复制插件或切换安装目录。
+悦听 1.0.11 把 XChaCha20-Poly1305 解密改为固定 `@noble/ciphers` 2.4.0，避免依赖 Bun 未提供的
+OpenSSL cipher；密文必须先认证再解码，保留由 Node/OpenSSL 生成的固定向量及篡改拒绝测试。
+已安装悦听旧版的用户需要导入新版 `.mgplugin.js`，更新 App 本身不会改写已安装插件版本。
+
+Windows 从根目录运行下列命令，逐源保留构建和两个引擎的离线结果；首次安装依赖可添加
+`--install-dependencies`（按 lock 执行 `npm ci`）。CI 在发布前执行同一个入口。
+
+```powershell
+& ./packages/mg_read_node_runtime/tools/node-v26.10.0-win-x64/node.exe tools/check_source_runtime_compatibility.mjs --engine=both
+```
+
+开发构建、打包、Debug 热更新仍由固定 Node/npm 承担；Bun 运行构建出的同一插件。热更新测试验证
+固定构建引擎、候选激活、构建失败时保留旧版本、修复后继续更新，以及 App 关闭期间修改后的冷启动补建。
+听中国等来源保留真实限流等待，离线测试需允许超过 31 秒；不能为缩短测试移除生产节流。
+离线全部通过只证明已覆盖的兼容契约；真实站点、媒体和可见交互由 source-testkit 与最终 EXE 自检另行记录。

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, readdir } from "node:fs/promises";
+import { createWindowsRuntimeBundle } from "../tools/bundle-windows-runtime.mjs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
@@ -30,11 +31,13 @@ test("Windows staging uses the pinned Node executable and Runtime entrypoint", a
   const [source, stagedBytes, sourceDist, stagedDist] = await Promise.all([
     readFile(resolve(runtimeRoot, "tools/node-v26.10.0-win-x64/node.exe")),
     readFile(staged),
-    readFile(resolve(runtimeRoot, "dist/cli.js")),
+    createWindowsRuntimeBundle().then(bundle => Buffer.from(bundle.code)),
     readFile(stagedEntrypoint),
   ]);
   assert.deepEqual(stagedBytes, source);
   assert.deepEqual(stagedDist, sourceDist);
+  assert.deepEqual((await readdir(dirname(stagedEntrypoint))).sort(), ["cli.js", "debug-ui"]);
+  assert.deepEqual((await readdir(resolve(dirname(stagedEntrypoint), "debug-ui"))).sort(), ["app.css", "app.js", "index.html"]);
   await assert.rejects(access(stagedNpmPackage), { code: "ENOENT" });
   const bun = resolve(runtimeRoot, "../mgread_plugin_runtime/assets/runtime/windows-x64/node/MgReadBun.exe");
   const bunSource = resolve(runtimeRoot, "tools/bun-v1.4.4-windows-x64/bun.exe");

@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { spawn } from "node:child_process";
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { createWindowsRuntimeBundle } from "./bundle-windows-runtime.mjs";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const stagedRuntimeRoot = resolve(
+const stagedRuntimeRoot = process.env.MGREAD_WINDOWS_BUNDLE_ROOT ?? resolve(
   packageRoot,
   "..",
   "mgread_plugin_runtime",
@@ -22,9 +23,20 @@ const stagedCli = join(stagedRuntimeRoot, "dist", "cli.js");
 test("staged Windows Runtime assets match the freshly compiled Runtime", { skip: process.platform !== "win32" }, async () => {
   assert.deepEqual(
     await readFile(stagedCli),
-    await readFile(join(packageRoot, "dist", "cli.js")),
+    Buffer.from((await createWindowsRuntimeBundle()).code),
   );
   await access(stagedNode);
+  const codeFiles = (await readdir(join(stagedRuntimeRoot, 'dist'), { recursive: true, withFileTypes: true }))
+    .filter(entry => entry.isFile());
+  assert.equal(codeFiles.length, 4, 'Only the bundled entry and three inspector assets belong in the release');
+  assert.deepEqual(codeFiles.map(entry => entry.name).sort(), ['app.css', 'app.js', 'cli.js', 'index.html']);
+  assert.deepEqual((await readdir(join(stagedRuntimeRoot, 'node'))).sort(),
+    ['BUN-LICENSE.md', 'LICENSE', 'MgReadBun.exe', 'MgReadNode.exe']);
+  if (process.env.MGREAD_WINDOWS_BUNDLE_ROOT) {
+    const platforms = (await readdir(dirname(stagedRuntimeRoot), { withFileTypes: true }))
+      .filter(entry => entry.isDirectory()).map(entry => entry.name);
+    assert.deepEqual(platforms, ['windows-x64'], 'Foreign platform assets must be removed by packaging');
+  }
 });
 
 test(

@@ -295,12 +295,30 @@ jobs:
 
       - name: Build and stage Windows Runtime
         working-directory: packages/mg_read_node_runtime
+        shell: pwsh
         run: |
+          $env:PATH = (Join-Path $PWD 'tools/node-v26.10.0-win-x64') + ';' + $env:PATH
           npm ci
-          npm run stage:flutter-windows
-          npm run verify:staged-windows
-          npm run verify:staged-bun
-          npm run test:bun
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($check in @('stage:flutter-windows', 'test', 'verify:staged-windows', 'verify:staged-bun', 'test:bun')) {
+            npm run $check
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Verify every source on Node and Bun
+        shell: pwsh
+        run: |
+          & ./packages/mg_read_node_runtime/tools/node-v26.10.0-win-x64/node.exe tools/check_source_runtime_compatibility.mjs --install-dependencies --engine=both
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Preserve source compatibility reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mgread-source-compatibility-${{ github.sha }}
+          path: artifacts/source-runtime-compatibility/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Ensure declared Runtime asset directories exist
         shell: bash
@@ -324,11 +342,15 @@ jobs:
       - name: Build Windows
         run: flutter build windows --release --no-pub
 
-      - name: Verify final Windows Bun bundle
+      - name: Verify final Windows Node and Bun bundle
         shell: pwsh
         run: |
           $env:MGREAD_BUN_BUNDLE_ROOT = Join-Path $PWD 'build/windows/x64/runner/Release/data/flutter_assets/packages/mgread_plugin_runtime/assets/runtime/windows-x64'
+          $env:MGREAD_WINDOWS_BUNDLE_ROOT = $env:MGREAD_BUN_BUNDLE_ROOT
           Push-Location packages/mg_read_node_runtime
+          $env:PATH = (Join-Path $PWD 'tools/node-v26.10.0-win-x64') + ';' + $env:PATH
+          npm run verify:staged-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run verify:staged-bun
 
       - name: Package Windows build
