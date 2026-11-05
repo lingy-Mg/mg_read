@@ -453,6 +453,12 @@ jobs:
           path: packages/mg_read_node_runtime/tools/bun-v*-macos-arm64/distribution.tgz
           key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/mg_read_node_runtime/tools/stage-bun-runtime.mjs') }}
 
+      # macOS only binds configured loopback addresses. These tests deliberately
+      # use a non-127.0.0.1 address to exercise the whole 127/8 proxy bypass.
+      - name: Prepare macOS proxy regression loopback
+        id: proxy_loopback
+        run: sudo ifconfig lo0 alias 127.173.137.161
+
       - name: Build and stage macOS Runtime
         working-directory: packages/mg_read_node_runtime
         run: |
@@ -460,6 +466,10 @@ jobs:
           npm run stage:flutter-macos
           npm run verify:staged-bun
           npm run test:bun:compiled
+
+      - name: Remove macOS proxy regression loopback
+        if: always() && steps.proxy_loopback.outcome == 'success'
+        run: sudo ifconfig lo0 -alias 127.173.137.161
 
       - name: Ensure declared Runtime asset directories exist
         shell: bash

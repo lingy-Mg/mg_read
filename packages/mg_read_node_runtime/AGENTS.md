@@ -71,6 +71,8 @@
 Windows 将 `tools/node-v26.10.0-win-x64` 放到 `PATH` 最前，使用 Node 26.10.0/npm 11.19.1；
 macOS arm64 将 `tools/node-v26.10.0-darwin-arm64/bin` 放到 `PATH` 最前，使用 Node 26.10.0/npm 11.19.1，
 不回退全局 Node/npm。按受影响边界运行 package scripts 和直接测试；不要机械执行无关平台矩阵。
+固定 npm 的依赖 `dist` 是工具链源码分发的一部分，Windows/macOS 都必须跟踪，不能被应用 `dist/` 忽略规则排除。
+macOS 代理回归需要 `127.173.137.161` 的 lo0 alias，CI 在测试前配置、结束后清理；本地跑该套测试也需先配置。
 
 - Node Core：固定 npm 运行 `typecheck`、直接 Node 测试、`check:no-native-addons`。
   已在同一 job 执行 build/staging 时，用 `test:compiled` 与 `test:bun:compiled` 测试该次输出，避免重复编译；

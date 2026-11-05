@@ -8,6 +8,9 @@ tools/node-v26.10.0-darwin-arm64/bin/node
 !tools/node-v26.10.0-darwin-arm64/lib/node_modules/
 !tools/node-v26.10.0-darwin-arm64/lib/node_modules/**
 dist/
+# Vendored npm executes these compiled modules even though app dist is generated.
+!tools/node-v26.10.0-win-x64/node_modules/**/dist/
+!tools/node-v26.10.0-win-x64/node_modules/**/dist/**
 !tools/node-v26.10.0-darwin-arm64/lib/node_modules/**/dist/
 !tools/node-v26.10.0-darwin-arm64/lib/node_modules/**/dist/**
 !test/fixtures/standard-plugin/dist/

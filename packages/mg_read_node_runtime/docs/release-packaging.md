@@ -7,6 +7,9 @@
 桌面 job 只编译一次 Runtime，再运行 `test:compiled` / `test:bun:compiled`；本地 `test` / `test:bun`
 仍会先 build。Flutter 收尾检查只运行一次 Final，包含格式、全仓分析、源码规模和原有直接测试。
 Windows 使用仓库随固定 Node 提供的 npm，不重复安装未使用的全局 npm。
+Windows 固定 npm 的依赖 `dist` 文件必须随仓库跟踪，不能依赖开发机上被忽略的文件；这些开发文件不进入发布包。
+macOS 代理回归保留整个 127/8 范围的测试地址：CI 临时执行 `sudo ifconfig lo0 alias 127.173.137.161`，
+完成或失败后均用 `sudo ifconfig lo0 -alias 127.173.137.161` 清理。本地运行同一套测试需准备该 alias。
 
 全部来源的 Node/Bun 离线测试在独立 Windows job 中执行，与三平台打包并行，仍是 Release 的必需前置条件。
 该 job 的 npm 下载缓存覆盖 Runtime 和所有来源 lock，仍按 lock 执行 `npm ci`，不缓存或跳过测试结果。
