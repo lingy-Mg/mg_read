@@ -1,5 +1,7 @@
 // Stages the built Node Runtime for Flutter Android and fingerprints its files
 // so an updated APK replaces stale extracted Runtime assets on the device.
+// Retains executable modules and inspector assets; compiler metadata remains
+// in dist for development and must not consume APK or extracted-device space.
 import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
@@ -43,11 +45,24 @@ const assetDist = resolve(assetRoot, "dist");
 const assetNodeModules = resolve(assetRoot, "node_modules");
 const defaultPluginsRoot = resolve(assetRoot, "default-plugins");
 
+for (const target of [assetDist, assetNodeModules, defaultPluginsRoot]) {
+  const fromAssets = relative(assetRoot, target);
+  if (!["dist", "node_modules", "default-plugins"].includes(fromAssets)) {
+    throw new Error("Refusing to clean outside the Android Runtime asset directory.");
+  }
+}
 await rm(assetDist, { force: true, recursive: true });
 await rm(assetNodeModules, { force: true, recursive: true });
 await rm(defaultPluginsRoot, { force: true, recursive: true });
 await mkdir(assetRoot, { recursive: true });
-await cp(distRoot, assetDist, { recursive: true });
+await cp(distRoot, assetDist, {
+  recursive: true,
+  filter(source) {
+    const path = relative(distRoot, source).replaceAll("\\", "/");
+    return !path.endsWith(".d.ts") && !path.endsWith(".map") &&
+      path !== "windows-release" && !path.startsWith("windows-release/");
+  },
+});
 // The Android process launches dist/cli.js outside this source package.
 // Keep Node's ESM loader contract explicit after the Flutter asset copy.
 await writeFile(resolve(assetDist, "package.json"), '{"type":"module"}\n');

@@ -2,8 +2,8 @@
 Builds ZIP and compact 7z distributions from the same validated release files.
 Owns only destination archives and a hash-verified build-tool cache; never edits
 the input bundle or installs a global tool. Official standalone 7zr is pinned
-to 26.05 and its GitHub release SHA-256. Output names must be new to avoid
-silently retaining obsolete archive entries on repeated packaging.
+to 26.05 and its GitHub release SHA-256. Every build creates fresh temporary
+archives, validates them, then replaces outputs; obsolete entries cannot survive.
 #>
 [CmdletBinding()]
 param(
@@ -31,7 +31,7 @@ foreach ($path in $paths) {
   }
 }
 foreach ($suffix in @('.zip', '.7z', '.manifest.json')) {
-  if (Test-Path -LiteralPath "$outputBase$suffix") { throw "Output already exists: $outputBase$suffix" }
+  if (Test-Path -LiteralPath "$outputBase$suffix" -PathType Container) { throw "Output is a directory: $outputBase$suffix" }
 }
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $cache = Join-Path $repositoryRoot '.dart_tool/packaging/7zip-26.05'
@@ -46,17 +46,28 @@ if (-not (Test-Path -LiteralPath $sevenZip)) {
 }
 if ((Get-FileHash -LiteralPath $sevenZip -Algorithm SHA256).Hash -ne $digest) { throw '7-Zip cache checksum mismatch.' }
 [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($outputBase)) | Out-Null
-Compress-Archive -LiteralPath $paths -DestinationPath "$outputBase.zip" -CompressionLevel Optimal
-Push-Location $inputRoot
+$stageBase = "$outputBase.stage-$([Guid]::NewGuid().ToString('N'))"
 try {
-  & $sevenZip a -t7z -mx=9 -mmt=4 "$outputBase.7z" @Entry
-  if ($LASTEXITCODE -ne 0) { throw "7-Zip compression failed: $LASTEXITCODE" }
-  & $sevenZip t "$outputBase.7z"
-  if ($LASTEXITCODE -ne 0) { throw "7-Zip archive verification failed: $LASTEXITCODE" }
-} finally { Pop-Location }
-$archives = foreach ($suffix in @('.zip', '.7z')) {
-  $file = Get-Item -LiteralPath "$outputBase$suffix"
-  [ordered]@{ file = $file.Name; bytes = $file.Length; sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+  Compress-Archive -LiteralPath $paths -DestinationPath "$stageBase.zip" -CompressionLevel Optimal
+  Push-Location $inputRoot
+  try {
+    & $sevenZip a -t7z -mx=9 -mmt=4 "$stageBase.7z" @Entry
+    if ($LASTEXITCODE -ne 0) { throw "7-Zip compression failed: $LASTEXITCODE" }
+    & $sevenZip t "$stageBase.7z"
+    if ($LASTEXITCODE -ne 0) { throw "7-Zip archive verification failed: $LASTEXITCODE" }
+  } finally { Pop-Location }
+  $archives = foreach ($suffix in @('.zip', '.7z')) {
+    $file = Get-Item -LiteralPath "$stageBase$suffix"
+    [ordered]@{ file = [IO.Path]::GetFileName("$outputBase$suffix"); bytes = $file.Length; sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+  }
+  [ordered]@{ schemaVersion = 1; sevenZipVersion = '26.05'; entries = $Entry; archives = @($archives) } |
+    ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "$stageBase.manifest.json" -Encoding utf8
+  foreach ($suffix in @('.zip', '.7z', '.manifest.json')) {
+    Move-Item -LiteralPath "$stageBase$suffix" -Destination "$outputBase$suffix" -Force
+  }
+  Write-Host "Published ZIP, 7z and checksums: $outputBase"
+} finally {
+  foreach ($suffix in @('.zip', '.7z', '.manifest.json')) {
+    if (Test-Path -LiteralPath "$stageBase$suffix" -PathType Leaf) { Remove-Item -LiteralPath "$stageBase$suffix" }
+  }
 }
-[ordered]@{ schemaVersion = 1; sevenZipVersion = '26.05'; entries = $Entry; archives = @($archives) } |
-  ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "$outputBase.manifest.json" -Encoding utf8

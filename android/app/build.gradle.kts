@@ -154,13 +154,17 @@ android {
     }
 }
 
-// The Runtime facade declares desktop assets for Windows builds. Flutter's
-// asset bundle is shared across platforms, so remove the Windows-only subtree
-// while copying Flutter assets into Android variants.
+// Flutter assets are shared across hosts. Filter desktop binaries and compiler
+// metadata here so local and CI builds produce the same Android-only package.
+// Flutter's copy task already depends on cleanMergeAssets for this variant.
 tasks.withType<org.gradle.api.tasks.Copy>().configureEach {
     if (name.startsWith("copyFlutterAssets")) {
         exclude(
             "flutter_assets/packages/mgread_plugin_runtime/assets/runtime/windows-x64/**",
+            "flutter_assets/packages/mgread_plugin_runtime/assets/runtime/macos-arm64/**",
+            "flutter_assets/packages/mgread_plugin_runtime/assets/runtime/android/**/*.d.ts",
+            "flutter_assets/packages/mgread_plugin_runtime/assets/runtime/android/**/*.map",
+            "flutter_assets/packages/mgread_plugin_runtime/assets/runtime/android/dist/windows-release/**",
         )
         if (isNativeRuntimeBuild) {
             exclude("flutter_assets/packages/mgread_plugin_runtime/assets/runtime/**")

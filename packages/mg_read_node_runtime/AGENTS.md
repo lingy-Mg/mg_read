@@ -24,6 +24,12 @@
   根 `tools/check_source_runtime_compatibility.mjs` 在固定 Node/Bun 上逐源运行同一套离线测试，CI 可用
   `--install-dependencies` 从各源 lock 恢复开发依赖；其通过不等于真实站点或 App 的全链路通过。
 
+- Android staging 只发布原路径、原字节的可执行模块和调试页，不发布 `.d.ts`、`.map`、`windows-release`。
+  `cli.js`（私有 Node 进程）与 `desktop-runtime.js`（Javet）必须同时保留；内容指纹驱动宿主替换私有程序镜像，
+  不清理用户插件数据。`test/android-runtime-staging.test.mjs` 验证完整文件集、字节和指纹；根
+  `tools/verify_android_release.py` 校验最终 APK 的平台资产、双入口、ABI、ELF 和原生库压缩。
+  本地与 Actions 发布入口见 [发布打包](docs/release-packaging.md)。
+
 - 发现 `filters` 的分组/选项预算与选中 ID 关联由 `plugin-content-discovery.ts` 校验；`plugin-content-tree.test.mjs`
   保留 45 选项与非法选择/重复/超限回归。原有首个根 `tabs` 的约束不变。
 

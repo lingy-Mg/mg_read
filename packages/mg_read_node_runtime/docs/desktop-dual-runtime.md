@@ -40,6 +40,9 @@ Windows x64 和 macOS arm64 同包内置 Node 26.10.0 与 Bun 1.4.4，无需用�
 - 根 `tools/package_windows_release.ps1` 从同一份输入同时生成 ZIP 与高压缩 7z，输出 SHA-256 清单；
   使用[官方 7-Zip](https://www.7-zip.org/download.html) standalone 26.05 及固定下载摘要，验证缓存后执行，
   不安装全局工具。7z 适合传播，ZIP 保留通用解压方式；两者内容一致，CI 同时发布。
+  本地 VS Code 发布任务和 Actions 共用 `tools/verify_windows_release.ps1` 验证最终包，随后调用同一打包脚本。
+  重复打包先生成新临时归档，通过后替换同名输出，旧归档条目不会残留；压缩或验证失败时不替换既有产物。
+  命令与 Android 的共同发布检查见 [发布打包](release-packaging.md)。
 - macOS 将两种 helper 放入 `Contents/MacOS`，使用专用 JIT entitlements 及 hardened runtime 签名，
   然后重新签名被修改的 `App.framework`。JIT 权限依据
   [Bun 官方签名指南](https://bun.sh/guides/runtime/codesign-macos-executable)，不包含调试 task 权限。

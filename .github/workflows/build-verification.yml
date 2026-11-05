@@ -59,6 +59,10 @@ jobs:
         run: |
           npm ci
           npm run build
+          node --test test/android-runtime-staging.test.mjs test/android-runtime-import-graph.test.mjs
+
+      - name: Test Android APK packaging policy
+        run: python3 tools/test_verify_android_release.py
 
       - name: Ensure declared Runtime asset directories exist
         shell: bash
@@ -246,13 +250,15 @@ jobs:
         run: ./gradlew :mgread_plugin_runtime:testHybridDebugUnitTest -Ptarget-platform=android-arm,android-arm64 --tests '*AndroidNodeBackendPolicyTest'
 
       - name: Verify packaged Android runtimes
-        run: python3 tools/verify_android_release.py ${{ matrix.name }}
+        run: python3 tools/verify_android_release.py ${{ matrix.name }} --report build/android-release/report-${{ matrix.name }}.json
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v7
         with:
           name: mgread-apk-${{ matrix.name }}-${{ github.sha }}
-          path: build/android-release/*.apk
+          path: |
+            build/android-release/*.apk
+            build/android-release/report-*.json
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
@@ -344,14 +350,11 @@ jobs:
 
       - name: Verify final Windows Node and Bun bundle
         shell: pwsh
-        run: |
-          $env:MGREAD_BUN_BUNDLE_ROOT = Join-Path $PWD 'build/windows/x64/runner/Release/data/flutter_assets/packages/mgread_plugin_runtime/assets/runtime/windows-x64'
-          $env:MGREAD_WINDOWS_BUNDLE_ROOT = $env:MGREAD_BUN_BUNDLE_ROOT
-          Push-Location packages/mg_read_node_runtime
-          $env:PATH = (Join-Path $PWD 'tools/node-v26.10.0-win-x64') + ';' + $env:PATH
-          npm run verify:staged-windows
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm run verify:staged-bun
+        run: ./tools/verify_windows_release.ps1
+
+      - name: Test repeat Windows packaging
+        shell: pwsh
+        run: ./tools/test_package_windows_release.ps1
 
       - name: Package Windows build
         shell: pwsh

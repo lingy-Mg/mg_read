@@ -172,7 +172,8 @@
       "label": "发布：打包 Windows EXE（Release）",
       "dependsOn": [
         "构建：Windows（Release）",
-        "整理：Windows 到根目录 build"
+        "校验：Windows 最终运行时",
+        "打包：Windows ZIP 和 7z"
       ],
       "dependsOrder": "sequence",
       "presentation": {
@@ -243,16 +244,29 @@
       "problemMatcher": []
     },
     {
-      "label": "整理：Windows 到根目录 build",
+      "label": "校验：Windows 最终运行时",
       "type": "process",
-      "command": "powershell",
+      "command": "pwsh",
+      "args": [
+        "-NoProfile",
+        "-File",
+        "${workspaceFolder}/tools/verify_windows_release.ps1"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "打包：Windows ZIP 和 7z",
+      "type": "process",
+      "command": "pwsh",
       "args": [
         "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
-        "-Command",
-        "$ErrorActionPreference = 'Stop'; $source = Join-Path '${workspaceFolder}' 'build/windows/x64/runner/Release'; $destination = Join-Path '${workspaceFolder}' 'build/mg_read-windows-release'; if (-not (Test-Path -LiteralPath $source)) { throw \"找不到 Windows Release 目录：$source\" }; New-Item -ItemType Directory -Force -Path $destination | Out-Null; Copy-Item -Path (Join-Path $source '*') -Destination $destination -Recurse -Force; $executable = Join-Path $destination 'mg_read.exe'; if (-not (Test-Path -LiteralPath $executable)) { throw \"找不到 Windows 可执行文件：$executable\" }; Write-Host \"Windows Release 已复制到：$destination\"; Start-Process -FilePath 'explorer.exe' -ArgumentList ('/select,\"' + $executable + '\"')"
+        "-File",
+        "${workspaceFolder}/tools/package_windows_release.ps1"
       ],
+      "options": { "cwd": "${workspaceFolder}" },
       "presentation": {
         "reveal": "always",
         "panel": "dedicated",
