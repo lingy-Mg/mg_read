@@ -37,6 +37,9 @@ Windows x64 和 macOS arm64 同包内置 Node 26.10.0 与 Bun 1.4.4，无需用�
 - Windows Core 使用现有固定 esbuild 合并成一个 `cli.js`，另带三个调试页静态文件；编译声明和
   sourcemap 留在开发目录，Android/macOS 资产不进入 Windows 包。保留 Node/Bun 两个二进制及许可证，
   因此精简主要减少文件数量，不能把二进制占用宣称为已消除。
+- 根 `tools/package_windows_release.ps1` 从同一份输入同时生成 ZIP 与高压缩 7z，输出 SHA-256 清单；
+  使用[官方 7-Zip](https://www.7-zip.org/download.html) standalone 26.05 及固定下载摘要，验证缓存后执行，
+  不安装全局工具。7z 适合传播，ZIP 保留通用解压方式；两者内容一致，CI 同时发布。
 - macOS 将两种 helper 放入 `Contents/MacOS`，使用专用 JIT entitlements 及 hardened runtime 签名，
   然后重新签名被修改的 `App.framework`。JIT 权限依据
   [Bun 官方签名指南](https://bun.sh/guides/runtime/codesign-macos-executable)，不包含调试 task 权限。
