@@ -19,6 +19,9 @@ CI 用 `--concurrency=2` 同时检查两个独立来源；每个来源的安装�
 桌面新增按 OS、架构、Flutter 版本隔离的 `.dart_tool/flutter_build` 缓存；每个提交产生新 key，并恢复同工具链
 最近的编译缓存。Flutter 始终重新执行构建并检查输入。macOS 另外缓存 CocoaPods 下载，Pods 安装与构建照常执行。
 Bun 只缓存分发压缩包，staging 每次校验固定 SHA-512 并重新提取。保留已有 Android Gradle/Rust/Flutter 缓存和三 ABI 构建。
+Android 由通用包 job 写入覆盖双 ABI 的 Gradle 缓存，两个单 ABI job 只读，避免重复的大型依赖快照。
+平台任务结束后，`tools/prune_flutter_ci_caches.py` 只为当前分支、每个平台/工具链保留最新 Flutter 编译缓存；
+SDK、下载缓存、Gradle 缓存、其他分支及发布产物不在清理范围，避免旧编译输出挤占仓库缓存限额。
 
 缓存命中、冷启动、runner 排队和真正编译耗时分别比较。结构上的重复步骤减少不等于远端总时长已经下降；
 实际收益以相近代码、相同 runner 与缓存条件下的 Actions 步骤记录为准。

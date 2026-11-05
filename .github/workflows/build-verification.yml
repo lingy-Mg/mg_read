@@ -148,7 +148,9 @@ jobs:
       - name: Restore Gradle dependencies and task outputs
         uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
-          cache-read-only: false
+          # The universal build covers both ABIs and writes the shared Gradle
+          # state; separate ABI jobs read it without storing duplicate bundles.
+          cache-read-only: ${{ matrix.name != 'universal' }}
 
       - name: Set up Android SDK command-line tools
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
@@ -529,6 +531,25 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
+
+  cache-maintenance:
+    name: Bound Flutter compilation cache history
+    needs: [android, windows, macos]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Verify cache retention policy
+        run: python3 tools/test_prune_flutter_ci_caches.py
+      - name: Retain newest compilation cache per platform
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/prune_flutter_ci_caches.py --apply
 
   release:
     name: Publish GitHub Release
