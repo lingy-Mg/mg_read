@@ -7,7 +7,7 @@
 /// 注意：
 /// - 页面只调用应用层窄端口，不接触 Runtime HTTP 或资源 token。
 /// - 低频工具统一收纳到更多面板；安装和卸载互斥，调试持久化仍归 Runtime 所有。
-/// - TV 列表提供独立遥控操作，添加、筛选和管理面板保持明确焦点。
+/// - TV 使用独立双栏布局；分类、查询共用本页状态，导入只展示一次进度。
 ///
 library;
 
@@ -36,6 +36,8 @@ import 'plugin_import_error_dialog.dart';
 import 'plugin_runtime_source_projection.dart';
 import 'source_collection_import_sheet.dart';
 import 'source_update_actions.dart';
+
+part 'data_source_management_tv.dart';
 
 /// Runtime-backed data-source management presentation.
 class PluginRuntimeStatusPage extends ConsumerWidget {
@@ -244,14 +246,30 @@ class _DataSourceContent extends ConsumerStatefulWidget {
 class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _addFocus = FocusNode(debugLabel: 'Add data source');
+  final FocusNode _tvCategoryFocus = FocusNode(debugLabel: 'All data sources');
+  final ScrollController _tvCategoryScroll = ScrollController();
+  bool _tvEntryFocused = false;
   _DataSourceFilter _filter = _DataSourceFilter.all;
   String _query = '';
   bool _compactSources = true;
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_tvEntryFocused || !TvModeScope.isEnabled(context)) return;
+    _tvEntryFocused = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || ModalRoute.of(context)?.isCurrent == false) return;
+      requestTvFocus(widget.sources.isEmpty ? _addFocus : _tvCategoryFocus);
+    });
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     _addFocus.dispose();
+    _tvCategoryFocus.dispose();
+    _tvCategoryScroll.dispose();
     super.dispose();
   }
 
@@ -358,6 +376,60 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
           return '${source.name} ${source.description} ${source.kindLabel}'.toLowerCase().contains(normalizedQuery);
         })
         .toList(growable: false);
+    Widget sourceRow(BuildContext context, int index) {
+      final source = visibleSources[index];
+      return Container(
+        margin: const EdgeInsets.only(bottom: AppSpacing.regular),
+        decoration: BoxDecoration(
+          color: tokens.surface,
+          borderRadius: AppRadii.detailCard,
+          border: Border.all(color: tokens.divider),
+        ),
+        child: DataSourceManagementRow(
+          compact: _compactSources,
+          source: source,
+          isPending: importState.isImporting || isClearingAll || pendingSourceIds.contains(source.id),
+          onPressed: () => widget.onSourcePressed(source.id),
+          onDiscover: widget.onDiscoverSource == null ? null : () => widget.onDiscoverSource!(source.id),
+          onSearch: widget.onSearchSource == null ? null : () => widget.onSearchSource!(source.id),
+          onOpenSourceUrl: source.sourceUrl == null ? null : () => widget.onOpenSourceUrl(source),
+          onChanged: (enabled) => _setSourceEnabled(source, enabled),
+        ),
+      );
+    }
+
+    if (TvModeScope.isEnabled(context)) {
+      return _TvDataSourceContent(
+        sources: widget.sources,
+        visibleCount: visibleSources.length,
+        sourceBuilder: sourceRow,
+        filter: _filter,
+        onFilter: (value) => setState(() => _filter = value),
+        query: _query,
+        onQuery: (value) => setState(() {
+          _query = value;
+          _searchController.text = value;
+        }),
+        onReset: () {
+          setState(() {
+            _query = '';
+            _searchController.clear();
+            _filter = _DataSourceFilter.all;
+          });
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            if (_tvCategoryScroll.hasClients) _tvCategoryScroll.jumpTo(0);
+            requestTvFocus(_tvCategoryFocus);
+          });
+        },
+        addFocus: _addFocus,
+        categoryFocus: _tvCategoryFocus,
+        categoryScroll: _tvCategoryScroll,
+        onAdd: importState.isImporting || pendingSourceIds.isNotEmpty ? null : _importDataSource,
+        importState: importState,
+        removalProgress: removalProgress,
+      );
+    }
     return ListView.builder(
       key: const Key('data-source-management-content'),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -426,25 +498,7 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
           );
         }
 
-        final source = visibleSources[index - 1];
-        return Container(
-          margin: const EdgeInsets.only(bottom: AppSpacing.regular),
-          decoration: BoxDecoration(
-            color: tokens.surface,
-            borderRadius: AppRadii.detailCard,
-            border: Border.all(color: tokens.divider),
-          ),
-          child: DataSourceManagementRow(
-            compact: _compactSources,
-            source: source,
-            isPending: importState.isImporting || isClearingAll || pendingSourceIds.contains(source.id),
-            onPressed: () => widget.onSourcePressed(source.id),
-            onDiscover: widget.onDiscoverSource == null ? null : () => widget.onDiscoverSource!(source.id),
-            onSearch: widget.onSearchSource == null ? null : () => widget.onSearchSource!(source.id),
-            onOpenSourceUrl: source.sourceUrl == null ? null : () => widget.onOpenSourceUrl(source),
-            onChanged: (enabled) => _setSourceEnabled(source, enabled),
-          ),
-        );
+        return sourceRow(context, index - 1);
       },
     );
   }

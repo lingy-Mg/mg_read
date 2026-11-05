@@ -17,6 +17,8 @@ void main() {
   testWidgets('TV source filter lets the remote leave the editor vertically', (tester) async {
     await tester.pumpWidget(TvModeScope(enabled: true, onChanged: (_) {}, child: _host()));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('tv-data-source-search')));
+    await tester.pumpAndSettle();
     final field = find.byKey(const Key('data-source-search'));
     await tester.enterText(field, '起点');
     await tester.pumpAndSettle();
