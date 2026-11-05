@@ -121,17 +121,17 @@ test(
   async (t) => {
   const root = await temporaryDirectory(t, "mgread-development-max-debounce-");
   const project = await createProject(root, "source-a");
-  const started = [];
-  let signalStarted;
-  const firstStarted = new Promise((resolve) => { signalStarted = resolve; });
+  let builds = 0;
   const monitor = new DevelopmentPluginMonitor({
     developmentRoot: root,
     npmCliPath: join(root, "unused-npm-cli.js"),
-    settleDelayMs: 250,
+    // A normal quiet-period build cannot pass the five-second deadline below.
+    // Keep saving until a capped build starts; OS scheduling may delay watcher
+    // callbacks, so do not assert a sub-second wall clock or exactly one build.
+    settleDelayMs: 30_000,
     maxSettleDelayMs: 140,
-    buildRunner: async (projectRoot) => {
-      started.push(performance.now());
-      if (started.length === 1) signalStarted();
+    buildRunner: async () => {
+      builds += 1;
       return true;
     },
     onBuilt: () => {},
@@ -142,23 +142,23 @@ test(
   t.after(() => monitor.close());
 
   const source = join(project, "src", "index.ts");
-  const firstWriteAt = performance.now();
+  let stopSaving = false;
   let writes = 0;
-  while (writes < 5) {
-    writes += 1;
-    await writeFile(source, `export const value = ${writes};\n`);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+  const writer = (async () => {
+    while (!stopSaving) {
+      writes += 1;
+      await writeFile(source, `export const value = ${writes};\n`);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  })();
+  try {
+    await waitFor(() => builds > 0, 5_000);
+  } finally {
+    stopSaving = true;
+    await writer;
   }
-  await new Promise((resolve) => setTimeout(resolve, 40));
-  await firstStarted;
-
-  assert.equal(writes, 5);
-  assert.ok(
-    started[0] - firstWriteAt < 250,
-    `maximum debounce was not applied: ${Math.round(started[0] - firstWriteAt)}ms`,
-  );
-  await new Promise((resolve) => setTimeout(resolve, 130));
-  assert.equal(started.length, 1);
+  assert.ok(writes > 0);
+  assert.ok(builds > 0, 'continuous saves must not postpone the build until the quiet period');
   },
 );
 

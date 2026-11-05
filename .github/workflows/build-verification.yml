@@ -1,5 +1,7 @@
 # Owns signed platform builds and versioned release assets. Android publishes
 # ARMv8, ARMv7 and their universal APK. ARMv7 uses the private Node process.
+# Compile each Runtime once per job; test the compiled output and keep source
+# compatibility independent from platform packaging, with every job gating release.
 name: Build verification
 
 on:
@@ -89,7 +91,6 @@ jobs:
         run: |
           $owned = @('lib/app/app_startup.dart', 'lib/app/app_startup_gate.dart', 'lib/app/bootstrap.dart', 'lib/core/settings/src/app_settings_manager.dart', 'test/app/app_startup_gate_test.dart', 'test/app/app_settings_bootstrap_test.dart', 'test/app/app_startup_test.dart', 'test/app/mg_read_app_test_support.dart', 'test/app/tv_mode_test.dart')
           $tests = @('test/app/app_startup_gate_test.dart', 'test/app/app_settings_bootstrap_test.dart', 'test/app/app_startup_test.dart', 'test/app/tv_mode_test.dart')
-          ./tools/run_flutter_checks.ps1 -Mode Fast -DartPath $owned -TestPath $tests
           ./tools/run_flutter_checks.ps1 -Mode Final -DartPath $owned -TestPath $tests
 
       - name: Preserve Android check logs
@@ -296,9 +297,14 @@ jobs:
           cache: npm
           cache-dependency-path: packages/mg_read_node_runtime/package-lock.json
 
-      - name: Pin npm
-        run: npm install --global npm@${{ env.NPM_VERSION }}
+      - name: Cache verified Bun distribution
+        uses: actions/cache@v5
+        with:
+          path: packages/mg_read_node_runtime/tools/bun-v*-windows-x64/distribution.tgz
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/mg_read_node_runtime/tools/stage-bun-runtime.mjs') }}
 
+      # npm is already tracked beside the pinned Windows Node; selecting that
+      # directory avoids reinstalling a global npm that the build never uses.
       - name: Build and stage Windows Runtime
         working-directory: packages/mg_read_node_runtime
         shell: pwsh
@@ -306,25 +312,10 @@ jobs:
           $env:PATH = (Join-Path $PWD 'tools/node-v26.10.0-win-x64') + ';' + $env:PATH
           npm ci
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          foreach ($check in @('stage:flutter-windows', 'test', 'verify:staged-windows', 'verify:staged-bun', 'test:bun')) {
+          foreach ($check in @('stage:flutter-windows', 'test:compiled', 'verify:staged-windows', 'verify:staged-bun', 'test:bun:compiled')) {
             npm run $check
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
-
-      - name: Verify every source on Node and Bun
-        shell: pwsh
-        run: |
-          & ./packages/mg_read_node_runtime/tools/node-v26.10.0-win-x64/node.exe tools/check_source_runtime_compatibility.mjs --install-dependencies --engine=both
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Preserve source compatibility reports
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: mgread-source-compatibility-${{ github.sha }}
-          path: artifacts/source-runtime-compatibility/
-          if-no-files-found: ignore
-          retention-days: 7
 
       - name: Ensure declared Runtime asset directories exist
         shell: bash
@@ -344,6 +335,13 @@ jobs:
 
       - name: Flutter dependencies
         run: flutter pub get
+
+      - name: Restore Windows Flutter compilation cache
+        uses: actions/cache@v5
+        with:
+          path: .dart_tool/flutter_build
+          key: flutter-build-v2-${{ runner.os }}-${{ runner.arch }}-3.47.4-${{ github.sha }}
+          restore-keys: flutter-build-v2-${{ runner.os }}-${{ runner.arch }}-3.47.4-
 
       - name: Build Windows
         run: flutter build windows --release --no-pub
@@ -372,6 +370,61 @@ jobs:
           compression-level: 0
           retention-days: 7
 
+  source-compatibility:
+    name: Source compatibility on Node and Bun
+    needs: debounce
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Fetch Windows Node Runtime from Git LFS
+        shell: pwsh
+        run: git lfs pull --include="packages/mg_read_node_runtime/tools/node-v26.10.0-win-x64/node.exe" --exclude=""
+
+      - name: Restore npm downloads for Runtime and all sources
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            packages/mg_read_node_runtime/package-lock.json
+            plugins/sources/*/package-lock.json
+
+      - name: Cache verified Bun distribution
+        uses: actions/cache@v5
+        with:
+          path: packages/mg_read_node_runtime/tools/bun-v*-windows-x64/distribution.tgz
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/mg_read_node_runtime/tools/stage-bun-runtime.mjs') }}
+
+      - name: Prepare pinned source test runtimes
+        working-directory: packages/mg_read_node_runtime
+        shell: pwsh
+        run: |
+          $env:PATH = (Join-Path $PWD 'tools/node-v26.10.0-win-x64') + ';' + $env:PATH
+          npm ci
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run stage:flutter-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify every source on Node and Bun
+        shell: pwsh
+        run: |
+          & ./packages/mg_read_node_runtime/tools/node-v26.10.0-win-x64/node.exe --test tools/source_compatibility_scheduler.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & ./packages/mg_read_node_runtime/tools/node-v26.10.0-win-x64/node.exe tools/check_source_runtime_compatibility.mjs --install-dependencies --engine=both --concurrency=2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Preserve source compatibility reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mgread-source-compatibility-${{ github.sha }}
+          path: artifacts/source-runtime-compatibility/
+          if-no-files-found: ignore
+          retention-days: 7
+
   macos:
     name: macOS arm64 release
     needs: debounce
@@ -394,13 +447,19 @@ jobs:
       - name: Pin npm
         run: npm install --global npm@${{ env.NPM_VERSION }}
 
+      - name: Cache verified Bun distribution
+        uses: actions/cache@v5
+        with:
+          path: packages/mg_read_node_runtime/tools/bun-v*-macos-arm64/distribution.tgz
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packages/mg_read_node_runtime/tools/stage-bun-runtime.mjs') }}
+
       - name: Build and stage macOS Runtime
         working-directory: packages/mg_read_node_runtime
         run: |
           npm ci
           npm run stage:flutter-macos
           npm run verify:staged-bun
-          npm run test:bun
+          npm run test:bun:compiled
 
       - name: Ensure declared Runtime asset directories exist
         shell: bash
@@ -420,6 +479,20 @@ jobs:
 
       - name: Flutter dependencies
         run: flutter pub get
+
+      - name: Restore macOS Flutter compilation cache
+        uses: actions/cache@v5
+        with:
+          path: .dart_tool/flutter_build
+          key: flutter-build-v2-${{ runner.os }}-${{ runner.arch }}-3.47.4-${{ github.sha }}
+          restore-keys: flutter-build-v2-${{ runner.os }}-${{ runner.arch }}-3.47.4-
+
+      - name: Restore CocoaPods downloads
+        uses: actions/cache@v5
+        with:
+          path: ~/Library/Caches/CocoaPods
+          key: pods-downloads-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('macos/Podfile.lock') }}
+          restore-keys: pods-downloads-v1-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Build macOS
         run: flutter build macos --release --no-pub
@@ -449,7 +522,7 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    needs: [android-checks, android, windows, macos]
+    needs: [android-checks, android, windows, source-compatibility, macos]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

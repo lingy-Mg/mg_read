@@ -2,6 +2,24 @@
 
 本页记录发布入口、体积约束与验证边界。应用功能和运行时选择不因压缩改变；不要重写已经签名的 APK。
 
+## CI 耗时与缓存
+
+桌面 job 只编译一次 Runtime，再运行 `test:compiled` / `test:bun:compiled`；本地 `test` / `test:bun`
+仍会先 build。Flutter 收尾检查只运行一次 Final，包含格式、全仓分析、源码规模和原有直接测试。
+Windows 使用仓库随固定 Node 提供的 npm，不重复安装未使用的全局 npm。
+
+全部来源的 Node/Bun 离线测试在独立 Windows job 中执行，与三平台打包并行，仍是 Release 的必需前置条件。
+该 job 的 npm 下载缓存覆盖 Runtime 和所有来源 lock，仍按 lock 执行 `npm ci`，不缓存或跳过测试结果。
+CI 用 `--concurrency=2` 同时检查两个独立来源；每个来源的安装、构建、Node/Bun 测试仍串行，保留限流等待。
+本地默认并发为 1，可显式选择 1～8。报告记录耗时与起止时间，逐源日志独立、汇总写入串行，单源失败不跳过其余来源。
+
+桌面新增按 OS、架构、Flutter 版本隔离的 `.dart_tool/flutter_build` 缓存；每个提交产生新 key，并恢复同工具链
+最近的编译缓存。Flutter 始终重新执行构建并检查输入。macOS 另外缓存 CocoaPods 下载，Pods 安装与构建照常执行。
+Bun 只缓存分发压缩包，staging 每次校验固定 SHA-512 并重新提取。保留已有 Android Gradle/Rust/Flutter 缓存和三 ABI 构建。
+
+缓存命中、冷启动、runner 排队和真正编译耗时分别比较。结构上的重复步骤减少不等于远端总时长已经下降；
+实际收益以相近代码、相同 runner 与缓存条件下的 Actions 步骤记录为准。
+
 ## Windows x64
 
 VS Code 任务 `发布：打包 Windows EXE（Release）` 顺序执行固定 Node/npm staging、Flutter Release 构建、

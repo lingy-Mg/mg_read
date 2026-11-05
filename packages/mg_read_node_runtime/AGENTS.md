@@ -22,7 +22,8 @@
   调试映射只存于构建目录。Windows CMake 删除其他平台资产；最终包用 `MGREAD_WINDOWS_BUNDLE_ROOT` 和
   `MGREAD_BUN_BUNDLE_ROOT` 执行两个 staged 验证，防止开发依赖、编译碎片和其他平台文件回流。
   根 `tools/check_source_runtime_compatibility.mjs` 在固定 Node/Bun 上逐源运行同一套离线测试，CI 可用
-  `--install-dependencies` 从各源 lock 恢复开发依赖；其通过不等于真实站点或 App 的全链路通过。
+  `--install-dependencies` 从各源 lock 恢复开发依赖；`--concurrency=2` 仅并发独立来源，每源命令仍串行。
+  调度边界由 `tools/source_compatibility_scheduler.test.mjs` 验证；离线通过不等于真实站点或 App 全链路通过。
 
 - Android staging 只发布原路径、原字节的可执行模块和调试页，不发布 `.d.ts`、`.map`、`windows-release`。
   `cli.js`（私有 Node 进程）与 `desktop-runtime.js`（Javet）必须同时保留；内容指纹驱动宿主替换私有程序镜像，
@@ -72,6 +73,8 @@ macOS arm64 将 `tools/node-v26.10.0-darwin-arm64/bin` 放到 `PATH` 最前，�
 不回退全局 Node/npm。按受影响边界运行 package scripts 和直接测试；不要机械执行无关平台矩阵。
 
 - Node Core：固定 npm 运行 `typecheck`、直接 Node 测试、`check:no-native-addons`。
+  已在同一 job 执行 build/staging 时，用 `test:compiled` 与 `test:bun:compiled` 测试该次输出，避免重复编译；
+  本地独立运行 `test` / `test:bun` 仍先构建。来源兼容 job 与平台打包并行，但必须全部通过才能发布。
 - desktop Facade/transport：增加同级 Flutter package 测试和固定 npm 运行的 `test:flutter-desktop`。
 - macOS bundle：先运行 `stage:flutter-macos`，再验证 app 内 `MgReadNode`、Runtime 启动、插件主调用链和子进程退出。
 - Android WebView/Javet：增加相邻 Kotlin 单测和目标 Gradle 编译；真实流程仍需用户授权的 Integration Test。
