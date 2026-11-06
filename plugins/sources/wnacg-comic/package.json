@@ -1,0 +1,43 @@
+{
+  "name": "@mgread-plugin/wnacg-comic",
+  "version": "1.0.0",
+  "private": true,
+  "description": "绅士漫画：推荐、搜索、图集详情及完整下拉页图。",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "packageManager": "npm@11.19.1",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node tools/mgread.mjs build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/contract.test.mjs test/source.test.mjs",
+    "test:live": "npm run build && node --use-env-proxy --test test/live-source.test.mjs",
+    "pack:plugin": "npm run build && node tools/mgread.mjs pack",
+    "verify": "npm run typecheck && npm test && npm run pack:plugin"
+  },
+  "devDependencies": {
+    "@mgread/source-api": "file:../../../packages/mg_read_source_api",
+    "@mgread/source-testkit": "file:../../../packages/mg_read_source_testkit",
+    "@types/node": "24.13.3",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  },
+  "mgread": {
+    "schemaVersion": 1,
+    "id": "org.mgread.wnacg-comic",
+    "displayName": "绅士漫画（下拉）",
+    "description": "绅士漫画图集来源，支持推荐、搜索、详情和完整下拉页图；图片时效地址在读取图集时重新获取。",
+    "sourceUrl": "https://www.wnacg.com/",
+    "pluginApi": 1,
+    "packageMode": "single-file",
+    "contentKinds": [
+      "manga"
+    ],
+    "r18": true
+  },
+  "dependencies": {
+    "cheerio": "1.1.0"
+  }
+}
