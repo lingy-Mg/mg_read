@@ -55,14 +55,17 @@ export interface DiscoverRequest { readonly target: string | null; readonly curs
 export interface DiscoveryCategory { readonly id: string; readonly title: string; readonly target: string; readonly count: number | null; readonly url: string | null; readonly icon?: DiscoveryIcon | null; }
 export interface DiscoveryContentItem { readonly content: ContentSummary; readonly rank: number | null; readonly metric: { readonly label: string; readonly value: string } | null; readonly recommendation: string | null; }
 export interface DiscoveryContinuation { readonly target: string; readonly cursor: string; }
-export interface DiscoveryTabs { readonly type: 'tabs'; readonly id: string; readonly tabs: readonly { readonly id: string; readonly label: string; readonly target: string; readonly icon?: DiscoveryIcon | null }[]; readonly selectedTabId: string | null; }
+export interface DiscoveryTab { readonly id: string; readonly label: string; readonly target: string; readonly icon?: DiscoveryIcon | null; }
+export interface DiscoveryTabs { readonly type: 'tabs'; readonly id: string; readonly tabs: readonly DiscoveryTab[]; readonly selectedTabId: string | null; }
+export interface DiscoveryFilterGroup { readonly id: string; readonly label: string; readonly selectedOptionId: string | null; readonly options: readonly DiscoveryTab[]; }
+export interface DiscoveryFilters { readonly type: 'filters'; readonly id: string; readonly groups: readonly DiscoveryFilterGroup[]; readonly resetTarget: string; }
 export interface DiscoverySection { readonly type: 'section'; readonly id: string; readonly title: string; readonly subtitle: string | null; readonly icon?: DiscoveryIcon | null; readonly children: readonly DiscoveryComponent[]; }
 export interface DiscoveryGroup { readonly type: 'group'; readonly id: string; readonly layout: DiscoveryGroupLayout; readonly children: readonly DiscoveryComponent[]; }
 export interface DiscoveryContentCollection { readonly type: 'contentCollection'; readonly id: string; readonly layout: DiscoveryContentLayout; readonly items: readonly DiscoveryContentItem[]; readonly continuation: DiscoveryContinuation | null; }
 export interface DiscoveryCategoryCollection { readonly type: 'categoryCollection'; readonly id: string; readonly layout: DiscoveryCategoryLayout; readonly categories: readonly DiscoveryCategory[]; }
 export interface DiscoveryText { readonly type: 'text'; readonly id: string; readonly text: string; }
 export interface DiscoveryDivider { readonly type: 'divider'; readonly id: string; }
-export type DiscoveryComponent = DiscoveryTabs | DiscoverySection | DiscoveryGroup | DiscoveryContentCollection | DiscoveryCategoryCollection | DiscoveryText | DiscoveryDivider;
+export type DiscoveryComponent = DiscoveryTabs | DiscoveryFilters | DiscoverySection | DiscoveryGroup | DiscoveryContentCollection | DiscoveryCategoryCollection | DiscoveryText | DiscoveryDivider;
 export interface DiscoveryDocument { readonly components: readonly DiscoveryComponent[]; }
 export type DiscoverResult = { readonly kind: 'document'; readonly document: DiscoveryDocument } | { readonly kind: 'append'; readonly collectionId: string; readonly items: readonly DiscoveryContentItem[]; readonly continuation: DiscoveryContinuation | null; };
 export interface ContentReferenceRequest { readonly id: string; }

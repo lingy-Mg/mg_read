@@ -91,7 +91,7 @@ test('list results expose source covers through the Runtime proxy', async () => 
   });
 
   assert.equal(
-    result.document.components[0].children[0].items[0].content.coverUrl,
+    result.document.components.find((component) => component.type === 'section').children[0].items[0].content.coverUrl,
     'http://127.0.0.1:1234/v1/source-resource/opaque',
   );
   assert.equal(proxyCalls, 1);
@@ -165,7 +165,7 @@ test('category detail hydration uses eight workers, preserves order, and degrade
     collectionId: null,
     pageSize: 20,
   });
-  const items = result.document.components[0].children[0].items;
+  const items = result.document.components.find((component) => component.type === 'section').children[0].items;
 
   assert.equal(maximumActiveDetails, 8);
   assert.equal([...detailCalls.values()].reduce((total, count) => total + count, 0), 20);
@@ -703,7 +703,7 @@ test('public API completes the opaque content chain without duplicating Runtime 
     pageSize: 5,
   });
   assert.equal(discovery.kind, 'document');
-  const contentCollection = discovery.document.components[0].children.find(
+  const contentCollection = discovery.document.components.find((component) => component.type === 'section').children.find(
     (component) => component.type === 'contentCollection',
   );
   assert.equal(contentCollection?.type, 'contentCollection');

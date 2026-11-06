@@ -6908,13 +6908,13 @@ function buildHomeDiscoveryComponents(home, categories) {
     })])));
   }
   if (home.originals.length !== 0) {
-    components.push(section("source-originals-section", "原创新作", "来自官网原创专区", "newRelease", Object.freeze([Object.freeze({
+    components.push(section("source-originals-section", "原创专区", "来自官网原创专区", "newRelease", Object.freeze([Object.freeze({
       type: "contentCollection",
       id: "source-original-books",
       layout: "coverGrid",
       items: discoveryItems(home.originals),
       continuation: null
-    })])));
+    }), moreLink("source-original-more", "全部原创", "library:original")])));
   }
   components.push(Object.freeze({
     type: "group",
@@ -6946,6 +6946,15 @@ function buildHomeDiscoveryComponents(home, categories) {
           url: null,
           icon: ranking.icon
         })))
+      })])),
+      section("source-library-section", "小说书库", null, "books", Object.freeze([Object.freeze({
+        type: "categoryCollection",
+        id: "source-library",
+        layout: "chips",
+        categories: Object.freeze([
+          Object.freeze({ id: "original", title: "原创专区", target: "library:original", count: null, url: null, icon: "newRelease" }),
+          Object.freeze({ id: "latest", title: "最新小说", target: "library:latest", count: null, url: null, icon: "ongoing" })
+        ])
       })]))
     ])
   }));
@@ -6958,7 +6967,40 @@ function buildHomeDiscoveryComponents(home, categories) {
       continuation: null
     })])));
   }
+  for (const ranking of home.rankings ?? []) {
+    if (ranking.items.length === 0) continue;
+    components.push(section(`source-home-ranking-section:${ranking.id}`, ranking.title, null, "ranking", Object.freeze([
+      Object.freeze({
+        type: "contentCollection",
+        id: `source-home-ranking-books:${ranking.id}`,
+        layout: "compact",
+        items: discoveryItems(ranking.items),
+        continuation: null
+      }),
+      moreLink(`source-home-ranking-more:${ranking.id}`, "查看完整榜单", ranking.target)
+    ])));
+  }
+  if ((home.latest?.length ?? 0) !== 0) {
+    components.push(section("source-latest-section", "最新小说", null, "ongoing", Object.freeze([
+      Object.freeze({
+        type: "contentCollection",
+        id: "source-latest-books",
+        layout: "list",
+        items: discoveryItems(home.latest),
+        continuation: null
+      }),
+      moreLink("source-latest-more", "更多最新小说", "library:latest")
+    ])));
+  }
   return Object.freeze(components);
+}
+function moreLink(id, title, target) {
+  return Object.freeze({
+    type: "categoryCollection",
+    id,
+    layout: "chips",
+    categories: Object.freeze([Object.freeze({ id, title, target, count: null, url: null, icon: "books" })])
+  });
 }
 function section(id, title, subtitle, icon, children2) {
   return Object.freeze({ type: "section", id, title, subtitle, icon, children: children2 });
@@ -7093,10 +7135,153 @@ function mapDiscoveryContent(result, project) {
   });
 }
 
+// src/source-browse-routes.ts
+var orders = Object.freeze([
+  Object.freeze({ id: "update_time", label: "按更新" }),
+  Object.freeze({ id: "word", label: "按字数" }),
+  Object.freeze({ id: "hits", label: "按人气" })
+]);
+function browseState(target, categories) {
+  if (target === "library:original") return { original: true, categoryId: null, order: "default" };
+  if (target === "library:latest") return { original: false, categoryId: null, order: "update_time" };
+  const category = /^category:(\d+)$/u.exec(target);
+  const combined = /^browse:(all|\d+):(update_time|word|hits)$/u.exec(target);
+  const categoryId = category?.[1] ?? (combined?.[1] === "all" ? null : combined?.[1]);
+  if (categoryId === void 0 || categoryId !== null && !categories.some((entry) => entry.id === categoryId)) {
+    throw new Error("Discovery browse target is invalid.");
+  }
+  return { original: false, categoryId, order: category === null ? combined[2] : "default" };
+}
+function browseTarget(state) {
+  if (state.original) return "library:original";
+  if (state.categoryId !== null && state.order === "default") return `category:${state.categoryId}`;
+  if (state.categoryId === null && (state.order === "default" || state.order === "update_time")) return "library:latest";
+  return `browse:${state.categoryId ?? "all"}:${state.order}`;
+}
+function browsePath(state) {
+  if (state.original) return "/original.html";
+  if (state.categoryId !== null && state.order === "default") return `/lists/${state.categoryId}.html`;
+  return `/all${state.categoryId === null ? "" : `/id/${state.categoryId}`}/order/${state.order === "default" ? "update_time" : state.order}+desc.html`;
+}
+function browseCollectionId(state) {
+  if (state.original) return "original-books";
+  if (state.categoryId !== null && state.order === "default") return `category-books:${state.categoryId}`;
+  return `browse-books:${state.categoryId ?? "all"}:${state.order}`;
+}
+function browseFilters(state, categories) {
+  const availableOrders = state.categoryId === null ? orders : [{ id: "default", label: "官网默认" }, ...orders];
+  return Object.freeze({
+    type: "filters",
+    id: "source-library-filters",
+    resetTarget: "library:latest",
+    groups: Object.freeze([
+      Object.freeze({
+        id: "category",
+        label: "分类",
+        selectedOptionId: state.categoryId ?? "all",
+        options: Object.freeze([{ id: "all", title: "全部分类" }, ...categories].map((category) => Object.freeze({
+          id: category.id,
+          label: category.title,
+          target: browseTarget({ ...state, categoryId: category.id === "all" ? null : category.id }),
+          icon: "category"
+        })))
+      }),
+      Object.freeze({
+        id: "order",
+        label: "排序",
+        selectedOptionId: state.order,
+        options: Object.freeze(availableOrders.map((order) => Object.freeze({
+          id: order.id,
+          label: order.label,
+          target: browseTarget({ ...state, order: order.id })
+        })))
+      })
+    ])
+  });
+}
+function browseCursor(cursor, state) {
+  if (cursor === null) return { page: 1, offset: 0 };
+  const legacy = !state.original && state.order === "default" ? /^category-page:(\d+)$/u.exec(cursor) : null;
+  const match = /^browse-page:(\d+):(\d+)$/u.exec(cursor);
+  const page = Number(legacy?.[1] ?? match?.[1]);
+  const offset = legacy === null ? Number(match?.[2]) : 0;
+  if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(offset) || offset < 0 || offset > 1e3) {
+    throw new Error("Discovery cursor is invalid.");
+  }
+  return { page, offset };
+}
+function browseNextPage(html3, currentUrl, page) {
+  const $ = load(html3);
+  for (const element of $(".pagination a[href]").toArray()) {
+    const href = $(element).attr("href");
+    if (href === void 0) continue;
+    let next2;
+    try {
+      next2 = new URL(href, currentUrl);
+    } catch {
+      continue;
+    }
+    if (next2.origin !== currentUrl.origin || next2.pathname !== currentUrl.pathname || next2.hash !== "") continue;
+    if (next2.searchParams.getAll("page").length !== 1 || next2.searchParams.size !== 1) continue;
+    if (next2.searchParams.get("page") === String(page + 1)) return page + 1;
+  }
+  return null;
+}
+
+// src/source-browse.ts
+async function discoverBrowse(request, dependencies) {
+  const target = request.target;
+  if (target === null) throw new Error("A browse target is required.");
+  const ranking = target.startsWith("ranking:") ? rankingRules.find((entry) => `ranking:${entry.id}` === target) : void 0;
+  if (target.startsWith("ranking:") && ranking === void 0) throw new Error("Ranking target is invalid.");
+  const state = ranking === void 0 ? browseState(target, dependencies.categories) : null;
+  const collectionId = ranking === void 0 ? browseCollectionId(state) : `ranking-books:${ranking.id}`;
+  if (request.collectionId !== null && (request.collectionId !== collectionId || request.cursor === null) || ranking !== void 0 && (request.collectionId !== null || request.cursor !== null)) {
+    throw new Error("Discovery continuation is invalid.");
+  }
+  const { page, offset } = state === null ? { page: 1, offset: 0 } : browseCursor(request.cursor, state);
+  if (!Number.isSafeInteger(request.pageSize) || request.pageSize < 1) throw new Error("Discovery page size is invalid.");
+  const deadlineMs = Date.now() + 1e4;
+  const pageUrl = new URL(ranking?.path ?? browsePath(state), dependencies.baseUrl);
+  if (page > 1) pageUrl.searchParams.set("page", String(page));
+  const html3 = await dependencies.getHtml(pageUrl);
+  const allItems = await dependencies.parseList(html3, pageUrl);
+  if (offset > allItems.length) throw new Error("Discovery cursor exceeds the source page.");
+  const pageSize = Math.min(request.pageSize, 50);
+  const selected = ranking === void 0 ? allItems.slice(offset, offset + pageSize) : allItems;
+  const visible = (await dependencies.hydrate(selected, ranking !== void 0, deadlineMs)).map(dependencies.proxy);
+  const nextPage = ranking === void 0 ? browseNextPage(html3, pageUrl, page) : null;
+  const nextOffset = offset + selected.length;
+  const continuation = ranking !== void 0 ? null : nextOffset < allItems.length ? Object.freeze({ target, cursor: `browse-page:${page}:${nextOffset}` }) : nextPage === null ? null : Object.freeze({ target, cursor: `browse-page:${nextPage}:0` });
+  const items = Object.freeze(visible.map((content) => Object.freeze({
+    content,
+    rank: null,
+    metric: discoveryMetric(content),
+    recommendation: null
+  })));
+  if (request.collectionId !== null) return Object.freeze({ kind: "append", collectionId, items, continuation });
+  const title = ranking?.title ?? (state.original ? "原创专区" : state.categoryId === null ? "最新小说" : dependencies.categories.find((entry) => entry.id === state.categoryId).title);
+  const components = [];
+  if (state !== null && !state.original) components.push(browseFilters(state, dependencies.categories));
+  components.push(Object.freeze({
+    type: "section",
+    id: `source-results-section:${collectionId}`,
+    title,
+    subtitle: null,
+    children: Object.freeze([Object.freeze({
+      type: "contentCollection",
+      id: collectionId,
+      layout: "list",
+      items,
+      continuation
+    })])
+  }));
+  return Object.freeze({ kind: "document", document: Object.freeze({ components: Object.freeze(components) }) });
+}
+
 // src/source.ts
 var allowedCoverOrigins = /* @__PURE__ */ new Set(["https://www.alicesw.com", "https://img.321cdn.com"]);
 var categoryDetailMaximumConcurrency = 8;
-var categoryDetailBudgetMs = 1e4;
 var homeCoverBudgetMs = 4e3;
 var standardDetailMaximumConcurrency = 4;
 function loadCheerio() {
@@ -7142,111 +7327,26 @@ var AliceBookHouseSource = class {
   }
   async #discover(request) {
     if (request.target === null) {
-      const home = await this.#loadHomeDiscovery();
+      if (request.cursor !== null || request.collectionId !== null || !Number.isSafeInteger(request.pageSize) || request.pageSize < 1) {
+        throw new Error("Root discovery request is invalid.");
+      }
+      const home = await this.#loadHomeDiscovery(request.pageSize);
       return Object.freeze({
         kind: "document",
         document: Object.freeze({ components: buildHomeDiscoveryComponents(home, this.#categories) })
       });
     }
-    if (request.target.startsWith("ranking:")) {
-      return this.#discoverRanking(request);
-    }
-    const categoryDetailDeadlineMs = Date.now() + categoryDetailBudgetMs;
-    const category = this.#decodeCategoryTarget(request.target);
-    const page = decodePageCursor(request.cursor, "category-page");
-    const pageUrl = new URL(`/lists/${category.id}.html`, this.#baseUrl);
-    pageUrl.searchParams.set("page", String(page));
-    const items = await this.#parseList(
-      await this.#getHtml(pageUrl, void 0, discoveryListingHtmlCachePolicy),
-      pageUrl
-    );
-    const visible = (await this.#withDiscoveryDetails(
-      items.slice(0, request.pageSize),
-      {
+    return discoverBrowse(request, {
+      baseUrl: this.#baseUrl,
+      categories: this.#categories,
+      getHtml: (url) => this.#getHtml(url, void 0, discoveryListingHtmlCachePolicy),
+      parseList: (html3, url) => this.#parseList(html3, url),
+      hydrate: (items, ranking, deadlineMs) => ranking ? this.#withRankingDetails(items) : this.#withDiscoveryDetails(items, {
         maximumConcurrency: categoryDetailMaximumConcurrency,
-        deadlineMs: categoryDetailDeadlineMs,
+        deadlineMs,
         retryCoverOnFailure: false
-      }
-    )).map((content) => this.#withProxiedCover(content));
-    const continuation = items.length >= request.pageSize ? Object.freeze({ target: request.target, cursor: encodePageCursor("category-page", page + 1) }) : null;
-    const collectionId = `category-books:${category.id}`;
-    const discoveryItems2 = Object.freeze(
-      visible.map((content) => Object.freeze({
-        content,
-        rank: null,
-        metric: discoveryMetric(content),
-        recommendation: null
-      }))
-    );
-    if (request.collectionId !== null) {
-      if (request.collectionId !== collectionId || request.cursor === null) {
-        throw new Error("Discovery continuation is invalid.");
-      }
-      return Object.freeze({
-        kind: "append",
-        collectionId,
-        items: discoveryItems2,
-        continuation
-      });
-    }
-    return Object.freeze({
-      kind: "document",
-      document: Object.freeze({ components: Object.freeze([
-        Object.freeze({
-          type: "section",
-          id: `category-results-section:${category.id}`,
-          title: category.title,
-          subtitle: null,
-          children: Object.freeze([Object.freeze({
-            type: "contentCollection",
-            id: collectionId,
-            layout: "list",
-            items: discoveryItems2,
-            continuation
-          })])
-        })
-      ]) })
-    });
-  }
-  async #discoverRanking(request) {
-    const target = request.target;
-    if (target === null) throw new Error("Ranking target is required.");
-    const ranking = this.#decodeRankingTarget(target);
-    if (request.cursor !== null || request.collectionId !== null) {
-      throw new Error("Ranking results do not support continuation.");
-    }
-    const pageUrl = new URL(ranking.path, this.#baseUrl);
-    const items = await this.#parseList(
-      await this.#getHtml(pageUrl, void 0, discoveryListingHtmlCachePolicy),
-      pageUrl
-    );
-    const visible = (await this.#withRankingDetails(items)).map((content) => this.#withProxiedCover(content));
-    const collectionId = `ranking-books:${ranking.id}`;
-    const discoveryItems2 = Object.freeze(
-      visible.map((content) => Object.freeze({
-        content,
-        rank: null,
-        metric: discoveryMetric(content),
-        recommendation: null
-      }))
-    );
-    return Object.freeze({
-      kind: "document",
-      document: Object.freeze({ components: Object.freeze([
-        Object.freeze({
-          type: "section",
-          id: `ranking-results-section:${ranking.id}`,
-          title: ranking.title,
-          subtitle: null,
-          children: Object.freeze([Object.freeze({
-            type: "contentCollection",
-            id: collectionId,
-            layout: "list",
-            items: discoveryItems2,
-            continuation: null
-          })])
-        })
-      ]) })
+      }),
+      proxy: (content) => this.#withProxiedCover(content)
     });
   }
   async search(request) {
@@ -7484,28 +7584,59 @@ var AliceBookHouseSource = class {
     });
     return Object.freeze(queries);
   }
-  async #loadHomeDiscovery() {
+  async #loadHomeDiscovery(pageSize) {
     try {
       const homeUrl = new URL("/", this.#baseUrl);
       const html3 = await this.#getHtml(homeUrl, void 0, discoveryHomeHtmlCachePolicy);
       const deadlineMs = Date.now() + homeCoverBudgetMs;
-      const featuredInput = (await this.#parseHomeFeatured(html3, homeUrl)).slice(0, 6);
-      const originalsInput = (await this.#parseHomeNamedCollection(html3, homeUrl, "原创专区")).slice(0, 6);
-      const [featured, originalsWithCovers] = await Promise.all([
+      const limit = Math.min(pageSize, 10);
+      const featuredInput = (await this.#parseHomeFeatured(html3, homeUrl)).slice(0, Math.min(limit, 6));
+      const originalsInput = (await this.#parseHomeNamedCollection(html3, homeUrl, "原创专区")).slice(0, Math.min(limit, 6));
+      const popularInput = (await this.#parseHomeNamedCollection(html3, homeUrl, "热门推荐小说")).slice(0, limit);
+      const latestInput = (await this.#parseHomeNamedCollection(html3, homeUrl, "最新小说")).slice(0, Math.min(limit, 6));
+      const [featured, originalsWithCovers, popularWithCovers, latestWithCovers, rankings] = await Promise.all([
         this.#withDiscoveryDetails(featuredInput, { deadlineMs }),
-        this.#withCovers(originalsInput, { deadlineMs })
+        this.#withCovers(originalsInput, { deadlineMs }),
+        this.#withCovers(popularInput, { deadlineMs }),
+        this.#withCovers(latestInput, { deadlineMs }),
+        this.#homeRankings(html3, homeUrl, Math.min(limit, 3), deadlineMs)
       ]);
       const originals = originalsWithCovers.map((content) => this.#compactHomeSummary(content));
-      const popular = (await this.#parseHomeNamedCollection(html3, homeUrl, "热门推荐小说")).slice(0, 8).map((content) => this.#compactHomeSummary(content));
+      const popular = popularWithCovers.map((content) => this.#compactHomeSummary(content));
       return Object.freeze({
         featured: Object.freeze(featured.map((content) => this.#withProxiedCover(content))),
         originals: Object.freeze(originals.map((content) => this.#withProxiedCover(content))),
-        popular: Object.freeze(popular.map((content) => this.#withProxiedCover(content)))
+        popular: Object.freeze(popular.map((content) => this.#withProxiedCover(content))),
+        latest: Object.freeze(latestWithCovers.map((content) => this.#withProxiedCover(this.#compactHomeSummary(content)))),
+        rankings
       });
     } catch {
       this.context.log.debug("source_discovery_home_unavailable");
       return Object.freeze({ featured: Object.freeze([]), originals: Object.freeze([]), popular: Object.freeze([]) });
     }
+  }
+  async #homeRankings(html3, homeUrl, limit, deadlineMs) {
+    const $ = load(html3);
+    const headings = $("h2").filter((_, element) => compactSourceText($(element).text()).endsWith("排行榜")).toArray();
+    const seen = /* @__PURE__ */ new Set();
+    const collections = await Promise.all(headings.map(async (element) => {
+      const title = requiredText($(element).text());
+      const href = $(element).closest(".hot-box").find(".hot-title a[href]").first().attr("href");
+      if (href === void 0) return [];
+      const url = this.#sourceUrl(href, homeUrl);
+      const id = /^\/lists\/(\d+)\.html$/u.exec(url.pathname)?.[1];
+      if (id === void 0 || !this.#categories.some((category) => category.id === id) || seen.has(id)) return [];
+      seen.add(id);
+      const input = (await this.#parseHomeNamedCollection(html3, homeUrl, title)).slice(0, limit);
+      const contents2 = await this.#withCovers(input, { deadlineMs });
+      return [Object.freeze({
+        id,
+        title,
+        target: `category:${id}`,
+        items: Object.freeze(contents2.map((content) => this.#withProxiedCover(this.#compactHomeSummary(content))))
+      })];
+    }));
+    return Object.freeze(collections.flat());
   }
   async #parseHomeNamedCollection(html3, pageUrl, heading) {
     const cheerio2 = await loadCheerio();
@@ -7515,7 +7646,7 @@ var AliceBookHouseSource = class {
     const nearest = title.closest(".innerss, .inner, .container, .hot-box");
     const section2 = nearest.length === 0 ? title.parent() : nearest;
     const seen = /* @__PURE__ */ new Set();
-    const roots = section2.find(".list-group-item, .rec_rullist > ul, .details li").toArray();
+    const roots = section2.find(".class-box > .class-img, .class-box > li, .list-group-item, .rec_rullist > ul, .details li").toArray();
     const books = roots.flatMap((element) => this.#parseBookElement($, element, pageUrl, seen));
     const linkedBooks = section2.find('a[href*="/novel/"]').toArray().flatMap((element) => this.#parseBookElement($, element, pageUrl, seen));
     return Object.freeze([...books, ...linkedBooks]);
@@ -7537,7 +7668,7 @@ var AliceBookHouseSource = class {
     if (title.length === 0) return Object.freeze([]);
     const section2 = title.closest(".hot-box").length !== 0 ? title.closest(".hot-box") : title.closest(".inner");
     const seen = /* @__PURE__ */ new Set();
-    const roots = section2.find(".hot-data").toArray();
+    const roots = section2.find(".hot-data > .hot-img").toArray();
     const books = roots.flatMap((element) => this.#parseBookElement($, element, pageUrl, seen));
     const linkedBooks = section2.find('a[href*="/novel/"]').toArray().flatMap((element) => this.#parseBookElement($, element, pageUrl, seen));
     return Object.freeze([
@@ -7557,7 +7688,7 @@ var AliceBookHouseSource = class {
     const novelId = novelIdFromUrl(sourceUrl);
     if (novelId === null || seen.has(novelId)) return [];
     seen.add(novelId);
-    const author = textOrNull(root2.find('a[href*="f=author"]').first().text()) ?? textOrNull(root2.find("li.four").first().text());
+    const author = textOrNull(root2.find('a[href*="f=author"]').first().text()) ?? textOrNull(root2.find(".author").first().text()) ?? textOrNull(root2.find("li.four").first().text());
     const description = textOrNull(root2.find(".content-txt").first().text());
     const category = textOrNull(root2.find('.sev a, a[href*="/lists/"]').first().text());
     const latestLink = root2.find('a[href*="/book/"]').first();
@@ -7751,15 +7882,8 @@ var AliceBookHouseSource = class {
       const coverUrl = this.#coverUrls.get(content.id);
       return coverUrl === null ? content : Object.freeze({ ...content, coverUrl });
     }
-    const novelId = decodeNovelId(content.id);
-    const detailUrl = new URL(`/novel/${novelId}.html`, this.#baseUrl);
     try {
-      const cheerio2 = await loadCheerio();
-      const $ = cheerio2.load(
-        await this.#getHtml(detailUrl, detailUrl, detailHtmlCachePolicy)
-      );
-      const coverUrl = this.#coverUrl($, detailUrl);
-      this.#coverUrls.set(content.id, coverUrl);
+      const coverUrl = (await this.#getDiscoveryDetail({ id: content.id })).coverUrl;
       return coverUrl === null ? content : Object.freeze({ ...content, coverUrl });
     } catch {
       this.#coverUrls.set(content.id, null);
@@ -7811,18 +7935,6 @@ var AliceBookHouseSource = class {
       throw new Error("Chapter ID is invalid.");
     }
     return this.#sourceUrl(path, this.#baseUrl);
-  }
-  #decodeCategoryTarget(target) {
-    const id = target.startsWith("category:") ? target.slice("category:".length) : "";
-    const category = this.#categories.find((candidate) => candidate.id === id);
-    if (category === void 0) throw new Error("Category target is invalid.");
-    return category;
-  }
-  #decodeRankingTarget(target) {
-    const id = target.startsWith("ranking:") ? target.slice("ranking:".length) : "";
-    const ranking = rankingRules.find((candidate) => candidate.id === id);
-    if (ranking === void 0) throw new Error("Ranking target is invalid.");
-    return ranking;
   }
 };
 function decodeDetail(value) {

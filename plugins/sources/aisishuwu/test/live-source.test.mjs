@@ -3,6 +3,8 @@ import test from 'node:test';
 
 import {
   assertInlineJsonSize,
+  collectDiscoveryContent,
+  collectDiscoveryContinuations,
   createSourceTestHarness,
   probeReachableResource,
   runReadingSourceFlow,
@@ -15,7 +17,7 @@ test('live source completes category, search, detail, catalog, and content flow'
   const harness = await createSourceTestHarness({
     plugin,
     pluginId: 'org.mgread.aisishuwu',
-    version: '0.2.17',
+    version: '0.2.18',
     fetch,
     prefix: 'mgread-aisishuwu-live-',
     runtimeVersion: 'live-test',
@@ -57,9 +59,43 @@ test('live source completes category, search, detail, catalog, and content flow'
   const discovery = await plugin.discover({ target, cursor: null, collectionId: null, pageSize: 20 });
   assert.equal(discovery.kind, 'document');
   assertInlineJsonSize(discovery, { maximumBytes: 52 * 1024, stage: 'discover.category' });
-  const book = discovery.document.components[0].children[0].items[0].content;
+  const book = collectDiscoveryContent(discovery)[0];
   assert.match(book.id, /^novel:\d+$/u);
   assert.match(book.coverUrl ?? '', /^https?:\/\//u);
+  const filter = discovery.document.components.find((component) => component.type === 'filters');
+  assert.ok(filter);
+  assert.equal(filter.groups[0].selectedOptionId, '71');
+  for (const order of filter.groups[1].options.filter((option) => option.id !== 'default')) {
+    const sorted = await plugin.discover({ target: order.target, cursor: null, collectionId: null, pageSize: 5 });
+    assertInlineJsonSize(sorted, { maximumBytes: 52 * 1024, stage: `discover.category.${order.id}` });
+    assert.ok(collectDiscoveryContent(sorted).length > 0);
+    assert.equal(sorted.document.components[0].groups[0].selectedOptionId, '71');
+    assert.equal(sorted.document.components[0].groups[1].selectedOptionId, order.id);
+  }
+  const homeRankings = categories.document.components.filter((component) => component.id.startsWith('source-home-ranking-section:'));
+  for (const id of ['65', '64', '73', '62']) {
+    assert.ok(homeRankings.some((component) => component.id === `source-home-ranking-section:${id}`));
+  }
+  for (const section of homeRankings) {
+    assert.ok(section.children[0].items.length > 0);
+    const target = section.children[1].categories[0].target;
+    const list = await plugin.discover({ target, cursor: null, collectionId: null, pageSize: 5 });
+    assert.ok(collectDiscoveryContent(list).length > 0);
+  }
+  for (const target of ['library:original', 'library:latest']) {
+    const list = await plugin.discover({ target, cursor: null, collectionId: null, pageSize: 20 });
+    assertInlineJsonSize(list, { maximumBytes: 52 * 1024, stage: target });
+    const contents = collectDiscoveryContent(list);
+    assert.ok(contents.length > 0);
+    const [continuation] = collectDiscoveryContinuations(list);
+    assert.ok(continuation);
+    assert.equal(continuation.cursor, 'browse-page:1:20');
+    const append = await plugin.discover({ ...continuation, pageSize: 20 });
+    assert.equal(append.kind, 'append');
+    assertInlineJsonSize(append, { maximumBytes: 52 * 1024, stage: `${target}.append` });
+    const seen = new Set(contents.map((content) => content.id));
+    assert.ok(append.items.every((item) => !seen.has(item.content.id)));
+  }
 
   for (const rankingTarget of ['ranking:day', 'ranking:week', 'ranking:month', 'ranking:total']) {
     const ranking = await plugin.discover({

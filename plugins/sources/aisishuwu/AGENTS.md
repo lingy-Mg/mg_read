@@ -7,5 +7,7 @@
 - capability 日志记录阶段、稳定分支、计数/字节投影和唯一终态。
 - 发现根页、子列表和追加在封面代理后按 UTF-8 JSON 字节压缩展示投影；保留作品、稳定身份、分页和封面，
   不修改详情缓存。预算测试使用有实际长度的 opaque 代理地址，不能只依赖短占位 URL。
+- 首页题材榜从官网标题及 More 链接解析；原创独立走 `/original.html`。分类与更新/字数/人气排序经
+  `filters` 组合 target 联动，翻页保留组合状态；官网一页内的剩余作品先追加完，再按真实下一页链接前进。
 - Windows Debug 工作区直载只证明 development Runtime 行为，不能替代 Node 门禁或 Android
   packaged-plugin 安装验收。

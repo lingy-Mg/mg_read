@@ -6,15 +6,15 @@
  */
 import * as cheerio from 'cheerio/slim';
 import { PluginCache } from './html-cache.js';
-import { catalogHtmlCachePolicy, catalogProjectionCachePolicy, detailHtmlCachePolicy, detailProjectionCachePolicy, discoveryDetailHtmlCachePolicy, discoveryDetailProjectionCachePolicy, discoveryHomeHtmlCachePolicy, discoveryListingHtmlCachePolicy, hotSearchHtmlCachePolicy, rankingAttributeLimit, rankingDescriptionMaxCharacters, rankingRules, rankingTagLimit, searchListingHtmlCachePolicy, } from './source-cache-policy.js';
+import { catalogHtmlCachePolicy, catalogProjectionCachePolicy, detailHtmlCachePolicy, detailProjectionCachePolicy, discoveryDetailHtmlCachePolicy, discoveryDetailProjectionCachePolicy, discoveryHomeHtmlCachePolicy, discoveryListingHtmlCachePolicy, hotSearchHtmlCachePolicy, rankingAttributeLimit, rankingDescriptionMaxCharacters, rankingTagLimit, searchListingHtmlCachePolicy, } from './source-cache-policy.js';
 import { nonBlank } from './utils.js';
-import { boundedPageSize, compactSourceText, decodeNovelId, decodePageCursor, discoveryMetric, encodePageCursor, findNextCatalogPage, mergeDiscoverySummary, novelIdFromUrl, parseCatalogTotalCount, parseDetailStats, parseSourceDate, parseTags, publicCoverUrl, requiredText, textOrNull, } from './source-parsing.js';
+import { boundedPageSize, compactSourceText, decodeNovelId, decodePageCursor, encodePageCursor, findNextCatalogPage, mergeDiscoverySummary, novelIdFromUrl, parseCatalogTotalCount, parseDetailStats, parseSourceDate, parseTags, publicCoverUrl, requiredText, textOrNull, } from './source-parsing.js';
 const allowedCoverOrigins = new Set(['https://www.alicesw.com', 'https://img.321cdn.com']);
 import { buildHomeDiscoveryComponents, } from './source-discovery.js';
 import { hydrateDetailsInOrder } from './source-detail-hydration.js';
 import { compactDiscoveryResult, discoveryPayloadBytes } from './source-discovery-budget.js';
+import { discoverBrowse } from './source-browse.js';
 const categoryDetailMaximumConcurrency = 8;
-const categoryDetailBudgetMs = 10_000;
 const homeCoverBudgetMs = 4_000;
 const standardDetailMaximumConcurrency = 4;
 function loadCheerio() {
@@ -63,107 +63,26 @@ export class AliceBookHouseSource {
     }
     async #discover(request) {
         if (request.target === null) {
-            const home = await this.#loadHomeDiscovery();
+            if (request.cursor !== null || request.collectionId !== null || !Number.isSafeInteger(request.pageSize) || request.pageSize < 1) {
+                throw new Error('Root discovery request is invalid.');
+            }
+            const home = await this.#loadHomeDiscovery(request.pageSize);
             return Object.freeze({
                 kind: 'document',
                 document: Object.freeze({ components: buildHomeDiscoveryComponents(home, this.#categories) }),
             });
         }
-        if (request.target.startsWith('ranking:')) {
-            return this.#discoverRanking(request);
-        }
-        const categoryDetailDeadlineMs = Date.now() + categoryDetailBudgetMs;
-        const category = this.#decodeCategoryTarget(request.target);
-        const page = decodePageCursor(request.cursor, 'category-page');
-        const pageUrl = new URL(`/lists/${category.id}.html`, this.#baseUrl);
-        pageUrl.searchParams.set('page', String(page));
-        const items = await this.#parseList(await this.#getHtml(pageUrl, undefined, discoveryListingHtmlCachePolicy), pageUrl);
-        const visible = (await this.#withDiscoveryDetails(items.slice(0, request.pageSize), {
-            maximumConcurrency: categoryDetailMaximumConcurrency,
-            deadlineMs: categoryDetailDeadlineMs,
-            retryCoverOnFailure: false,
-        })).map((content) => this.#withProxiedCover(content));
-        const continuation = items.length >= request.pageSize
-            ? Object.freeze({ target: request.target, cursor: encodePageCursor('category-page', page + 1) })
-            : null;
-        const collectionId = `category-books:${category.id}`;
-        const discoveryItems = Object.freeze(visible.map((content) => Object.freeze({
-            content,
-            rank: null,
-            metric: discoveryMetric(content),
-            recommendation: null,
-        })));
-        if (request.collectionId !== null) {
-            if (request.collectionId !== collectionId || request.cursor === null) {
-                throw new Error('Discovery continuation is invalid.');
-            }
-            return Object.freeze({
-                kind: 'append',
-                collectionId,
-                items: discoveryItems,
-                continuation,
-            });
-        }
-        return Object.freeze({
-            kind: 'document',
-            document: Object.freeze({ components: Object.freeze([
-                    Object.freeze({
-                        type: 'section',
-                        id: `category-results-section:${category.id}`,
-                        title: category.title,
-                        subtitle: null,
-                        children: Object.freeze([Object.freeze({
-                                type: 'contentCollection',
-                                id: collectionId,
-                                layout: 'list',
-                                items: discoveryItems,
-                                continuation,
-                            })]),
-                    }),
-                ]) }),
-        });
-    }
-    async #discoverRanking(request) {
-        const target = request.target;
-        if (target === null)
-            throw new Error('Ranking target is required.');
-        const ranking = this.#decodeRankingTarget(target);
-        if (request.cursor !== null || request.collectionId !== null) {
-            throw new Error('Ranking results do not support continuation.');
-        }
-        const pageUrl = new URL(ranking.path, this.#baseUrl);
-        const items = await this.#parseList(await this.#getHtml(pageUrl, undefined, discoveryListingHtmlCachePolicy), pageUrl);
-        // A ranking target is a source list page, not a paged ranking widget. Keep
-        // every item returned by that page, while adding the same cover and rich
-        // fields used by category rows. The compact projection keeps the complete
-        // page below Runtime's inline discovery-result budget; opening a book
-        // still loads its full, unabridged detail on demand.
-        const visible = (await this.#withRankingDetails(items))
-            .map((content) => this.#withProxiedCover(content));
-        const collectionId = `ranking-books:${ranking.id}`;
-        const discoveryItems = Object.freeze(visible.map((content) => Object.freeze({
-            content,
-            rank: null,
-            metric: discoveryMetric(content),
-            recommendation: null,
-        })));
-        return Object.freeze({
-            kind: 'document',
-            document: Object.freeze({ components: Object.freeze([
-                    Object.freeze({
-                        type: 'section',
-                        id: `ranking-results-section:${ranking.id}`,
-                        title: ranking.title,
-                        subtitle: null,
-                        children: Object.freeze([Object.freeze({
-                                type: 'contentCollection',
-                                id: collectionId,
-                                layout: 'list',
-                                items: discoveryItems,
-                                continuation: null,
-                            })]),
-                    }),
-                ]) }),
+        return discoverBrowse(request, {
+            baseUrl: this.#baseUrl,
+            categories: this.#categories,
+            getHtml: (url) => this.#getHtml(url, undefined, discoveryListingHtmlCachePolicy),
+            parseList: (html, url) => this.#parseList(html, url),
+            hydrate: (items, ranking, deadlineMs) => ranking
+                ? this.#withRankingDetails(items)
+                : this.#withDiscoveryDetails(items, {
+                    maximumConcurrency: categoryDetailMaximumConcurrency, deadlineMs, retryCoverOnFailure: false,
+                }),
+            proxy: (content) => this.#withProxiedCover(content),
         });
     }
     async search(request) {
@@ -412,33 +331,62 @@ export class AliceBookHouseSource {
         });
         return Object.freeze(queries);
     }
-    async #loadHomeDiscovery() {
+    async #loadHomeDiscovery(pageSize) {
         try {
             const homeUrl = new URL('/', this.#baseUrl);
             const html = await this.#getHtml(homeUrl, undefined, discoveryHomeHtmlCachePolicy);
             const deadlineMs = Date.now() + homeCoverBudgetMs;
-            const featuredInput = (await this.#parseHomeFeatured(html, homeUrl)).slice(0, 6);
+            const limit = Math.min(pageSize, 10);
+            const featuredInput = (await this.#parseHomeFeatured(html, homeUrl)).slice(0, Math.min(limit, 6));
             const originalsInput = (await this.#parseHomeNamedCollection(html, homeUrl, '原创专区'))
-                .slice(0, 6);
-            const [featured, originalsWithCovers] = await Promise.all([
+                .slice(0, Math.min(limit, 6));
+            const popularInput = (await this.#parseHomeNamedCollection(html, homeUrl, '热门推荐小说')).slice(0, limit);
+            const latestInput = (await this.#parseHomeNamedCollection(html, homeUrl, '最新小说')).slice(0, Math.min(limit, 6));
+            const [featured, originalsWithCovers, popularWithCovers, latestWithCovers, rankings] = await Promise.all([
                 this.#withDiscoveryDetails(featuredInput, { deadlineMs }),
                 this.#withCovers(originalsInput, { deadlineMs }),
+                this.#withCovers(popularInput, { deadlineMs }),
+                this.#withCovers(latestInput, { deadlineMs }),
+                this.#homeRankings(html, homeUrl, Math.min(limit, 3), deadlineMs),
             ]);
             const originals = originalsWithCovers
                 .map((content) => this.#compactHomeSummary(content));
-            const popular = (await this.#parseHomeNamedCollection(html, homeUrl, '热门推荐小说'))
-                .slice(0, 8)
-                .map((content) => this.#compactHomeSummary(content));
+            const popular = popularWithCovers.map((content) => this.#compactHomeSummary(content));
             return Object.freeze({
                 featured: Object.freeze(featured.map((content) => this.#withProxiedCover(content))),
                 originals: Object.freeze(originals.map((content) => this.#withProxiedCover(content))),
                 popular: Object.freeze(popular.map((content) => this.#withProxiedCover(content))),
+                latest: Object.freeze(latestWithCovers.map((content) => this.#withProxiedCover(this.#compactHomeSummary(content)))),
+                rankings,
             });
         }
         catch {
             this.context.log.debug('source_discovery_home_unavailable');
             return Object.freeze({ featured: Object.freeze([]), originals: Object.freeze([]), popular: Object.freeze([]) });
         }
+    }
+    async #homeRankings(html, homeUrl, limit, deadlineMs) {
+        const $ = cheerio.load(html);
+        const headings = $('h2').filter((_, element) => compactSourceText($(element).text()).endsWith('排行榜')).toArray();
+        const seen = new Set();
+        const collections = await Promise.all(headings.map(async (element) => {
+            const title = requiredText($(element).text());
+            const href = $(element).closest('.hot-box').find('.hot-title a[href]').first().attr('href');
+            if (href === undefined)
+                return [];
+            const url = this.#sourceUrl(href, homeUrl);
+            const id = /^\/lists\/(\d+)\.html$/u.exec(url.pathname)?.[1];
+            if (id === undefined || !this.#categories.some((category) => category.id === id) || seen.has(id))
+                return [];
+            seen.add(id);
+            const input = (await this.#parseHomeNamedCollection(html, homeUrl, title)).slice(0, limit);
+            const contents = await this.#withCovers(input, { deadlineMs });
+            return [Object.freeze({
+                    id, title, target: `category:${id}`,
+                    items: Object.freeze(contents.map((content) => this.#withProxiedCover(this.#compactHomeSummary(content)))),
+                })];
+        }));
+        return Object.freeze(collections.flat());
     }
     async #parseHomeNamedCollection(html, pageUrl, heading) {
         const cheerio = await loadCheerio();
@@ -449,7 +397,7 @@ export class AliceBookHouseSource {
         const nearest = title.closest('.innerss, .inner, .container, .hot-box');
         const section = nearest.length === 0 ? title.parent() : nearest;
         const seen = new Set();
-        const roots = section.find('.list-group-item, .rec_rullist > ul, .details li').toArray();
+        const roots = section.find('.class-box > .class-img, .class-box > li, .list-group-item, .rec_rullist > ul, .details li').toArray();
         const books = roots.flatMap((element) => this.#parseBookElement($, element, pageUrl, seen));
         const linkedBooks = section.find('a[href*="/novel/"]').toArray()
             .flatMap((element) => this.#parseBookElement($, element, pageUrl, seen));
@@ -473,7 +421,7 @@ export class AliceBookHouseSource {
             ? title.closest('.hot-box')
             : title.closest('.inner');
         const seen = new Set();
-        const roots = section.find('.hot-data').toArray();
+        const roots = section.find('.hot-data > .hot-img').toArray();
         const books = roots.flatMap((element) => this.#parseBookElement($, element, pageUrl, seen));
         // The site currently wraps several recommendation cards in one
         // `.hot-data` container. Parse each novel link as well so one wrapper
@@ -504,6 +452,7 @@ export class AliceBookHouseSource {
             return [];
         seen.add(novelId);
         const author = textOrNull(root.find('a[href*="f=author"]').first().text()) ??
+            textOrNull(root.find('.author').first().text()) ??
             textOrNull(root.find('li.four').first().text());
         const description = textOrNull(root.find('.content-txt').first().text());
         const category = textOrNull(root.find('.sev a, a[href*="/lists/"]').first().text());
@@ -699,13 +648,10 @@ export class AliceBookHouseSource {
                 ? content
                 : Object.freeze({ ...content, coverUrl });
         }
-        const novelId = decodeNovelId(content.id);
-        const detailUrl = new URL(`/novel/${novelId}.html`, this.#baseUrl);
         try {
-            const cheerio = await loadCheerio();
-            const $ = cheerio.load(await this.#getHtml(detailUrl, detailUrl, detailHtmlCachePolicy));
-            const coverUrl = this.#coverUrl($, detailUrl);
-            this.#coverUrls.set(content.id, coverUrl);
+            // Home previews and a subsequently opened filtered list share the same
+            // parsed projection and in-flight request, including missing covers.
+            const coverUrl = (await this.#getDiscoveryDetail({ id: content.id })).coverUrl;
             return coverUrl === null
                 ? content
                 : Object.freeze({ ...content, coverUrl });
@@ -765,20 +711,6 @@ export class AliceBookHouseSource {
             throw new Error('Chapter ID is invalid.');
         }
         return this.#sourceUrl(path, this.#baseUrl);
-    }
-    #decodeCategoryTarget(target) {
-        const id = target.startsWith('category:') ? target.slice('category:'.length) : '';
-        const category = this.#categories.find((candidate) => candidate.id === id);
-        if (category === undefined)
-            throw new Error('Category target is invalid.');
-        return category;
-    }
-    #decodeRankingTarget(target) {
-        const id = target.startsWith('ranking:') ? target.slice('ranking:'.length) : '';
-        const ranking = rankingRules.find((candidate) => candidate.id === id);
-        if (ranking === undefined)
-            throw new Error('Ranking target is invalid.');
-        return ranking;
     }
 }
 function decodeDetail(value) {

@@ -12,6 +12,15 @@ export interface HomeDiscoveryCollections {
   readonly featured: readonly ContentSummary[];
   readonly originals: readonly ContentSummary[];
   readonly popular: readonly ContentSummary[];
+  readonly latest?: readonly ContentSummary[];
+  readonly rankings?: readonly HomeRankingCollection[];
+}
+
+export interface HomeRankingCollection {
+  readonly id: string;
+  readonly title: string;
+  readonly target: string;
+  readonly items: readonly ContentSummary[];
 }
 
 export function buildHomeDiscoveryComponents(
@@ -29,13 +38,13 @@ export function buildHomeDiscoveryComponents(
     })])));
   }
   if (home.originals.length !== 0) {
-    components.push(section('source-originals-section', '原创新作', '来自官网原创专区', 'newRelease', Object.freeze([Object.freeze({
+    components.push(section('source-originals-section', '原创专区', '来自官网原创专区', 'newRelease', Object.freeze([Object.freeze({
       type: 'contentCollection' as const,
       id: 'source-original-books',
       layout: 'coverGrid' as const,
       items: discoveryItems(home.originals),
       continuation: null,
-    })])));
+    }), moreLink('source-original-more', '全部原创', 'library:original')])));
   }
   components.push(Object.freeze({
     type: 'group' as const,
@@ -68,6 +77,15 @@ export function buildHomeDiscoveryComponents(
           icon: ranking.icon,
         }))),
       })])),
+      section('source-library-section', '小说书库', null, 'books', Object.freeze([Object.freeze({
+        type: 'categoryCollection' as const,
+        id: 'source-library',
+        layout: 'chips' as const,
+        categories: Object.freeze([
+          Object.freeze({ id: 'original', title: '原创专区', target: 'library:original', count: null, url: null, icon: 'newRelease' as const }),
+          Object.freeze({ id: 'latest', title: '最新小说', target: 'library:latest', count: null, url: null, icon: 'ongoing' as const }),
+        ]),
+      })])),
     ]),
   }));
   if (home.popular.length !== 0) {
@@ -79,7 +97,36 @@ export function buildHomeDiscoveryComponents(
       continuation: null,
     })])));
   }
+  for (const ranking of home.rankings ?? []) {
+    if (ranking.items.length === 0) continue;
+    components.push(section(`source-home-ranking-section:${ranking.id}`, ranking.title, null, 'ranking', Object.freeze([
+      Object.freeze({
+        type: 'contentCollection' as const,
+        id: `source-home-ranking-books:${ranking.id}`,
+        layout: 'compact' as const,
+        items: discoveryItems(ranking.items),
+        continuation: null,
+      }),
+      moreLink(`source-home-ranking-more:${ranking.id}`, '查看完整榜单', ranking.target),
+    ])));
+  }
+  if ((home.latest?.length ?? 0) !== 0) {
+    components.push(section('source-latest-section', '最新小说', null, 'ongoing', Object.freeze([
+      Object.freeze({
+        type: 'contentCollection' as const, id: 'source-latest-books', layout: 'list' as const,
+        items: discoveryItems(home.latest!), continuation: null,
+      }),
+      moreLink('source-latest-more', '更多最新小说', 'library:latest'),
+    ])));
+  }
   return Object.freeze(components);
+}
+
+function moreLink(id: string, title: string, target: string): DiscoveryComponent {
+  return Object.freeze({
+    type: 'categoryCollection' as const, id, layout: 'chips' as const,
+    categories: Object.freeze([Object.freeze({ id, title, target, count: null, url: null, icon: 'books' as const })]),
+  });
 }
 
 function section(
