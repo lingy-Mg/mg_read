@@ -3,6 +3,7 @@
 /// Responsibilities:
 /// - Render accessible playback controls over the engine-owned video surface.
 /// - Adapt controls to narrow windows and bounded system text scaling.
+/// - Place the optional compact host action alongside the top-bar controls.
 ///
 /// Notes:
 /// - This file emits semantic callbacks only and never touches a playback engine.
@@ -43,6 +44,7 @@ final class VideoPlayerChrome extends StatefulWidget {
     required this.onAutoAdvance,
     required this.onInteractionStart,
     required this.onInteractionEnd,
+    this.topRightAction,
     super.key,
   });
 
@@ -65,6 +67,7 @@ final class VideoPlayerChrome extends StatefulWidget {
   final Future<void> Function(bool) onAutoAdvance;
   final VoidCallback onInteractionStart;
   final VoidCallback onInteractionEnd;
+  final Widget? topRightAction;
 
   @override
   State<VideoPlayerChrome> createState() => _VideoPlayerChromeState();
@@ -114,6 +117,7 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
                       onEpisodes: widget.onEpisodes,
                       onSettings: () => _showSettings(context),
                       onFullscreen: widget.onFullscreen,
+                      hostAction: widget.topRightAction,
                     ),
                   ),
                   const Expanded(child: SizedBox.shrink()),
@@ -270,6 +274,7 @@ final class _TopBar extends StatelessWidget {
     required this.onEpisodes,
     required this.onSettings,
     required this.onFullscreen,
+    this.hostAction,
   });
 
   final String title;
@@ -280,6 +285,7 @@ final class _TopBar extends StatelessWidget {
   final VoidCallback onEpisodes;
   final VoidCallback onSettings;
   final ValueChanged<bool> onFullscreen;
+  final Widget? hostAction;
 
   @override
   Widget build(BuildContext context) => Row(
@@ -323,6 +329,7 @@ final class _TopBar extends StatelessWidget {
           ],
         ),
       ),
+      ?hostAction,
       IconButton(
         key: const Key('video-player-details'),
         tooltip: '视频详情',

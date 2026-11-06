@@ -2,6 +2,7 @@
 ///
 /// This UI only discovers and selects a receiver. Playback remains owned by
 /// the existing companion handoff and media host contracts.
+/// Discovery is scoped to the picker; the entry shares the player's toolbar.
 library;
 
 import 'dart:async';
@@ -17,18 +18,19 @@ import '../domain/companion_models.dart';
 import 'companion_discovery_startup.dart';
 import 'manual_tv_address_dialog.dart';
 import 'companion_messages.dart';
+import 'video_tv_picker_sheet.dart';
 
-/// Host-provided action rendered in the reusable player's upper-right corner.
+/// Compact host action rendered inside the reusable player's top toolbar.
 final class VideoPlayOnTvAction extends ConsumerWidget {
   const VideoPlayOnTvAction({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => FilledButton.tonalIcon(
+  Widget build(BuildContext context, WidgetRef ref) => IconButton(
     key: const Key('video-play-on-tv'),
     onPressed: () => unawaited(_chooseAndPlay(context, ref)),
-    icon: const Icon(Icons.connected_tv),
-    label: const Text('在电视上播放'),
-    style: FilledButton.styleFrom(backgroundColor: const Color(0xD9161A1F), foregroundColor: Colors.white),
+    tooltip: '在电视上播放',
+    icon: const Icon(Icons.cast_rounded, size: 21),
+    style: IconButton.styleFrom(foregroundColor: Colors.white, visualDensity: VisualDensity.compact),
   );
 }
 
@@ -40,7 +42,13 @@ Future<void> _chooseAndPlay(BuildContext context, WidgetRef ref) async {
   final target = await showModalBottomSheet<_TvTarget>(
     context: context,
     isScrollControlled: true,
-    showDragHandle: true,
+    useSafeArea: true,
+    showDragHandle: false,
+    backgroundColor: VideoTvPickerSheet.backgroundColor,
+    barrierColor: Colors.black54,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+    clipBehavior: Clip.antiAlias,
+    constraints: const BoxConstraints(maxWidth: 560),
     builder: (_) => _TvPickerSheet(key: const Key('companion-cast-picker'), service: service),
   );
   if (target == null || !context.mounted) return;
@@ -173,51 +181,22 @@ final class _TvPickerSheetState extends ConsumerState<_TvPickerSheet> {
   }
 
   @override
-  Widget build(BuildContext context) => SafeArea(
-    child: AnimatedBuilder(
-      animation: widget.service,
-      builder: (context, _) {
-        final endpoints =
-            widget.service.endpoints.values.where((endpoint) => endpoint.receiving && endpoint.expiresAt.isAfter(DateTime.now())).toList()
-              ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
-        return ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .78),
-          child: ListView(
-            shrinkWrap: true,
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-            children: [
-              Text('选择局域网 TV', style: Theme.of(context).textTheme.titleLarge),
-              const Padding(padding: EdgeInsets.only(top: 6, bottom: 12), child: Text('直接在所选设备播放。手机会在 TV 实际起播后暂停。')),
-              if (_loading)
-                const ListTile(
-                  leading: SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2)),
-                  title: Text('正在搜索 TV…'),
-                ),
-              if (_error case final error?) ListTile(leading: const Icon(Icons.wifi_off), title: Text(error)),
-              if (!_loading && endpoints.isEmpty) const ListTile(leading: Icon(Icons.tv_off), title: Text('暂未发现 TV，请确认两台设备在可互访的局域网。')),
-              for (final endpoint in endpoints)
-                ListTile(
-                  key: Key('companion-cast-device-${endpoint.deviceId}'),
-                  leading: const Icon(Icons.tv),
-                  title: Text(endpoint.label),
-                  subtitle: Text('${endpoint.address}:${endpoint.port}'),
-                  trailing: const Icon(Icons.play_arrow),
-                  onTap: () => Navigator.of(context).pop(_TvTarget.endpoint(endpoint)),
-                ),
-              const Divider(),
-              ListTile(
-                leading: const Icon(Icons.edit_road),
-                title: const Text('手动输入 TV 地址'),
-                subtitle: const Text('仅填写局域网 IP 地址和端口'),
-                onTap: _manual,
-              ),
-              if (!_loading && (endpoints.isEmpty || _error != null))
-                TextButton.icon(onPressed: _retry, icon: const Icon(Icons.refresh), label: const Text('重新搜索')),
-            ],
-          ),
-        );
-      },
-    ),
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: widget.service,
+    builder: (context, _) {
+      final endpoints =
+          widget.service.endpoints.values.where((endpoint) => endpoint.receiving && endpoint.expiresAt.isAfter(DateTime.now())).toList()
+            ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+      return VideoTvPickerSheet(
+        loading: _loading,
+        error: _error,
+        endpoints: endpoints,
+        onSelect: (endpoint) => Navigator.of(context).pop(_TvTarget.endpoint(endpoint)),
+        onManual: _manual,
+        onRetry: _retry,
+        onClose: () => Navigator.of(context).pop(),
+      );
+    },
   );
 
   Future<void> _retry() async {

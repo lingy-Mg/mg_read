@@ -448,43 +448,69 @@ void main() {
     expect(navigatorKey.currentState!.canPop(), isFalse);
   });
 
-  testWidgets(
-    'renders an optional host action in the upper-right player corner',
-    (WidgetTester tester) async {
-      final backend = _FakeVideoBackend();
-      await tester.binding.setSurfaceSize(const Size(390, 320));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(
-        MaterialApp(
-          home: VideoPlayerView(
-            contentId: 'show',
-            dataSource: const _ImmediateDataSource(),
-            stateStore: _RecordingStore(),
-            backendFactory: () => backend,
-            topRightAction: FilledButton(
-              onPressed: () {},
-              child: const Text('在电视上播放'),
-            ),
-            controlsAutoHideDelay: const Duration(hours: 1),
+  testWidgets('host action shares the toolbar, auto-hide and gesture lock', (
+    WidgetTester tester,
+  ) async {
+    final backend = _FakeVideoBackend();
+    final controller = VideoPlayerController();
+    addTearDown(controller.dispose);
+    await tester.binding.setSurfaceSize(const Size(320, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VideoPlayerView(
+          contentId: 'show',
+          dataSource: const _ImmediateDataSource(),
+          stateStore: _RecordingStore(),
+          backendFactory: () => backend,
+          controller: controller,
+          topRightAction: IconButton(
+            key: const Key('host-cast-action'),
+            onPressed: () {},
+            tooltip: '在电视上播放',
+            icon: const Icon(Icons.cast_rounded),
+            style: IconButton.styleFrom(visualDensity: VisualDensity.compact),
           ),
+          controlsAutoHideDelay: const Duration(seconds: 1),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.text('在电视上播放'), findsOneWidget);
-      expect(find.byKey(const Key('video-player-controls')), findsOneWidget);
-      final actionRect = tester.getRect(find.text('在电视上播放'));
-      final fullscreenRect = tester.getRect(
-        find.byKey(const Key('video-player-fullscreen')),
-      );
-      final settingsRect = tester.getRect(
-        find.byKey(const Key('video-player-settings')),
-      );
-      expect(actionRect.right, greaterThan(350));
-      expect(actionRect.overlaps(fullscreenRect), isFalse);
-      expect(actionRect.overlaps(settingsRect), isFalse);
-    },
-  );
+    final action = find.byKey(const Key('host-cast-action'));
+    expect(find.byTooltip('在电视上播放'), findsOneWidget);
+    expect(find.byKey(const Key('video-player-controls')), findsOneWidget);
+    final actionRect = tester.getRect(action);
+    final topRect = tester.getRect(
+      find.byKey(const Key('video-player-top-band')),
+    );
+    expect(topRect.intersect(actionRect), actionRect);
+    final fullscreenRect = tester.getRect(
+      find.byKey(const Key('video-player-fullscreen')),
+    );
+    final settingsRect = tester.getRect(
+      find.byKey(const Key('video-player-settings')),
+    );
+    expect(actionRect.center.dy, fullscreenRect.center.dy);
+    expect(actionRect.overlaps(fullscreenRect), isFalse);
+    expect(actionRect.overlaps(settingsRect), isFalse);
+    expect(tester.takeException(), isNull);
+
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(controller.snapshot.controlsVisible, isFalse);
+    expect(action.hitTestable(), findsNothing);
+
+    await controller.toggleControls();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(action.hitTestable(), findsOneWidget);
+    await controller.setControlsLocked(true);
+    await tester.pump();
+    expect(action, findsNothing);
+    await controller.setControlsLocked(false);
+    await tester.pump();
+    expect(action, findsOneWidget);
+  });
 
   testWidgets(
     'system back exits fullscreen first and never bypasses the observer',

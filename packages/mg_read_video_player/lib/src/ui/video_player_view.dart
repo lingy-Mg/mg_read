@@ -95,7 +95,10 @@ final class VideoPlayerView extends StatefulWidget {
   /// Maximum wait after backend open before a missing first frame can retry.
   final Duration firstFrameTimeout;
 
-  /// Optional host action shown in the player's upper-right corner.
+  /// Optional compact host action placed in the touch player's top toolbar.
+  ///
+  /// Use an icon button. It shares chrome visibility and gesture locking, and
+  /// is omitted in TV mode.
   final Widget? topRightAction;
 
   @override

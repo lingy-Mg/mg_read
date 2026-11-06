@@ -3,6 +3,7 @@
 /// Responsibilities:
 /// - Compose the backend surface with package-owned dark video presentation.
 /// - Route pointer, keyboard and back intents to the session coordinator.
+/// - Keep host actions inside touch chrome so they share visibility and locking.
 ///
 /// Notes:
 /// - System text scaling is preserved; child controls own narrow-layout safety.
@@ -179,6 +180,7 @@ final class VideoPlayerStage extends StatelessWidget {
                           controller: controller,
                           snapshot: snapshot,
                           activeEpisode: activeEpisode,
+                          topRightAction: topRightAction,
                           reduceMotion: reduceMotion,
                           onToggleControls: onToggleControls,
                           onExit: onExit,
@@ -202,19 +204,6 @@ final class VideoPlayerStage extends StatelessWidget {
                       if (snapshot.status == VideoPlayerStatus.ready)
                         VideoPlayerBufferingIndicator(
                           buffering: snapshot.buffering && !snapshot.completed,
-                        ),
-                      if (!tvMode &&
-                          snapshot.status == VideoPlayerStatus.ready &&
-                          topRightAction != null)
-                        Align(
-                          alignment: Alignment.topRight,
-                          child: SafeArea(
-                            minimum: EdgeInsets.only(
-                              top: snapshot.controlsVisible ? 64 : 8,
-                              right: 12,
-                            ),
-                            child: topRightAction!,
-                          ),
                         ),
                       if (snapshot.status == VideoPlayerStatus.ready &&
                           snapshot.completed &&
@@ -269,6 +258,7 @@ final class _VideoPlayerInteractionLayer extends StatefulWidget {
     required this.controller,
     required this.snapshot,
     required this.activeEpisode,
+    required this.topRightAction,
     required this.reduceMotion,
     required this.onToggleControls,
     required this.onExit,
@@ -293,6 +283,7 @@ final class _VideoPlayerInteractionLayer extends StatefulWidget {
   final VideoPlayerController controller;
   final VideoPlayerSnapshot snapshot;
   final VideoEpisode? activeEpisode;
+  final Widget? topRightAction;
   final bool reduceMotion;
   final Future<void> Function() onToggleControls;
   final Future<void> Function() onExit;
@@ -380,6 +371,7 @@ final class _VideoPlayerInteractionLayerState
         ),
         if (!snapshot.controlsLocked)
           VideoPlayerChrome(
+            topRightAction: widget.topRightAction,
             controller: widget.controller,
             snapshot: snapshot,
             activeEpisode: widget.activeEpisode,
