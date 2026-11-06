@@ -2,7 +2,7 @@
  * 爱丽丝书屋数据源插件实现。
  *
  * 职责：解析发现、搜索、详情、目录和正文，并复用插件私有的 HTML/投影缓存。
- * 注意：分类/首页封面补全有并发与时间预算；封面只对外暴露 Runtime 代理，缓存仍保存来源 URL。
+ * 注意：分类/首页封面补全有并发与时间预算；发现响应在封面代理后压缩，缓存仍保存完整详情与来源 URL。
  */
 import * as cheerio from 'cheerio/slim';
 import type { Element } from 'domhandler';
@@ -60,6 +60,7 @@ import {
   type HomeDiscoveryCollections,
 } from './source-discovery.js';
 import { hydrateDetailsInOrder } from './source-detail-hydration.js';
+import { compactDiscoveryResult, discoveryPayloadBytes } from './source-discovery-budget.js';
 
 const categoryDetailMaximumConcurrency = 8;
 const categoryDetailBudgetMs = 10_000;
@@ -132,6 +133,15 @@ export class AliceBookHouseSource {
   }
 
   async discover(request: DiscoverRequest): Promise<DiscoverResult> {
+    const result = await this.#discover(request);
+    const projected = compactDiscoveryResult(result);
+    if (projected !== result) {
+      this.context.log.debug(`source_discover_payload_compacted bytesBefore=${discoveryPayloadBytes(result)} bytesAfter=${discoveryPayloadBytes(projected)}`);
+    }
+    return projected;
+  }
+
+  async #discover(request: DiscoverRequest): Promise<DiscoverResult> {
     if (request.target === null) {
       const home = await this.#loadHomeDiscovery();
       return Object.freeze({

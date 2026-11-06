@@ -7040,6 +7040,59 @@ async function hydrateDetailsInOrder(items, options) {
   );
 }
 
+// src/source-discovery-budget.ts
+import { Buffer as Buffer2 } from "node:buffer";
+var discoveryPayloadMaximumBytes = 52 * 1024;
+function discoveryPayloadBytes(result) {
+  return Buffer2.byteLength(JSON.stringify(result), "utf8");
+}
+function compactDiscoveryResult(result) {
+  if (discoveryPayloadBytes(result) <= discoveryPayloadMaximumBytes) return result;
+  let projected = result;
+  for (const [descriptionLimit, tagLimit, attributeLimit, compactLinks] of [
+    [120, 4, 2, false],
+    [80, 2, 1, false],
+    [80, 2, 1, true],
+    [40, 2, 1, true],
+    [40, 0, 0, true],
+    [20, 0, 0, true],
+    [8, 0, 0, true],
+    [0, 0, 0, true]
+  ]) {
+    const project = (content) => Object.freeze({
+      ...content,
+      description: descriptionLimit === 0 || content.description === null ? null : Array.from(content.description).slice(0, descriptionLimit).join(""),
+      tags: Object.freeze(content.tags.slice(0, tagLimit)),
+      attributes: Object.freeze(content.attributes.slice(0, attributeLimit)),
+      // Host navigation uses the opaque IDs, so these informational website
+      // links can be omitted under pressure without changing any target.
+      url: compactLinks ? null : content.url,
+      latestChapter: compactLinks && content.latestChapter !== null ? Object.freeze({ ...content.latestChapter, url: null }) : content.latestChapter
+    });
+    projected = mapDiscoveryContent(result, project);
+    if (discoveryPayloadBytes(projected) <= discoveryPayloadMaximumBytes) return projected;
+  }
+  throw new Error(`Discovery identity and cover fields exceed the inline payload budget after compacting summaries: ${discoveryPayloadBytes(projected)} bytes exceeds ${discoveryPayloadMaximumBytes} bytes.`);
+}
+function mapDiscoveryContent(result, project) {
+  const mapItems = (items) => Object.freeze(items.map((item) => Object.freeze({ ...item, content: project(item.content) })));
+  const mapComponent = (component) => {
+    switch (component.type) {
+      case "section":
+      case "group":
+        return Object.freeze({ ...component, children: Object.freeze(component.children.map(mapComponent)) });
+      case "contentCollection":
+        return Object.freeze({ ...component, items: mapItems(component.items) });
+      default:
+        return component;
+    }
+  };
+  return result.kind === "append" ? Object.freeze({ ...result, items: mapItems(result.items) }) : Object.freeze({
+    ...result,
+    document: Object.freeze({ components: Object.freeze(result.document.components.map(mapComponent)) })
+  });
+}
+
 // src/source.ts
 var allowedCoverOrigins = /* @__PURE__ */ new Set(["https://www.alicesw.com", "https://img.321cdn.com"]);
 var categoryDetailMaximumConcurrency = 8;
@@ -7080,6 +7133,14 @@ var AliceBookHouseSource = class {
   #detailRequests = /* @__PURE__ */ new Map();
   #htmlCache;
   async discover(request) {
+    const result = await this.#discover(request);
+    const projected = compactDiscoveryResult(result);
+    if (projected !== result) {
+      this.context.log.debug(`source_discover_payload_compacted bytesBefore=${discoveryPayloadBytes(result)} bytesAfter=${discoveryPayloadBytes(projected)}`);
+    }
+    return projected;
+  }
+  async #discover(request) {
     if (request.target === null) {
       const home = await this.#loadHomeDiscovery();
       return Object.freeze({

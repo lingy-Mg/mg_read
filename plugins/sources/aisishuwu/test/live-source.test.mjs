@@ -15,10 +15,13 @@ test('live source completes category, search, detail, catalog, and content flow'
   const harness = await createSourceTestHarness({
     plugin,
     pluginId: 'org.mgread.aisishuwu',
-    version: '0.2.12',
+    version: '0.2.17',
     fetch,
     prefix: 'mgread-aisishuwu-live-',
     runtimeVersion: 'live-test',
+    // The production proxy URL carries an opaque resource descriptor. A short
+    // test-N URL hides ranking payload overflows caused by that URL overhead.
+    resourceProxy: (_request, index) => `http://127.0.0.1:1234/v1/source-resource/${String(index).padStart(360, 'x')}`,
   });
   t.after(harness.cleanup);
   const { resourceRequests } = harness;
@@ -51,8 +54,9 @@ test('live source completes category, search, detail, catalog, and content flow'
   });
   assert.match(reachableCover.contentType, /^image\//u);
 
-  const discovery = await plugin.discover({ target, cursor: null, collectionId: null, pageSize: 5 });
+  const discovery = await plugin.discover({ target, cursor: null, collectionId: null, pageSize: 20 });
   assert.equal(discovery.kind, 'document');
+  assertInlineJsonSize(discovery, { maximumBytes: 52 * 1024, stage: 'discover.category' });
   const book = discovery.document.components[0].children[0].items[0].content;
   assert.match(book.id, /^novel:\d+$/u);
   assert.match(book.coverUrl ?? '', /^https?:\/\//u);
@@ -65,7 +69,9 @@ test('live source completes category, search, detail, catalog, and content flow'
       pageSize: 5,
     });
     assert.equal(ranking.kind, 'document');
+    assertInlineJsonSize(ranking, { maximumBytes: 52 * 1024, stage: rankingTarget });
     const collection = ranking.document.components[0].children[0];
+    t.diagnostic(`${rankingTarget}: items=${collection.items.length} bytes=${Buffer.byteLength(JSON.stringify(ranking), 'utf8')}`);
     assert.equal(collection.layout, 'list');
     assert.ok(collection.items.length > 0);
     assert.ok(collection.items.every((item) => item.rank === null));
@@ -76,7 +82,7 @@ test('live source completes category, search, detail, catalog, and content flow'
   const flow = await runReadingSourceFlow({
     plugin,
     contentId: book.id,
-    searchRequest: { query: '修仙', cursor: null, pageSize: 5 },
+    searchRequest: { query: book.title, cursor: null, pageSize: 5 },
     suggestionsRequest: { cursor: null, pageSize: 5 },
   });
   const { detail, chapters, content } = flow;
