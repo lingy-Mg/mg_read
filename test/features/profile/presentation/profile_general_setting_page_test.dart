@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/profile/presentation/profile_general_setting_page.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 
 import '../../../core/settings/settings_testkit.dart';
 
@@ -70,6 +71,11 @@ void main() {
     await tester.pumpWidget(_host(settings, settingId: 'theme-appearance'));
     await tester.pumpAndSettle();
 
+    expect(find.text('暖光视觉'), findsNothing);
+    expect(find.text('显示模式'), findsOneWidget);
+    expect(find.text('主题配色'), findsOneWidget);
+    expect(find.text('书架样式'), findsOneWidget);
+    expect(find.byKey(const Key('appearance-tv-mode')), findsNothing);
     final Finder scrollable = find.descendant(
       of: find.byKey(const Key('profile-general-setting-theme-appearance')),
       matching: find.byType(Scrollable),
@@ -77,12 +83,16 @@ void main() {
     await tester.scrollUntilVisible(find.byKey(const Key('appearance-settings-preview')), 160, scrollable: scrollable);
     expect(find.byKey(const Key('appearance-settings-preview')), findsOneWidget);
     await tester.scrollUntilVisible(find.text('卡片'), 200, scrollable: scrollable);
+    await tester.ensureVisible(find.byKey(const Key('appearance-layout-mode-card')));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('卡片'));
     await tester.pumpAndSettle();
 
     expect(settings.get(AppSettingKeys.homeLayoutMode), 'card');
 
     await tester.scrollUntilVisible(find.text('封面内叠加'), 200, scrollable: scrollable);
+    await tester.ensureVisible(find.byKey(const Key('appearance-cover-metadata-mode-insideCover')));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('封面内叠加'));
     await tester.pumpAndSettle();
     expect(settings.get(AppSettingKeys.homeCoverMetadataMode), 'insideCover');
@@ -94,10 +104,14 @@ void main() {
     await tester.pumpWidget(_host(settings, settingId: 'theme-appearance'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('appearance-theme-color-blue')));
+    final blue = find.byKey(const Key('appearance-theme-color-blue'));
+    await tester.ensureVisible(blue);
+    await tester.tap(blue);
     await tester.pumpAndSettle();
 
     expect(settings.get(AppSettingKeys.themeColor), 'blue');
+    final previewContext = tester.element(find.byKey(const Key('appearance-theme-color-preview')));
+    expect(AppThemeTokens.of(previewContext).accent, AppThemeColor.blue.accent);
   });
 
   testWidgets('appearance settings persists the independent night theme color', (WidgetTester tester) async {
@@ -117,6 +131,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(settings.get(AppSettingKeys.darkThemeColor), 'coolBlack');
+    final previewContext = tester.element(find.byKey(const Key('appearance-dark-theme-color-preview')));
+    expect(AppThemeTokens.of(previewContext).accent, AppDarkThemeColor.coolBlack.accent);
   });
 
   testWidgets('appearance settings persists the host day and night mode', (WidgetTester tester) async {
@@ -131,6 +147,46 @@ void main() {
 
     expect(settings.get(AppSettingKeys.themeMode), 'dark');
   });
+
+  for (final (size, scale, tv) in <(Size, double, bool)>[
+    (const Size(320, 640), 1.6, false),
+    (const Size(1280, 720), 1, true),
+    (const Size(640, 360), 1.6, true),
+  ]) {
+    testWidgets('appearance remains usable at $size scale $scale TV $tv', (tester) async {
+      await tester.binding.setSurfaceSize(size);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final settings = await _settings();
+      addTearDown(settings.close);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [appSettingsProvider.overrideWithValue(settings)],
+          child: MaterialApp(
+            theme: AppTheme.dark(),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
+              child: TvModeScope(enabled: tv, onChanged: (_) {}, child: child!),
+            ),
+            home: ProfileGeneralSettingPage(settingId: 'theme-appearance', onBackRequested: () {}),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final scrollable = find.descendant(
+        of: find.byKey(const Key('profile-general-setting-theme-appearance')),
+        matching: find.byType(Scrollable),
+      );
+      final badge = find.byKey(const Key('bookshelf-unread-badge'));
+      await tester.scrollUntilVisible(badge, 160, scrollable: scrollable);
+      await tester.ensureVisible(badge);
+      await tester.pumpAndSettle();
+      await tester.tap(badge);
+      await tester.pumpAndSettle();
+      expect(settings.get(AppSettingKeys.bookshelfUnreadBadgeEnabled), isFalse);
+      expect(tester.takeException(), isNull);
+    });
+  }
 }
 
 Future<AppSettingsManager> _settings() async {

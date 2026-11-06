@@ -2,6 +2,7 @@
 /// Selection and scroll belong to this view; mutations and routing use callbacks.
 /// Outgoing category panels never retain focus during their fade transition.
 /// The top navigation is the sole header; category panels use the remaining height.
+/// The mode exit stays in the category rail and is available from every panel.
 library;
 
 import 'dart:io';
@@ -94,14 +95,7 @@ class _TvProfilePageState extends State<TvProfilePage> {
         const SizedBox(height: 24),
         ...links({'reading-settings'}),
       ],
-      1 => [
-        ...links({'theme-appearance'}),
-        TvFocusable(
-          key: const Key('tv-settings-exit-mode'),
-          onPressed: () => TvModeScope.maybeOf(context)?.onChanged(false),
-          child: const Text('切换到普通模式'),
-        ),
-      ],
+      1 => links({'theme-appearance'}),
       2 => links({'source-management', 'network-proxy', 'downloads-cache'}),
       3 => [
         ...links({'import-export', 'data-backup', 'tv-companion'}),
@@ -170,6 +164,12 @@ class _TvProfilePageState extends State<TvProfilePage> {
                                       ),
                                     ),
                                   ),
+                                const SizedBox(height: 12),
+                                TvFocusable(
+                                  key: const Key('tv-settings-exit-mode'),
+                                  onPressed: () => TvModeScope.maybeOf(context)?.onChanged(false),
+                                  child: const Text('切换到普通模式'),
+                                ),
                               ],
                             ),
                           ),

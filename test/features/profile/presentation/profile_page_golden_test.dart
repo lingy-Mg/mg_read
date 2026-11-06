@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 
 import 'profile_golden_assets.dart';
 
@@ -49,7 +50,7 @@ Widget _host({required ThemeMode themeMode}) {
       final MediaQueryData mediaQuery = MediaQuery.of(context);
       return MediaQuery(
         data: mediaQuery.copyWith(padding: const EdgeInsets.only(top: 24), viewPadding: const EdgeInsets.only(top: 24)),
-        child: child ?? const SizedBox.shrink(),
+        child: TvModeScope(enabled: false, onChanged: (_) {}, child: child ?? const SizedBox.shrink()),
       );
     },
     home: ProfilePage(appVersion: '1.2.0', onToggleTheme: () {}),

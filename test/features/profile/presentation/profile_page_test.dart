@@ -35,10 +35,9 @@ void main() {
     expect(find.text('缓存管理'), findsOneWidget);
     expect(find.text('下载与缓存'), findsNothing);
     expect(find.text('清理缓存'), findsNothing);
-    expect(find.text('关于与其他'), findsOneWidget);
     expect(find.text('隐私与权限'), findsNothing);
     expect(find.text('问题诊断'), findsNothing);
-    expect(find.text('高级设置'), findsOneWidget);
+    expect(find.byKey(const Key('profile-tv-mode')), findsOneWidget);
     expect(find.byType(AppBottomNavigation), findsOneWidget);
 
     final Rect card = tester.getRect(find.byType(ProfileOverviewCard));
@@ -64,6 +63,14 @@ void main() {
       tester.widget<Icon>(firstSettingsChevron),
       isA<Icon>().having((Icon icon) => icon.size, 'chevron size', AppSpacing.profileChevronSize),
     );
+    expect(tester.getRect(find.byKey(const Key('profile-tv-mode'))).bottom, lessThan(firstSettingsRow.top));
+    await tester.scrollUntilVisible(
+      find.text('关于与其他'),
+      200,
+      scrollable: find.descendant(of: find.byKey(const Key('profile-page-content')), matching: find.byType(Scrollable)),
+    );
+    expect(find.text('关于与其他'), findsOneWidget);
+    expect(find.text('高级设置'), findsOneWidget);
   });
 
   testWidgets('uses the reference text hierarchy and selected profile nav', (WidgetTester tester) async {

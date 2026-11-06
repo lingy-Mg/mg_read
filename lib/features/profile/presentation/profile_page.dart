@@ -1,7 +1,7 @@
 /// “我的”主页面。
 ///
 /// 职责：
-/// - 按阅读外观、内容存储和高级设置分组；手机辅助 TV 在内容与存储中进入。
+/// - 顶层直接切换 TV 模式；其余按阅读外观、内容存储和高级设置分组。
 /// - 局域网同步只保留概览卡入口。
 /// - 作为设置子页面的顶部节奏基准。
 ///
@@ -24,6 +24,7 @@ import 'package:mg_read/features/profile/domain/profile_identity.dart';
 import 'package:mg_read/features/profile/domain/profile_reading_stats.dart';
 import 'package:mg_read/features/profile/presentation/widgets/profile_overview_card.dart';
 import 'package:mg_read/features/profile/presentation/widgets/profile_settings_list.dart';
+import 'package:mg_read/features/profile/presentation/widgets/profile_tv_mode_card.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_backdrop.dart';
@@ -152,6 +153,8 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                           ],
                           const SizedBox(height: AppSpacing.section - 2),
+                          const ProfileTvModeCard(),
+                          const SizedBox(height: AppSpacing.section),
                           ..._settingsGroup(
                             '阅读与外观',
                             data.settings.where((item) => const {'reading-settings', 'theme-appearance'}.contains(item.id)).toList(),

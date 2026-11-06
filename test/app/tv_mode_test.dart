@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mg_read/app/app_router.dart';
 import 'package:mg_read/features/profile/presentation/profile_general_setting_page.dart';
+import 'package:mg_read/features/profile/presentation/profile_page.dart';
+import 'package:mg_read/features/profile/presentation/tv_profile_page.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_home_shell.dart';
 import 'package:mg_read/features/library/presentation/widgets/tv_library_shell.dart';
@@ -82,26 +84,43 @@ void main() {
     }
   }, timeout: const Timeout(Duration(minutes: 1)));
 
-  testWidgets('switching TV from appearance retains the current settings route', (tester) async {
+  testWidgets('profile switches TV directly and exits without opening appearance', (tester) async {
+    const renderingChannel = MethodChannel('mgread/rendering_settings');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      renderingChannel,
+      (_) async => {'selected': 'auto', 'activeRenderer': 'opengl', 'restartRequired': false},
+    );
+    addTearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(renderingChannel, null));
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final settings = await createTestAppSettings();
     addTearDown(settings.close);
     await tester.pumpWidget(testMgReadApp(settings));
     await tester.pumpAndSettle();
     final container = ProviderScope.containerOf(tester.element(find.byType(LibraryHomeShell)));
     final router = container.read(appRouterProvider);
+    router.go('/profile');
+    await tester.pumpAndSettle();
+    expect(find.byType(ProfilePage), findsOneWidget);
+    await tester.tap(find.byKey(const Key('profile-tv-mode')));
+    await tester.pumpAndSettle();
+    expect(settings.get(AppSettingKeys.tvMode), isTrue);
+    expect(router.routeInformationProvider.value.uri.path, '/profile');
+    expect(find.byType(TvProfilePage), findsOneWidget);
+    expect(find.byType(ProfileGeneralSettingPage), findsNothing);
+    await tester.tap(find.byKey(const Key('tv-settings-exit-mode')));
+    await tester.pumpAndSettle();
+    expect(settings.get(AppSettingKeys.tvMode), isFalse);
+    expect(router.routeInformationProvider.value.uri.path, '/profile');
+    expect(find.byKey(const Key('profile-tv-mode')), findsOneWidget);
+    expect(tester.widget<SwitchListTile>(find.byKey(const Key('profile-tv-mode'))).value, isFalse);
     router.go('/profile/settings/theme-appearance');
     await tester.pumpAndSettle();
     expect(find.byType(ProfileGeneralSettingPage), findsOneWidget);
-    final toggle = tester.widget<SwitchListTile>(find.byKey(const Key('appearance-tv-mode')));
-    toggle.onChanged!(true);
-    await tester.pumpAndSettle();
-    expect(settings.get(AppSettingKeys.tvMode), isTrue);
-    expect(router.routeInformationProvider.value.uri.path, '/profile/settings/theme-appearance');
-    expect(find.byType(ProfileGeneralSettingPage), findsOneWidget);
-    tester.widget<SwitchListTile>(find.byKey(const Key('appearance-tv-mode'))).onChanged!(false);
-    await tester.pumpAndSettle();
-    expect(settings.get(AppSettingKeys.tvMode), isFalse);
-    expect(find.byType(ProfileGeneralSettingPage), findsOneWidget);
+    expect(find.byKey(const Key('appearance-tv-mode')), findsNothing);
+    expect(tester.takeException(), isNull);
   }, timeout: const Timeout(Duration(minutes: 1)));
 
   test('TV preference survives store reload without replacing ordinary preferences', () async {

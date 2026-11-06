@@ -40,7 +40,7 @@ void main() {
     await settings.close();
   });
 
-  Widget host({ValueChanged<String>? onSetting, double scale = 1}) => ProviderScope(
+  Widget host({ValueChanged<String>? onSetting, ValueChanged<bool>? onModeChanged, double scale = 1}) => ProviderScope(
     overrides: [appSettingsProvider.overrideWithValue(settings)],
     child: MaterialApp(
       theme: appTvTheme(AppTheme.dark()),
@@ -48,7 +48,7 @@ void main() {
         data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
         child: TvModeScope(
           enabled: true,
-          onChanged: (_) {},
+          onChanged: onModeChanged ?? (_) {},
           child: TvRemoteShortcuts(child: child!),
         ),
       ),
@@ -121,6 +121,32 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
     expect(opened, 'source-management');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('every TV category exposes a direct remote mode exit', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    var exitCount = 0;
+    await tester.pumpWidget(
+      host(
+        onModeChanged: (enabled) {
+          expect(enabled, isFalse);
+          exitCount++;
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 5; i++) {
+      _focus(tester, 'tv-settings-section-$i').requestFocus();
+      await tester.pumpAndSettle();
+      _focus(tester, 'tv-settings-exit-mode').requestFocus();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('tv-settings-exit-mode')).hitTestable(), findsOneWidget);
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pumpAndSettle();
+    }
+    expect(exitCount, 5);
     expect(tester.takeException(), isNull);
   });
 
