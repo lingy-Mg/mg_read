@@ -20,7 +20,7 @@ export function libraryState(target) {
     }
     for (const field of fields) {
         const entry = state[field];
-        if (entry !== undefined && (typeof entry !== 'string' || !/^[\p{L}\p{N} -]{1,40}$/u.test(entry)))
+        if (entry !== undefined && (typeof entry !== 'string' || !/^[A-Za-z0-9\u3400-\u4dbf\u4e00-\u9fff -]{1,40}$/u.test(entry)))
             throw new Error('Library filter is invalid.');
     }
     return state;

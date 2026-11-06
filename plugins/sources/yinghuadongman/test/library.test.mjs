@@ -37,7 +37,9 @@ test('library exposes all observed filter groups, preserves combined links and p
 
   const before = requests.length;
   for (const invalid of ['library:bad', `library:${Buffer.from('{"type":"../bad"}').toString('base64url')}`,
-    `library:${Buffer.from('{"type":"1","url":"https://other.invalid"}').toString('base64url')}`]) {
+    `library:${Buffer.from('{"type":"1","url":"https://other.invalid"}').toString('base64url')}`,
+    ...['../日本', '日本/韩国', '日本?year=2026', '日\n本', '日本😀', '日'.repeat(41)]
+      .map(area => `library:${Buffer.from(JSON.stringify({ type: '1', area })).toString('base64url')}`)]) {
     await assert.rejects(plugin.discover({ target: invalid, cursor: null, collectionId: null, pageSize: 20 }));
   }
   await assert.rejects(plugin.discover({ target: 'category:library', cursor: 'wrong:2', collectionId: 'video:library', pageSize: 20 }));

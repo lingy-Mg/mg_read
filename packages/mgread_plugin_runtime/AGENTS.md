@@ -66,6 +66,9 @@
   与 Kotlin `AndroidPluginArtifactTransferTest`。
 - Javet 模块解析在 JNI 编译前记录模块名和引用者；异常只记录 Java 类型，禁止读取或格式化原始
   Javet Throwable 的 message/toString/stackTrace，也不得作为 cause 继续跨 JNI 传播。
+- 已安装插件的入口编译也由 `AndroidJavetEngine` 记录 compile/instantiate/evaluate 阶段与 Java 异常类型；
+  编译失败必须在回调内转换为稳定错误。真实 artifact 升级回归为根 `integration_test/android_source_update_activation_test.dart`，
+  用独立包名和测试私有输入路径运行，避免长 Base64 define 超过 Windows 命令行限制。
 - Javet 零参数直接回调经 JNI 传入 null 参数数组；唤醒/失败信号使用 `AndroidJavetSignalCallback` 接受
   nullable array，禁止使用非空 Kotlin vararg，否则未捕获 Node 异常会退出整个 App。回归入口为
   `AndroidJavetSignalCallbackTest` 和可选真实 JNI `AndroidJavetCallbacksNativeTest`，发布前另验 release 冷启动。

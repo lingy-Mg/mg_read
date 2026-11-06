@@ -255,16 +255,23 @@ internal class AndroidJavetEngine(
                 override fun call(vararg values: V8Value): V8Value {
                     val path = File(values.firstOrNull()?.toString() ?: error("plugin_module_path_missing")).canonicalFile
                     check(path.path.startsWith(root.canonicalPath + File.separator) && path.isFile)
-                    val compiled = vm.getExecutor(androidModuleSource(path)).setResourceName(path.path).setModule(true).compileV8Module()
+                    var compiled: V8Module? = null
+                    var phase = "compile"
                     try {
-                        check(compiled.instantiate())
+                        Log.i("MgReadAndroidRuntime", "android_plugin_module_load_started module=${androidModuleLogLabel(path.path)}")
+                        val candidate = vm.getExecutor(androidModuleSource(path)).setResourceName(path.path).setModule(true).compileV8Module()
+                        compiled = candidate
+                        phase = "instantiate"
+                        check(candidate.instantiate())
                         val result = vm.createV8ValueObject()
-                        compiled.namespace.use { result.set("namespace", it) }
-                        compiled.evaluate<V8Value>().use { result.set("evaluation", it) }
-                        pluginModules += compiled
+                        candidate.namespace.use { result.set("namespace", it) }
+                        phase = "evaluate"
+                        candidate.evaluate<V8Value>().use { result.set("evaluation", it) }
+                        pluginModules += candidate
                         return result
-                    } catch (_: Throwable) {
-                        compiled.close()
+                    } catch (error: Throwable) {
+                        Log.e("MgReadAndroidRuntime", "android_plugin_module_load_failed phase=$phase type=${error.javaClass.simpleName}")
+                        compiled?.close()
                         throw AndroidRuntimeError("runtime_module_compile_failed", "Android could not load a plugin module.")
                     }
                 }

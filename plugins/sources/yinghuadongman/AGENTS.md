@@ -8,3 +8,4 @@
 - TV 外层来源标签、二级导航和筛选弹窗属于主应用，不在来源中返回布局代码。
 - `src/hls-policy.mts` 为 HLS 登记声明式差异分析策略；Runtime 执行路径/命名/字符/时长投影、直方图分离和 TS 时间戳复核。不得恢复广告域名、目录或注释黑名单；普通切换与证据不足的片段保留。
 - 直接验证为 `test/discovery.test.mjs`、`test/library.test.mjs` 与 `test/runtime-contract.test.mjs`；`test/discovery-live.test.mjs` 检查所有栏目、四类动漫库的首页/追加/末页及六组公开筛选选项。使用固定 Node 执行 `verify` 和声明的 `test:live`。
+- 动漫库筛选值使用站点实际的 ASCII/CJK 字符范围；Android Javet 不支持 `\p{L}` / `\p{N}` 等 Unicode 属性转义，不能只用桌面 Node 编译通过证明兼容。实际发布包的升级回归见根 `integration_test/android_source_update_activation_test.dart`。

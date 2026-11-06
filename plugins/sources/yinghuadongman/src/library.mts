@@ -2,6 +2,8 @@
  * Anime-library routes and filter rows verified in the public /w/ pages.
  * The site owns option availability and combined links; targets encode a
  * validated filter state, never an arbitrary URL. Pagination is /page/N.
+ * Filter values use the site's ASCII/CJK alphabet: Android Javet cannot compile
+ * Unicode property escapes, even though the desktop Node parser accepts them.
  */
 type State = Record<string, string> & { type: string };
 const fields = ['area', 'by', 'class', 'letter', 'year'] as const;
@@ -20,7 +22,7 @@ export function libraryState(target: string): State {
   }
   for (const field of fields) {
     const entry = state[field];
-    if (entry !== undefined && (typeof entry !== 'string' || !/^[\p{L}\p{N} -]{1,40}$/u.test(entry))) throw new Error('Library filter is invalid.');
+    if (entry !== undefined && (typeof entry !== 'string' || !/^[A-Za-z0-9\u3400-\u4dbf\u4e00-\u9fff -]{1,40}$/u.test(entry))) throw new Error('Library filter is invalid.');
   }
   return state;
 }
