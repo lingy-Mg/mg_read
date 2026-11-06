@@ -26,10 +26,10 @@ void main() {
   testWidgets('Android service automatically continues after slow EOF loading', (tester) async {
     final runtime = PluginRuntime();
     final installed = await runtime.invoke(const InstalledPluginsInvocation());
-    final source = installed.singleWhere((plugin) => plugin.id == 'org.mgread.tingchina-audio');
+    final source = installed.singleWhere((plugin) => plugin.id == 'org.mgread.haohao-audio');
     expect(source.status, 'active');
 
-    const pluginId = 'org.mgread.tingchina-audio';
+    const pluginId = 'org.mgread.haohao-audio';
     final gateway = _RuntimeAudioGateway(runtime);
     final search = await gateway.search(pluginId: pluginId, query: '有声', pageSize: 1);
     expect(search.items, isNotEmpty);

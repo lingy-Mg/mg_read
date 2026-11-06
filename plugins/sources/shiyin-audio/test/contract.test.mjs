@@ -1,0 +1,30 @@
+/** Offline public exports and deterministic self-contained artifact evidence. */
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {readFile, writeFile} from 'node:fs/promises';
+import {join} from 'node:path';
+import {pathToFileURL} from 'node:url';
+import test from 'node:test';
+import * as plugin from '../dist/index.mjs';
+import {assertStandardSourceContract, createSourceTestHarness} from '../../../../packages/mg_read_source_testkit/index.js';
+import {buildPluginArtifact} from '../tools/mgread.mjs';
+test('public source contract and deterministic self-contained artifact', async t => {
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  assertStandardSourceContract({plugin, packageJson, pluginId: packageJson.mgread.id, optionalExports: ['searchSuggestions', 'deferredGroups']});
+  const first = await buildPluginArtifact(), second = await buildPluginArtifact();
+  assert.deepEqual(first.bytes, second.bytes);
+  assert.match(first.fileName, /\.mgplugin\.js$/u);
+  const line = Buffer.from(first.bytes).toString('utf8').split('\n')[0];
+  assert.ok(line.startsWith('// @mgread-plugin-v1 '));
+  const envelope = JSON.parse(Buffer.from(line.slice('// @mgread-plugin-v1 '.length), 'base64url').toString('utf8'));
+  assert.equal(envelope.descriptor.mgread.id, packageJson.mgread.id);
+  const code = Buffer.from(first.bytes).subarray(Buffer.from(first.bytes).indexOf(10) + 1);
+  assert.equal(envelope.codeBytes, code.length);
+  assert.equal(envelope.codeSha256, createHash('sha256').update(code).digest('hex'));
+  const host = await createSourceTestHarness({plugin, pluginId: packageJson.mgread.id, version: packageJson.version});
+  t.after(host.cleanup);
+  const artifactPath = join(host.root, 'transport.mjs');
+  await writeFile(artifactPath, first.bytes);
+  const isolated = await import(pathToFileURL(artifactPath).href);
+  assertStandardSourceContract({plugin: isolated, packageJson, pluginId: packageJson.mgread.id, optionalExports: ['searchSuggestions', 'deferredGroups']});
+});

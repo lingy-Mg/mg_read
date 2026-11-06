@@ -1,8 +1,8 @@
 {
-  "name": "@mgread-plugin/tingchina-audio",
-  "version": "1.0.9",
+  "name": "@mgread-plugin/shiyin-audio",
+  "version": "1.0.0",
   "private": true,
-  "description": "MgRead audio source for the user-provided Ting China rule.",
+  "description": "十音提供有声专辑和音轨，结合听友目录与检索，优先播放十音已有音轨，支持分类浏览与按章节收听。",
   "type": "module",
   "main": "dist/index.mjs",
   "bin": {
@@ -14,15 +14,12 @@
     "npm": "11.13.0 || 11.19.1"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node tools/mgread.mjs build",
+    "build": "tsc -p tsconfig.json --noEmit && node tools/mgread.mjs build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test test/contract.test.mjs test/source.test.mjs",
     "test:live": "npm run build && node --use-env-proxy --test test/live-source.test.mjs",
     "pack:plugin": "npm run build && node tools/mgread.mjs pack",
     "verify": "npm run typecheck && npm test && npm run pack:plugin"
-  },
-  "dependencies": {
-    "@mgread/plugin-cache": "file:../../../packages/mg_read_plugin_cache"
   },
   "devDependencies": {
     "@mgread/source-api": "file:../../../packages/mg_read_source_api",
@@ -31,19 +28,15 @@
     "typescript": "5.9.3"
   },
   "mgread": {
-    "sourceUrl": "https://app.365ting.com/",
     "schemaVersion": 1,
-    "id": "org.mgread.tingchina-audio",
-    "displayName": "听中国听书",
-    "description": "听中国听书是有声内容收听网站，作品以音频专辑和章节呈现。可搜索专辑、查看介绍与章节目录，选择章节收听。",
+    "id": "org.mgread.shiyin-audio",
+    "displayName": "十音·有声专辑",
+    "description": "十音提供有声专辑和音轨，结合听友目录与检索，优先播放十音已有音轨，支持分类浏览与按章节收听。",
+    "sourceUrl": "https://api.365ting.com/",
     "pluginApi": 1,
     "packageMode": "single-file",
-    "icon": "assets/icon.png",
     "contentKinds": [
       "audio"
-    ],
-    "r18": true,
-    "sourceState": "invalid",
-    "sourceStateReason": "网站已禁用播放，暂时无法收听。"
+    ]
   }
 }

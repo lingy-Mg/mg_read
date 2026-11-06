@@ -21,7 +21,7 @@ void main() {
       final source = PluginRuntimePlugin(
         activeVersion: '1.0.0',
         contentKinds: const ['audio'],
-        displayName: '听书中国',
+        displayName: '失效音频源',
         enabled: true,
         id: 'org.test.unavailable',
         name: 'test',
