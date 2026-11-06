@@ -1,5 +1,6 @@
 /// TV 安装工作区：左侧批量选择、右侧数据源清单、底部固定确认。
 /// 只展示共享选择状态；不可导入项可阅读原因，不能进入安装集合。
+/// 底部按钮自行持有焦点，左右键只在取消/导入之间移动，上下键交给页面遍历。
 part of 'source_collection_import_sheet.dart';
 
 class _TvSourceCollectionSelector extends StatelessWidget {
@@ -96,14 +97,62 @@ class _TvSourceCollectionSelector extends StatelessWidget {
                   ),
           ),
         ),
-        Row(
-          children: [
-            TvFocusable(key: const Key('source-collection-cancel'), onPressed: () => Navigator.of(context).pop(), child: const Text('取消')),
-            const Spacer(),
-            TvFocusable(key: const Key('source-collection-import-selected'), onPressed: onSubmit, child: Text('导入 ${selected.length} 项')),
-          ],
-        ),
+        _TvSourceCollectionFooter(selectedCount: selected.length, onSubmit: onSubmit),
       ],
     );
   }
+}
+
+class _TvSourceCollectionFooter extends StatefulWidget {
+  const _TvSourceCollectionFooter({required this.selectedCount, required this.onSubmit});
+  final int selectedCount;
+  final VoidCallback? onSubmit;
+
+  @override
+  State<_TvSourceCollectionFooter> createState() => _TvSourceCollectionFooterState();
+}
+
+class _TvSourceCollectionFooterState extends State<_TvSourceCollectionFooter> {
+  final _cancel = FocusNode();
+  final _submit = FocusNode();
+
+  @override
+  void dispose() {
+    _cancel.dispose();
+    _submit.dispose();
+    super.dispose();
+  }
+
+  KeyEventResult _navigate(FocusNode node, KeyEvent event) {
+    if (event is KeyUpEvent || (!_cancel.hasFocus && !_submit.hasFocus)) return KeyEventResult.ignored;
+    final right = event.logicalKey == LogicalKeyboardKey.arrowRight;
+    final left = event.logicalKey == LogicalKeyboardKey.arrowLeft;
+    if (!left && !right) return KeyEventResult.ignored;
+    (right && widget.onSubmit != null ? _submit : _cancel).requestFocus();
+    return KeyEventResult.handled;
+  }
+
+  @override
+  Widget build(BuildContext context) => Focus(
+    canRequestFocus: false,
+    skipTraversal: true,
+    onKeyEvent: _navigate,
+    child: Row(
+      children: [
+        TvFocusable(
+          key: const Key('source-collection-cancel'),
+          focusNode: _cancel,
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        const Spacer(),
+        TvFocusable(
+          key: const Key('source-collection-import-selected'),
+          focusNode: _submit,
+          onPressed: widget.onSubmit,
+          child: Text('导入 ${widget.selectedCount} 项'),
+        ),
+      ],
+    ),
+  );
 }

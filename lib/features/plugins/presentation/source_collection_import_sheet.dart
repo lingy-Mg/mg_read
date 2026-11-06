@@ -2,9 +2,11 @@
 /// TV selection owns one scrollable list and a persistent confirmation footer.
 /// This sheet owns transient type/R18 filters; only visible items are selectable.
 /// Online R18 and unclassified legacy entries stay hidden until explicitly enabled.
+/// Mobile headings scroll with filters on short screens; confirmation stays fixed.
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/plugins/application/source_collection_import.dart';
@@ -246,10 +248,6 @@ class _SourceCollectionSelectorState extends State<_SourceCollectionSelector> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Text(widget.onlineRepository ? '在线插件仓库' : '导入数据源合集', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: AppSpacing.unit),
-              Text('${visibleCandidates.length} 个数据源 · 选择要安装或更新的项目', style: Theme.of(context).textTheme.bodyMedium),
-              const SizedBox(height: AppSpacing.compact),
               Flexible(
                 child: ListView.builder(
                   shrinkWrap: true,
@@ -259,6 +257,10 @@ class _SourceCollectionSelectorState extends State<_SourceCollectionSelector> {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
+                          Text(widget.onlineRepository ? '在线插件仓库' : '导入数据源合集', style: Theme.of(context).textTheme.titleLarge),
+                          const SizedBox(height: AppSpacing.unit),
+                          Text('${visibleCandidates.length} 个数据源 · 选择要安装或更新的项目', style: Theme.of(context).textTheme.bodyMedium),
+                          const SizedBox(height: AppSpacing.compact),
                           filters,
                           Wrap(
                             spacing: AppSpacing.compact,
@@ -359,13 +361,20 @@ class _SourceCollectionSelectorState extends State<_SourceCollectionSelector> {
               const SizedBox(height: AppSpacing.compact),
               Row(
                 children: <Widget>[
-                  Expanded(
-                    child: OutlinedButton(onPressed: () => Navigator.of(context).pop(), child: const Text('取消')),
+                  OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.compact, vertical: AppSpacing.unit),
+                    ),
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('取消'),
                   ),
                   const SizedBox(width: AppSpacing.compact),
                   Expanded(
                     child: FilledButton(
                       key: const Key('source-collection-import-selected'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.compact, vertical: AppSpacing.unit),
+                      ),
                       onPressed: _selectedIds.isEmpty
                           ? null
                           : () {
