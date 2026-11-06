@@ -108,15 +108,32 @@ void _registerLibraryHomeShellActions() {
     expect(selectedDestination, AppNavigationDestination.search);
   });
 
-  testWidgets('keeps the theme toggle and overflow without the home search action', (WidgetTester tester) async {
+  testWidgets('keeps the theme toggle and opens local import from the bottom menu', (WidgetTester tester) async {
     final SemanticsHandle semantics = tester.ensureSemantics();
+    var importCount = 0;
     await _setViewport(tester, const Size(390, 900));
-    await tester.pumpWidget(_host(onToggleTheme: () {}));
+    await tester.pumpWidget(
+      _host(
+        onToggleTheme: () {},
+        callbacks: LibraryHomeCallbacks(onImportLocal: () => importCount++),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.byTooltip('搜索书籍'), findsNothing);
     expect(find.byTooltip('更多操作'), findsOneWidget);
     expect(find.byKey(const Key('theme-mode-toggle')), findsOneWidget);
+    expect(find.byTooltip('导入本地书籍'), findsNothing);
+    expect(find.text('导入本地书籍'), findsNothing);
+
+    await tester.tap(find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+    expect(tester.getRect(find.byType(BottomSheet)).bottom, 900);
+    expect(find.text('导入本地书籍'), findsOneWidget);
+    await tester.tap(find.text('导入本地书籍'));
+    await tester.pumpAndSettle();
+    expect(importCount, 1);
+    expect(find.byType(BottomSheet), findsNothing);
     semantics.dispose();
   });
 

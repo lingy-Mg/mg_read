@@ -140,7 +140,7 @@ void main() {
         final Finder popup;
         if (kind == 'top') {
           await tester.tap(find.byTooltip('更多操作'));
-          popup = find.byKey(const Key('library-top-overflow-menu'));
+          popup = find.descendant(of: find.byType(BottomSheet), matching: find.byType(Material)).first;
         } else if (kind == 'card') {
           await tester.tap(find.byKey(const Key('library-grid-book-overflow-menu-fixture-lord-of-mysteries')));
           popup = find.byKey(const Key('library-grid-book-popup-fixture-lord-of-mysteries'));
@@ -155,9 +155,15 @@ void main() {
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
         final Rect menu = tester.getRect(popup);
-        expect(menu.left, greaterThanOrEqualTo(12));
-        expect(menu.right, lessThanOrEqualTo(378));
-        expect(menu.bottom, lessThanOrEqualTo(888));
+        if (kind == 'top') {
+          expect(menu.left, 0);
+          expect(menu.right, 390);
+          expect(menu.bottom, 900);
+        } else {
+          expect(menu.left, greaterThanOrEqualTo(12));
+          expect(menu.right, lessThanOrEqualTo(378));
+          expect(menu.bottom, lessThanOrEqualTo(888));
+        }
         await expectLater(popup, matchesGoldenFile('../goldens/library_${kind}_menu_${brightness.name}.png'));
       });
     }
@@ -206,6 +212,7 @@ Widget _homeHost({required Brightness brightness, required bool card}) => Provid
       onRefresh: () async {},
       onLayoutModeChanged: (_) async {},
       callbacks: LibraryHomeCallbacks(
+        onImportLocal: () {},
         onBookDetail: (_) {},
         onRefreshBook: (_) async {},
         onSetBookPrivate: (_) async {},

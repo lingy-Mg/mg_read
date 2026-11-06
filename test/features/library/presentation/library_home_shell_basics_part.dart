@@ -358,7 +358,7 @@ void _registerLibraryHomeShellBasics() {
     await tester.pump(const Duration(milliseconds: 40));
     expect(find.byKey(const Key('library-top-overflow-menu')), findsOneWidget);
 
-    await tester.tapAt(const Offset(16, 500));
+    await tester.tapAt(const Offset(16, 80));
     await tester.pump(AppMotion.destinationTransition);
     expect(find.byKey(const Key('library-top-overflow-menu')), findsNothing);
 
@@ -379,7 +379,7 @@ void _registerLibraryHomeShellBasics() {
     await tester.pump();
     expect(find.byKey(const Key('library-top-overflow-menu')), findsOneWidget);
 
-    await tester.tapAt(const Offset(16, 500));
+    await tester.tapAt(const Offset(16, 80));
     await tester.pump();
     expect(find.byKey(const Key('library-top-overflow-menu')), findsNothing);
   });

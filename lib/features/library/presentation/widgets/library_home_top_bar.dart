@@ -2,11 +2,12 @@
 ///
 /// 职责：
 /// - 展示首页主题切换与更多操作入口。
-/// - 通过书架私有锚点菜单转发顶层操作。
+/// - 将本地导入与低频操作收拢到底部菜单，关闭菜单后转发操作。
 ///
 /// 注意：
 /// - 不读取或写入书架数据。
 /// - 触控入口保持 48dp 命中区，视觉规格仍来自全局主题。
+/// - 菜单遵循安全区与减少动态效果设置，短屏和大字号下允许滚动。
 ///
 library;
 
@@ -15,7 +16,6 @@ import 'package:flutter/material.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
-import 'package:mg_read/features/library/presentation/widgets/library_anchored_menu.dart';
 
 /// 首页的顶层操作。
 class LibraryHomeTopBar extends StatelessWidget {
@@ -48,7 +48,6 @@ class LibraryHomeTopBar extends StatelessWidget {
       height: AppSpacing.minimumTouchTarget,
       child: Row(
         children: <Widget>[
-          if (onImportLocal != null) _LibraryTopBarAction(tooltip: '导入本地书籍', onPressed: onImportLocal!, icon: Icons.file_open_outlined),
           const Spacer(),
           if (AppTheme.darkModeEnabled && toggleTheme != null)
             Padding(
@@ -61,29 +60,80 @@ class LibraryHomeTopBar extends StatelessWidget {
               ),
             ),
           const SizedBox(width: AppSpacing.compact),
-          LibraryAnchoredMenu(
-            tooltip: '更多操作',
-            menuKey: const Key('library-top-overflow-menu'),
-            actions: <LibraryAnchoredMenuAction>[
-              if (TvModeScope.maybeOf(context) case final mode?)
-                LibraryAnchoredMenuAction(label: '切换到 TV 模式', icon: Icons.tv_rounded, onSelected: () => mode.onChanged(true)),
-              LibraryAnchoredMenuAction(label: '刷新书架', icon: Icons.refresh_rounded, onSelected: onRefresh),
-              LibraryAnchoredMenuAction(
-                label: layoutMode == LibraryHomeLayoutMode.list ? '切换为卡片模式' : '切换为列表模式',
-                icon: layoutMode == LibraryHomeLayoutMode.list ? Icons.grid_view_rounded : Icons.view_list_rounded,
-                onSelected: onLayoutModeToggle,
-              ),
-              LibraryAnchoredMenuAction(label: '阅读记录', icon: Icons.history_rounded, startsSection: true, onSelected: onReadingHistory),
-              LibraryAnchoredMenuAction(label: '管理数据源', icon: Icons.dns_outlined, onSelected: onManageSources),
-              LibraryAnchoredMenuAction(label: '隐私书架', icon: Icons.lock_outline_rounded, onSelected: onPrivacyLibrary),
-            ],
-            triggerBuilder: (BuildContext context, VoidCallback onPressed) =>
-                _LibraryTopBarAction(tooltip: '更多操作', onPressed: onPressed, icon: Icons.more_vert_rounded),
-          ),
+          _LibraryTopBarAction(tooltip: '更多操作', onPressed: () => _showMoreMenu(context), icon: Icons.more_vert_rounded),
         ],
       ),
     );
   }
+
+  Future<void> _showMoreMenu(BuildContext context) async {
+    final mode = TvModeScope.maybeOf(context);
+    final selected = await showModalBottomSheet<VoidCallback>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      sheetAnimationStyle: AnimationStyle(
+        duration: AppMotion.effectiveDuration(context, AppMotion.destinationTransition),
+        reverseDuration: AppMotion.effectiveDuration(context, AppMotion.destinationReverseTransition),
+      ),
+      builder: (BuildContext sheetContext) => SafeArea(
+        key: const Key('library-top-overflow-menu'),
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(AppSpacing.regular, 0, AppSpacing.regular, AppSpacing.comfortable),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.only(left: AppSpacing.comfortable, bottom: AppSpacing.compact),
+                child: Row(
+                  children: <Widget>[
+                    Expanded(child: Text('更多操作', style: Theme.of(sheetContext).textTheme.titleLarge)),
+                    IconButton(tooltip: '关闭菜单', onPressed: () => Navigator.pop(sheetContext), icon: const Icon(Icons.close_rounded)),
+                  ],
+                ),
+              ),
+              if (onImportLocal case final importLocal?)
+                _LibraryHomeMenuAction(label: '导入本地书籍', icon: Icons.file_open_outlined, onSelected: importLocal, autofocus: true),
+              _LibraryHomeMenuAction(label: '刷新书架', icon: Icons.refresh_rounded, onSelected: onRefresh, autofocus: onImportLocal == null),
+              _LibraryHomeMenuAction(
+                label: layoutMode == LibraryHomeLayoutMode.list ? '切换为卡片模式' : '切换为列表模式',
+                icon: layoutMode == LibraryHomeLayoutMode.list ? Icons.grid_view_rounded : Icons.view_list_rounded,
+                onSelected: onLayoutModeToggle,
+              ),
+              const Divider(indent: AppSpacing.comfortable, endIndent: AppSpacing.comfortable, height: AppSpacing.section),
+              _LibraryHomeMenuAction(label: '阅读记录', icon: Icons.history_rounded, onSelected: onReadingHistory),
+              _LibraryHomeMenuAction(label: '管理数据源', icon: Icons.dns_outlined, onSelected: onManageSources),
+              _LibraryHomeMenuAction(label: '隐私书架', icon: Icons.lock_outline_rounded, onSelected: onPrivacyLibrary),
+              if (mode != null) _LibraryHomeMenuAction(label: '切换到 TV 模式', icon: Icons.tv_rounded, onSelected: () => mode.onChanged(true)),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (context.mounted) selected?.call();
+  }
+}
+
+class _LibraryHomeMenuAction extends StatelessWidget {
+  const _LibraryHomeMenuAction({required this.label, required this.icon, required this.onSelected, this.autofocus = false});
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onSelected;
+  final bool autofocus;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    autofocus: autofocus,
+    contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.comfortable, vertical: AppSpacing.unit),
+    shape: const RoundedRectangleBorder(borderRadius: AppRadii.control),
+    leading: Icon(icon, color: AppThemeTokens.of(context).accent),
+    title: Text(label),
+    onTap: () => Navigator.pop<VoidCallback>(context, onSelected),
+  );
 }
 
 class _LibraryTopBarAction extends StatelessWidget {
