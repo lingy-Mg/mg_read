@@ -50,6 +50,7 @@ part 'src/plugin_transfer_invocation.dart';
 part 'src/plugin_artifact_importer.dart';
 part 'src/plugin_runtime.dart';
 part 'src/source_resource_url.dart';
+part 'src/source_resource_resolve_invocation.dart';
 part 'src/native_supervisor.dart';
 part 'src/native_supervisor_transport.dart';
 part 'src/runtime_error.dart';

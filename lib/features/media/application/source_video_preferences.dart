@@ -1,5 +1,5 @@
 /// Host-owned durable playback preferences. Changes apply to the next route,
-/// never to a live decoder. Coupled edits are one settings transaction so a
+/// never to a live decoder or already-resolved playlist. Coupled edits are one settings transaction so a
 /// direct hardware surface and software decoding cannot be selected together.
 library;
 
@@ -17,10 +17,12 @@ final class SourceVideoPreferences {
         'gpu' => VideoAndroidOutputMode.gpu,
         'surface' => VideoAndroidOutputMode.directSurface,
         _ => VideoAndroidOutputMode.automatic,
-      };
+      },
+      adFilterEnabled = settings.get(AppSettingKeys.videoAdFilterEnabled);
 
   final VideoDecoderMode decoderMode;
   final VideoAndroidOutputMode androidOutputMode;
+  final bool adFilterEnabled;
 }
 
 Future<void> setSourceVideoDecoderPreference(AppSettingsManager settings, String value) => settings.transaction((editor) {

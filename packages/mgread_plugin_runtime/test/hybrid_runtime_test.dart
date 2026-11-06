@@ -215,6 +215,42 @@ void _registerHybridTest(DesktopRuntimeBackend backend) {
       requests.where((method) => method == 'runtime.sourceResource.decode.v1'),
       isEmpty,
     );
+    final hlsToken = base64Url
+        .encode(
+          utf8.encode(
+            jsonEncode({
+              'version': 1,
+              'pluginId': 'org.mgread.android-runtime-fixture',
+              'request': {
+                'kind': 'hls',
+                'url': 'http://127.0.0.1:1/stream.m3u8',
+              },
+            }),
+          ),
+        )
+        .replaceAll('=', '');
+    final filteredHls = await hybrid.invoke(
+      SourceResourceResolveInvocation(
+        url: 'http://127.0.0.1:12345/v1/source-resource/$hlsToken',
+        filterVideoAds: true,
+      ),
+    );
+    final filteredRequest = await hybrid.invoke(
+      SourceResourceDecodeInvocation(url: filteredHls),
+    );
+    expect(
+      (filteredRequest.request['hlsAdFilter'] as Map)['algorithm'],
+      'sequence-islands-v1',
+    );
+    final unfilteredHls = await hybrid.invoke(
+      SourceResourceResolveInvocation(url: filteredHls, filterVideoAds: false),
+    );
+    expect(
+      (await hybrid.invoke(
+        SourceResourceDecodeInvocation(url: unfilteredHls),
+      )).request.containsKey('hlsAdFilter'),
+      isFalse,
+    );
     String nativeUrlFor(String id) =>
         'http://127.0.0.1:${server.port}/v1/source-resource/${base64Url.encode(utf8.encode(jsonEncode({
           'version': 1,

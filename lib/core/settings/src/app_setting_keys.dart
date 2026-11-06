@@ -257,6 +257,15 @@ final class AppSettingKeys {
     validator: _validateVideoAndroidOutputMode,
   );
 
+  /// Best-effort HLS ad filtering sampled when a video route is opened.
+  static const videoAdFilterEnabled = SettingKey<bool>(
+    id: 'mediaPlayback.videoAdFilterEnabled',
+    documentKind: 'settings.mediaPlayback',
+    defaultValue: true,
+    codec: SettingCodec<bool>(_boolEncode, _boolDecode),
+    validator: _validateBool,
+  );
+
   static const audioKeepScreenOn = SettingKey<bool>(
     id: 'mediaPlayback.audioKeepScreenOn',
     documentKind: 'settings.mediaPlayback',
@@ -341,6 +350,7 @@ final class AppSettingKeys {
     audioMiniPlayerStyle,
     videoDecoderMode,
     videoAndroidOutputMode,
+    videoAdFilterEnabled,
   ];
 
   static final registry = SettingsRegistry(

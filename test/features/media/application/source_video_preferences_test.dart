@@ -23,6 +23,16 @@ void main() {
     final preferences = SourceVideoPreferences.fromSettings(settings);
     expect(preferences.decoderMode, VideoDecoderMode.automatic);
     expect(preferences.androidOutputMode, VideoAndroidOutputMode.automatic);
+    expect(preferences.adFilterEnabled, isTrue);
+  });
+
+  test('global video ad filtering opt-out survives reopening settings', () async {
+    await settings.set(AppSettingKeys.videoAdFilterEnabled, false);
+    await settings.flush();
+    final reopened = AppSettingsManager(store: store, registry: AppSettingKeys.registry);
+    await reopened.initialize();
+    addTearDown(reopened.close);
+    expect(SourceVideoPreferences.fromSettings(reopened).adFilterEnabled, isFalse);
   });
 
   test('software and direct surface choices persist as valid atomic pairs', () async {

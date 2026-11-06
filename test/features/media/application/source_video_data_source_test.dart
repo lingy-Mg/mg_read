@@ -12,6 +12,16 @@ import 'package:mg_read/features/discovery/application/source_content_gateway.da
 import 'package:mg_read/features/media/application/source_video_data_source.dart';
 
 void main() {
+  for (final enabled in [true, false]) {
+    test('video resource resolution carries the captured global ad preference: $enabled', () async {
+      final gateway = _ResolvingVideoGateway();
+      final source = SourceVideoDataSource(gateway: gateway, pluginId: _pluginId, adFilterEnabled: enabled);
+      final video = await source.loadEpisode('video-1', groupId: 'default', episodeId: 'episode-1');
+      expect(gateway.filters, [enabled]);
+      expect(video.uri, 'http://127.0.0.1/resolved-video');
+      expect(video.httpHeaders, {'Referer': 'https://source.example/'});
+    });
+  }
   test('deferred lines load on selection, cache metadata, and resolve only the selected media', () async {
     final gateway = _VideoGateway(failEpisodeResource: false, grouped: true, deferred: true);
     final source = SourceVideoDataSource(gateway: gateway, pluginId: _pluginId);
@@ -297,6 +307,17 @@ final class _VideoGateway implements SourceContentGateway, SourceChapterGroupGat
   @override
   Future<PluginSearchSuggestionsResult> searchSuggestions({required String pluginId, String? cursor, int pageSize = 20}) =>
       throw UnimplementedError();
+}
+
+final class _ResolvingVideoGateway extends _VideoGateway implements SourceResourceGateway {
+  _ResolvingVideoGateway() : super(failEpisodeResource: false);
+  final filters = <bool?>[];
+
+  @override
+  Future<Uri> resolveResource(Uri url, {bool? filterVideoAds}) async {
+    filters.add(filterVideoAds);
+    return Uri.parse('http://127.0.0.1/resolved-video');
+  }
 }
 
 PluginChapterSummary _episode({required String id, required String title, required int order, required String? group}) =>

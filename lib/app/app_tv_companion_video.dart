@@ -113,7 +113,13 @@ Future<void> launchCompanionSourceVideo(
   final proxyUri = container.read(configuredFlutterNetworkProxyManagerProvider).playerProxyUriFor(NetworkProxyTraffic.video);
   final preferAndroidSurface = await readSourceVideoDirectSurfacePreference();
   final preferences = SourceVideoPreferences.fromSettings(container.read(appSettingsProvider));
-  final dataSource = SourceVideoDataSource(gateway: gateway, pluginId: content.pluginId, initialDetail: detail, initialCatalog: catalog);
+  final dataSource = SourceVideoDataSource(
+    gateway: gateway,
+    pluginId: content.pluginId,
+    initialDetail: detail,
+    initialCatalog: catalog,
+    adFilterEnabled: preferences.adFilterEnabled,
+  );
   final store = TransientSourceVideoPlaybackStateStore(
     contentId: content.contentId,
     initialGroupId: content.groupId,

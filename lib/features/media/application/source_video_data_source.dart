@@ -3,6 +3,7 @@
 /// Responsibilities:
 /// - Decode neutral Runtime media groups into the video player model.
 /// - Resolve only proxy URLs and source-supplied request headers for playback.
+/// - Apply the host's captured HLS ad-filter preference during opaque resolution.
 /// - Load explicitly deferred groups on demand; retain three recent additional
 ///   whole-group catalogs and reuse the gateway's bounded shared cache.
 ///
@@ -25,6 +26,7 @@ final class SourceVideoDataSource implements VideoGroupDataSource {
     this.initialDetail,
     this.initialCatalog,
     this.playbackGate,
+    this.adFilterEnabled = true,
     this.maximumEpisodes = 5000,
   }) : assert(maximumEpisodes > 0 && maximumEpisodes <= 5000);
 
@@ -33,6 +35,7 @@ final class SourceVideoDataSource implements VideoGroupDataSource {
   final PluginContentDetail? initialDetail;
   final PluginChaptersResult? initialCatalog;
   final Future<void>? playbackGate;
+  final bool adFilterEnabled;
   final int maximumEpisodes;
   String? _cachedContentId;
   PluginContentDetail? _cachedDetail;
@@ -150,7 +153,7 @@ final class SourceVideoDataSource implements VideoGroupDataSource {
     return VideoEpisode(
       id: selected.id,
       title: selected.title,
-      uri: (await resolveSourceResource(gateway, media.url)).toString(),
+      uri: (await resolveSourceResource(gateway, media.url, filterVideoAds: adFilterEnabled)).toString(),
       httpHeaders: media.headers,
     );
   }

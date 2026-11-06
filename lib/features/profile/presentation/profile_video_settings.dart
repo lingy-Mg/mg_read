@@ -1,5 +1,6 @@
 /// Application-level video preferences with remote-accessible visible choices.
-/// Decoding/output are durable host settings sampled by the next video route.
+/// Decoding/output and best-effort HLS ad filtering are durable host settings
+/// sampled by the next video route; saves never reopen a live player.
 /// Android renderer launch preferences are owned by native code; this panel
 /// shows the active renderer and offers a restart only after the save succeeds.
 library;
@@ -108,6 +109,26 @@ class _ProfileVideoSettingsState extends ConsumerState<ProfileVideoSettings> {
     }
   }
 
+  Future<void> _selectAdFilter(bool enabled) async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _saveError = null;
+      _notice = null;
+    });
+    try {
+      final settings = ref.read(appSettingsProvider);
+      await settings.set(AppSettingKeys.videoAdFilterEnabled, enabled);
+      final flushed = await settings.flush();
+      if (!flushed.persisted) throw StateError('Video settings were not persisted.');
+      if (mounted) setState(() => _notice = '已保存，重新打开视频后生效。');
+    } on Object {
+      if (mounted) setState(() => _saveError = '播放设置保存失败，请重试。');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _restart() async {
     if (_busy) return;
     setState(() {
@@ -133,6 +154,15 @@ class _ProfileVideoSettingsState extends ConsumerState<ProfileVideoSettings> {
       key: const Key('profile-video-settings'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        _choices(
+          id: 'video-ad-filter',
+          title: '视频广告过滤',
+          description: '全局尝试过滤支持的 HLS 点播插片，无需数据源提供规则。无法确认的片段保留，画面内广告不受影响。重新打开视频后生效。',
+          selected: settings.get(AppSettingKeys.videoAdFilterEnabled) ? 'on' : 'off',
+          options: const [('on', '开启（推荐）'), ('off', '关闭')],
+          onSelect: (value) => _selectAdFilter(value == 'on'),
+        ),
+        const SizedBox(height: AppSpacing.regular),
         _choices(
           id: 'video-decoder',
           title: '视频解码',

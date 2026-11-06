@@ -39,6 +39,7 @@
   不为 Node 和原生来源分别发布正常 App 版本。Node 单文件和原生 DLL/SO 的 artifact、加载与更新规则分别由
   `../mg_read_node_runtime/AGENTS.md` 和 `../mg_read_native_runtime/AGENTS.md` 拥有。
 - 来源主页 `sourceUrl` 缺省或为 null 时解码为 null，只影响网址展示，不影响来源安装、启用或内容调用。
+- `SourceResourceResolveInvocation.filterVideoAds` 是可缺省的宿主单次播放偏好，随 resolve 传给支持 HLS 变换的资源所有者。开启时 Node/Bun 提供通用策略兜底，关闭时清除该播放描述的来源过滤策略，缺省及不支持变换的资源所有者保留原语义；主应用不解析或改写资源 token，不把设置持久化进 Runtime。
 - Windows/macOS、Android Javet 与 Node 进程后端共用 `plugin_artifact_importer.dart` 的整次导入排队、
   大小限制、分块文件写入、manifest、失败清理及目录结果确认；本地选择导入也必须进入同一队列。
 - Android 通过 `beginPluginTransferBatch` 一次分配整批私有 `.part` 路径。Dart 直接写文件，Core 统一校验

@@ -91,6 +91,9 @@ plugins/sources/                    真实数据源及其他能力参考实现
 - 视频和音频代理只控制 MediaKit 播放器到 Runtime 回环资源 URL 的本地一跳，并且只接受 HTTP 代理。
   Windows 可显式启用“强制代理本地 Runtime”：宿主临时从进程 `no_proxy` 删除 loopback 规则，同时更新 Win32
   环境和 Windows CRT，关闭后恢复原值；该开关不改变 Runtime 到外部媒体源的请求路由。
+- 视频广告过滤偏好由主应用设置持久化，播放会话通过 typed resource resolve 传入；Node/Bun 对 HLS 描述
+  保留有效来源策略或补充通用策略，显式关闭会清除该会话的过滤策略。仅过滤结构和 TS 时钟都支持删除的
+  点播插片；不支持的资源、复杂状态及证据不足的区间保留，不在解码器或 Flutter 中另建媒体代理。
 - Runtime 控制信息由 Runtime 内部管理；控制帧有界，大资源走 HTTP 数据面。页面请求世代失效时，Facade
   必须把调用方取消传到 desktop wire 或 Android embedded `AbortSignal`，使排队、来源 HTTP 与 WebView 等待
   尽快释放；只丢弃 Flutter 旧结果不算取消。

@@ -64,6 +64,19 @@ void main() {
     }
   }
 
+  testWidgets('global ad filtering defaults on and can be disabled without reopening a decoder', (tester) async {
+    await tester.pumpWidget(await host());
+    await tester.pumpAndSettle();
+    expect(tester.widget<ChoiceChip>(find.byKey(const Key('video-ad-filter-on'))).selected, isTrue);
+    await choose(tester, 'video-ad-filter-off');
+    expect(settings.get(AppSettingKeys.videoAdFilterEnabled), isFalse);
+    expect(tester.widget<ChoiceChip>(find.byKey(const Key('video-ad-filter-off'))).selected, isTrue);
+    expect(find.text('已保存，重新打开视频后生效。'), findsOneWidget);
+    expect(restartCount, 0);
+    await choose(tester, 'video-ad-filter-on');
+    expect(settings.get(AppSettingKeys.videoAdFilterEnabled), isTrue);
+  });
+
   testWidgets('video choices remain valid and show paired corrections', (tester) async {
     await tester.pumpWidget(await host());
     await tester.pumpAndSettle();

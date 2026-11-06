@@ -31,6 +31,7 @@ import {
 } from "./plugin-content.js";
 import type { JsonObject, RuntimeRequest } from "./protocol.js";
 import { decodeSourceResourceUrl } from "./source-resource-token.js";
+import { applyHostVideoAdFilter } from "./host-video-ad-filter.js";
 
 /** Invokes one standard Node source capability through a bounded v1 schema. */
 export async function dispatchSourceContent(
@@ -184,14 +185,18 @@ export function dispatchSourceResourceDecode(
   return { result: { pluginId: decoded.pluginId, request: decoded.request } };
 }
 
-/** Rebuilds the same self-contained descriptor at the current listener. */
+/** Rebuilds the descriptor at the current listener with optional host video policy. */
 export async function dispatchSourceResourceResolve(request: RuntimeRequest, manager: PluginManager | undefined, requestError: RuntimeRequestErrorFactory): Promise<RuntimeDispatchResult> {
-  const parsed = dispatchSourceResourceDecode(request, requestError);
+  const { filterVideoAds, ...decodeParams } = request.params;
+  if (filterVideoAds !== undefined && typeof filterVideoAds !== "boolean") {
+    return { error: requestError(request, "invalid_request", "The host video ad-filter preference must be a boolean.") };
+  }
+  const parsed = dispatchSourceResourceDecode({ ...request, params: decodeParams }, requestError);
   if ("error" in parsed) return parsed;
   const decoded = decodeSourceResourceUrl(request.params.url as string)!;
   if (manager === undefined || !(await manager.listInstalled()).some(plugin => plugin.id === decoded.pluginId && plugin.enabled)) {
     return { error: requestError(request, "plugin_disabled", "Resource owner is unavailable or disabled.") };
   }
-  try { return { result: {url: manager.createResourceUrl(decoded.pluginId, decoded.request)} }; }
+  try { return { result: {url: manager.createResourceUrl(decoded.pluginId, applyHostVideoAdFilter(decoded.request, filterVideoAds))} }; }
   catch { return { error: requestError(request, "invalid_request", "Resource descriptor is invalid.") }; }
 }

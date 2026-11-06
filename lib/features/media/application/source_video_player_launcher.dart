@@ -230,6 +230,7 @@ final class SourceVideoPlayerDestinationState extends State<SourceVideoPlayerDes
           // Force the player to resolve the real source catalog in that case.
           initialCatalog: widget.libraryItemId == null ? widget.initialCatalog : null,
           playbackGate: widget.playbackGate,
+          adFilterEnabled: videoPreferences.adFilterEnabled,
         ),
         stateStore: TransientSourceVideoPlaybackStateStore(
           contentId: widget.detail.summary.id,

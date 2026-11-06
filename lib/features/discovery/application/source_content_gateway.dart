@@ -83,11 +83,14 @@ abstract interface class CancellableSourceContentGateway {
 /// Optional opaque resource routing. Production resolves the current engine and
 /// port immediately before a request; test gateways may keep direct URLs.
 abstract interface class SourceResourceGateway {
-  Future<Uri> resolveResource(Uri url);
+  Future<Uri> resolveResource(Uri url, {bool? filterVideoAds});
 }
 
-Future<Uri> resolveSourceResource(SourceContentGateway gateway, Uri url) =>
-    gateway is SourceResourceGateway ? (gateway as SourceResourceGateway).resolveResource(url) : Future.value(url);
+/// The optional video preference belongs to the host, not the source author.
+/// Omission preserves source policy for image/audio and other resource callers.
+Future<Uri> resolveSourceResource(SourceContentGateway gateway, Uri url, {bool? filterVideoAds}) => gateway is SourceResourceGateway
+    ? (gateway as SourceResourceGateway).resolveResource(url, filterVideoAds: filterVideoAds)
+    : Future.value(url);
 
 /// Optional whole-group loading; legacy gateways need no new implementation.
 abstract interface class SourceChapterGroupGateway {
@@ -119,8 +122,12 @@ final class MgReadSourceContentGateway
   final Future<PluginRuntimeConnection> Function() _loadRuntimeConnection;
 
   @override
-  Future<Uri> resolveResource(Uri url) async =>
-      Uri.parse(await _runtime.invoke(SourceResourceResolveInvocation(url: url.toString()), cancellation: _activeCancellation));
+  Future<Uri> resolveResource(Uri url, {bool? filterVideoAds}) async => Uri.parse(
+    await _runtime.invoke(
+      SourceResourceResolveInvocation(url: url.toString(), filterVideoAds: filterVideoAds),
+      cancellation: _activeCancellation,
+    ),
+  );
 
   @override
   Future<T> runCancellable<T>(PluginInvocationCancellation cancellation, Future<T> Function() request) {
