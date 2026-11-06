@@ -1,5 +1,7 @@
 /// Selection and result dialogs for importing a Node source collection.
 /// TV selection owns one scrollable list and a persistent confirmation footer.
+/// This sheet owns transient type/R18 filters; only visible items are selectable.
+/// Online R18 and unclassified legacy entries stay hidden until explicitly enabled.
 library;
 
 import 'package:flutter/material.dart';
@@ -13,6 +15,7 @@ import 'source_management_tv.dart';
 
 part 'source_collection_import_tv.dart';
 part 'source_collection_report_tv.dart';
+part 'source_collection_filters.dart';
 
 Future<SourceCollectionSelection?> showSourceCollectionImportSheet(
   BuildContext context,
@@ -174,27 +177,55 @@ class _SourceCollectionSelector extends StatefulWidget {
 }
 
 class _SourceCollectionSelectorState extends State<_SourceCollectionSelector> {
+  _CollectionKind _kind = _CollectionKind.all;
+  bool _showR18 = false;
+
   late final Set<String> _selectedIds = <String>{
     for (final candidate in widget.candidates)
-      if (candidate.canImport && !candidate.requiresOverwriteChoice) candidate.plugin.id,
+      if (candidate.canImport && !candidate.requiresOverwriteChoice && (!widget.onlineRepository || candidate.plugin.r18 == false))
+        candidate.plugin.id,
   };
 
+  List<SourceCollectionCandidate> get _visibleCandidates => widget.candidates
+      .where(
+        (item) =>
+            (!widget.onlineRepository || _showR18 || item.plugin.r18 == false) &&
+            (_kind == _CollectionKind.all || item.plugin.contentKinds.contains(_kind.name)),
+      )
+      .toList();
+
+  void _changeFilters({_CollectionKind? kind, bool? showR18}) => setState(() {
+    _kind = kind ?? _kind;
+    _showR18 = showR18 ?? _showR18;
+    final visibleIds = _visibleCandidates.map((item) => item.plugin.id).toSet();
+    _selectedIds.removeWhere((id) => !visibleIds.contains(id));
+  });
+
   Set<String> get _importableIds => <String>{
-    for (final item in widget.candidates)
+    for (final item in _visibleCandidates)
       if (item.canImport) item.plugin.id,
   };
 
   @override
   Widget build(BuildContext context) {
+    final visibleCandidates = _visibleCandidates;
+    final filters = _CollectionFilters(
+      kind: _kind,
+      onKindChanged: (kind) => _changeFilters(kind: kind),
+      online: widget.onlineRepository,
+      showR18: _showR18,
+      onR18Changed: (value) => _changeFilters(showR18: value),
+    );
     if (TvModeScope.isEnabled(context)) {
       return _TvSourceCollectionSelector(
-        candidates: widget.candidates,
+        candidates: visibleCandidates,
         online: widget.onlineRepository,
+        filters: filters,
         selected: _selectedIds,
         onToggle: (id) => setState(() => _selectedIds.contains(id) ? _selectedIds.remove(id) : _selectedIds.add(id)),
         onSelectAll: _importableIds.isEmpty ? null : () => setState(() => _selectedIds.addAll(_importableIds)),
         onClear: _selectedIds.isEmpty ? null : () => setState(_selectedIds.clear),
-        onSubmit: _selectedIds.isEmpty ? null : () => Navigator.of(context).pop(sourceCollectionSelection(widget.candidates, _selectedIds)),
+        onSubmit: _selectedIds.isEmpty ? null : () => Navigator.of(context).pop(sourceCollectionSelection(visibleCandidates, _selectedIds)),
       );
     }
     final selectedInstalled = widget.candidates
@@ -217,31 +248,48 @@ class _SourceCollectionSelectorState extends State<_SourceCollectionSelector> {
             children: <Widget>[
               Text(widget.onlineRepository ? '在线插件仓库' : '导入数据源合集', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: AppSpacing.unit),
-              Text('${widget.candidates.length} 个数据源 · 选择要安装或更新的项目', style: Theme.of(context).textTheme.bodyMedium),
+              Text('${visibleCandidates.length} 个数据源 · 选择要安装或更新的项目', style: Theme.of(context).textTheme.bodyMedium),
               const SizedBox(height: AppSpacing.compact),
-              Wrap(
-                spacing: AppSpacing.compact,
-                children: <Widget>[
-                  TextButton(
-                    onPressed: _importableIds.isEmpty ? null : () => setState(() => _selectedIds.addAll(_importableIds)),
-                    child: const Text('全选可导入'),
-                  ),
-                  TextButton(onPressed: _selectedIds.isEmpty ? null : () => setState(_selectedIds.clear), child: const Text('全不选')),
-                ],
-              ),
-              if (selectedInstalled > 0)
-                Container(
-                  margin: const EdgeInsets.only(bottom: AppSpacing.compact),
-                  padding: const EdgeInsets.all(AppSpacing.compact),
-                  decoration: BoxDecoration(color: AppThemeTokens.of(context).mutedSurface, borderRadius: AppRadii.detailControl),
-                  child: Text('将覆盖 $selectedInstalled 个已安装来源。相同版本也会重新安装；低于当前版本的降级不可选择。'),
-                ),
               Flexible(
                 child: ListView.builder(
                   shrinkWrap: true,
-                  itemCount: widget.candidates.length,
+                  itemCount: visibleCandidates.isEmpty ? 2 : visibleCandidates.length + 1,
                   itemBuilder: (context, index) {
-                    final candidate = widget.candidates[index];
+                    if (index == 0) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          filters,
+                          Wrap(
+                            spacing: AppSpacing.compact,
+                            children: [
+                              TextButton(
+                                onPressed: _importableIds.isEmpty ? null : () => setState(() => _selectedIds.addAll(_importableIds)),
+                                child: const Text('全选可导入'),
+                              ),
+                              TextButton(
+                                onPressed: _selectedIds.isEmpty ? null : () => setState(_selectedIds.clear),
+                                child: const Text('全不选'),
+                              ),
+                            ],
+                          ),
+                          if (selectedInstalled > 0)
+                            Container(
+                              margin: const EdgeInsets.only(bottom: AppSpacing.compact),
+                              padding: const EdgeInsets.all(AppSpacing.compact),
+                              decoration: BoxDecoration(
+                                color: AppThemeTokens.of(context).mutedSurface,
+                                borderRadius: AppRadii.detailControl,
+                              ),
+                              child: Text('将覆盖 $selectedInstalled 个已安装来源。相同版本也会重新安装；低于当前版本的降级不可选择。'),
+                            ),
+                        ],
+                      );
+                    }
+                    if (visibleCandidates.isEmpty) {
+                      return const Padding(padding: EdgeInsets.all(AppSpacing.compact), child: Text('当前筛选下暂无数据源'));
+                    }
+                    final candidate = visibleCandidates[index - 1];
                     final plugin = candidate.plugin;
                     final checked = _selectedIds.contains(plugin.id);
                     final enabled = candidate.canImport;
@@ -287,7 +335,7 @@ class _SourceCollectionSelectorState extends State<_SourceCollectionSelector> {
                             children: <Widget>[
                               Expanded(
                                 child: Text(
-                                  plugin.name,
+                                  '${plugin.name}${plugin.r18 == true ? ' · R18' : ''}',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
@@ -322,7 +370,7 @@ class _SourceCollectionSelectorState extends State<_SourceCollectionSelector> {
                           ? null
                           : () {
                               try {
-                                Navigator.of(context).pop(sourceCollectionSelection(widget.candidates, _selectedIds));
+                                Navigator.of(context).pop(sourceCollectionSelection(visibleCandidates, _selectedIds));
                               } on SourceCollectionImportException catch (error) {
                                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
                               }

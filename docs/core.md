@@ -123,12 +123,14 @@ plugins/sources/                    真实数据源及其他能力参考实现
 - Node 批量导入在各平台共用同一协调器并串行执行完整事务；Core 在修改安装状态前复核整批 artifact 的
   声明、大小、CRC 和包内身份。宿主一次发布完整批次目录，冷启动只消费已发布目录，不消费未完成的暂存。
 - 自动发布的 Node 数据源合集使用独立的 `.mgplugins` ZIP 容器，不占用单来源 `.mgplugin` 格式。根目录
-  `manifest.json` 的 `format=mgread-source-collection`、`schemaVersion=1`，`plugins` 数组逐项声明
-  `id/name/version/format/path/bytes/sha256`；每项仍是原始自包含的单来源 artifact。App 在安装前校验清单、
+  `manifest.json` 的 `format=mgread-source-collection`、`schemaVersion=2`（仍兼容读取 1），`plugins` 数组逐项声明
+  `id/name/version/format/path/bytes/sha256/contentKinds/r18`；每项仍是原始自包含的单来源 artifact。App 在安装前校验清单、
   条目、大小和 SHA-256，让用户选择新增及覆盖项，再交给 Runtime 批量安装。合集暂不包含原生来源。
 - 在线 Node 插件仓库直接托管在 GitHub Release，无需应用服务器。发布流程使用已有 `@mgread-plugin-v1`
-  单文件 artifact 头，上传各自独立的 `.mgplugin.js` 和 `catalog.json`；清单固定声明版本、下载 URL、大小、CRC32
-  与 SHA-256。App 只下载用户选择的插件，校验后沿用合集计划、覆盖确认和 Runtime 批量安装流程；
+  单文件 artifact 头，上传各自独立的 `.mgplugin.js` 和 `catalog-v2.json`（`schemaVersion=2`），保留旧客户端的
+  `catalog.json`（`schemaVersion=1`，不含新增分类字段）；清单固定声明版本、下载 URL、大小、CRC32
+  与 SHA-256，以及 `contentKinds/r18`。在线列表默认隐藏 R18 和旧清单未分级项，用户每次明确开启后才显示；
+  类型筛选和全选仅作用于可见项。App 只下载用户选择的插件，校验后沿用合集计划、覆盖确认和 Runtime 批量安装流程；
   `source-catalog` Release 是当前仓库目录。
 - 在线数据源自动更新只为已安装的 Node 来源下载更高版本，主页面空闲时静默校验并由 Facade 暂存；
   暂存包不进入本次进程的 Core 重启，下次 App 启动才发布到安装收件箱。启动时复核 current/pending 与卸载标记，

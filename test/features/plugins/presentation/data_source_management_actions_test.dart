@@ -65,11 +65,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(tester.widget<TvFocusable>(find.byKey(const Key('source-collection-org.mgread.qidian'))).selected, isTrue);
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/tv_online_source_selection.png'));
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pump(const Duration(milliseconds: 400));
-    if (!_tvFocus(tester, 'source-collection-import-selected').hasFocus) {
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    for (var step = 0; step < 20 && !_tvFocus(tester, 'source-collection-import-selected').hasFocus; step++) {
+      await tester.sendKeyEvent(
+        _tvFocus(tester, 'source-collection-cancel').hasFocus ? LogicalKeyboardKey.arrowRight : LogicalKeyboardKey.arrowDown,
+      );
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pump(const Duration(milliseconds: 400));
     }
@@ -440,6 +439,8 @@ SourceCollection _catalog(String version) => SourceCollection(<SourceCollectionP
     byteLength: 3,
     checksum: '00000000',
     openBytes: () => Stream<List<int>>.value(<int>[1, 2, 3]),
+    contentKinds: const ['novel'],
+    r18: false,
   ),
 ]);
 

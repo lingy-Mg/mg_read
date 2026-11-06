@@ -2,6 +2,8 @@
 ///
 /// Catalog metadata and downloaded plugin hashes are validated before Runtime
 /// import. ZIP metadata is checked before any payload is decompressed.
+/// Content kinds and optional R18 classification come from package metadata;
+/// a missing R18 value in legacy catalogs means unclassified, not unrestricted.
 library;
 
 import 'dart:convert';
@@ -28,7 +30,7 @@ final sourceCollectionImportServiceProvider = Provider<SourceCollectionImportSer
   (Ref ref) => const SourceCollectionImportService(PlatformSourceCollectionFilePicker()),
 );
 
-final Uri defaultOnlinePluginCatalogUri = Uri.https('github.com', '/lingy-Mg/mg_read/releases/download/source-catalog/catalog.json');
+final Uri defaultOnlinePluginCatalogUri = Uri.https('github.com', '/lingy-Mg/mg_read/releases/download/source-catalog/catalog-v2.json');
 
 final onlineSourceCatalogServiceProvider = Provider<OnlineSourceCatalogReader>(
   (Ref ref) => OnlineSourceCatalogService(
@@ -162,7 +164,7 @@ SourceCollection _parseOnlineCatalog(Uint8List bytes, Stream<List<int>> Function
   if (decoded is! Map<String, dynamic> ||
       decoded.keys.toSet().difference(<String>{'format', 'schemaVersion', 'plugins'}).isNotEmpty ||
       decoded['format'] != 'mgread-online-plugin-catalog' ||
-      decoded['schemaVersion'] != 1 ||
+      (decoded['schemaVersion'] != 1 && decoded['schemaVersion'] != 2) ||
       decoded['plugins'] is! List<dynamic>) {
     throw const SourceCollectionImportException('GitHub 插件仓库清单格式或版本不受支持。');
   }
@@ -175,7 +177,19 @@ SourceCollection _parseOnlineCatalog(Uint8List bytes, Stream<List<int>> Function
   final plugins = <SourceCollectionPlugin>[];
   for (final row in rows) {
     if (row is! Map<String, dynamic> ||
-        row.keys.toSet().difference(<String>{'id', 'name', 'version', 'format', 'path', 'url', 'bytes', 'crc32', 'sha256'}).isNotEmpty) {
+        row.keys.toSet().difference(<String>{
+          'id',
+          'name',
+          'version',
+          'format',
+          'path',
+          'url',
+          'bytes',
+          'crc32',
+          'sha256',
+          'contentKinds',
+          'r18',
+        }).isNotEmpty) {
       throw const SourceCollectionImportException('GitHub 插件仓库包含无效项目。');
     }
     final id = row['id'];
@@ -187,6 +201,8 @@ SourceCollection _parseOnlineCatalog(Uint8List bytes, Stream<List<int>> Function
     final size = row['bytes'];
     final crc32 = row['crc32'];
     final sha = row['sha256'];
+    final contentKinds = _collectionContentKinds(row);
+    final r18 = _collectionR18(row);
     if (id is! String ||
         !RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$').hasMatch(id) ||
         !ids.add(id) ||
@@ -227,6 +243,8 @@ SourceCollection _parseOnlineCatalog(Uint8List bytes, Stream<List<int>> Function
         byteLength: size,
         checksum: crc32,
         openBytes: () => openBytes(entry),
+        contentKinds: contentKinds,
+        r18: r18,
       ),
     );
   }
@@ -252,6 +270,8 @@ final class SourceCollectionPlugin {
     required this.byteLength,
     required this.checksum,
     required this.openBytes,
+    this.contentKinds = const <String>[],
+    this.r18,
   });
 
   final String id;
@@ -261,6 +281,8 @@ final class SourceCollectionPlugin {
   final int byteLength;
   final String checksum;
   final Stream<List<int>> Function() openBytes;
+  final List<String> contentKinds;
+  final bool? r18;
 
   PluginTransferArtifact get artifact => PluginTransferArtifact(
     engine: PluginEngine.node,
@@ -289,6 +311,24 @@ final class SourceCollectionImportException implements Exception {
 
   @override
   String toString() => message;
+}
+
+List<String> _collectionContentKinds(Map<String, dynamic> row) {
+  if (!row.containsKey('contentKinds')) return const <String>[];
+  final kinds = row['contentKinds'];
+  if (kinds is! List<dynamic> ||
+      kinds.isEmpty ||
+      kinds.any((kind) => !const <String>{'novel', 'manga', 'video', 'audio'}.contains(kind)) ||
+      kinds.toSet().length != kinds.length) {
+    throw const SourceCollectionImportException('数据源清单中的内容类型无效。');
+  }
+  return List<String>.unmodifiable(kinds.cast<String>());
+}
+
+bool? _collectionR18(Map<String, dynamic> row) {
+  if (!row.containsKey('r18')) return null;
+  if (row['r18'] is! bool) throw const SourceCollectionImportException('数据源清单中的 R18 分级无效。');
+  return row['r18'] as bool;
 }
 
 SourceCollection parseSourceCollection(List<int> input) {
@@ -373,7 +413,7 @@ SourceCollection parseSourceCollection(List<int> input) {
   if (decoded is! Map<String, dynamic> ||
       decoded.keys.toSet().difference(<String>{'format', 'schemaVersion', 'plugins'}).isNotEmpty ||
       decoded['format'] != 'mgread-source-collection' ||
-      decoded['schemaVersion'] != 1 ||
+      (decoded['schemaVersion'] != 1 && decoded['schemaVersion'] != 2) ||
       decoded['plugins'] is! List<dynamic>) {
     throw const SourceCollectionImportException('合集清单格式或版本不受支持。');
   }
@@ -388,7 +428,17 @@ SourceCollection parseSourceCollection(List<int> input) {
   var totalPluginBytes = 0;
   for (final row in rows) {
     if (row is! Map<String, dynamic> ||
-        row.keys.toSet().difference(<String>{'id', 'name', 'version', 'format', 'path', 'bytes', 'sha256'}).isNotEmpty) {
+        row.keys.toSet().difference(<String>{
+          'id',
+          'name',
+          'version',
+          'format',
+          'path',
+          'bytes',
+          'sha256',
+          'contentKinds',
+          'r18',
+        }).isNotEmpty) {
       throw const SourceCollectionImportException('合集清单中的数据源描述无效。');
     }
     final id = row['id'];
@@ -398,6 +448,8 @@ SourceCollection parseSourceCollection(List<int> input) {
     final path = row['path'];
     final size = row['bytes'];
     final sha = row['sha256'];
+    final contentKinds = _collectionContentKinds(row);
+    final r18 = _collectionR18(row);
     if (id is! String ||
         !RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$').hasMatch(id) ||
         name is! String ||
@@ -448,6 +500,8 @@ SourceCollection parseSourceCollection(List<int> input) {
         byteLength: bytes.length,
         checksum: checksum,
         openBytes: () => _openVerifiedEntry(input, path, size, sha),
+        contentKinds: contentKinds,
+        r18: r18,
       ),
     );
   }

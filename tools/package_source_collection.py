@@ -5,6 +5,8 @@ Only packages with package.json, mgread metadata, and pack:plugin are eligible.
 The script never searches for arbitrary old artifacts: it requires the exact
 filename derived from the package's id and version in that package's artifacts
 directory. --artifact-root supports fixtures/local prebuilt outputs.
+Collection and catalog rows carry validated contentKinds/r18 from mgread metadata
+so the app can filter before downloading or selecting any plugin payload.
 """
 
 from __future__ import annotations
@@ -59,6 +61,13 @@ def eligible_packages(sources: Path) -> list[tuple[Path, dict]]:
             raise ValueError(f"Missing mgread.displayName in {package_path}")
         if not isinstance(version, str) or not SAFE_VERSION.fullmatch(version):
             raise ValueError(f"Unsafe or missing package.version in {package_path}")
+        kinds = meta.get("contentKinds")
+        if (not isinstance(kinds, list) or not kinds
+                or any(not isinstance(kind, str) or kind not in ("novel", "manga", "video", "audio") for kind in kinds)
+                or len(set(kinds)) != len(kinds)):
+            raise ValueError(f"Invalid mgread.contentKinds in {package_path}")
+        if not isinstance(meta.get("r18", False), bool):
+            raise ValueError(f"Invalid mgread.r18 in {package_path}")
         found.append((package_path.parent, package))
     return found
 
@@ -119,6 +128,7 @@ def build_collection(sources: Path, output: Path, artifact_root: Path | None = N
         data = artifact.read_bytes()
         relpath = PurePosixPath("plugins", filename).as_posix()
         entries.append({"id": plugin_id, "name": meta["displayName"], "version": version,
+                        "contentKinds": meta["contentKinds"], "r18": meta.get("r18", False),
                         "format": "singleFile" if package_mode == "single-file" else "archive",
                         "path": relpath, "bytes": len(data),
                         "sha256": hashlib.sha256(data).hexdigest()})
@@ -127,7 +137,7 @@ def build_collection(sources: Path, output: Path, artifact_root: Path | None = N
     order = sorted(range(len(entries)), key=lambda i: (entries[i]["id"], entries[i]["path"]))
     entries = [entries[i] for i in order]
     payloads = [payloads[i] for i in order]
-    manifest = {"format": "mgread-source-collection", "schemaVersion": 1, "plugins": entries}
+    manifest = {"format": "mgread-source-collection", "schemaVersion": 2, "plugins": entries}
     manifest_bytes = (json.dumps(manifest, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
     if len(manifest_bytes) > MAX_MANIFEST_BYTES:
         raise ValueError("Collection manifest exceeds 1 MiB")
@@ -191,6 +201,8 @@ def build_online_catalog(sources: Path, output_dir: Path, release_base_url: str,
             "id": plugin_id,
             "name": meta["displayName"],
             "version": version,
+            "contentKinds": meta["contentKinds"],
+            "r18": meta.get("r18", False),
             "format": "singleFile",
             "path": f"plugins/{filename}",
             "url": f"{base_url}/{filename}",
@@ -201,12 +213,18 @@ def build_online_catalog(sources: Path, output_dir: Path, release_base_url: str,
     if not entries:
         raise ValueError("No single-file Node sources are available for the online catalog")
     entries.sort(key=lambda item: item["id"])
-    manifest = {"format": "mgread-online-plugin-catalog", "schemaVersion": 1, "plugins": entries}
+    manifest = {"format": "mgread-online-plugin-catalog", "schemaVersion": 2, "plugins": entries}
     manifest_bytes = (json.dumps(manifest, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
     if len(manifest_bytes) > MAX_MANIFEST_BYTES:
         raise ValueError("Online catalog manifest exceeds 1 MiB")
     output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "catalog.json").write_bytes(manifest_bytes)
+    (output_dir / "catalog-v2.json").write_bytes(manifest_bytes)
+    # Existing clients reject unknown row fields, so retain their schema-1 asset.
+    legacy_entries = [{key: value for key, value in entry.items() if key not in ("contentKinds", "r18")}
+                      for entry in entries]
+    legacy = {"format": "mgread-online-plugin-catalog", "schemaVersion": 1, "plugins": legacy_entries}
+    (output_dir / "catalog.json").write_bytes(
+        (json.dumps(legacy, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8"))
     return entries
 
 
@@ -224,7 +242,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sources", type=Path, required=True, help="plugins/sources directory")
     parser.add_argument("--output", type=Path, help="output .mgplugins ZIP")
     parser.add_argument("--artifact-root", type=Path, help="optional root containing <source>/artifacts")
-    parser.add_argument("--online-output", type=Path, help="write standalone plugins and catalog.json for a static repository")
+    parser.add_argument("--online-output", type=Path, help="write standalone plugins and versioned catalogs for a static repository")
     parser.add_argument("--release-base-url", help="HTTPS GitHub Release download URL used by --online-output")
     parser.add_argument("--include-packages-file", type=Path,
                         help="newline-delimited source directory names to include in release artifacts")

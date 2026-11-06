@@ -1,3 +1,4 @@
+# Publishes schema-2 classified catalogs alongside the schema-1 online asset.
 name: Build and publish source collection
 
 on:
@@ -142,6 +143,7 @@ jobs:
             exit 1
           fi
           test -s release/catalog.json
+          test -s release/catalog-v2.json
           compgen -G 'release/plugins/*.mgplugin.js' >/dev/null
 
           (
@@ -167,8 +169,8 @@ jobs:
 
           catalog_tag="source-catalog"
           catalog_title="MgRead online plugin catalog"
-          catalog_notes="Static Node plugin repository. The app downloads catalog.json and standalone verified .mgplugin.js assets directly from this GitHub Release; no application server is required."
-          catalog_assets=(release/catalog.json release/plugins/*.mgplugin.js)
+          catalog_notes="Static Node plugin repository. New clients download classified catalog-v2.json; catalog.json is retained for older clients. Standalone .mgplugin.js assets are verified by the app; no application server is required."
+          catalog_assets=(release/catalog.json release/catalog-v2.json release/plugins/*.mgplugin.js)
           if gh release view "$catalog_tag" --repo "$REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$catalog_tag" "${catalog_assets[@]}" \
               --repo "$REPOSITORY" --clobber

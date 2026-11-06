@@ -6,6 +6,7 @@ class _TvSourceCollectionSelector extends StatelessWidget {
   const _TvSourceCollectionSelector({
     required this.candidates,
     required this.online,
+    required this.filters,
     required this.selected,
     required this.onToggle,
     required this.onSelectAll,
@@ -14,6 +15,7 @@ class _TvSourceCollectionSelector extends StatelessWidget {
   });
   final List<SourceCollectionCandidate> candidates;
   final bool online;
+  final Widget filters;
   final Set<String> selected;
   final ValueChanged<String> onToggle;
   final VoidCallback? onSelectAll;
@@ -35,6 +37,7 @@ class _TvSourceCollectionSelector extends StatelessWidget {
               children: [
                 Text('已选 ${selected.length} / ${candidates.length}', style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 16),
+                filters,
                 TvFocusable(key: const Key('source-collection-select-all'), onPressed: onSelectAll, child: const Text('全选可导入')),
                 const SizedBox(height: 12),
                 TvFocusable(key: const Key('source-collection-clear'), onPressed: onClear, child: const Text('全不选')),
@@ -43,7 +46,7 @@ class _TvSourceCollectionSelector extends StatelessWidget {
               ],
             ),
             child: candidates.isEmpty
-                ? const Center(child: Text('仓库中暂无可用数据源'))
+                ? const Center(child: Text('当前筛选下暂无数据源'))
                 : ListView(
                     key: const Key('tv-source-collection-list'),
                     padding: const EdgeInsets.all(4),
@@ -72,7 +75,10 @@ class _TvSourceCollectionSelector extends StatelessWidget {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(candidate.plugin.name, style: Theme.of(context).textTheme.titleLarge),
+                                      Text(
+                                        '${candidate.plugin.name}${candidate.plugin.r18 == true ? ' · R18' : ''}',
+                                        style: Theme.of(context).textTheme.titleLarge,
+                                      ),
                                       const SizedBox(height: 6),
                                       Text('${_statusLabel(candidate.plan.action)} · v${_displayVersion(candidate.plugin.version)}'),
                                       if (candidate.plan.receiverVersion != null)

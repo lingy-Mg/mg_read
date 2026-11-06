@@ -26,12 +26,12 @@ class PackageSourceCollectionTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def add_plugin(self, folder, plugin_id, name=None, payload=b"bundle", mode="single-file"):
+    def add_plugin(self, folder, plugin_id, name=None, payload=b"bundle", mode="single-file", kinds=None, r18=False):
         project = self.sources / folder
         project.mkdir()
         package = {"version": "1.2.3", "scripts": {"pack:plugin": "node pack"},
                    "mgread": {"id": plugin_id, "displayName": name or folder,
-                              "packageMode": mode}}
+                              "packageMode": mode, "contentKinds": kinds or ["novel"], "r18": r18}}
         (project / "package.json").write_text(json.dumps(package), encoding="utf-8")
         artifact_dir = project / "artifacts"
         artifact_dir.mkdir()
@@ -52,7 +52,7 @@ class PackageSourceCollectionTests(unittest.TestCase):
             manifest = json.loads(archive.read("manifest.json"))
             self.assertEqual(list(manifest), ["format", "schemaVersion", "plugins"])
             self.assertEqual(manifest["format"], "mgread-source-collection")
-            self.assertEqual(manifest["schemaVersion"], 1)
+            self.assertEqual(manifest["schemaVersion"], 2)
             self.assertEqual([p["id"] for p in manifest["plugins"]],
                              ["org.mgread.alpha", "org.mgread.zeta"])
             for entry in manifest["plugins"]:
@@ -118,14 +118,19 @@ class PackageSourceCollectionTests(unittest.TestCase):
 
         self.assertEqual([entry["id"] for entry in entries], ["org.mgread.alpha"])
         self.assertEqual((output / "plugins/org.mgread.alpha.mgplugin.js").read_bytes(), payload)
-        manifest = json.loads((output / "catalog.json").read_text(encoding="utf-8"))
+        manifest = json.loads((output / "catalog-v2.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["format"], "mgread-online-plugin-catalog")
-        self.assertEqual(manifest["schemaVersion"], 1)
+        self.assertEqual(manifest["schemaVersion"], 2)
         entry = manifest["plugins"][0]
         self.assertEqual(entry["url"], "https://github.com/example/mg_read/releases/download/source-catalog/org.mgread.alpha.mgplugin.js")
         self.assertEqual(entry["bytes"], len(payload))
         self.assertEqual(entry["crc32"], f"{zlib.crc32(payload) & 0xffffffff:08x}")
         self.assertEqual(entry["sha256"], hashlib.sha256(payload).hexdigest())
+        legacy = json.loads((output / "catalog.json").read_text(encoding="utf-8"))
+        self.assertEqual(legacy["schemaVersion"], 1)
+        self.assertEqual(legacy["plugins"], [
+            {key: value for key, value in entry.items() if key not in ("contentKinds", "r18")}
+        ])
 
     def test_online_catalog_rejects_artifacts_without_plugin_tag(self):
         self.add_plugin("alpha", "org.mgread.alpha", payload=b"export default {};")
@@ -136,6 +141,31 @@ class PackageSourceCollectionTests(unittest.TestCase):
                 self.root / "online",
                 "https://github.com/example/mg_read/releases/download/source-catalog",
             )
+
+    def test_both_manifests_preserve_multiple_content_kinds_and_r18(self):
+        payload = b"// @mgread-plugin-v1 e30=\nexport default {};"
+        self.add_plugin("mixed", "org.mgread.mixed", payload=payload, kinds=["manga", "video"], r18=True)
+        self.add_plugin("music", "org.mgread.music", payload=payload, kinds=["audio"])
+        collection = pack.build_collection(self.sources, self.root / "classified.mgplugins")
+        online = pack.build_online_catalog(self.sources, self.root / "online", "https://github.com/example/source-catalog")
+        for entries in (collection, online):
+            self.assertEqual(entries[0]["contentKinds"], ["manga", "video"])
+            self.assertIs(entries[0]["r18"], True)
+            self.assertEqual(entries[1]["contentKinds"], ["audio"])
+            self.assertIs(entries[1]["r18"], False)
+
+    def test_invalid_classification_metadata_is_rejected(self):
+        project = self.add_plugin("invalid", "org.mgread.invalid")
+        path = project / "package.json"
+        package = json.loads(path.read_text(encoding="utf-8"))
+        for field, value in (("contentKinds", ["unknown"]), ("contentKinds", []),
+                             ("contentKinds", ["audio", "audio"]), ("r18", "false")):
+            with self.subTest(field=field, value=value):
+                package["mgread"].update(contentKinds=["novel"], r18=False)
+                package["mgread"][field] = value
+                path.write_text(json.dumps(package), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, f"Invalid mgread.{field}"):
+                    pack.eligible_packages(self.sources)
 
     def test_builders_can_include_only_successfully_packaged_sources(self):
         alpha_payload = b"// @mgread-plugin-v1 eyJ2ZXJzaW9uIjoiMS4yLjMifQ==\nexport default {};"

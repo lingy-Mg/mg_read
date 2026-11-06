@@ -30,6 +30,7 @@ void main() {
           byteLength: 3,
           checksum: '00000000',
           openBytes: () => Stream.value([1, 2, 3]),
+          r18: false,
         ),
         plan: PluginTransferPlanItem(
           action: i == 15 ? PluginTransferPlanAction.receiverNewer : PluginTransferPlanAction.missing,
@@ -95,11 +96,13 @@ void main() {
     );
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
-    for (var i = 0; i < 8; i++) {
+    for (var i = 0; i < 20; i++) {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('source-collection-import-selected')).hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
+      final key = FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvFocusable>()?.key;
+      if (key == const Key('source-collection-cancel') || key == const Key('source-collection-import-selected')) break;
     }
     final focused = FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvFocusable>();
     expect(focused?.key, anyOf(const Key('source-collection-cancel'), const Key('source-collection-import-selected')));
@@ -210,6 +213,7 @@ List<SourceCollectionCandidate> _candidates() {
     byteLength: bytes.length,
     checksum: '00000000',
     openBytes: () => Stream<List<int>>.value(bytes),
+    r18: false,
   );
   return <SourceCollectionCandidate>[
     SourceCollectionCandidate(

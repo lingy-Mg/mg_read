@@ -33,6 +33,37 @@ void main() {
   test('accepts an optional empty plugins directory entry', () {
     final parsed = parseSourceCollection(_collection(<_Entry>[_Entry(id: 'org.example.a')], includePluginsDirectory: true));
     expect(parsed.plugins, hasLength(1));
+    expect(parsed.plugins.single.contentKinds, isEmpty);
+    expect(parsed.plugins.single.r18, isNull);
+  });
+
+  test('preserves classification and rejects malformed metadata', () {
+    final classified = _Entry(
+      id: 'org.example.a',
+      metadata: {
+        'contentKinds': ['manga', 'video'],
+        'r18': true,
+      },
+    );
+    final plugin = parseSourceCollection(_collection([classified], schemaVersion: 2)).plugins.single;
+    expect(plugin.contentKinds, ['manga', 'video']);
+    expect(plugin.r18, isTrue);
+    for (final metadata in <Map<String, Object?>>[
+      {
+        'contentKinds': ['unknown'],
+      },
+      {
+        'contentKinds': ['audio', 'audio'],
+      },
+      {'contentKinds': 'novel'},
+      {'r18': 'false'},
+      {'r18': null},
+    ]) {
+      expect(
+        () => parseSourceCollection(_collection([_Entry(id: 'org.example.a', metadata: metadata)])),
+        throwsA(isA<SourceCollectionImportException>()),
+      );
+    }
   });
 
   test('rejects path mismatch, duplicate IDs and SHA-256 mismatch', () {
@@ -127,6 +158,7 @@ class _Entry {
     List<int>? content,
     this.pathOverride,
     this.shaOverride,
+    this.metadata = const {},
   }) : content = Uint8List.fromList(content ?? <int>[1, 2, 3]);
 
   final String id;
@@ -136,9 +168,10 @@ class _Entry {
   final Uint8List content;
   final String? pathOverride;
   final String? shaOverride;
+  final Map<String, Object?> metadata;
 }
 
-Uint8List _collection(List<_Entry> entries, {bool includePluginsDirectory = false}) {
+Uint8List _collection(List<_Entry> entries, {bool includePluginsDirectory = false, int schemaVersion = 1}) {
   final zip = Archive();
   if (includePluginsDirectory) zip.addFile(ArchiveFile.directory('plugins/'));
   final rows = <Map<String, Object?>>[];
@@ -154,12 +187,13 @@ Uint8List _collection(List<_Entry> entries, {bool includePluginsDirectory = fals
       'path': path,
       'bytes': entry.content.length,
       'sha256': entry.shaOverride ?? sha256.convert(entry.content).toString(),
+      ...entry.metadata,
     });
   }
   zip.addFile(
     ArchiveFile.bytes(
       'manifest.json',
-      utf8.encode(jsonEncode(<String, Object?>{'format': 'mgread-source-collection', 'schemaVersion': 1, 'plugins': rows})),
+      utf8.encode(jsonEncode(<String, Object?>{'format': 'mgread-source-collection', 'schemaVersion': schemaVersion, 'plugins': rows})),
     ),
   );
   return Uint8List.fromList(ZipEncoder().encodeBytes(zip));
