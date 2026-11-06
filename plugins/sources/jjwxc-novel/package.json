@@ -1,0 +1,44 @@
+{
+  "name": "@mgread-plugin/jjwxc-novel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "晋江文学城：官方推荐与搜索、完整目录及公开章节阅读。",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "packageManager": "npm@11.19.1",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node tools/mgread.mjs build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/contract.test.mjs test/source.test.mjs",
+    "test:live": "npm run build && node --use-env-proxy --test test/live-source.test.mjs",
+    "pack:plugin": "npm run build && node tools/mgread.mjs pack",
+    "verify": "npm run typecheck && npm test && npm run pack:plugin"
+  },
+  "devDependencies": {
+    "@mgread/source-api": "file:../../../packages/mg_read_source_api",
+    "@mgread/source-testkit": "file:../../../packages/mg_read_source_testkit",
+    "@types/node": "24.13.3",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  },
+  "mgread": {
+    "schemaVersion": 1,
+    "id": "org.mgread.jjwxc-novel",
+    "displayName": "晋江文学城（公开阅读）",
+    "description": "晋江文学城官方公开页面，支持作品搜索、完整目录和公开章节阅读，VIP及锁定章节保留为不可读。",
+    "sourceUrl": "https://m.jjwxc.net/",
+    "pluginApi": 1,
+    "packageMode": "single-file",
+    "contentKinds": [
+      "novel"
+    ],
+    "r18": false
+  },
+  "dependencies": {
+    "cheerio": "1.1.0",
+    "iconv-lite": "0.7.3"
+  }
+}
