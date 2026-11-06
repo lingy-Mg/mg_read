@@ -1,0 +1,43 @@
+{
+  "name": "@mgread-plugin/uaa-novel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "UAA 小说：公开书库、搜索、完整目录及游客章节。",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "packageManager": "npm@11.19.1",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node tools/mgread.mjs build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/contract.test.mjs test/source.test.mjs",
+    "test:live": "npm run build && node --use-env-proxy --test test/live-source.test.mjs",
+    "pack:plugin": "npm run build && node tools/mgread.mjs pack",
+    "verify": "npm run typecheck && npm test && npm run pack:plugin"
+  },
+  "devDependencies": {
+    "@mgread/source-api": "file:../../../packages/mg_read_source_api",
+    "@mgread/source-testkit": "file:../../../packages/mg_read_source_testkit",
+    "@types/node": "24.13.3",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  },
+  "mgread": {
+    "schemaVersion": 1,
+    "id": "org.mgread.uaa-novel",
+    "displayName": "UAA 小说",
+    "description": "公开书库、搜索、详情和完整目录；受限章节保留权限，不返回隐藏预览。",
+    "sourceUrl": "https://www.uaa.com/",
+    "pluginApi": 1,
+    "packageMode": "single-file",
+    "contentKinds": [
+      "novel"
+    ],
+    "r18": true
+  },
+  "dependencies": {
+    "cheerio": "1.1.0"
+  }
+}
