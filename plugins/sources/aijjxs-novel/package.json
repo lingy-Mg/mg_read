@@ -1,0 +1,43 @@
+{
+  "name": "@mgread-plugin/aijjxs-novel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "久久小说网：推荐、搜索、完整章节目录与公开在线阅读。",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "packageManager": "npm@11.19.1",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node tools/mgread.mjs build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/contract.test.mjs test/source.test.mjs",
+    "test:live": "npm run build && node --use-env-proxy --test test/live-source.test.mjs",
+    "pack:plugin": "npm run build && node tools/mgread.mjs pack",
+    "verify": "npm run typecheck && npm test && npm run pack:plugin"
+  },
+  "devDependencies": {
+    "@mgread/source-api": "file:../../../packages/mg_read_source_api",
+    "@mgread/source-testkit": "file:../../../packages/mg_read_source_testkit",
+    "@types/node": "24.13.3",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  },
+  "mgread": {
+    "schemaVersion": 1,
+    "id": "org.mgread.aijjxs-novel",
+    "displayName": "久久小说网",
+    "description": "久久小说网提供玄幻、都市、穿越、言情等网络小说，支持搜索、完整章节目录和公开在线阅读。",
+    "sourceUrl": "https://www.aijjxs.com/",
+    "pluginApi": 1,
+    "packageMode": "single-file",
+    "contentKinds": [
+      "novel"
+    ],
+    "r18": false
+  },
+  "dependencies": {
+    "cheerio": "1.1.0"
+  }
+}
