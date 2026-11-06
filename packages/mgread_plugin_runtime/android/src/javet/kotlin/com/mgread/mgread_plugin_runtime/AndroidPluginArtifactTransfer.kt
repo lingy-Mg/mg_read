@@ -5,7 +5,8 @@
  * sessions. Dart writes imports to the returned .part paths; this class checks
  * the completed files and publishes the full batch before one Core restart.
  * Whole batches publish with one directory rename; host construction cleans
- * abandoned staging. Each host calls this from its serial IO thread.
+ * abandoned staging and promotes deferred updates once at app launch. Core
+ * restarts cannot see update-* directories. Each host uses its serial IO thread.
  */
 package com.mgread.mgread_plugin_runtime
 
@@ -35,6 +36,8 @@ internal class AndroidPluginArtifactTransfer(
             it.name.matches(Regex("\\.batch-[a-f0-9]{32}\\.part")) ||
                 it.name.matches(Regex("(?:transfer-|import-).+\\.mgplugin(?:\\.js)?\\.part"))
         }?.forEach(::deletePrivate)
+        inboxDirectory.listFiles()?.filter { it.isDirectory && it.name.matches(Regex("update-[a-f0-9]{32}")) }
+            ?.forEach { check(it.renameTo(File(inboxDirectory, it.name.replaceFirst("update-", "batch-")))) { "file_write_failed" } }
     }
 
     fun beginImportBatch(artifacts: List<Map<String, Any?>>): Map<String, Any?> {
@@ -117,7 +120,7 @@ internal class AndroidPluginArtifactTransfer(
         exportSessions.remove(id)?.input?.close()
     }
 
-    fun finishImportBatch(id: String) {
+    fun finishImportBatch(id: String, nextLaunch: Boolean = false) {
         val batch = activeBatch?.takeIf { it.id == id } ?: error("invalid_request")
         check(File(batch.directory, "manifest.json").isFile) { "invalid_request" }
         batch.files.forEach { file ->
@@ -127,8 +130,11 @@ internal class AndroidPluginArtifactTransfer(
         try {
             batch.files.forEach { check(it.temporary.renameTo(it.target)) { "disk_full" } }
             // Only this one directory rename exposes the complete batch to Core.
-            check(batch.directory.renameTo(File(inboxDirectory, "batch-$id"))) { "disk_full" }
+            check(batch.directory.renameTo(File(inboxDirectory, "${if (nextLaunch) "update" else "batch"}-$id"))) { "disk_full" }
             activeBatch = null
+            if (nextLaunch) inboxDirectory.listFiles()?.filter {
+                it.isDirectory && it.name.matches(Regex("update-[a-f0-9]{32}")) && it.name != "update-$id"
+            }?.forEach { runCatching { deletePrivate(it) } }
         } catch (error: Throwable) {
             runCatching { cancelImportBatch(id) }
             throw error

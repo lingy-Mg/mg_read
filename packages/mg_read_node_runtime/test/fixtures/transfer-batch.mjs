@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { createPluginSingleFile } from "../../dist/plugin-single-file.js";
 import { crc32 } from "../../dist/lan-sync-checksum.js";
 
-export async function createTransferBatch(root, count = 40, activation = "") {
+export async function createTransferBatch(root, count = 40, activation = "", version = "1.0.0") {
   const project = join(root, "project");
   await mkdir(join(project, "dist"), { recursive: true });
   await writeFile(join(project, "dist/index.mjs"), `
@@ -20,7 +20,7 @@ export function getContent() { throw new Error("unused"); }
   for (let index = 0; index < count; index++) {
     const id = `org.test.batch.${String(index).padStart(3, "0")}`;
     await writeFile(join(project, "package.json"), JSON.stringify({
-      name: `@mgread-plugin/batch-${index}`, version: "1.0.0", type: "module",
+      name: `@mgread-plugin/batch-${index}`, version, type: "module",
       main: "dist/index.mjs", engines: {node: ">=24"},
       mgread: {schemaVersion: 1, id, displayName: id, sourceUrl: "https://fixture.example/", packageMode: "single-file",
         pluginApi: 1, contentKinds: ["novel"]},
@@ -28,7 +28,7 @@ export function getContent() { throw new Error("unused"); }
     const path = join(root, `${id}.mgplugin.js`);
     await createPluginSingleFile(project, path);
     const bytes = await readFile(path);
-    artifacts.push({path, artifact: {id, version: "1.0.0", bytes: bytes.length,
+    artifacts.push({path, artifact: {id, version, bytes: bytes.length,
       checksum: crc32(bytes), format: "singleFile", provenance: "installed",
       developmentFingerprint: null, developmentRevision: null}});
   }
@@ -36,5 +36,5 @@ export function getContent() { throw new Error("unused"); }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  console.log(JSON.stringify(await createTransferBatch(process.argv[2], Number(process.argv[3] ?? 40), process.argv[4] ?? "")));
+  console.log(JSON.stringify(await createTransferBatch(process.argv[2], Number(process.argv[3] ?? 40), process.argv[4] ?? "", process.argv[5] ?? "1.0.0")));
 }

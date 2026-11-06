@@ -134,6 +134,7 @@ final class _DesktopPluginArtifactIo {
   }
 
   late final _store = _PluginImportDirectoryStore(_inbox());
+  Future<void> prepareForLaunch() => _store.prepareForLaunch();
   late final _artifactImporter = _PluginArtifactImporter(
     assertOpen: _assertOpen,
     plan: (artifacts, force) => _supervisor.invoke(
@@ -149,6 +150,7 @@ final class _DesktopPluginArtifactIo {
       await _store.publish(batch);
       await _supervisor._restartForPluginImport();
     },
+    publishForNextLaunch: (batch) => _store.publish(batch, nextLaunch: true),
     cancel: _store.cancel,
     installed: () => _supervisor.invoke(const InstalledPluginsInvocation()),
   );
@@ -160,6 +162,9 @@ final class _DesktopPluginArtifactIo {
     artifacts,
     forceUpgradePluginIds: forceUpgradePluginIds,
   );
+
+  Future<void> stageUpdates(List<_PluginArtifactInput> artifacts) =>
+      _artifactImporter.stageUpdates(artifacts);
 
   Future<void> importLocalArtifact(String sourcePath) =>
       _artifactImporter.exclusive(() => _importLocalArtifact(sourcePath));

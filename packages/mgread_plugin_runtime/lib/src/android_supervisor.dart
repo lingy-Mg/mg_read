@@ -9,7 +9,8 @@ const EventChannel _androidRuntimeProgressChannel = EventChannel(
 const Duration _androidStartupTimeout = Duration(seconds: 30);
 
 /// Flutter-facing Android supervisor backed by the Runtime-owned Javet host.
-final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
+final class _AndroidRuntimeSupervisor
+    implements _RuntimeSupervisor, _PluginUpdateStager {
   @override
   Future<void> configureNodeEnvironmentProxy(bool enabled) async {
     if (_disposed) {
@@ -470,6 +471,10 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
       'cancelPluginTransferBatch',
       {'id': batch.id},
     ),
+    publishForNextLaunch: (batch) => _androidRuntimeChannel.invokeMethod<void>(
+      'stagePluginUpdateBatch',
+      {'id': batch.id},
+    ),
     installed: () => invoke(const InstalledPluginsInvocation()),
   );
 
@@ -485,6 +490,10 @@ final class _AndroidRuntimeSupervisor implements _RuntimeSupervisor {
   @override
   Future<void> importLocalPlugin(String sourcePath) =>
       _artifactImporter.exclusive(() => _importLocalPlugin(sourcePath));
+
+  @override
+  Future<void> stagePluginUpdates(List<_PluginArtifactInput> artifacts) =>
+      _artifactImporter.stageUpdates(artifacts);
 
   Future<void> _importLocalPlugin(String sourcePath) async {
     if (_disposed) {

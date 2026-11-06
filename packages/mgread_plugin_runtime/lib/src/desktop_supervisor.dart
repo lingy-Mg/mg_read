@@ -46,7 +46,8 @@ typedef _DesktopDirectoryLauncher = Future<void> Function(Directory directory);
 ///
 /// The values are never supplied by the host application. Production resolves
 /// a staged package bundle; test construction is intentionally isolated below.
-final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
+final class _DesktopRuntimeSupervisor
+    implements _RuntimeSupervisor, _PluginUpdateStager {
   _DesktopRuntimeSupervisor(this._bundle, {bool useEnvironmentProxy = false})
     : _developmentPluginDirectory = _bundle.developmentPluginDirectory,
       _useEnvironmentProxy = useEnvironmentProxy;
@@ -349,6 +350,10 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
       _pluginArtifactIo.importLocalArtifact(sourcePath);
 
   @override
+  Future<void> stagePluginUpdates(List<_PluginArtifactInput> artifacts) =>
+      _pluginArtifactIo.stageUpdates(artifacts);
+
+  @override
   Future<void> setDevelopmentDirectory(String path) async {
     if (_disposed) {
       throw const PluginRuntimeException(
@@ -500,6 +505,7 @@ final class _DesktopRuntimeSupervisor implements _RuntimeSupervisor {
     _startupStartedAt = DateTime.now();
     try {
       await _assertBundleAvailable();
+      await _pluginArtifactIo.prepareForLaunch();
       _assertStartupGeneration(generation);
 
       // The Job handle remains owned by this supervisor for the entire Flutter

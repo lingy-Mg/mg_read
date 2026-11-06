@@ -4,7 +4,8 @@ part of mgread_plugin_runtime;
 /// Installed source IDs stay unique across both catalogs because the public
 /// content API identifies sources by ID. Each backend keeps its own process,
 /// installation root, resource server, and cancellation lifetime.
-final class _HybridRuntimeSupervisor implements _RuntimeSupervisor {
+final class _HybridRuntimeSupervisor
+    implements _RuntimeSupervisor, _PluginUpdateStager {
   _HybridRuntimeSupervisor(this._node, this._native) {
     _diagnosticSubscriptions = <StreamSubscription<RuntimeDiagnostic>>[
       _node.diagnostics.listen(_diagnostics.add),
@@ -389,6 +390,22 @@ final class _HybridRuntimeSupervisor implements _RuntimeSupervisor {
   @override
   Future<void> setDevelopmentDirectory(String path) =>
       _node.setDevelopmentDirectory(path);
+
+  @override
+  Future<void> stagePluginUpdates(List<_PluginArtifactInput> artifacts) async {
+    await _list();
+    if (artifacts.any(
+      (input) =>
+          input.artifact.engine != PluginEngine.node ||
+          _owners[input.artifact.pluginId] != PluginEngine.node,
+    )) {
+      throw const PluginRuntimeException(
+        'invalid_request',
+        'Only installed Node sources can be updated silently.',
+      );
+    }
+    await (_node as _PluginUpdateStager).stagePluginUpdates(artifacts);
+  }
 
   @override
   Stream<RuntimeDiagnostic> get diagnostics => _diagnostics.stream;

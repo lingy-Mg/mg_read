@@ -55,6 +55,11 @@ abstract interface class _RuntimeSupervisor {
   Future<void> dispose();
 }
 
+/// Optional Node-only capability; native-only supervisors retain their boundary.
+abstract interface class _PluginUpdateStager {
+  Future<void> stagePluginUpdates(List<_PluginArtifactInput> artifacts);
+}
+
 final class PluginRuntime {
   PluginRuntime._(this._supervisor);
 
@@ -344,6 +349,25 @@ final class PluginRuntime {
       artifacts,
       forceUpgradePluginIds: forceUpgradePluginIds,
     );
+  }
+
+  /// Verifies and stores installed Node source upgrades for the next app launch.
+  /// Does not restart Core, replace active modules, or expose storage paths.
+  /// Supply the complete latest update selection; it replaces deferred batches.
+  /// Existing manual imports keep their immediate activation behavior.
+  Future<void> stagePluginUpdates(
+    List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})>
+    artifacts,
+  ) {
+    final supervisor = _supervisor;
+    if (supervisor is! _PluginUpdateStager ||
+        artifacts.any((input) => input.artifact.engine != PluginEngine.node)) {
+      throw const PluginRuntimeException(
+        'unsupported',
+        'Deferred updates support installed Node sources only.',
+      );
+    }
+    return (supervisor as _PluginUpdateStager).stagePluginUpdates(artifacts);
   }
 
   /// Selects a desktop development-source directory.

@@ -1,6 +1,7 @@
-/// App-owned online source checks. Catalog reads share one flight; installation
-/// remains an explicit user action through the existing Runtime import lock.
-/// Timing is stored in app settings, never in plugin data or UI state.
+/// App-owned source checks and silent idle downloads. Runtime owns validated
+/// deferred artifacts and activates them on the next application launch.
+/// Manual checks retain their confirmation flow. Failures back off in settings;
+/// foreground/idle admission is rechecked before each source download.
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -39,7 +40,53 @@ final class SourceUpdateCoordinator {
   final DateTime Function() _clock;
   final AutomaticCheckTiming _timing = AutomaticCheckTiming();
   bool _restored = false;
+  bool _downloadPending = false;
   Future<UpdateCheckResult<List<SourceCollectionCandidate>>>? _checking;
+  Future<void>? _preparing;
+  List<SourceCollectionCandidate>? _pending;
+
+  Future<void> prepareAutomaticUpdates({required bool Function() mayContinue}) =>
+      _preparing ??= _prepareAutomaticUpdates(mayContinue).whenComplete(() => _preparing = null);
+
+  bool get _automaticEnabled =>
+      settings.supports(AppSettingKeys.sourceAutoUpdateCheckEnabled) && settings.get(AppSettingKeys.sourceAutoUpdateCheckEnabled);
+
+  Future<void> _prepareAutomaticUpdates(bool Function() mayContinue) async {
+    bool allowed() => _automaticEnabled && mayStartAutomatic?.call() != false && mayContinue();
+    if (!allowed()) return;
+    final updates = _pending ?? (await check()).value;
+    if (updates == null) return;
+    if (updates.isEmpty) {
+      _downloadPending = false;
+      await _saveTiming();
+      return;
+    }
+    _pending = updates;
+    _downloadPending = true;
+    // A process exit during download must not suppress retries for 24 hours.
+    await _saveTiming();
+    try {
+      if (!allowed()) return;
+      await gateway.stageUpdates([
+        for (final update in updates) (artifact: update.plugin.artifact, bytes: _openWhenIdle(update.plugin, allowed)),
+      ]);
+      _pending = null;
+      _downloadPending = false;
+      await _saveTiming();
+    } on _SourceUpdateDeferred {
+      // Navigation only defers work; it is not a network failure.
+    } on Object {
+      _pending = null;
+      _downloadPending = false;
+      _timing.complete(_clock(), success: false);
+      await _saveTiming();
+    }
+  }
+
+  Stream<List<int>> _openWhenIdle(SourceCollectionPlugin plugin, bool Function() allowed) async* {
+    if (!allowed()) throw const _SourceUpdateDeferred();
+    yield* plugin.openBytes();
+  }
 
   Future<UpdateCheckResult<List<SourceCollectionCandidate>>> check({bool force = false}) async {
     if (const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME')) return const UpdateCheckResult(UpdateCheckStatus.unsupported);
@@ -58,10 +105,16 @@ final class SourceUpdateCoordinator {
   Future<UpdateCheckResult<List<SourceCollectionCandidate>>> _check(bool force) async {
     if (!_restored) {
       _restored = true;
-      if (settings.supports(AppSettingKeys.sourceUpdateCheckState)) _timing.restore(settings.get(AppSettingKeys.sourceUpdateCheckState));
+      if (settings.supports(AppSettingKeys.sourceUpdateCheckState)) {
+        final state = settings.get(AppSettingKeys.sourceUpdateCheckState);
+        _timing.restore(state);
+        _downloadPending = state['downloadPending'] == true;
+      }
     }
     final now = _clock();
-    if (!force && !_timing.isDue(now, const Duration(hours: 24))) return const UpdateCheckResult(UpdateCheckStatus.skipped);
+    if (!force && (!_downloadPending || _timing.failures > 0) && !_timing.isDue(now, const Duration(hours: 24))) {
+      return const UpdateCheckResult(UpdateCheckStatus.skipped);
+    }
     try {
       final plugins = await installed();
       if (!force && mayStartAutomatic?.call() == false) return const UpdateCheckResult(UpdateCheckStatus.skipped);
@@ -76,13 +129,20 @@ final class SourceUpdateCoordinator {
       _timing.complete(now, success: false);
       return UpdateCheckResult(UpdateCheckStatus.failed, error: error);
     } finally {
-      if (settings.supports(AppSettingKeys.sourceUpdateCheckState)) {
-        try {
-          await settings.set(AppSettingKeys.sourceUpdateCheckState, _timing.toJson());
-        } on Object {
-          /* Memory cadence survives IO failure. */
-        }
-      }
+      await _saveTiming();
     }
   }
+
+  Future<void> _saveTiming() async {
+    if (!settings.supports(AppSettingKeys.sourceUpdateCheckState)) return;
+    try {
+      await settings.set(AppSettingKeys.sourceUpdateCheckState, {..._timing.toJson(), 'downloadPending': _downloadPending});
+    } on Object {
+      /* Memory cadence survives IO failure. */
+    }
+  }
+}
+
+final class _SourceUpdateDeferred implements Exception {
+  const _SourceUpdateDeferred();
 }

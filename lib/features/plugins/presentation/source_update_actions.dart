@@ -1,4 +1,4 @@
-/// Shared manual/automatic update presentation. Installation only follows an
+/// Manual update presentation. Installation only follows an
 /// explicit confirmation and uses Runtime's existing exclusive import lifecycle.
 library;
 

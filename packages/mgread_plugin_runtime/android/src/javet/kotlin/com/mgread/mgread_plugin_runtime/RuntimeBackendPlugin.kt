@@ -233,6 +233,15 @@ class JavetRuntimeBackendPlugin : FlutterPlugin, MethodChannel.MethodCallHandler
                     }
                 }
             }
+            "stagePluginUpdateBatch" -> {
+                val id = call.argument<String>("id")
+                if (id.isNullOrEmpty()) result.error("invalid_request", "Missing source update batch.", null)
+                else host.stagePluginUpdateBatch(id) { error ->
+                    mainHandler.post {
+                        if (error == null) result.success(null) else result.error(error.code, error.message, null)
+                    }
+                }
+            }
             "dispose" -> {
                 host.dispose()
                 result.success(null)

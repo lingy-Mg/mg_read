@@ -8,6 +8,30 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AndroidPluginArtifactTransferTest {
+    @Test fun deferredUpdatesStayInvisibleUntilHostRecreation() = withTransfer { root, transfer ->
+        val bytes = "fixture".toByteArray()
+        val batch = transfer.beginImportBatch(listOf(metadata(0, bytes)))
+        writeBatch(batch, listOf(bytes))
+        val id = batch["id"] as String
+        transfer.finishImportBatch(id, nextLaunch = true)
+        transfer.cancelImportBatch(id)
+        transfer.dispose()
+        assertEquals(listOf("update-$id"), root.listFiles()!!.map { it.name })
+        AndroidPluginArtifactTransfer(root)
+        assertEquals(listOf("batch-$id"), root.listFiles()!!.map { it.name })
+    }
+
+    @Test fun aFailedNewDownloadKeepsThePreviousDeferredUpdate() = withTransfer { root, transfer ->
+        val bytes = "fixture".toByteArray()
+        val first = transfer.beginImportBatch(listOf(metadata(0, bytes)))
+        writeBatch(first, listOf(bytes))
+        transfer.finishImportBatch(first["id"] as String, nextLaunch = true)
+        val next = transfer.beginImportBatch(listOf(metadata(0, bytes)))
+        writeBatch(next, listOf(byteArrayOf(1)))
+        assertTrue(runCatching { transfer.finishImportBatch(next["id"] as String, nextLaunch = true) }.isFailure)
+        transfer.cancelImportBatch(next["id"] as String)
+        assertEquals(listOf("update-${first["id"]}"), root.listFiles()!!.map { it.name })
+    }
     @Test fun stages65SourcesBeforeOneDirectoryPublication() = withTransfer { root, transfer ->
         val bytes = "fixture".toByteArray()
         val batch = transfer.beginImportBatch((0 until 65).map { metadata(it, bytes) })

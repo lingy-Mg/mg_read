@@ -16,6 +16,7 @@ import { PluginArtifactTransferError, validateArtifactBatch, type PluginTransfer
 export interface PluginImportBatchEntry {
   readonly artifact: PluginTransferArtifact;
   readonly path: string;
+  readonly updatesOnly: boolean;
 }
 
 export function importBatchDirectory(inbox: string, id: string, staged: boolean): string {
@@ -32,7 +33,8 @@ export async function verifyPluginImportBatch(
   const metadata = await lstat(manifestPath);
   if (!metadata.isFile() || metadata.size > 8 * 1024 * 1024) throw new PluginArtifactTransferError("invalid_request");
   const manifest: unknown = JSON.parse(await readFile(manifestPath, "utf8"));
-  if (!isObject(manifest) || manifest.schemaVersion !== 1 || !Array.isArray(manifest.artifacts)) {
+  if (!isObject(manifest) || manifest.schemaVersion !== 1 || !Array.isArray(manifest.artifacts) ||
+      (manifest.updatesOnly !== undefined && typeof manifest.updatesOnly !== "boolean")) {
     throw new PluginArtifactTransferError("invalid_request");
   }
   const raw = manifest.artifacts;
@@ -42,6 +44,9 @@ export async function verifyPluginImportBatch(
     return artifact as PluginTransferArtifact;
   });
   validateArtifactBatch(artifacts);
+  if (manifest.updatesOnly === true && artifacts.some(artifact => artifact.provenance !== "installed")) {
+    throw new PluginArtifactTransferError("invalid_request");
+  }
   if (expected !== undefined && (expected.length !== artifacts.length || artifacts.some((artifact, index) => {
     const candidate = expected[index]!;
     return artifact.id !== candidate.id || artifact.version !== candidate.version || artifact.bytes !== candidate.bytes ||
@@ -63,7 +68,7 @@ export async function verifyPluginImportBatch(
       throw new PluginArtifactTransferError("plugin_transfer_checksum_mismatch");
     }
     await verifyPluginArtifactIdentity(path, artifact);
-    entries.push({artifact, path});
+    entries.push({artifact, path, updatesOnly: manifest.updatesOnly === true});
   }
   return entries;
 }

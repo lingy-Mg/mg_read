@@ -20,10 +20,50 @@ import 'package:mg_read/features/lan_sync/domain/app_update_models.dart';
 import 'package:mg_read/features/library/application/library_catalog_refresh_coordinator.dart';
 import 'package:mg_read/features/media/application/source_audio_playback_service.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
+import 'package:mg_read/features/plugins/application/source_collection_import.dart';
+import 'package:mg_read/features/plugins/application/source_plugin_transfer_gateway.dart';
+import 'package:mg_read/features/plugins/application/source_update_coordinator.dart';
 import '../core/diagnostics/diagnostics_testkit.dart';
 import '../core/settings/settings_testkit.dart';
 
 void main() {
+  testWidgets('source updates wait for ten idle seconds, download silently and leave active imports alone', (tester) async {
+    final app = await _TestApp.create(tester);
+    await app.settings.set(AppSettingKeys.sourceAutoUpdateCheckEnabled, true);
+    final gateway = _SilentSourceGateway();
+    app.sourceUpdater = SourceUpdateCoordinator(
+      settings: app.settings,
+      catalog: _SourceCatalog(),
+      gateway: gateway,
+      installed: () async => const [
+        PluginRuntimePlugin(
+          activeVersion: '1.0.0',
+          contentKinds: ['novel'],
+          displayName: 'source',
+          enabled: true,
+          id: 'source',
+          name: 'source',
+          pendingVersion: null,
+          status: 'active',
+        ),
+      ],
+    );
+    await app.start(tester);
+    await app.elapse(tester, const Duration(seconds: 9));
+    expect(gateway.stages, 0);
+    app.router.go('/reader/book');
+    await tester.pumpAndSettle();
+    await app.elapse(tester, const Duration(minutes: 1));
+    expect(gateway.stages, 0);
+    app.router.go('/');
+    await tester.pumpAndSettle();
+    await app.elapse(tester, const Duration(seconds: 9));
+    expect(gateway.stages, 0);
+    await app.elapse(tester, const Duration(seconds: 1));
+    expect(gateway.stages, 1);
+    expect(find.byType(AlertDialog), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
   testWidgets('launch with a newer release shows the same update prompt without installing', (tester) async {
     final app = (await _TestApp.create(tester))..newRelease = true;
     await app.start(tester);
@@ -245,6 +285,7 @@ final class _TestApp {
   _TestApp(this.startup, this.settings);
   final AppStartupController startup;
   final AppSettingsManager settings;
+  SourceUpdateCoordinator? sourceUpdater;
   final navigation = AppNavigationActivity();
   final stalledRuntime = Completer<PluginRuntimeConnection>();
   var now = DateTime.utc(2026, 11, 1);
@@ -301,6 +342,7 @@ final class _TestApp {
       appRouterProvider.overrideWithValue(router),
       appNavigationActivityProvider.overrideWithValue(navigation),
       githubApkUpdateCoordinatorProvider.overrideWithValue(updater),
+      if (sourceUpdater != null) sourceUpdateCoordinatorProvider.overrideWithValue(sourceUpdater!),
       sourceAudioPlaybackServiceProvider.overrideWithBuild((ref, _) => ref.watch(_audioProvider)),
       libraryCatalogRefreshCoordinatorProvider.overrideWithValue(null),
       pluginRuntimeConnectionProvider.overrideWith((ref) => stalledRuntime.future),
@@ -330,6 +372,48 @@ final class _TestApp {
       await tester.pumpAndSettle();
     }
   }
+}
+
+final class _SourceCatalog implements OnlineSourceCatalogReader {
+  @override
+  Future<SourceCollection> loadCatalog() async => SourceCollection([
+    SourceCollectionPlugin(
+      id: 'source',
+      name: 'source',
+      version: '1.1.0',
+      format: 'singleFile',
+      byteLength: 1,
+      checksum: '00000000',
+      openBytes: () => Stream.value([1]),
+    ),
+  ]);
+}
+
+final class _SilentSourceGateway implements SourcePluginTransferGateway {
+  int stages = 0;
+  @override
+  Future<List<PluginTransferPlanItem>> plan(List<PluginTransferArtifact> artifacts) async => [
+    for (final artifact in artifacts)
+      PluginTransferPlanItem(
+        action: PluginTransferPlanAction.upgrade,
+        pluginId: artifact.pluginId,
+        receiverVersion: '1.0.0',
+        version: artifact.version,
+      ),
+  ];
+  @override
+  Future<void> stageUpdates(List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})> artifacts) async {
+    stages++;
+    for (final input in artifacts) {
+      await input.bytes.drain<void>();
+    }
+  }
+
+  @override
+  Future<List<PluginTransferImportResult>> importArtifacts(
+    List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})> artifacts, {
+    Set<String> forceUpgradePluginIds = const {},
+  }) async => fail('Automatic downloads must not activate sources or prompt.');
 }
 
 final _audioProvider = NotifierProvider<_AudioState, SourceAudioPlaybackState>(_AudioState.new);

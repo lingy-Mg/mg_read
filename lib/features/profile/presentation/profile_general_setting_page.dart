@@ -102,8 +102,8 @@ class ProfileGeneralSettingPage extends ConsumerWidget {
     SwitchListTile.adaptive(
       key: const Key('source-auto-update-check'),
       contentPadding: EdgeInsets.zero,
-      title: const Text('自动检查书源更新'),
-      subtitle: const Text('每 24 小时检查，确认后安装'),
+      title: const Text('自动更新数据源'),
+      subtitle: const Text('空闲时静默下载，下次启动生效'),
       value: settings.get(AppSettingKeys.sourceAutoUpdateCheckEnabled),
       onChanged: (value) => settings.set(AppSettingKeys.sourceAutoUpdateCheckEnabled, value),
     ),

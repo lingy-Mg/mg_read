@@ -444,6 +444,9 @@ SourceCollection _catalog(String version) => SourceCollection(<SourceCollectionP
 ]);
 
 class _SourceTransferGateway implements SourcePluginTransferGateway {
+  @override
+  Future<void> stageUpdates(List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})> artifacts) async =>
+      fail('Manual updates must use the confirmed import flow.');
   _SourceTransferGateway({required this.action, required this.receiverVersion, this.planFailure});
 
   final PluginTransferPlanAction action;

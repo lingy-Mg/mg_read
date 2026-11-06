@@ -5,7 +5,8 @@ part of mgread_plugin_runtime;
 /// All capabilities and resources use the same authenticated Core protocol as
 /// desktop. The native channel owns only process lifetime, WebView and local
 /// artifact IO; callers retain the unchanged PluginRuntime Facade.
-final class _AndroidNodeProcessSupervisor implements _RuntimeSupervisor {
+final class _AndroidNodeProcessSupervisor
+    implements _RuntimeSupervisor, _PluginUpdateStager {
   static const _channel = MethodChannel('mgread_plugin_runtime/android_node');
   static const _events = EventChannel(
     'mgread_plugin_runtime/android_node/events',
@@ -461,6 +462,8 @@ final class _AndroidNodeProcessSupervisor implements _RuntimeSupervisor {
       'cancelPluginTransferBatch',
       {'id': batch.id},
     ),
+    publishForNextLaunch: (batch) =>
+        _channel.invokeMethod<void>('stagePluginUpdateBatch', {'id': batch.id}),
     installed: () => invoke(const InstalledPluginsInvocation()),
   );
 
@@ -483,6 +486,10 @@ final class _AndroidNodeProcessSupervisor implements _RuntimeSupervisor {
       'Android has no development package builder.',
     );
   }
+
+  @override
+  Future<void> stagePluginUpdates(List<_PluginArtifactInput> artifacts) =>
+      _artifactImporter.stageUpdates(artifacts);
 
   @override
   Future<void> setDevelopmentDirectory(String path) {

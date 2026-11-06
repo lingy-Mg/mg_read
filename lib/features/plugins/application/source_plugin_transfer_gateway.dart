@@ -24,6 +24,8 @@ final sourcePluginTransferGatewayProvider = Provider<SourcePluginTransferGateway
 abstract interface class SourcePluginTransferGateway {
   Future<List<PluginTransferPlanItem>> plan(List<PluginTransferArtifact> artifacts);
 
+  Future<void> stageUpdates(List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})> artifacts);
+
   Future<List<PluginTransferImportResult>> importArtifacts(
     List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})> artifacts, {
     Set<String> forceUpgradePluginIds = const <String>{},
@@ -34,6 +36,10 @@ final class MgReadSourcePluginTransferGateway implements SourcePluginTransferGat
   const MgReadSourcePluginTransferGateway(this._runtime);
 
   final PluginRuntime _runtime;
+
+  @override
+  Future<void> stageUpdates(List<({PluginTransferArtifact artifact, Stream<List<int>> bytes})> artifacts) =>
+      _runtime.stagePluginUpdates(artifacts);
 
   @override
   Future<List<PluginTransferPlanItem>> plan(List<PluginTransferArtifact> artifacts) =>

@@ -128,6 +128,13 @@ internal class AndroidRuntimeHost(
         }
     }
 
+    fun stagePluginUpdateBatch(id: String, callback: (AndroidRuntimeError?) -> Unit) {
+        engine.submit({ callback(it) }) {
+            try { artifactTransfer.finishImportBatch(id, nextLaunch = true); callback(null) }
+            catch (_: Throwable) { callback(AndroidRuntimeError("plugin_transfer_failed", "Android could not stage source updates.")) }
+        }
+    }
+
     private fun selectedFileName(sourcePath: String): String {
         if (!isContentUri(sourcePath)) return localFile(sourcePath).name
         val uri = Uri.parse(sourcePath)

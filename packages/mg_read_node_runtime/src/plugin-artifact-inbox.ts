@@ -8,6 +8,7 @@
  * 注意：
  * - 按单 artifact 与整批字节限制接收；不把一次传输拆成多个冷启动。
  * - 处理结果由 Runtime 统一返回。
+ * - 自动更新批次只升级仍然安装的旧版本，不恢复卸载项或覆盖更高 pending。
  *
  */
 import { importBatchDirectory, verifyPluginImportBatch } from "./plugin-import-batch.js";
@@ -18,7 +19,8 @@ import type { DesktopRuntimeProgressSink } from "./desktop-runtime.js";
 import { InstalledPluginCatalog } from "./plugin-catalog.js";
 import { PluginInstaller } from "./plugin-installer.js";
 import { MAX_PLUGIN_ARTIFACT_BYTES } from "./plugin-single-file.js";
-import { MAX_PLUGIN_ARTIFACT_TRANSFER_BATCH_BYTES } from "./plugin-artifact-transfer.js";
+import { MAX_PLUGIN_ARTIFACT_TRANSFER_BATCH_BYTES, PluginArtifactTransferManager } from "./plugin-artifact-transfer.js";
+import type { PluginImportBatchEntry } from "./plugin-import-batch.js";
 
 interface BundledPluginArtifact {
   readonly path: string;
@@ -113,6 +115,7 @@ export async function installPluginArtifactInbox(
       const entries = await verifyPluginImportBatch(inboxRoot, id, false);
       discoveredCount += entries.length;
       for (const entry of entries) {
+        if (entry.updatesOnly && !await shouldApplyUpdate(dataRoot, entry)) continue;
         await installer.installArtifact(entry.path, {replaceExistingVersion: true});
         installedCount++;
       }
@@ -123,6 +126,17 @@ export async function installPluginArtifactInbox(
     }
   }
   return Object.freeze({discoveredCount, installedCount});
+}
+
+/** A queued automatic upgrade cannot reinstall a removed source or undo a manual upgrade. */
+async function shouldApplyUpdate(dataRoot: string, entry: PluginImportBatchEntry): Promise<boolean> {
+  const artifact = entry.artifact;
+  const markers = await readBundledPluginMarkers(resolve(dataRoot, "plugins", artifact.id));
+  if (markers.uninstallPending) return false;
+  const versions = [markers.currentVersion, markers.pendingVersion].filter((version): version is string => version !== null);
+  if (versions.length === 0) return false;
+  const transfer = new PluginArtifactTransferManager(dataRoot);
+  return versions.every(version => transfer.plan([artifact], [{ id: artifact.id, activeVersion: version, pendingVersion: null }])[0]?.action === "upgrade");
 }
 
 function parseBundledPluginArtifact(name: string, root: string): BundledPluginArtifact {

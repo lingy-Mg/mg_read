@@ -12,6 +12,20 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test(
+    'Android silent updates verify and publish without a restart or active catalog mutation',
+    () async {
+      final fixture = await _Fixture.create();
+      fixture.installed.add('org.test.update');
+      final artifact = _artifact('org.test.update', 1, version: '1.1.0');
+      await fixture.runtime.stagePluginUpdates([
+        (artifact: artifact, bytes: Stream.value([1])),
+      ]);
+      expect(fixture.events, ['plan', 'begin', 'verify', 'stage', 'cancel']);
+      expect(fixture.installed, {'org.test.update'});
+    },
+  );
+
+  test(
     '65 Android sources write files, verify once and finalize once',
     () async {
       final fixture = await _Fixture.create(quarantineLast: true);
@@ -142,17 +156,20 @@ void main() {
   });
 }
 
-PluginTransferArtifact _artifact(String id, int bytes) =>
-    PluginTransferArtifact(
-      pluginId: id,
-      version: '1.0.0',
-      bytes: bytes,
-      checksum: '00000000',
-      format: PluginArtifactFormat.singleFile,
-      provenance: PluginArtifactProvenance.installed,
-      developmentFingerprint: null,
-      developmentRevision: null,
-    );
+PluginTransferArtifact _artifact(
+  String id,
+  int bytes, {
+  String version = '1.0.0',
+}) => PluginTransferArtifact(
+  pluginId: id,
+  version: version,
+  bytes: bytes,
+  checksum: '00000000',
+  format: PluginArtifactFormat.singleFile,
+  provenance: PluginArtifactProvenance.installed,
+  developmentFingerprint: null,
+  developmentRevision: null,
+);
 
 ({PluginTransferArtifact artifact, Stream<List<int>> bytes}) _input(
   String id, {
@@ -217,7 +234,9 @@ final class _Fixture {
                   'id': artifact['id'],
                   'version': artifact['version'],
                   'action': installed.contains(artifact['id'])
-                      ? 'same'
+                      ? artifact['version'] == '1.0.0'
+                            ? 'same'
+                            : 'upgrade'
                       : 'missing',
                   'receiverVersion': installed.contains(artifact['id'])
                       ? '1.0.0'
@@ -287,6 +306,15 @@ final class _Fixture {
       case 'finishPluginTransferBatch':
         events.add('finish');
         installed.addAll(artifacts.map((artifact) => artifact['id'] as String));
+        return null;
+      case 'stagePluginUpdateBatch':
+        events.add('stage');
+        final manifest =
+            jsonDecode(
+                  await File('${directory.path}/manifest.json').readAsString(),
+                )
+                as Map;
+        expect(manifest['updatesOnly'], isTrue);
         return null;
       case 'cancelPluginTransferBatch':
         events.add('cancel');

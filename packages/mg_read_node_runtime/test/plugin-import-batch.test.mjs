@@ -8,11 +8,13 @@ import { createTransferBatch } from "./fixtures/transfer-batch.mjs";
 import { importBatchDirectory, verifyPluginImportBatch } from "../dist/plugin-import-batch.js";
 import { installPluginArtifactInbox } from "../dist/plugin-artifact-inbox.js";
 import { PluginArtifactTransferManager } from "../dist/plugin-artifact-transfer.js";
+import { PluginInstaller } from "../dist/plugin-installer.js";
+import { PluginManager } from "../dist/plugin-manager.js";
 
-async function fixture(t, count = 2) {
+async function fixture(t, count = 2, version = "1.0.0") {
   const root = await mkdtemp(join(tmpdir(), "mgread-import-contract-"));
   t.after(() => rm(root, {recursive: true, force: true}));
-  const records = await createTransferBatch(join(root, "fixture"), count);
+  const records = await createTransferBatch(join(root, "fixture"), count, "", version);
   const data = join(root, "data");
   const inbox = join(data, "import-inbox");
   const id = "a".repeat(32);
@@ -22,6 +24,34 @@ async function fixture(t, count = 2) {
   for (let index = 0; index < records.length; index++) await copyFile(records[index].path, join(staging, `${index}.mgplugin.js.part`));
   await writeFile(join(staging, "manifest.json"), JSON.stringify({schemaVersion: 1, artifacts}));
   return {root, data, inbox, id, staging, records, artifacts};
+}
+
+for (const state of ["older", "newer", "pending-newer", "removed", "uninstall-pending"]) {
+  test(`automatic batches recheck installed markers before applying: ${state}`, async t => {
+    const f = await fixture(t, 1, "1.1.0");
+    const installer = new PluginInstaller(f.data);
+    const id = f.records[0].artifact.id;
+    if (state !== "removed") {
+      const [original] = await createTransferBatch(join(f.root, "original"), 1, "", state === "newer" ? "1.2.0" : "1.0.0");
+      await installer.installArtifact(original.path);
+      const manager = new PluginManager(f.data);
+      await manager.initialize();
+      await manager.close();
+      if (state === "pending-newer") {
+        const [next] = await createTransferBatch(join(f.root, "manual"), 1, "", "1.2.0");
+        await installer.installArtifact(next.path);
+      }
+      if (state === "uninstall-pending") await installer.scheduleUninstall(id);
+    }
+    await writeFile(join(f.staging, "manifest.json"), JSON.stringify({schemaVersion: 1, updatesOnly: true, artifacts: f.artifacts}));
+    await publish(f);
+    const result = await installPluginArtifactInbox(f.data, f.inbox, () => {});
+    assert.equal(result.installedCount, state === "older" ? 1 : 0);
+    if (state === "older") assert.equal((await readFile(join(f.data, "plugins", id, "pending"), "utf8")).trim(), "1.1.0");
+    if (state === "pending-newer") assert.equal((await readFile(join(f.data, "plugins", id, "pending"), "utf8")).trim(), "1.2.0");
+    if (state === "removed") await assert.rejects(readdir(join(f.data, "plugins")), {code: "ENOENT"});
+    assert.deepEqual(await readdir(f.inbox), []);
+  });
 }
 
 async function publish(f) {

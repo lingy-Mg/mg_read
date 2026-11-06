@@ -2,7 +2,8 @@ part of mgread_plugin_runtime;
 
 /// Shared Node import transaction for desktop, Javet and Android Node service.
 /// Owns admission from planning through catalog confirmation, bounded file IO,
-/// manifests and cleanup. Hosts own private staging roots and restart mechanics.
+/// manifests and cleanup. Deferred updates publish separately and stay invisible
+/// to Core restarts until a new application host promotes them on launch.
 typedef _PluginArtifactInput = ({
   PluginTransferArtifact artifact,
   Stream<List<int>> bytes,
@@ -14,8 +15,12 @@ final class _PluginImportBatch {
   final Directory directory;
   final List<String> temporaryPaths;
 
-  Map<String, Object?> manifest(List<_PluginArtifactInput> inputs) => {
+  Map<String, Object?> manifest(
+    List<_PluginArtifactInput> inputs, {
+    bool updatesOnly = false,
+  }) => {
     'schemaVersion': 1,
+    if (updatesOnly) 'updatesOnly': true,
     'artifacts': [
       for (var index = 0; index < inputs.length; index++)
         {
@@ -56,6 +61,7 @@ final class _PluginArtifactImporter {
     required this.begin,
     required this.verify,
     required this.publishAndRestart,
+    required this.publishForNextLaunch,
     required this.cancel,
     required this.installed,
     required this.assertOpen,
@@ -70,10 +76,12 @@ final class _PluginArtifactImporter {
   final Future<void> Function(_PluginImportBatch, List<PluginTransferArtifact>)
   verify;
   final Future<void> Function(_PluginImportBatch) publishAndRestart;
+  final Future<void> Function(_PluginImportBatch) publishForNextLaunch;
   final Future<void> Function(_PluginImportBatch) cancel;
   final Future<List<InstalledPlugin>> Function() installed;
   final void Function() assertOpen;
   Future<void> _tail = Future<void>.value();
+  final Map<String, String> _stagedVersions = {};
 
   Future<T> exclusive<T>(Future<T> Function() operation) {
     final result = _tail.then((_) {
@@ -87,14 +95,44 @@ final class _PluginArtifactImporter {
   Future<List<PluginTransferImportResult>> importArtifacts(
     List<_PluginArtifactInput> inputs, {
     Set<String> forceUpgradePluginIds = const {},
-  }) => exclusive(() async {
+  }) => exclusive(
+    () => _import(inputs, forceUpgradePluginIds: forceUpgradePluginIds),
+  );
+
+  Future<void> stageUpdates(
+    List<_PluginArtifactInput> inputs,
+  ) => exclusive(() async {
+    _validatePluginImportBatch(inputs);
+    final fresh = inputs
+        .where(
+          (input) =>
+              _stagedVersions[input.artifact.pluginId] !=
+              input.artifact.version,
+        )
+        .toList();
+    if (fresh.isEmpty) return;
+    // Publish the complete latest selection, preserving its single transaction.
+    await _import(inputs, updatesOnly: true);
+    _stagedVersions.clear();
+    _stagedVersions.addAll({
+      for (final input in inputs)
+        input.artifact.pluginId: input.artifact.version,
+    });
+  });
+
+  Future<List<PluginTransferImportResult>> _import(
+    List<_PluginArtifactInput> inputs, {
+    Set<String> forceUpgradePluginIds = const {},
+    bool updatesOnly = false,
+  }) async {
     _validatePluginImportBatch(inputs);
     final artifacts = [for (final input in inputs) input.artifact];
     final decisions = await plan(artifacts, forceUpgradePluginIds);
     if (decisions.length != artifacts.length ||
         decisions.any(
           (item) =>
-              item.action != PluginTransferPlanAction.missing &&
+              (updatesOnly ||
+                  item.action != PluginTransferPlanAction.missing) &&
               item.action != PluginTransferPlanAction.upgrade,
         )) {
       throw const PluginRuntimeException(
@@ -121,10 +159,17 @@ final class _PluginArtifactImporter {
       }
       await File(
         _joinPath([batch.directory.path, 'manifest.json']),
-      ).writeAsString(jsonEncode(batch.manifest(inputs)), flush: true);
+      ).writeAsString(
+        jsonEncode(batch.manifest(inputs, updatesOnly: updatesOnly)),
+        flush: true,
+      );
       assertOpen();
       await verify(batch, artifacts);
       assertOpen();
+      if (updatesOnly) {
+        await publishForNextLaunch(batch);
+        return const [];
+      }
       await publishAndRestart(batch);
       return _pluginImportResults(artifacts, await installed());
     } on PlatformException catch (error) {
@@ -143,7 +188,7 @@ final class _PluginArtifactImporter {
         }
       }
     }
-  });
+  }
 }
 
 void _validatePluginImportBatch(List<_PluginArtifactInput> inputs) {
@@ -236,11 +281,13 @@ final class _PluginImportDirectoryStore {
   final Directory inbox;
   Future<void>? _prepared;
 
+  Future<void> prepareForLaunch() => _prepared ??= _prepare();
+
   Future<_PluginImportBatch> begin(
     List<PluginTransferArtifact> artifacts,
   ) async {
     try {
-      await (_prepared ??= _prepare());
+      await prepareForLaunch();
     } on Object {
       _prepared = null;
       rethrow;
@@ -271,15 +318,41 @@ final class _PluginImportDirectoryStore {
             r'^(?:transfer-|import-).+\.mgplugin(?:\.js)?\.part$',
           ).hasMatch(name)) {
         await entry.delete(recursive: entry is Directory);
+      } else if (entry is Directory &&
+          RegExp(r'^update-[a-f0-9]{32}$').hasMatch(name)) {
+        await entry.rename(
+          _joinPath([inbox.path, name.replaceFirst('update-', 'batch-')]),
+        );
       }
     }
   }
 
-  Future<void> publish(_PluginImportBatch batch) async {
+  Future<void> publish(
+    _PluginImportBatch batch, {
+    bool nextLaunch = false,
+  }) async {
     for (final path in batch.temporaryPaths) {
       await File(path).rename(path.substring(0, path.length - '.part'.length));
     }
-    await batch.directory.rename(_joinPath([inbox.path, 'batch-${batch.id}']));
+    await batch.directory.rename(
+      _joinPath([inbox.path, '${nextLaunch ? 'update' : 'batch'}-${batch.id}']),
+    );
+    if (nextLaunch) {
+      await for (final entry in inbox.list(followLinks: false)) {
+        final name = entry.uri.pathSegments
+            .where((part) => part.isNotEmpty)
+            .last;
+        if (entry is Directory &&
+            RegExp(r'^update-[a-f0-9]{32}$').hasMatch(name) &&
+            name != 'update-${batch.id}') {
+          try {
+            await entry.delete(recursive: true);
+          } on FileSystemException {
+            /* A later cold start rechecks versions. */
+          }
+        }
+      }
+    }
   }
 
   Future<void> cancel(_PluginImportBatch batch) async {

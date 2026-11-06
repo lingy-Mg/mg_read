@@ -11,6 +11,59 @@ import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'test_paths.dart';
 
 void main() {
+  test(
+    'silent upgrades survive Core restarts and activate only on a new application host',
+    () async {
+      final original = await _batch(1);
+      final update = await _batch(1, version: '1.1.0');
+      await original.runtime.importPluginArtifacts(original.artifacts);
+      await original.runtime.stagePluginUpdates(update.artifacts);
+      expect(original.runtime.debugDesktopProcessStartCount, 2);
+      expect(
+        (await original.runtime.invoke(
+          const InstalledPluginsInvocation(),
+        )).single.activeVersion,
+        '1.0.0',
+      );
+      await original.runtime.configureNodeEnvironmentProxy(true);
+      expect(
+        (await original.runtime.invoke(
+          const InstalledPluginsInvocation(),
+        )).single.activeVersion,
+        '1.0.0',
+      );
+      expect(original.runtime.debugDesktopProcessStartCount, 3);
+      await original.runtime.debugDispose();
+      final relaunched = PluginRuntime.desktopForTesting(
+        runtimeRepositoryRoot: nodeRuntimeRepositoryRoot,
+        runtimeDataRoot: original.dataRoot,
+      );
+      addTearDown(relaunched.debugDispose);
+      final installed = (await relaunched.invoke(
+        const InstalledPluginsInvocation(),
+      )).single;
+      expect(installed.activeVersion, '1.1.0');
+      expect(installed.pendingVersion, isNull);
+      expect(installed.status, 'active');
+    },
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
+
+  test(
+    'silent staging rejects new sources without downloading or restarting',
+    () async {
+      final fixture = await _batch(1);
+      await expectLater(
+        fixture.runtime.stagePluginUpdates(fixture.artifacts),
+        throwsA(isA<PluginRuntimeException>()),
+      );
+      expect(fixture.runtime.debugDesktopProcessStartCount, 1);
+      expect(
+        await fixture.runtime.invoke(const InstalledPluginsInvocation()),
+        isEmpty,
+      );
+    },
+  );
   test('40 streamed sources activate in one desktop restart', () async {
     final fixture = await _batch(40);
     final runtime = fixture.runtime;
@@ -169,10 +222,8 @@ typedef _Artifact = ({
   Stream<List<int>> bytes,
 });
 
-Future<({PluginRuntime runtime, List<_Artifact> artifacts})> _batch(
-  int count, {
-  String activation = '',
-}) async {
+Future<({PluginRuntime runtime, List<_Artifact> artifacts, Directory dataRoot})>
+_batch(int count, {String activation = '', String version = '1.0.0'}) async {
   final root = await Directory.systemTemp.createTemp('mgread-facade-batch-');
   final repository = nodeRuntimeRepositoryRoot;
   final node = File.fromUri(
@@ -205,6 +256,7 @@ Future<({PluginRuntime runtime, List<_Artifact> artifacts})> _batch(
     root.path,
     '$count',
     activation,
+    version,
   ]);
   expect(generated.exitCode, 0, reason: '${generated.stderr}');
   final records = jsonDecode(generated.stdout as String) as List<dynamic>;
@@ -226,5 +278,9 @@ Future<({PluginRuntime runtime, List<_Artifact> artifacts})> _batch(
       bytes: File(record['path'] as String).openRead(),
     ));
   }
-  return (runtime: runtime, artifacts: artifacts);
+  return (
+    runtime: runtime,
+    artifacts: artifacts,
+    dataRoot: Directory.fromUri(root.uri.resolve('runtime-data/')),
+  );
 }

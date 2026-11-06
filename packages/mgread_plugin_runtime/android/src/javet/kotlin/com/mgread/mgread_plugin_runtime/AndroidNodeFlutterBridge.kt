@@ -124,6 +124,10 @@ internal class AndroidNodeFlutterBridge(
                 transfer.cancelImportBatch(required(call, "id"))
                 null
             }
+            "stagePluginUpdateBatch" -> fileOperation(result) {
+                transfer.finishImportBatch(required(call, "id"), nextLaunch = true)
+                null
+            }
             "beginPluginTransferExport" -> fileOperation(result) {
                 transfer.beginExport(
                     dataRoot, required(call, "pluginId"),

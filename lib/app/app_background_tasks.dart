@@ -1,7 +1,9 @@
 /// Foreground-triggered maintenance after the first usable local frame. Checks
 /// are independently deduplicated by their owners. App updates bypass persisted
 /// timing once per launch, then run every 30 minutes outside reader/player
-/// sessions and active audio. Prompts wait for an idle top-level route. The
+/// sessions and active audio. Source updates download silently after ten idle
+/// seconds and remain deferred until the next launch; no source prompts open.
+/// App update prompts wait for an idle top-level route. The
 /// widget owns and cancels its timer; navigation/audio exit releases due checks.
 /// Update dialogs use the root navigator context because this maintenance
 /// widget is mounted beside the router, outside its Navigator subtree.
@@ -13,15 +15,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app_navigation_activity.dart';
 import 'app_router.dart';
 import 'app_startup.dart';
-import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/app_update/application/github_apk_update.dart';
 import 'package:mg_read/features/app_update/presentation/github_apk_update_prompt.dart';
 import 'package:mg_read/features/library/application/library_catalog_refresh_coordinator.dart';
 import 'package:mg_read/features/library/application/library_page_controller.dart';
 import 'package:mg_read/features/media/application/source_audio_playback_service.dart';
-import 'package:mg_read/features/plugins/application/source_collection_import.dart';
+import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/plugins/application/source_update_coordinator.dart';
-import 'package:mg_read/features/plugins/presentation/source_update_actions.dart';
 
 class AppBackgroundTasks extends ConsumerStatefulWidget {
   const AppBackgroundTasks({super.key});
@@ -37,9 +37,10 @@ class _AppBackgroundTasksState extends ConsumerState<AppBackgroundTasks> with Wi
   bool _startupApkCheckPending = true;
   bool _checkingApk = false;
   Timer? _apkCheckTimer;
+  Timer? _sourceUpdateTimer;
+  bool _checkingSources = false;
   GitHubApkRelease? _apk;
   GitHubApkRelease? _acceptedApk;
-  List<SourceCollectionCandidate>? _sources;
   final Set<String> _shown = {};
   bool get _foreground =>
       WidgetsBinding.instance.lifecycleState == null || WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
@@ -77,6 +78,7 @@ class _AppBackgroundTasksState extends ConsumerState<AppBackgroundTasks> with Wi
 
   void _onNavigation() {
     if (!mounted) return;
+    _scheduleSourceUpdates();
     if (appRootNavigatorKey.currentState?.canPop() == false) {
       _trigger();
     } else {
@@ -87,7 +89,7 @@ class _AppBackgroundTasksState extends ConsumerState<AppBackgroundTasks> with Wi
   void _trigger() {
     if (!mounted || !_ready || !_foreground) return;
     _triggerAppUpdate();
-    unawaited(_checkSources().catchError((Object _) {}));
+    _scheduleSourceUpdates();
     unawaited(_refreshCatalog());
   }
 
@@ -118,11 +120,34 @@ class _AppBackgroundTasksState extends ConsumerState<AppBackgroundTasks> with Wi
     }
   }
 
+  bool get _canUpdateSources =>
+      mounted &&
+      _ready &&
+      _foreground &&
+      _idle &&
+      !_navigation.hasContentSession &&
+      !_promptOpen &&
+      !_installing &&
+      !ref.read(pluginRuntimeSourceImportProvider).isImporting;
+
+  void _scheduleSourceUpdates({Duration delay = const Duration(seconds: 10)}) {
+    _sourceUpdateTimer?.cancel();
+    _sourceUpdateTimer = null;
+    if (!_canUpdateSources || _checkingSources) return;
+    _sourceUpdateTimer = Timer(delay, () => unawaited(_checkSources()));
+  }
+
   Future<void> _checkSources() async {
-    final result = await ref.read(sourceUpdateCoordinatorProvider).check();
-    if (!mounted) return;
-    if (result.status == UpdateCheckStatus.available) _sources = result.value;
-    await _flushPrompts();
+    if (!_canUpdateSources || _checkingSources) return;
+    _checkingSources = true;
+    try {
+      await ref.read(sourceUpdateCoordinatorProvider).prepareAutomaticUpdates(mayContinue: () => _canUpdateSources);
+    } on Object {
+      // Maintenance never interrupts the foreground route.
+    } finally {
+      _checkingSources = false;
+      if (mounted) _scheduleSourceUpdates(delay: const Duration(minutes: 1));
+    }
   }
 
   Future<void> _refreshCatalog() async {
@@ -161,22 +186,9 @@ class _AppBackgroundTasksState extends ConsumerState<AppBackgroundTasks> with Wi
         }
         return;
       }
-      final settings = ref.read(appSettingsProvider);
-      final sources = _sources;
-      _sources = null;
-      if (sources != null &&
-          settings.supports(AppSettingKeys.sourceAutoUpdateCheckEnabled) &&
-          settings.get(AppSettingKeys.sourceAutoUpdateCheckEnabled)) {
-        _sources = null;
-        final fresh = sources.where((item) => !_shown.contains('source:${item.plugin.id}:${item.plugin.version}')).toList();
-        if (fresh.isNotEmpty) {
-          _shown.addAll(fresh.map((item) => 'source:${item.plugin.id}:${item.plugin.version}'));
-          await offerSourceUpdates(dialogContext, ref, fresh);
-        }
-      }
     } finally {
       _promptOpen = false;
-      if (mounted && (_apk != null || _sources != null)) {
+      if (mounted && _apk != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) unawaited(_flushPrompts());
         });
@@ -213,6 +225,7 @@ class _AppBackgroundTasksState extends ConsumerState<AppBackgroundTasks> with Wi
   @override
   void dispose() {
     _apkCheckTimer?.cancel();
+    _sourceUpdateTimer?.cancel();
     _navigation.changes.removeListener(_onNavigation);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -221,6 +234,7 @@ class _AppBackgroundTasksState extends ConsumerState<AppBackgroundTasks> with Wi
   @override
   Widget build(BuildContext context) {
     ref.listen(sourceAudioPlaybackServiceProvider, (_, next) {
+      _scheduleSourceUpdates();
       if (!next.isActive) _triggerAppUpdate();
     });
     return const SizedBox.shrink();

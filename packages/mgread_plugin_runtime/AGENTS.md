@@ -42,6 +42,10 @@
 - `SourceResourceResolveInvocation.filterVideoAds` 是可缺省的宿主单次播放偏好，随 resolve 传给支持 HLS 变换的资源所有者。开启时 Node/Bun 提供通用策略兜底，关闭时清除该播放描述的来源过滤策略，缺省及不支持变换的资源所有者保留原语义；主应用不解析或改写资源 token，不把设置持久化进 Runtime。
 - Windows/macOS、Android Javet 与 Node 进程后端共用 `plugin_artifact_importer.dart` 的整次导入排队、
   大小限制、分块文件写入、manifest、失败清理及目录结果确认；本地选择导入也必须进入同一队列。
+- `PluginRuntime.stagePluginUpdates` 只暂存已安装 Node 来源的升级，沿用同一串行校验事务；已校验的 `update-*`
+  目录在新宿主首次准备时才转为 Core 可见的 `batch-*`，当前宿主的任意 Core 重启不得提前生效。
+  直接回归为 `plugin_batch_import_test.dart`、`android_plugin_batch_test.dart` 与 Kotlin `AndroidPluginArtifactTransferTest`；
+  根 `integration_test/android_deferred_source_update_test.dart` 在隔离包中跨两次 App 进程启动验收。
 - Android 通过 `beginPluginTransferBatch` 一次分配整批私有 `.part` 路径。Dart 直接写文件，Core 统一校验
   manifest 与包内 ID/版本，Kotlin 复核长度/CRC 并一次 rename 批次目录，再刷新 Core/Service。禁止逐块传字节。
   两个 Android 后端共享 `data/import-inbox`；旧 Javet inbox 在宿主创建时迁移。宿主只在创建时回收未发布暂存，
