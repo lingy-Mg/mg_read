@@ -6,14 +6,39 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mg_read/features/discovery/presentation/widgets/discovery_tv_pagination.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 
 import '../../../support/tv_discovery_pagination_fixture.dart';
 
 void main() {
+  testWidgets('TV starts the next page with two screens still ahead and keeps focus', (tester) async {
+    final page = TvDiscoveryPaginationFixture(count: 112);
+    await _mount(tester, page);
+    await _settle(tester);
+    expect(page.requests, isEmpty);
+    final focused = _cardFocus(tester, 'videos-0')..requestFocus();
+    await _settle(tester);
+    final scrollable = find.byWidgetPredicate((widget) => widget is Scrollable && widget.axisDirection == AxisDirection.down).first;
+    final scroll = tester.state<ScrollableState>(scrollable).position;
+    final viewport = tester.getRect(scrollable);
+    final footer = find.byType(DiscoveryTvPaginationFooter);
+    final footerTop = tester.getTopLeft(footer).dy - viewport.top;
+    scroll.jumpTo(footerTop - viewport.height * 2.75);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.getTopLeft(footer).dy - viewport.top, greaterThan(viewport.height * 2));
+    expect(page.requests, [('videos', '2')], reason: 'loading starts well before the last half-screen');
+    expect(FocusManager.instance.primaryFocus, same(focused));
+    page.complete(add: 28);
+    await _settle(tester);
+    expect(page.requests, hasLength(1));
+    expect(FocusManager.instance.primaryFocus, same(focused));
+    expect(tester.takeException(), isNull);
+  });
+
   for (final depth in [0, 1]) {
     testWidgets('TV depth $depth loads near the end without OK and retains content focus', (tester) async {
-      final page = TvDiscoveryPaginationFixture(depth: depth, count: 56);
+      final page = TvDiscoveryPaginationFixture(depth: depth, count: 84);
       await _mount(tester, page);
       await _settle(tester);
       expect(page.requests, isEmpty);
@@ -34,7 +59,7 @@ void main() {
       page.complete(add: 14);
       await _settle(tester);
       expect(FocusManager.instance.primaryFocus, same(focused));
-      expect(find.byKey(const ValueKey('runtime-discovery-cover-videos-69')), findsOneWidget);
+      expect(find.byKey(const ValueKey('runtime-discovery-cover-videos-97')), findsOneWidget);
       expect(page.requests, hasLength(1));
       expect(tester.takeException(), isNull);
     });

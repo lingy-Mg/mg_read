@@ -1,4 +1,6 @@
 /// Outer TV source navigation and second-level library filter acceptance.
+/// Cache-hit assertions count the selected target independently of speculative
+/// warming for the newly visible filter combinations.
 library;
 
 import 'package:flutter/material.dart';
@@ -60,12 +62,12 @@ void main() {
     expect(find.byKey(const Key('tv-open-filters')), findsOneWidget);
     expect(find.text('动漫库'), findsOneWidget, reason: 'the active outer tab is the only duplicate title');
     expect(find.descendant(of: outer, matching: find.text('日本动漫')), findsNothing);
-    final before = gateway.requests.length;
+    final before = gateway.requests.where((key) => key == 'sakura/library:jp').length;
     _focus(tester, find.byKey(const ValueKey(('discovery-filter', 'type', 'jp')))).requestFocus();
     await tester.pumpAndSettle();
     expect(container.read(discoveryPageControllerProvider).target, 'library:jp');
     expect(FocusManager.instance.primaryFocus, _focus(tester, find.byKey(const ValueKey(('discovery-filter', 'type', 'jp')))));
-    expect(gateway.requests, hasLength(before));
+    expect(gateway.requests.where((key) => key == 'sakura/library:jp'), hasLength(before));
     expect(controller.tvPrimaryTarget, 'library');
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/tv_discovery_category_tabs.png'));
     await tester.tap(find.byKey(const Key('tv-open-filters')));

@@ -1,4 +1,5 @@
-/// TV collection pagination follows the vertical viewport without taking focus.
+/// TV collection pagination keeps two viewports of content ahead without taking
+/// focus, allowing appended covers to start loading before they become visible.
 /// The host serializes automatic requests within a frame; application state owns
 /// IO, cancellation and result merging. A failed or non-advancing cursor requires
 /// explicit retry, and source/category changes reset the local attempt guard.
@@ -138,7 +139,7 @@ class _PaginationFooterState extends State<DiscoveryTvPaginationFooter> {
     final viewportBox = viewport as RenderBox;
     if (!viewportBox.hasSize) return;
     final top = anchor.localToGlobal(Offset.zero, ancestor: viewportBox).dy;
-    if (top + anchor.size.height < 0 || top > viewportBox.size.height * 1.5) return;
+    if (top + anchor.size.height < 0 || top > viewportBox.size.height * 3) return;
     _request();
   }
 

@@ -9,7 +9,7 @@
 /// 注意：
 /// - 返回或新请求必须先让旧请求失效，不能让旧结果重开子页。
 /// - target 是数据源不透明标识；诊断记录插件 ID 与公开 capability。
-/// - TV 平铺根分类，首屏预加载由独立 session 限并发并在来源变化时取消。
+/// - TV 平铺根分类，session 提前准备分类与各组筛选的一跳结果，限并发并在来源变化时取消。
 ///
 library;
 
@@ -591,11 +591,7 @@ class DiscoveryPageController extends Notifier<DiscoveryPageState> {
     String? loadingCollectionId,
   }) {
     if (_tvMode && _stack.lastOrNull?.target == null) _prepareTvHome(result);
-    if (_tvMode && _tvSession != null) {
-      for (final filters in result.document.components.whereType<PluginDiscoveryFiltersComponent>()) {
-        _tvSession?.prefetchTargets(filters.groups.firstOrNull?.options.map((option) => option.target) ?? const []);
-      }
-    }
+    if (_tvMode) _tvSession?.prefetchFilters(result);
     state = DiscoveryPageState.resolved(
       sources: sources ?? state.sources,
       selectedSourceId: selectedSourceId ?? state.selectedSourceId!,

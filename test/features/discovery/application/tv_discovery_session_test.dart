@@ -23,37 +23,116 @@ void main() {
     expect(home.document.components, hasLength(3));
   });
 
-  test('preload is bounded to two requests and a focused queued tab gains priority without duplication', () async {
+  test('four preloads leave a foreground slot and a queued selection shares its request', () async {
     final gateway = TvDiscoveryTestGateway();
-    final session = TvDiscoverySession(home: tvDiscoveryDocument(), gateway: gateway)..prefetch();
+    final home = PluginDiscoveryDocumentResult(
+      pluginId: 'sakura',
+      sourceName: '樱花动漫',
+      document: PluginDiscoveryDocument(
+        components: [
+          PluginDiscoveryTabsComponent(
+            id: 'tabs',
+            selectedTabId: 'today',
+            tabs: [
+              for (final target in ['today', 'hot', 'week', 'new', 'queued', 'focused'])
+                PluginDiscoveryTab(id: target, label: target, target: target),
+            ],
+          ),
+        ],
+      ),
+    );
+    final session = TvDiscoverySession(home: home, gateway: gateway)..prefetch();
     addTearDown(session.dispose);
-    expect(gateway.requests, ['sakura/today', 'sakura/hot']);
-    final foreground = session.load('new');
-    gateway.complete('today');
-    await _wait(() => gateway.requests.length == 3);
-    expect(gateway.requests.last, 'sakura/new');
-    gateway.complete('new');
+    expect(gateway.requests, ['sakura/today', 'sakura/hot', 'sakura/week', 'sakura/new']);
+    final foreground = session.load('focused');
+    final shared = session.load('focused');
+    expect(shared, same(foreground));
+    expect(gateway.requests.last, 'sakura/focused', reason: 'selection starts even while every background slot is busy');
+    expect(gateway.requests, hasLength(5));
+    gateway.complete('focused');
     await foreground;
-    await _wait(() => gateway.requests.length == 4);
+    gateway.complete('today');
+    await _wait(() => gateway.requests.length == 6);
+    expect(gateway.requests.last, 'sakura/queued');
+    gateway.complete('new');
     gateway.complete('hot');
     gateway.complete('week');
+    gateway.complete('queued');
     await _wait(() => gateway.active == 0);
-    expect(gateway.maxActive, 2);
+    expect(gateway.maxActive, 5);
     expect(session.read('week'), isNotNull);
-    await session.load('new');
-    expect(gateway.requests, hasLength(4));
+    await session.load('focused');
+    expect(gateway.requests, hasLength(6));
+  });
+
+  test('nested filters warm every group fairly within one bounded speculative hop', () async {
+    final gateway = TvDiscoveryTestGateway()..autoComplete = true;
+    final session = TvDiscoverySession(home: tvDiscoveryDocument(), gateway: gateway);
+    addTearDown(session.dispose);
+    final library = tvDiscoveryDocument(target: 'library');
+    session.prefetchFilters(
+      PluginDiscoveryDocumentResult(
+        pluginId: library.pluginId,
+        sourceName: library.sourceName,
+        document: PluginDiscoveryDocument(
+          components: [
+            PluginDiscoveryGroupComponent(id: 'nested', layout: PluginDiscoveryGroupLayout.vertical, children: library.document.components),
+          ],
+        ),
+      ),
+    );
+    await _wait(() => gateway.requests.length == 32 && session.read('library:hits') != null);
+    expect(gateway.requests, hasLength(32));
+    expect(gateway.requests.toSet(), hasLength(32));
+    for (final target in ['library:jp', 'library:comedy', 'library:area-jp', 'library:2026', 'library:A', 'library:hits']) {
+      expect(session.read(target), isNotNull, reason: 'each group gets a turn before the long genre list');
+    }
+    expect(gateway.maxActive, lessThanOrEqualTo(4));
+    expect(
+      gateway.requests.any((target) => target.contains('comedy:')),
+      isFalse,
+      reason: 'speculative pages do not expand more combinations',
+    );
+  });
+
+  test('a warmed secondary filter switches immediately without a loading snapshot or duplicate request', () async {
+    final gateway = TvDiscoveryTestGateway()
+      ..autoComplete = true
+      ..includeLibrary = true;
+    final container = _container(gateway);
+    addTearDown(container.dispose);
+    await _wait(() => container.read(discoveryPageControllerProvider).result != null);
+    final controller = container.read(discoveryPageControllerProvider.notifier)..configureTvMode(true);
+    await _wait(() => gateway.requests.contains('sakura/library:hits'));
+    await Future<void>.delayed(Duration.zero);
+    await controller.selectTvTab('library');
+    final states = <DiscoveryPageStatus>[];
+    container.listen(discoveryPageControllerProvider, (_, next) => states.add(next.status));
+    final before = gateway.requests.where((key) => key == 'sakura/library:2026').length;
+    final selected = controller.selectTvFilter('library:2026');
+    expect(container.read(discoveryPageControllerProvider).target, 'library:2026');
+    expect(container.read(discoveryPageControllerProvider).result, isNotNull);
+    await selected;
+    expect(states, isNot(contains(DiscoveryPageStatus.loadingContent)));
+    expect(before, 1);
+    expect(gateway.requests.where((key) => key == 'sakura/library:2026'), hasLength(before));
+    await _wait(() => gateway.active == 0);
   });
 
   test('disposing cancels preload tokens and late results cannot refill the session', () async {
     final gateway = TvDiscoveryTestGateway();
-    final session = TvDiscoverySession(home: tvDiscoveryDocument(), gateway: gateway)..prefetch();
+    final session = TvDiscoverySession(home: tvDiscoveryDocument(), gateway: gateway)
+      ..prefetch()
+      ..prefetchTargets(['queued']);
     session.dispose();
     expect(gateway.cancellations.every((token) => token.isCancelled), isTrue);
     gateway.complete('today');
     gateway.complete('hot');
+    gateway.complete('week');
+    gateway.complete('new');
     await _wait(() => gateway.active == 0);
     expect(session.read('today'), isNull);
-    expect(gateway.requests, hasLength(2));
+    expect(gateway.requests, hasLength(4));
   });
 
   test('failed background loads remain retryable when selected', () async {
@@ -61,10 +140,11 @@ void main() {
     final session = TvDiscoverySession(home: tvDiscoveryDocument(), gateway: gateway)..prefetch();
     addTearDown(session.dispose);
     gateway.gates['sakura/today']!.completeError(StateError('offline'));
-    await _wait(() => gateway.requests.contains('sakura/week'));
+    await Future<void>.delayed(Duration.zero);
     gateway.autoComplete = true;
     gateway.complete('hot');
     gateway.complete('week');
+    gateway.complete('new');
     await _wait(() => gateway.active == 0);
     await session.load('today');
     expect(session.read('today'), isNotNull);
@@ -107,18 +187,22 @@ void main() {
     await _wait(() => container.read(discoveryPageControllerProvider).result != null);
     final controller = container.read(discoveryPageControllerProvider.notifier)..configureTvMode(true);
     final oldTokens = List.of(gateway.cancellations.skip(1));
-    expect(oldTokens, hasLength(2));
+    expect(oldTokens, hasLength(4));
     final pending = controller.selectTvTab('today');
     await controller.selectSource('other');
     expect(oldTokens.every((token) => token.isCancelled), isTrue);
     gateway.complete('today');
     gateway.complete('hot');
+    gateway.complete('week');
+    gateway.complete('new');
     await pending;
     expect(container.read(discoveryPageControllerProvider).selectedSourceId, 'other');
     expect(controller.tvNavigation!.home.sourceName, '备用动漫');
     gateway.autoComplete = true;
     gateway.complete('today', source: 'other');
     gateway.complete('hot', source: 'other');
+    gateway.complete('week', source: 'other');
+    gateway.complete('new', source: 'other');
     await _wait(() => gateway.active == 0);
   });
 

@@ -1,6 +1,9 @@
 /// One selected source's TV tabs and first-page cache, with no persistent IO.
 /// Root navigation is promoted from validated source tabs/categories; opaque
-/// targets are never parsed. At most two loads run, with foreground priority.
+/// targets are never parsed. Four speculative loads run, with a fifth slot
+/// reserved for selection so slow background requests cannot block navigation.
+/// Filter warming covers one hop across groups fairly, including nested filters;
+/// it never recursively expands speculative combinations or exceeds the budget.
 /// Selection does not cancel a shared preload. Source changes/disposal cancel
 /// every request and prevent late results from repopulating the old session.
 library;
@@ -104,8 +107,41 @@ class TvDiscoverySession {
 
   void prefetchTargets(Iterable<String> targets) {
     for (final target in targets) {
+      if (_cache.containsKey(target) || _requests.containsKey(target)) continue;
+      if (_requests.length >= 64) break;
       unawaited(load(target, foreground: false).then<void>((_) {}, onError: (Object _, StackTrace _) {}));
     }
+  }
+
+  void prefetchFilters(PluginDiscoveryDocumentResult document) {
+    final groups = <PluginDiscoveryFilterGroup>[];
+    void collect(List<PluginDiscoveryComponent> components) {
+      for (final component in components) {
+        switch (component) {
+          case PluginDiscoveryFiltersComponent():
+            groups.addAll(component.groups);
+          case PluginDiscoverySectionComponent(:final children) || PluginDiscoveryGroupComponent(:final children):
+            collect(children);
+          default:
+            break;
+        }
+      }
+    }
+
+    collect(document.document.components);
+    // Interleave groups so a long genre row cannot delay region/year/order.
+    final targets = <String>{};
+    for (var index = 0; targets.length < 32; index++) {
+      var found = false;
+      for (final group in groups) {
+        if (index >= group.options.length) continue;
+        found = true;
+        targets.add(group.options[index].target);
+        if (targets.length == 32) break;
+      }
+      if (!found) break;
+    }
+    prefetchTargets(targets);
   }
 
   Future<PluginDiscoveryDocumentResult> load(String target, {bool foreground = true, bool refresh = false}) {
@@ -114,10 +150,14 @@ class TvDiscoverySession {
     if (!refresh && cached != null) return Future.value(cached);
     final existing = _requests[target];
     if (existing != null) {
-      if (foreground && _queue.remove(existing)) _queue.insert(0, existing);
+      if (foreground) {
+        existing.foreground = true;
+        if (_queue.remove(existing)) _queue.insert(0, existing);
+        _pump();
+      }
       return existing.completer.future;
     }
-    final request = _TabRequest(target);
+    final request = _TabRequest(target, foreground: foreground);
     _requests[target] = request;
     if (foreground) {
       _queue.insert(0, request);
@@ -141,7 +181,7 @@ class TvDiscoverySession {
   }
 
   void _pump() {
-    while (!_disposed && _running < 2 && _queue.isNotEmpty) {
+    while (!_disposed && _queue.isNotEmpty && _running < (_queue.first.foreground ? 5 : 4)) {
       _running++;
       unawaited(_run(_queue.removeAt(0)));
     }
@@ -157,11 +197,7 @@ class TvDiscoverySession {
       if (_disposed) throw StateError('TV discovery session closed.');
       if (result is! PluginDiscoveryDocumentResult) throw StateError('Expected a TV discovery document.');
       _remember(request.target, result);
-      if (contains(request.target)) {
-        for (final filters in result.document.components.whereType<PluginDiscoveryFiltersComponent>()) {
-          prefetchTargets(filters.groups.firstOrNull?.options.map((option) => option.target) ?? const []);
-        }
-      }
+      if (contains(request.target)) prefetchFilters(result);
       request.completer.complete(result);
     } on Object catch (error, stack) {
       request.completer.completeError(error, stack);
@@ -186,8 +222,9 @@ class TvDiscoverySession {
 }
 
 class _TabRequest {
-  _TabRequest(this.target);
+  _TabRequest(this.target, {required this.foreground});
   final String target;
+  bool foreground;
   final completer = Completer<PluginDiscoveryDocumentResult>();
   final cancellation = PluginInvocationCancellation();
 }
