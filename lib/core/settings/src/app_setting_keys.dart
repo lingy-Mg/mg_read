@@ -101,6 +101,15 @@ final class AppSettingKeys {
     validator: _validateDiscoveryPinnedSourceIds,
   );
 
+  /// Small, replaceable TV navigation cache; decoded by discovery, not settings.
+  static const tvDiscoveryNavigation = SettingKey<Map<String, Object?>>(
+    id: 'discovery.tvNavigation',
+    documentKind: 'settings.discovery',
+    defaultValue: <String, Object?>{},
+    codec: SettingCodec<Map<String, Object?>>(_readerPreferencesEncode, _tvNavigationDecode, freeze: freezeJsonSettingMap),
+    validator: _validateReaderPreferences,
+  );
+
   static const libraryDocument = SettingsDocumentDefinition(id: 'app-settings:settings.library', kind: 'settings.library');
 
   /// How often opening a bookshelf may check source catalogs for new chapters.
@@ -333,6 +342,7 @@ final class AppSettingKeys {
     searchHistory,
     discoverySourceId,
     discoveryPinnedSourceIds,
+    tvDiscoveryNavigation,
     bookshelfCatalogRefreshIntervalHours,
     bookshelfCatalogAutoRefreshEnabled,
     bookshelfUnreadBadgeEnabled,
@@ -553,6 +563,9 @@ Map<String, Object?> _networkProxyPreferencesDecode(Object? value) {
 }
 
 Object? _readerPreferencesEncode(Map<String, Object?> value) => value;
+
+Map<String, Object?> _tvNavigationDecode(Object? value) =>
+    value is Map<String, Object?> && value.length <= 32 ? Map<String, Object?>.of(value) : <String, Object?>{};
 
 Map<String, Object?> _readerPreferencesDecode(Object? value) {
   if (value is! Map) {

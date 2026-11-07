@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../app_navigation_destination.dart';
 import '../tv_source_navigation_scope.dart';
 import 'tv_destination_action.dart';
+import 'tv_focusable.dart';
 
 class TvTopNavigation extends StatelessWidget {
   const TvTopNavigation({
@@ -71,6 +72,13 @@ class TvTopNavigation extends StatelessWidget {
                 child: Row(
                   children: [
                     destination(AppNavigationDestination.home, '首页'),
+                    if (source?.entries.isEmpty == true && (source!.loading || source.onRetry != null)) ...[
+                      const SizedBox(width: 12),
+                      if (source.loading)
+                        const Text('正在加载分类…', key: Key('tv-navigation-loading'))
+                      else
+                        TvFocusable(onPressed: source.onRetry, child: const Text('分类加载失败，重试')),
+                    ],
                     for (final entry in source?.entries ?? const <TvSourceNavigationEntry>[]) ...[
                       const SizedBox(width: 12),
                       TvDestinationAction(

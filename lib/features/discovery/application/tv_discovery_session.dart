@@ -19,7 +19,7 @@ class TvDiscoveryTab {
 }
 
 class TvDiscoveryNavigation {
-  TvDiscoveryNavigation(this.home) {
+  TvDiscoveryNavigation(this.home, {List<TvDiscoveryTab>? retainedTabs}) {
     final targets = <String>{};
     final entries = <TvDiscoveryTab>[TvDiscoveryTab(label: home.sourceName, target: null)];
     void collect(List<PluginDiscoveryComponent> components) {
@@ -44,7 +44,7 @@ class TvDiscoveryNavigation {
     }
 
     collect(home.document.components);
-    tabs = List.unmodifiable(entries);
+    tabs = retainedTabs ?? List.unmodifiable(entries);
   }
 
   final PluginDiscoveryDocumentResult home;
@@ -85,7 +85,7 @@ class TvDiscoveryNavigation {
 class TvDiscoverySession {
   TvDiscoverySession({required PluginDiscoveryDocumentResult home, required this.gateway}) : navigation = TvDiscoveryNavigation(home);
   final SourceContentGateway gateway;
-  final TvDiscoveryNavigation navigation;
+  TvDiscoveryNavigation navigation;
   final _cache = <String, PluginDiscoveryDocumentResult>{};
   final _requests = <String, _TabRequest>{};
   final _queue = <_TabRequest>[];
@@ -100,6 +100,12 @@ class TvDiscoverySession {
   }
 
   bool contains(String? target) => navigation.tabs.any((tab) => tab.target == target);
+
+  /// Revalidating unchanged tabs must retain category caches and in-flight loads.
+  void updateHome(PluginDiscoveryDocumentResult home) {
+    if (_disposed) return;
+    navigation = TvDiscoveryNavigation(home, retainedTabs: navigation.tabs);
+  }
 
   void prefetch() {
     prefetchTargets(navigation.tabs.map((tab) => tab.target).whereType<String>());

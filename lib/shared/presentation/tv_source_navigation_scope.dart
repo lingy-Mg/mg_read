@@ -19,6 +19,8 @@ class TvSourceNavigationScope extends InheritedWidget {
     required this.showContent,
     required this.onSelected,
     this.onRefresh,
+    this.loading = false,
+    this.onRetry,
     required super.child,
     super.key,
   });
@@ -28,10 +30,19 @@ class TvSourceNavigationScope extends InheritedWidget {
   final bool showContent;
   final ValueChanged<String?> onSelected;
   final VoidCallback? onRefresh;
+  final bool loading;
+  final VoidCallback? onRetry;
 
   static TvSourceNavigationScope? maybeOf(BuildContext context) => context.dependOnInheritedWidgetOfExactType<TvSourceNavigationScope>();
 
   @override
   bool updateShouldNotify(TvSourceNavigationScope oldWidget) =>
-      sourceId != oldWidget.sourceId || target != oldWidget.target || entries != oldWidget.entries || showContent != oldWidget.showContent;
+      sourceId != oldWidget.sourceId ||
+      target != oldWidget.target ||
+      entries != oldWidget.entries ||
+      showContent != oldWidget.showContent ||
+      loading != oldWidget.loading ||
+      onRetry != oldWidget.onRetry ||
+      onSelected != oldWidget.onSelected ||
+      onRefresh != oldWidget.onRefresh;
 }
