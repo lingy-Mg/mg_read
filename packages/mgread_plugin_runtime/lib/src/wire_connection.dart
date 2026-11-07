@@ -1,13 +1,14 @@
 part of mgread_plugin_runtime;
 
-/// Maximum JSON-encoded control request or response supported by both ends.
-const _maxControlFrameBytes = 4 * 1024 * 1024;
+/// Inline results allow 10 MiB; RPC envelopes have a separate 64 KiB reserve.
+const _maxInlineResultBytes = 10 * 1024 * 1024;
+const _maxControlFrameBytes = _maxInlineResultBytes + 64 * 1024;
 
 /// Per-connection request multiplexer limit negotiated by `runtime.hello`.
 const _maxInFlightRequests = 256;
 
 /// Client-side byte window that prevents a large pending batch from growing.
-const _maxOutboundQueueBytes = 8 * 1024 * 1024;
+const _maxOutboundQueueBytes = 2 * (_maxControlFrameBytes + 10);
 
 /// JSON object shape after Dart's decoder has discarded non-string keys.
 typedef _RuntimeJsonObject = Map<String, Object?>;
@@ -108,7 +109,7 @@ final class _WireConnection {
         hello['nodeVersion'] != _ready.nodeVersion ||
         hello['bunVersion'] != _ready.bunVersion ||
         hello['maxFrameBytes'] != _maxControlFrameBytes ||
-        hello['maxInlineBytes'] != _maxControlFrameBytes ||
+        hello['maxInlineBytes'] != _maxInlineResultBytes ||
         hello['maxInFlightRequests'] != _maxInFlightRequests ||
         hello['maxOutboundQueueBytes'] != _maxOutboundQueueBytes ||
         hello['supportsCancellation'] != true) {

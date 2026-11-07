@@ -8,7 +8,7 @@
 
 - Windows Node `26.10.0`、Runtime `0.5.0-standard.0`、protocol `1.2`；其他后端精确版本见 `compatibility.json`；
 - loopback live/ready 与 `/v1/rpc`；
-- 4 MiB 控制帧、256 个在途请求、8 MiB 写队列和 best-effort cancel；
+- 10 MiB 通用内容响应，控制帧另预留 64 KiB RPC 信封空间；256 个在途请求、两个最大帧的写队列和 best-effort cancel；
 - `getChapters({id}) -> {items}` 的单次完整目录，以及 5000 条/2 MiB 专用边界；
 - `runtime.hello`、`runtime.ping`、`runtime.status.v1`、`plugins.list.v1`、
   `plugins.openCodeDirectory.v1`、`plugins.development.package.v1`、`plugins.setEnabled.v1`、`plugins.uninstall.v1`、`plugins.cache.usage.v1`、`plugins.cache.clear.v1`、

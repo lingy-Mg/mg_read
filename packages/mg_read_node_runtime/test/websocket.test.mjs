@@ -79,7 +79,7 @@ test("WebSocket decodes a masked 64-bit client frame", () => {
   assert.equal(session.isClosed, false);
 });
 
-test("WebSocket closes an inbound frame above 4 MiB with code 1009", () => {
+test("WebSocket closes an inbound frame above the control budget with code 1009", () => {
   const output = [];
   const socket = capturingSocket(output);
   const session = new ServerWebSocketSession(socket, {
@@ -98,7 +98,7 @@ test("WebSocket closes an inbound frame above 4 MiB with code 1009", () => {
   assert.equal(closeFrame.readUInt16BE(2), 1009);
 });
 
-test("WebSocket closes instead of retaining an outbound queue above 8 MiB", () => {
+test("WebSocket closes instead of retaining more than two maximum outbound frames", () => {
   const socket = new Duplex({
     readableHighWaterMark: 1,
     writableHighWaterMark: 1,
@@ -112,7 +112,7 @@ test("WebSocket closes instead of retaining an outbound queue above 8 MiB", () =
     onClosed() {},
     onText() {},
   });
-  const payload = "x".repeat(3 * 1024 * 1024);
+  const payload = "x".repeat(maxWebSocketControlFrameBytes);
 
   assert.equal(session.sendText(payload), true);
   assert.equal(session.sendText(payload), true);

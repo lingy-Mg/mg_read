@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { build } from 'esbuild';
 import * as plugin from '../dist/index.mjs';
+import { loadRuntimeValidators } from './runtime-validators.mjs';
 
 test('fixture outputs pass the current Runtime source validators', async () => {
   const validators = await loadRuntimeValidators();
@@ -54,26 +53,36 @@ test('fixture outputs pass the current Runtime source validators', async () => {
   assert.doesNotThrow(() => validators.validateContentResult(pluginId, sourceName, content));
 });
 
-async function loadRuntimeValidators() {
-  const runtimeRoot = fileURLToPath(new URL('../../../../packages/mg_read_node_runtime/', import.meta.url));
-  const result = await build({
-    bundle: true,
-    format: 'esm',
-    logLevel: 'silent',
-    platform: 'node',
-    stdin: {
-      contents: [
-        "export { validateDiscoverResult } from './src/plugin-content-discovery.ts';",
-        "export { validateSearchResult, validateDetailResult, validateChaptersResult, validateContentResult } from './src/plugin-content-validation.ts';",
-      ].join('\n'),
-      loader: 'ts',
-      resolveDir: runtimeRoot,
-      sourcefile: 'yinghua-runtime-contract-entry.mts',
-    },
-    target: 'node24',
-    write: false,
+test('complete weekly document above the former 56 KiB budget keeps all cards and covers', async () => {
+  const validators = await loadRuntimeValidators();
+  let html = await readFile(new URL('./fixtures/week.html', import.meta.url), 'utf8');
+  const ids = new Set();
+  for (let day = 1; day <= 7; day += 1) {
+    const cards = Array.from({ length: 35 }, (_, index) => {
+      const id = day * 100 + index;
+      ids.add(`video:${id}`);
+      return `<a href="/v/${id}.html" title="预算回归作品 ${id}"><img src="/cover.jpg"></a>`;
+    }).join('');
+    html = html.replace(`__DAY_${day}__`, cards);
+  }
+  const cover = 'http://127.0.0.1:9000/v1/source-resource/abcdefghijklmnop';
+  await plugin.activate({
+    log: { info() {}, warn() {} }, resource: { proxy() { return cover; } },
+    http: { async fetch() { return new Response(html); } },
   });
-  const source = result.outputFiles[0]?.text;
-  assert.ok(source);
-  return import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
-}
+  const seen = new Set();
+  const result = await plugin.discover({ target: 'category:week', cursor: null, collectionId: null, pageSize: 1 });
+  const normalized = validators.validateDiscoverResult('org.mgread.yinghuadongman', '樱花动漫', result);
+  assert.ok(Buffer.byteLength(JSON.stringify(normalized)) > 116201);
+  assert.equal(normalized.document.components.length, 7);
+  for (const section of normalized.document.components) {
+    const items = section.children.flatMap(collection => collection.items);
+    assert.equal(items.length, 35);
+    for (const item of items) {
+      seen.add(item.content.id);
+      assert.equal(item.content.coverUrl, cover);
+    }
+    assert.ok(section.children.every(collection => collection.continuation === null));
+  }
+  assert.deepEqual(seen, ids);
+});

@@ -1,4 +1,5 @@
 import type { Duplex } from "node:stream";
+import { MAX_CONTROL_FRAME_BYTES, MAX_CONTROL_QUEUE_BYTES } from "./runtime-payload-limits.js";
 
 const CLOSE_GOING_AWAY = 1001;
 const CLOSE_MESSAGE_TOO_BIG = 1009;
@@ -8,10 +9,10 @@ const CLOSE_TRY_AGAIN_LATER = 1013;
 const CLOSE_UNSUPPORTED_DATA = 1003;
 
 /** Maximum encoded size of one Runtime control message. */
-export const maxWebSocketControlFrameBytes = 4 * 1024 * 1024;
+export const maxWebSocketControlFrameBytes = MAX_CONTROL_FRAME_BYTES;
 
 /** Maximum application-plus-socket backlog retained for one connection. */
-export const maxWebSocketOutboundQueueBytes = 8 * 1024 * 1024;
+export const maxWebSocketOutboundQueueBytes = MAX_CONTROL_QUEUE_BYTES;
 
 const MAX_BUFFERED_BYTES = maxWebSocketControlFrameBytes + 32;
 const webSocketOpcode = Object.freeze({

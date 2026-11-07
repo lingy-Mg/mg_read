@@ -24,7 +24,7 @@ export const MAX_TAGS = 64;
 export const MAX_ATTRIBUTES = 32;
 export const MAX_CHAPTER_ITEMS = 5_000;
 export const MAX_MANGA_PAGES = 500;
-export const MAX_INLINE_RESULT_BYTES = 56 * 1_024;
+export { MAX_INLINE_RESULT_BYTES } from "./runtime-payload-limits.js";
 export const MAX_INLINE_CHAPTER_CATALOG_BYTES = 2 * 1_024 * 1_024;
 export const MAX_INLINE_TEXT_BYTES = 48 * 1_024;
 export const MAX_INLINE_MANGA_MANIFEST_BYTES = 512 * 1_024;

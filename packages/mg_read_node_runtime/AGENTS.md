@@ -33,6 +33,8 @@
 
 - 发现 `filters` 的分组/选项预算与选中 ID 关联由 `plugin-content-discovery.ts` 校验；`plugin-content-tree.test.mjs`
   保留 45 选项与非法选择/重复/超限回归。原有首个根 `tabs` 的约束不变。
+- 通用内容响应预算由 `runtime-payload-limits.ts` 统一设为 10 MiB；控制帧另留 64 KiB 信封空间，写队列容纳两个最大帧。
+  Flutter `wire_connection.dart` 和协议 fixture 必须同步；目录、正文与漫画清单仍有各自专用预算。
 
 - 数据源执行输入仅为构建期已内联第三方包的单个 JS；archive 只是容器，不是 npm 项目分发机制。
   Runtime 不解析来源 lock、不恢复或缓存 npm 依赖，也不复制/链接开发项目依赖树。

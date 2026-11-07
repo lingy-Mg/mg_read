@@ -208,8 +208,9 @@ test("desktop Runtime completes hello, ping and stable protocol errors over WebS
   assert.equal(hello.result.protocolVersion, protocolVersion);
   assert.equal(
     hello.result.maxInlineBytes,
-    desktopFixture.webSocket.maxControlFrameBytes,
+    desktopFixture.webSocket.maxInlineBytes,
   );
+  assert.equal(hello.result.maxFrameBytes, desktopFixture.webSocket.maxControlFrameBytes);
   assert.equal(
     hello.result.maxInFlightRequests,
     desktopFixture.webSocket.maxInFlightRequests,

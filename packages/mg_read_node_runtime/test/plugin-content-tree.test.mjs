@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { PluginContentValidationError, validateDiscoverResult } from '../dist/plugin-content.js';
+import { assertInlineBudget } from '../dist/plugin-content-validation.js';
+import { MAX_INLINE_RESULT_BYTES } from '../dist/plugin-content-types.js';
 
 const content = {
   id: 'book:1', title: '验证书籍', contentKind: 'novel', author: null, url: null,
@@ -136,25 +138,36 @@ test('append response keeps only a declared collection payload', () => {
   assert.equal(append.collectionId, 'books');
 });
 
-test('oversized discovery response reports the exact validation stage and byte limit', () => {
+test('discovery accepts responses above the old budgets and rejects more than 10 MiB', () => {
   const largeContent = {
     ...content,
-    description: '详'.repeat(16_000),
+    description: '详'.repeat(32_000),
   };
+  const document = count => ({ kind: 'document', document: {
+    components: Array.from({ length: Math.ceil(count / 50) }, (_, part) => ({
+      type: 'contentCollection', id: `large:${part}`, layout: 'list', continuation: null,
+      items: Array.from({ length: Math.min(50, count - part * 50) }, (_, index) => ({
+        content: { ...largeContent, id: `book:${part * 50 + index}` },
+        rank: null, metric: null, recommendation: null,
+      })),
+    })),
+  } });
+  const result = validateDiscoverResult('org.example.tree', '树数据源', document(100));
+  const bytes = Buffer.byteLength(JSON.stringify(result), 'utf8');
+  assert.ok(bytes > 4 * 1024 * 1024 && bytes < 10 * 1024 * 1024);
   assert.throws(
-    () => validateDiscoverResult('org.example.tree', '树数据源', {
-      kind: 'document',
-      document: { components: [{
-        type: 'contentCollection', id: 'large', layout: 'list', continuation: null,
-        items: [1, 2].map(index => ({
-          content: { ...largeContent, id: `book:${index}` },
-          rank: null,
-          metric: null,
-          recommendation: null,
-        })),
-      }] },
-    }),
+    () => validateDiscoverResult('org.example.tree', '树数据源', document(110)),
     error => error instanceof PluginContentValidationError &&
-      /Response validation failed at the inline payload budget: \d+ bytes exceeds the 57344-byte limit\./.test(error.message),
+      /Response validation failed at the inline payload budget: \d+ bytes exceeds the 10485760-byte limit\./.test(error.message),
   );
+});
+
+test('inline result budget accepts exactly 10 MiB of UTF-8 JSON and rejects one byte more', () => {
+  assert.equal(MAX_INLINE_RESULT_BYTES, 10 * 1024 * 1024);
+  const overhead = Buffer.byteLength(JSON.stringify({ text: '' }));
+  const text = '详'.repeat(Math.floor((MAX_INLINE_RESULT_BYTES - overhead) / 3));
+  const padding = MAX_INLINE_RESULT_BYTES - overhead - Buffer.byteLength(text);
+  const exact = { text: text + 'x'.repeat(padding) };
+  assert.doesNotThrow(() => assertInlineBudget(exact));
+  assert.throws(() => assertInlineBudget({ text: exact.text + 'x' }), /10485761 bytes exceeds the 10485760-byte limit/u);
 });

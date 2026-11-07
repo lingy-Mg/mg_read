@@ -4,6 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import test from 'node:test';
 import * as plugin from '../dist/index.mjs';
 import { libraryRoute, libraryState } from '../dist/library.mjs';
+import { loadRuntimeValidators } from './runtime-validators.mjs';
 
 test('live categories preserve their panels, weekdays and real library pagination', { timeout: 180_000 }, async t => {
   const origin = 'https://www.yinhuadm.xyz';
@@ -25,6 +26,8 @@ test('live categories preserve their panels, weekdays and real library paginatio
   const filterGroups = result => result.document.components.find(component => component.type === 'filters').groups;
   const ids = items => items.map(item => item.content.id);
   const request = target => ({ target, cursor: null, collectionId: null, pageSize: 1 });
+  const validators = await loadRuntimeValidators();
+  const validate = result => validators.validateDiscoverResult('org.mgread.yinghuadongman', '樱花动漫', result);
   await plugin.activate({
     log: { info() {}, warn() {} },
     resource: { proxy(value) { return value.url; } },
@@ -32,6 +35,7 @@ test('live categories preserve their panels, weekdays and real library paginatio
   });
   try {
     const root = await plugin.discover(request(null));
+    validate(root);
     const entries = root.document.components.find(component => component.id === 'video-categories').children[0].categories;
     assert.deepEqual(entries.map(entry => entry.id), ['library', 'today', 'hot', 'week', 'new']);
     const routes = new Map([['today', '/label/new.html'], ['hot', '/label/hot.html'], ['week', '/label/week.html'], ['new', '/s/1.html']]);
@@ -42,13 +46,15 @@ test('live categories preserve their panels, weekdays and real library paginatio
       const rawPanels = html.split(/<div\b[^>]*class=["'][^"']*\bmodule-main\b[^"']*\btab-list\b[^"']*["'][^>]*>/iu).slice(1);
       const expected = entry.id === 'week' ? rawPanels : rawPanels.slice(0, 1);
       const result = await plugin.discover(request(entry.target));
+      validate(result);
       assert.equal(result.document.components.length, expected.length);
       const surfaces = result.document.components.map((section, index) => {
         const items = section.children.flatMap(child => child.items);
         assert.deepEqual(ids(items), rawIds(expected[index]), `${entry.id} ${section.title} must keep every card in its own panel`);
         assert.ok(section.children.every(child => child.continuation === null && child.items.length <= 50));
         assert.ok(items.every(item => item.content.coverUrl !== null));
-        return { title: section.title, items: items.length, continuation: null };
+        return { title: section.title, items: items.length, continuation: null,
+          documentBytes: Buffer.byteLength(JSON.stringify(validate(result))) };
       });
       if (entry.id === 'week') assert.deepEqual(surfaces.map(surface => surface.title), ['周一', '周二', '周三', '周四', '周五', '周六', '周日']);
       report.categories.push({ id: entry.id, status: 'passed', surfaces });
@@ -56,6 +62,7 @@ test('live categories preserve their panels, weekdays and real library paginatio
     }
 
     const library = await plugin.discover(request('category:library'));
+    validate(library);
     const groups = filterGroups(library);
     assert.deepEqual(groups.map(group => group.label), ['类型', '剧情', '地区', '年份', '字母', '排序']);
     for (const option of groups[0].options) {
@@ -63,14 +70,17 @@ test('live categories preserve their panels, weekdays and real library paginatio
       const route = `/w/${state.type}.html`;
       const html = await page(route);
       const first = await plugin.discover(request(option.target));
+      validate(first);
       assert.deepEqual(ids(collection(first).items), rawIds(html));
       assert.ok(collection(first).continuation, `${option.label} first page should expose its real next page`);
       const second = await plugin.discover({ ...request(option.target), ...collection(first).continuation, collectionId: 'video:library' });
+      validate(second);
       assert.deepEqual(ids(second.items), rawIds(await page(`/w/${state.type}/page/2.html`)));
       assert.ok(second.items.some(item => !ids(collection(first).items).includes(item.content.id)));
       const lastPage = Number(/href=["'][^"']*\/page\/(\d+)\.html["'][^>]*>\s*尾页/u.exec(html)?.[1]);
       assert.ok(Number.isSafeInteger(lastPage) && lastPage > 2);
       const last = await plugin.discover({ ...request(option.target), cursor: `${option.target}:${lastPage}`, collectionId: 'video:library' });
+      validate(last);
       assert.deepEqual(ids(last.items), rawIds(await page(`/w/${state.type}/page/${lastPage}.html`)));
       assert.equal(last.continuation, null, `${option.label} terminal next link points at the current page`);
       report.libraryPages.push({ label: option.label, first: collection(first).items.length, second: second.items.length, lastPage, last: last.items.length, terminalContinuation: null });
@@ -82,6 +92,7 @@ test('live categories preserve their panels, weekdays and real library paginatio
       while (nextOption < options.length) {
         const option = options[nextOption++];
         const result = await plugin.discover(request(option.target));
+        validate(result);
         const group = filterGroups(result).find(candidate => candidate.id === option.groupId);
         const selected = group.options.find(candidate => candidate.id === group.selectedOptionId);
         assert.equal(selected?.label, option.label, `${option.groupLabel}/${option.label} must remain selected`);

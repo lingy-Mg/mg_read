@@ -93,11 +93,11 @@ import {
   dispatchSourceResourceResolve,
 } from "./desktop-source-control-dispatch.js";
 import { emitRuntimeDiagnostic, observeRuntimeDiagnostics } from "./runtime-diagnostics.js";
+import { MAX_INLINE_RESULT_BYTES as MAX_INLINE_BYTES } from "./runtime-payload-limits.js";
 
 export type { DesktopRuntimeReady } from "./desktop-runtime-types.js";
 
 const LOOPBACK_HOST = "127.0.0.1";
-const MAX_INLINE_BYTES = maxWebSocketControlFrameBytes;
 const MAX_INFLIGHT_REQUESTS_PER_CONNECTION = 256;
 const RUNTIME_CONTROL_METHOD = Object.freeze({
   debugHttpStatus: "runtime.debugHttp.status.v1",
