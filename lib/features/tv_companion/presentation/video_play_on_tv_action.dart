@@ -3,11 +3,13 @@
 /// This UI only discovers and selects a receiver. Playback remains owned by
 /// the existing companion handoff and media host contracts.
 /// Discovery is scoped to the picker; the entry shares the player's toolbar.
+/// Pointer hosts use a bounded dialog; touch hosts use a sheet in the same theme.
 library;
 
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mg_read/features/lan_sync/application/device_sync_controller.dart';
 
@@ -34,23 +36,46 @@ final class VideoPlayOnTvAction extends ConsumerWidget {
   );
 }
 
-Future<void> _chooseAndPlay(BuildContext context, WidgetRef ref) async {
-  final media = ref.read(companionMediaHostProvider);
-  final content = media.content;
-  if (content == null) return;
-  final service = ref.read(companionControllerProvider);
-  final target = await showModalBottomSheet<_TvTarget>(
+Future<_TvTarget?> _showTvTargetPicker(BuildContext context, CompanionController service) {
+  Widget picker(BuildContext context) => Theme(
+    data: VideoTvPickerSheet.themeFor(Theme.of(context)),
+    child: _TvPickerSheet(key: const Key('companion-cast-picker'), service: service),
+  );
+  if (defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.macOS ||
+      defaultTargetPlatform == TargetPlatform.linux) {
+    return showDialog<_TvTarget>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (context) => Dialog(
+        backgroundColor: VideoTvPickerSheet.backgroundColor,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        clipBehavior: Clip.antiAlias,
+        child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 560), child: picker(context)),
+      ),
+    );
+  }
+  return showModalBottomSheet<_TvTarget>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     showDragHandle: false,
     backgroundColor: VideoTvPickerSheet.backgroundColor,
     barrierColor: Colors.black54,
-    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(12))),
     clipBehavior: Clip.antiAlias,
     constraints: const BoxConstraints(maxWidth: 560),
-    builder: (_) => _TvPickerSheet(key: const Key('companion-cast-picker'), service: service),
+    builder: picker,
   );
+}
+
+Future<void> _chooseAndPlay(BuildContext context, WidgetRef ref) async {
+  final media = ref.read(companionMediaHostProvider);
+  final content = media.content;
+  if (content == null) return;
+  final service = ref.read(companionControllerProvider);
+  final target = await _showTvTargetPicker(context, service);
   if (target == null || !context.mounted) return;
   final current = media.content;
   if (current == null ||

@@ -1,7 +1,7 @@
-/// Controller command forwarding for the mounted video view.
+/// Controller commands and stage callback wiring for the mounted video view.
 ///
 /// Responsibilities:
-/// - Keep the State implementation below the package source-size limit.
+/// - Compose the stage with existing session fields and command callbacks.
 /// - Route host commands through the same actions as package-owned controls.
 ///
 /// Notes:
@@ -11,6 +11,44 @@ part of 'video_player_view.dart';
 mixin _VideoPlayerViewDelegate on State<VideoPlayerView>
     implements VideoPlayerControllerDelegate {
   _VideoPlayerViewState get _player => this as _VideoPlayerViewState;
+
+  @override
+  Widget build(BuildContext context) => VideoPlayerStage(
+    controller: _player._controller,
+    backend: _player._backend,
+    snapshot: _player._snapshot,
+    activeEpisode: _player._episode,
+    tvMode: widget.tvMode,
+    topRightAction: widget.topRightAction,
+    tvPlayFocus: _player._tvPlayFocus,
+    focusNode: _player._focusNode,
+    exitAuthorized: _player._exitAuthorized,
+    onPopAttempt: () =>
+        widget.tvMode ? _player._tvBack() : unawaited(requestExit()),
+    onKeyEvent: _player._handleKey,
+    onToggleControls: toggleControls,
+    onRetry: _player._retry,
+    onExit: requestExit,
+    onPlayOrPause: playOrPause,
+    onSeek: seek,
+    onRate: setRate,
+    onEnhancementMode: setEnhancementMode,
+    onReplay: replay,
+    onPreviousEpisode: playPreviousEpisode,
+    onNextEpisode: playNextEpisode,
+    onAutoAdvance: setAutoAdvance,
+    onControlsLocked: setControlsLocked,
+    onInteractionStart: _player._handleInteractionStart,
+    onInteractionEnd: _player._handleInteractionEnd,
+    onControlsHoverChanged: _player._handleControlsHoverChanged,
+    onFit: cycleFitMode,
+    onEpisodes: _player._showEpisodes,
+    onFullscreen: requestFullscreen,
+    onReadBrightness: _player._hostBridge.readBrightness,
+    onBrightness: _player._hostBridge.setBrightness,
+    onReadSystemVolume: _player._hostBridge.readSystemVolume,
+    onSystemVolume: _player._hostBridge.setSystemVolume,
+  );
 
   @override
   Future<void> play() => _player._actionPlay();
@@ -148,6 +186,15 @@ mixin _VideoPlayerViewDelegate on State<VideoPlayerView>
     _player._controlsTimer?.cancel();
     if (!_player._controlsVisible) {
       _player._update(() => _player._controlsVisible = true);
+    }
+  }
+
+  void _handleControlsHoverChanged(bool hovering) {
+    _player._pointerOverControls = hovering;
+    if (hovering) {
+      _handleInteractionStart();
+    } else {
+      _handleInteractionEnd();
     }
   }
 

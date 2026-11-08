@@ -3,7 +3,7 @@
 /// Responsibilities:
 /// - Compose the backend surface with package-owned dark video presentation.
 /// - Route pointer, keyboard and back intents to the session coordinator.
-/// - Keep host actions inside touch chrome so they share visibility and locking.
+/// - Keep host actions inside adaptive chrome so they share visibility and locking.
 ///
 /// Notes:
 /// - System text scaling is preserved; child controls own narrow-layout safety.
@@ -71,6 +71,7 @@ final class VideoPlayerStage extends StatelessWidget {
     required this.onControlsLocked,
     required this.onInteractionStart,
     required this.onInteractionEnd,
+    required this.onControlsHoverChanged,
     required this.onFit,
     required this.onEpisodes,
     required this.onFullscreen,
@@ -106,6 +107,7 @@ final class VideoPlayerStage extends StatelessWidget {
   final Future<void> Function(bool) onControlsLocked;
   final VoidCallback onInteractionStart;
   final VoidCallback onInteractionEnd;
+  final ValueChanged<bool> onControlsHoverChanged;
   final Future<void> Function() onFit;
   final Future<void> Function() onEpisodes;
   final Future<void> Function(bool) onFullscreen;
@@ -137,7 +139,7 @@ final class VideoPlayerStage extends StatelessWidget {
                   onInteractionEnd();
                 },
                 child: Scaffold(
-                  backgroundColor: const Color(0xFF050607),
+                  backgroundColor: videoPlayerBackground,
                   body: Stack(
                     fit: StackFit.expand,
                     children: <Widget>[
@@ -181,6 +183,7 @@ final class VideoPlayerStage extends StatelessWidget {
                           snapshot: snapshot,
                           activeEpisode: activeEpisode,
                           topRightAction: topRightAction,
+                          onControlsHoverChanged: onControlsHoverChanged,
                           reduceMotion: reduceMotion,
                           onToggleControls: onToggleControls,
                           onExit: onExit,
@@ -214,6 +217,7 @@ final class VideoPlayerStage extends StatelessWidget {
                           onNextEpisode: () => unawaited(onNextEpisode()),
                         ),
                       if (!tvMode &&
+                          !videoPlayerUsesPointerControls(context) &&
                           snapshot.fullscreenRequested &&
                           snapshot.controlsVisible)
                         Align(
@@ -273,6 +277,7 @@ final class _VideoPlayerInteractionLayer extends StatefulWidget {
     required this.onAutoAdvance,
     required this.onInteractionStart,
     required this.onInteractionEnd,
+    required this.onControlsHoverChanged,
     required this.onFit,
     required this.onEpisodes,
     required this.onFullscreen,
@@ -298,6 +303,7 @@ final class _VideoPlayerInteractionLayer extends StatefulWidget {
   final Future<void> Function(bool) onAutoAdvance;
   final VoidCallback onInteractionStart;
   final VoidCallback onInteractionEnd;
+  final ValueChanged<bool> onControlsHoverChanged;
   final Future<void> Function() onFit;
   final Future<void> Function() onEpisodes;
   final Future<void> Function(bool) onFullscreen;
@@ -352,26 +358,35 @@ final class _VideoPlayerInteractionLayerState
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
-        VideoPlayerGestureLayer(
-          snapshot: snapshot,
-          onToggleControls: () => unawaited(widget.onToggleControls()),
-          onPlayOrPause: () => unawaited(widget.onPlayOrPause()),
-          onSeekPreviewChanged: _updateSeekPreview,
-          onSeekPreviewEnded: (position) =>
-              unawaited(_commitSeekPreview(position)),
-          onSeekPreviewCanceled: _cancelSeekPreview,
-          onRate: (value) => unawaited(widget.onRate(value)),
-          onReadSystemVolume: widget.onReadSystemVolume,
-          onSystemVolume: widget.onSystemVolume,
-          onReadBrightness: widget.onReadBrightness,
-          onBrightness: (value) => unawaited(widget.onBrightness(value)),
-          locked: snapshot.controlsLocked,
-          onInteractionStart: widget.onInteractionStart,
-          onInteractionEnd: widget.onInteractionEnd,
-        ),
+        if (videoPlayerUsesPointerControls(context))
+          GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () => unawaited(widget.onPlayOrPause()),
+            onDoubleTap: () =>
+                unawaited(widget.onFullscreen(!snapshot.fullscreenRequested)),
+          )
+        else
+          VideoPlayerGestureLayer(
+            snapshot: snapshot,
+            onToggleControls: () => unawaited(widget.onToggleControls()),
+            onPlayOrPause: () => unawaited(widget.onPlayOrPause()),
+            onSeekPreviewChanged: _updateSeekPreview,
+            onSeekPreviewEnded: (position) =>
+                unawaited(_commitSeekPreview(position)),
+            onSeekPreviewCanceled: _cancelSeekPreview,
+            onRate: (value) => unawaited(widget.onRate(value)),
+            onReadSystemVolume: widget.onReadSystemVolume,
+            onSystemVolume: widget.onSystemVolume,
+            onReadBrightness: widget.onReadBrightness,
+            onBrightness: (value) => unawaited(widget.onBrightness(value)),
+            locked: snapshot.controlsLocked,
+            onInteractionStart: widget.onInteractionStart,
+            onInteractionEnd: widget.onInteractionEnd,
+          ),
         if (!snapshot.controlsLocked)
           VideoPlayerChrome(
             topRightAction: widget.topRightAction,
+            onControlsHoverChanged: widget.onControlsHoverChanged,
             controller: widget.controller,
             snapshot: snapshot,
             activeEpisode: widget.activeEpisode,
@@ -392,26 +407,6 @@ final class _VideoPlayerInteractionLayerState
             onAutoAdvance: widget.onAutoAdvance,
             onInteractionStart: widget.onInteractionStart,
             onInteractionEnd: widget.onInteractionEnd,
-          ),
-        if (!snapshot.controlsLocked &&
-            !snapshot.playing &&
-            !snapshot.completed &&
-            _seekPreviewPosition == null)
-          Center(
-            child: IconButton(
-              key: const Key('video-player-paused-play'),
-              tooltip: '播放',
-              onPressed: () => unawaited(widget.onPlayOrPause()),
-              iconSize: 34,
-              style: IconButton.styleFrom(
-                fixedSize: const Size.square(58),
-                backgroundColor: const Color(0x38FFFFFF),
-                foregroundColor: Colors.white,
-                side: const BorderSide(color: Color(0x52FFFFFF)),
-                shape: const CircleBorder(),
-              ),
-              icon: const Icon(Icons.play_arrow_rounded),
-            ),
           ),
         if (_seekPreviewPosition case final position?)
           _SeekPreviewOverlay(position: position, duration: snapshot.duration),

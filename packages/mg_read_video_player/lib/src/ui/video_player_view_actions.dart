@@ -1,6 +1,7 @@
 /// Playback commands, persistence and user interaction actions for the view.
 /// Playing chrome times out after the last interaction, including in TV mode;
 /// modal controls suspend the timer and restart it when they close.
+/// Explicit playback toggles reveal chrome, including keyboard pause after hiding.
 part of 'video_player_view.dart';
 
 extension _VideoPlayerViewActions on _VideoPlayerViewState {
@@ -160,8 +161,14 @@ extension _VideoPlayerViewActions on _VideoPlayerViewState {
     await _flushProgress(force: true);
   }
 
-  Future<void> _actionPlayOrPause() =>
-      _backendState.playing ? _actionPause() : _actionPlay();
+  Future<void> _actionPlayOrPause() async {
+    _showControls();
+    if (_backendState.playing) {
+      await _actionPause();
+    } else {
+      await _actionPlay();
+    }
+  }
 
   Future<void> _actionSeek(Duration position) async {
     final generation = _episodeGeneration;
@@ -470,7 +477,12 @@ extension _VideoPlayerViewActions on _VideoPlayerViewState {
   void _actionScheduleControlsHide() {
     _controlsTimer?.cancel();
     _controlsTimer = null;
-    if (!_backendState.playing || !_controlsVisible || _disposed) return;
+    if (!_backendState.playing ||
+        !_controlsVisible ||
+        _disposed ||
+        _pointerOverControls) {
+      return;
+    }
     _controlsTimer = Timer(widget.controlsAutoHideDelay, () {
       if (_disposed ||
           !_backendState.playing ||

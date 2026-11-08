@@ -7,59 +7,65 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read_video_player/mg_read_video_player.dart';
 
+part 'video_player_transport_test_cases.dart';
+
 void main() {
-  testWidgets('chrome bands are full-bleed, flat, and safely padded', (
-    tester,
-  ) async {
-    await tester.pumpWidget(_playerApp(backend: _Backend()));
-    await tester.pumpAndSettle();
+  _registerTransportTests();
+  testWidgets(
+    'touch chrome keeps progress above a visible control row and safe area',
+    (tester) async {
+      await tester.pumpWidget(_playerApp(backend: _Backend()));
+      await tester.pumpAndSettle();
 
-    final top = find.byKey(const Key('video-player-top-band'));
-    final bottom = find.byKey(const Key('video-player-bottom-band'));
-    final logicalWidth =
-        tester.view.physicalSize.width / tester.view.devicePixelRatio;
-    final logicalHeight =
-        tester.view.physicalSize.height / tester.view.devicePixelRatio;
+      final top = find.byKey(const Key('video-player-top-band'));
+      final bottom = find.byKey(const Key('video-player-bottom-band'));
+      final logicalWidth =
+          tester.view.physicalSize.width / tester.view.devicePixelRatio;
+      final logicalHeight =
+          tester.view.physicalSize.height / tester.view.devicePixelRatio;
 
-    expect(tester.getTopLeft(top).dx, 0);
-    expect(tester.getSize(top).width, logicalWidth);
-    expect(tester.getBottomRight(bottom), Offset(logicalWidth, logicalHeight));
-    expect(_clip(tester, top).borderRadius, BorderRadius.zero);
-    expect(_clip(tester, bottom).borderRadius, BorderRadius.zero);
-    final slider = find.byKey(const Key('video-player-slider'));
-    expect(tester.getSize(slider).height, 52);
-    expect(
-      tester.getBottomRight(bottom).dy - tester.getBottomRight(slider).dy,
-      greaterThanOrEqualTo(18),
-    );
-    expect(find.byKey(const Key('video-player-transport')), findsNothing);
-    expect(find.byKey(const Key('video-player-paused-play')), findsNothing);
-  });
-
-  testWidgets('paused playback shows only a translucent white play button', (
-    tester,
-  ) async {
-    final backend = _Backend();
-    await tester.pumpWidget(_playerApp(backend: backend));
-    await tester.pumpAndSettle();
-
-    await backend.pause();
-    await tester.pump();
-
-    final pausedPlay = find.byKey(const Key('video-player-paused-play'));
-    expect(pausedPlay, findsOneWidget);
-    expect(find.byKey(const Key('video-player-transport')), findsNothing);
-    expect(find.byKey(const Key('video-player-rewind')), findsNothing);
-    expect(find.byKey(const Key('video-player-forward')), findsNothing);
-
-    await tester.tap(pausedPlay);
-    await tester.pump();
-    expect(backend.state.value.playing, isTrue);
-    expect(pausedPlay, findsNothing);
-  });
+      expect(tester.getTopLeft(top).dx, 0);
+      expect(tester.getSize(top).width, logicalWidth);
+      expect(
+        tester.getBottomRight(bottom),
+        Offset(logicalWidth, logicalHeight),
+      );
+      final slider = find.byKey(const Key('video-player-slider'));
+      expect(tester.getSize(slider).height, 28);
+      expect(
+        tester.getBottomRight(bottom).dy - tester.getBottomRight(slider).dy,
+        greaterThanOrEqualTo(18),
+      );
+      expect(find.byKey(const Key('video-player-transport')), findsNothing);
+      expect(find.byKey(const Key('video-player-play-pause')), findsOneWidget);
+    },
+  );
 
   testWidgets(
-    'keeps one progress control below and moves episodes and settings to the top',
+    'touch playback has persistent visible play pause and ten second actions',
+    (tester) async {
+      final backend = _Backend();
+      await tester.pumpWidget(_playerApp(backend: backend));
+      await tester.pumpAndSettle();
+
+      await backend.pause();
+      await tester.pump();
+
+      final pausedPlay = find.byKey(const Key('video-player-play-pause'));
+      expect(pausedPlay, findsOneWidget);
+      expect(find.byKey(const Key('video-player-transport')), findsNothing);
+      expect(find.byKey(const Key('video-player-rewind')), findsOneWidget);
+      expect(find.byKey(const Key('video-player-forward')), findsOneWidget);
+
+      await tester.tap(pausedPlay);
+      await tester.pump();
+      expect(backend.state.value.playing, isTrue);
+      expect(pausedPlay.hitTestable(), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'touch separates top settings from bottom episodes and fullscreen',
     (tester) async {
       final backend = _Backend();
       await tester.pumpWidget(_playerApp(backend: backend));
@@ -71,13 +77,6 @@ void main() {
       expect(
         find.descendant(
           of: top,
-          matching: find.byKey(const Key('video-player-episodes')),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: top,
           matching: find.byKey(const Key('video-player-settings')),
         ),
         findsOneWidget,
@@ -87,14 +86,14 @@ void main() {
           of: bottom,
           matching: find.byKey(const Key('video-player-episodes')),
         ),
-        findsNothing,
+        findsOneWidget,
       );
       expect(
         find.descendant(
           of: bottom,
-          matching: find.byKey(const Key('video-player-settings')),
+          matching: find.byKey(const Key('video-player-fullscreen')),
         ),
-        findsNothing,
+        findsOneWidget,
       );
 
       await tester.tap(find.byKey(const Key('video-player-settings')));
@@ -373,14 +372,11 @@ void main() {
   });
 }
 
-ClipRRect _clip(WidgetTester tester, Finder panel) => tester.widget<ClipRRect>(
-  find.descendant(of: panel, matching: find.byType(ClipRRect)).first,
-);
-
 Widget _playerApp({
   required _Backend backend,
   VideoPlayerObserver? observer,
   VideoPlayerController? controller,
+  Duration controlsDelay = const Duration(hours: 1),
 }) => MaterialApp(
   home: VideoPlayerView(
     contentId: 'show',
@@ -389,7 +385,7 @@ Widget _playerApp({
     controller: controller,
     observer: observer,
     backendFactory: () => backend,
-    controlsAutoHideDelay: const Duration(hours: 1),
+    controlsAutoHideDelay: controlsDelay,
   ),
 );
 

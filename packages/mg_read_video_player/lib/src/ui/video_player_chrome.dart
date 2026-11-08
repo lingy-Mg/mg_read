@@ -1,9 +1,9 @@
-/// Package-private dark chrome and episode selector for the video player.
+/// Adaptive pointer and touch playback chrome for the video player.
 ///
 /// Responsibilities:
 /// - Render accessible playback controls over the engine-owned video surface.
-/// - Adapt controls to narrow windows and bounded system text scaling.
-/// - Place the optional compact host action alongside the top-bar controls.
+/// - Keep mouse transport below and large touch transport over the picture.
+/// - Own only presentation; command, seek-preview and modal lifetimes stay explicit.
 ///
 /// Notes:
 /// - This file emits semantic callbacks only and never touches a playback engine.
@@ -14,6 +14,7 @@ library;
 // library-level public naming rules.
 // ignore_for_file: public_member_api_docs
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../api/controller.dart';
@@ -21,6 +22,7 @@ import '../api/models.dart';
 import 'video_player_details_sheet.dart';
 import 'video_player_settings_sheet.dart';
 import 'video_player_visuals.dart';
+import 'video_player_transport.dart';
 
 /// Package-private overlay for one video session.
 final class VideoPlayerChrome extends StatefulWidget {
@@ -44,6 +46,7 @@ final class VideoPlayerChrome extends StatefulWidget {
     required this.onAutoAdvance,
     required this.onInteractionStart,
     required this.onInteractionEnd,
+    required this.onControlsHoverChanged,
     this.topRightAction,
     super.key,
   });
@@ -67,6 +70,7 @@ final class VideoPlayerChrome extends StatefulWidget {
   final Future<void> Function(bool) onAutoAdvance;
   final VoidCallback onInteractionStart;
   final VoidCallback onInteractionEnd;
+  final ValueChanged<bool> onControlsHoverChanged;
   final Widget? topRightAction;
 
   @override
@@ -77,54 +81,175 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
   @override
   Widget build(BuildContext context) {
     final snapshot = widget.snapshot;
+    final pointer = videoPlayerUsesPointerControls(context);
     return IgnorePointer(
       ignoring: !snapshot.controlsVisible,
-      child: Listener(
-        onPointerDown: (_) => widget.onInteractionStart(),
-        onPointerUp: (_) => widget.onInteractionEnd(),
-        onPointerCancel: (_) {
-          widget.onSeekPreviewCanceled();
-          widget.onInteractionEnd();
-        },
-        child: AnimatedOpacity(
-          key: const Key('video-player-controls'),
-          opacity: snapshot.controlsVisible ? 1 : 0,
-          duration: widget.reduceMotion
-              ? Duration.zero
-              : const Duration(milliseconds: 160),
-          curve: Curves.easeOut,
-          child: Stack(
-            fit: StackFit.expand,
-            children: <Widget>[
-              const IgnorePointer(child: _ChromeGradient()),
-              Column(
-                children: <Widget>[
-                  VideoPlayerGlassPanel(
-                    key: const Key('video-player-top-band'),
-                    borderRadius: BorderRadius.zero,
-                    padding: EdgeInsets.only(
-                      top: MediaQuery.paddingOf(context).top,
-                    ),
-                    showBorder: false,
-                    showShadow: false,
-                    blurSigma: 22,
-                    child: _TopBar(
-                      title: snapshot.title,
-                      subtitle: _episodeLabel(snapshot),
-                      fullscreen: snapshot.fullscreenRequested,
-                      onDetails: () => _showDetails(context),
-                      onExit: widget.onExit,
-                      onEpisodes: widget.onEpisodes,
-                      onSettings: () => _showSettings(context),
-                      onFullscreen: widget.onFullscreen,
-                      hostAction: widget.topRightAction,
+      child: ExcludeFocus(
+        excluding: !snapshot.controlsVisible,
+        child: Listener(
+          onPointerDown: (_) => widget.onInteractionStart(),
+          onPointerUp: (_) => widget.onInteractionEnd(),
+          onPointerCancel: (_) {
+            widget.onSeekPreviewCanceled();
+            widget.onInteractionEnd();
+          },
+          child: AnimatedOpacity(
+            key: const Key('video-player-controls'),
+            opacity: snapshot.controlsVisible ? 1 : 0,
+            duration: widget.reduceMotion
+                ? Duration.zero
+                : const Duration(milliseconds: 160),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: MouseRegion(
+                    onEnter: (_) => widget.onControlsHoverChanged(true),
+                    onExit: (_) => widget.onControlsHoverChanged(false),
+                    child: Container(
+                      key: const Key('video-player-top-band'),
+                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 32),
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0xB3000000), Colors.transparent],
+                        ),
+                      ),
+                      child: SafeArea(
+                        bottom: false,
+                        child: Row(
+                          children: [
+                            videoPlayerControl(
+                              'video-player-back',
+                              '返回',
+                              Icons.arrow_back_rounded,
+                              widget.onExit,
+                              size: 24,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    snapshot.title,
+                                    key: const Key('video-player-title'),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: pointer ? 18 : 15,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  Text(
+                                    _episodeLabel(snapshot),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: videoPlayerSecondary,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            ?widget.topRightAction,
+                            videoPlayerControl(
+                              'video-player-details',
+                              '视频详情',
+                              Icons.info_outline_rounded,
+                              () => _showDetails(context),
+                              size: 23,
+                            ),
+                            if (!pointer)
+                              videoPlayerControl(
+                                'video-player-settings',
+                                '播放设置',
+                                Icons.settings_outlined,
+                                () => _showSettings(context),
+                                size: 24,
+                              ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                  const Expanded(child: SizedBox.shrink()),
-                  _buildBottomControls(context),
-                ],
-              ),
-            ],
+                ),
+                if (!pointer &&
+                    widget.seekPreviewPosition == null &&
+                    !snapshot.completed)
+                  Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        videoPlayerControl(
+                          'video-player-rewind',
+                          '后退 10 秒',
+                          Icons.replay_10_rounded,
+                          () => unawaited(
+                            widget.controller.skip(
+                              const Duration(seconds: -10),
+                            ),
+                          ),
+                          size: 32,
+                        ),
+                        const SizedBox(width: 28),
+                        IconButton(
+                          key: const Key('video-player-play-pause'),
+                          tooltip: snapshot.playing ? '暂停' : '播放',
+                          onPressed: () =>
+                              unawaited(widget.controller.playOrPause()),
+                          style: IconButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            backgroundColor: const Color(0x66000000),
+                            fixedSize: const Size.square(64),
+                          ),
+                          icon: Icon(
+                            snapshot.playing
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                            size: 44,
+                          ),
+                        ),
+                        const SizedBox(width: 28),
+                        videoPlayerControl(
+                          'video-player-forward',
+                          '前进 10 秒',
+                          Icons.forward_10_rounded,
+                          () => unawaited(
+                            widget.controller.skip(const Duration(seconds: 10)),
+                          ),
+                          size: 32,
+                        ),
+                      ],
+                    ),
+                  ),
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: MouseRegion(
+                    onEnter: (_) => widget.onControlsHoverChanged(true),
+                    onExit: (_) => widget.onControlsHoverChanged(false),
+                    child: VideoPlayerTransport(
+                      controller: widget.controller,
+                      snapshot: snapshot,
+                      position: widget.seekPreviewPosition ?? snapshot.position,
+                      onPreview: widget.onSeekPreviewChanged,
+                      onCommit: widget.onSeekPreviewEnded,
+                      onInteractionStart: widget.onInteractionStart,
+                      onInteractionEnd: widget.onInteractionEnd,
+                      onEpisodes: widget.onEpisodes,
+                      onSettings: () => _showSettings(context),
+                      onFullscreen: () =>
+                          widget.onFullscreen(!snapshot.fullscreenRequested),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -153,235 +278,7 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
       onAutoAdvance: widget.onAutoAdvance,
     ).whenComplete(widget.onInteractionEnd);
   }
-
-  Widget _buildBottomControls(BuildContext context) {
-    final snapshot = widget.snapshot;
-    final Duration duration = snapshot.duration;
-    final Duration shownPosition =
-        widget.seekPreviewPosition ?? snapshot.position;
-    final double max = duration.inMilliseconds <= 0
-        ? 1
-        : duration.inMilliseconds.toDouble();
-    final double value = shownPosition.inMilliseconds
-        .clamp(0, max.toInt())
-        .toDouble();
-    final double buffered = snapshot.bufferedPosition.inMilliseconds
-        .clamp(0, max.toInt())
-        .toDouble();
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        final slider = Row(
-          children: <Widget>[
-            SizedBox(
-              width: 44,
-              child: FittedBox(
-                alignment: Alignment.centerRight,
-                fit: BoxFit.scaleDown,
-                child: Text(_formatDuration(shownPosition), style: _timeStyle),
-              ),
-            ),
-            Expanded(
-              child: SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  activeTrackColor: videoPlayerAccent,
-                  inactiveTrackColor: Colors.white24,
-                  thumbColor: videoPlayerAccent,
-                  overlayColor: videoPlayerAccent.withValues(alpha: .16),
-                  trackHeight: 4,
-                  thumbShape: const RoundSliderThumbShape(
-                    enabledThumbRadius: 8,
-                  ),
-                  overlayShape: const RoundSliderOverlayShape(
-                    overlayRadius: 24,
-                  ),
-                ),
-                child: SizedBox(
-                  height: 52,
-                  child: Slider(
-                    key: const Key('video-player-slider'),
-                    value: value,
-                    max: max,
-                    secondaryTrackValue: buffered < value ? value : buffered,
-                    onChangeStart: (_) => widget.onInteractionStart(),
-                    onChanged: (double next) => widget.onSeekPreviewChanged(
-                      Duration(milliseconds: next.round()),
-                    ),
-                    onChangeEnd: (double next) {
-                      final position = Duration(milliseconds: next.round());
-                      widget.onSeekPreviewEnded(position);
-                      widget.onInteractionEnd();
-                    },
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(
-              width: 44,
-              child: FittedBox(
-                alignment: Alignment.centerLeft,
-                fit: BoxFit.scaleDown,
-                child: Text(_formatDuration(duration), style: _timeStyle),
-              ),
-            ),
-          ],
-        );
-        return VideoPlayerGlassPanel(
-          key: const Key('video-player-bottom-band'),
-          borderRadius: BorderRadius.zero,
-          padding: EdgeInsets.fromLTRB(
-            8,
-            8,
-            8,
-            18 + MediaQuery.paddingOf(context).bottom,
-          ),
-          showBorder: false,
-          showShadow: false,
-          blurSigma: 22,
-          child: slider,
-        );
-      },
-    );
-  }
 }
-
-final class _ChromeGradient extends StatelessWidget {
-  const _ChromeGradient();
-
-  @override
-  Widget build(BuildContext context) => const DecoratedBox(
-    decoration: BoxDecoration(
-      gradient: LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: <Color>[
-          Color(0x92000000),
-          Color(0x00000000),
-          Color(0x92000000),
-        ],
-        stops: <double>[0, .5, 1],
-      ),
-    ),
-  );
-}
-
-final class _TopBar extends StatelessWidget {
-  const _TopBar({
-    required this.title,
-    required this.subtitle,
-    required this.fullscreen,
-    required this.onDetails,
-    required this.onExit,
-    required this.onEpisodes,
-    required this.onSettings,
-    required this.onFullscreen,
-    this.hostAction,
-  });
-
-  final String title;
-  final String subtitle;
-  final bool fullscreen;
-  final VoidCallback onDetails;
-  final VoidCallback onExit;
-  final VoidCallback onEpisodes;
-  final VoidCallback onSettings;
-  final ValueChanged<bool> onFullscreen;
-  final Widget? hostAction;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    children: <Widget>[
-      IconButton(
-        key: const Key('video-player-back'),
-        tooltip: '返回',
-        onPressed: onExit,
-        style: IconButton.styleFrom(
-          foregroundColor: videoPlayerForeground,
-          visualDensity: VisualDensity.compact,
-        ),
-        icon: const Icon(Icons.arrow_back_rounded, size: 23),
-      ),
-      Expanded(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              title,
-              key: const Key('video-player-title'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: videoPlayerForeground,
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
-              ),
-            ),
-            if (subtitle != '选集')
-              Text(
-                subtitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: videoPlayerSecondary,
-                  fontSize: 10,
-                ),
-              ),
-          ],
-        ),
-      ),
-      ?hostAction,
-      IconButton(
-        key: const Key('video-player-details'),
-        tooltip: '视频详情',
-        onPressed: onDetails,
-        style: IconButton.styleFrom(
-          foregroundColor: videoPlayerForeground,
-          visualDensity: VisualDensity.compact,
-        ),
-        icon: const Icon(Icons.info_outline_rounded, size: 21),
-      ),
-      IconButton(
-        key: const Key('video-player-episodes'),
-        tooltip: '选择 ${subtitle == '选集' ? '选集' : subtitle}',
-        onPressed: onEpisodes,
-        style: IconButton.styleFrom(
-          foregroundColor: videoPlayerForeground,
-          visualDensity: VisualDensity.compact,
-        ),
-        icon: const Icon(Icons.video_library_rounded, size: 21),
-      ),
-      IconButton(
-        key: const Key('video-player-settings'),
-        tooltip: '播放设置',
-        onPressed: onSettings,
-        style: IconButton.styleFrom(
-          foregroundColor: videoPlayerForeground,
-          visualDensity: VisualDensity.compact,
-        ),
-        icon: const Icon(Icons.tune_rounded, size: 21),
-      ),
-      IconButton(
-        key: const Key('video-player-fullscreen'),
-        tooltip: fullscreen ? '退出全屏' : '进入全屏',
-        onPressed: () => onFullscreen(!fullscreen),
-        style: IconButton.styleFrom(
-          foregroundColor: videoPlayerForeground,
-          visualDensity: VisualDensity.compact,
-        ),
-        icon: Icon(
-          fullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
-          size: 23,
-        ),
-      ),
-    ],
-  );
-}
-
-const TextStyle _timeStyle = TextStyle(
-  color: videoPlayerSecondary,
-  fontSize: 11,
-  fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
-);
 
 String _episodeLabel(VideoPlayerSnapshot snapshot) {
   for (final group in snapshot.groups) {
@@ -393,15 +290,4 @@ String _episodeLabel(VideoPlayerSnapshot snapshot) {
     }
   }
   return '选集';
-}
-
-String _formatDuration(Duration duration) {
-  final int total = duration.inSeconds.clamp(0, 359999);
-  final int hours = total ~/ 3600;
-  final int minutes = total.remainder(3600) ~/ 60;
-  final int seconds = total.remainder(60);
-  if (hours > 0) {
-    return '$hours:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-  }
-  return '$minutes:${seconds.toString().padLeft(2, '0')}';
 }

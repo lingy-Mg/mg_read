@@ -258,7 +258,7 @@ void main() {
   });
 
   testWidgets(
-    'episode sheet keeps its glass contrast outside the player theme',
+    'episode sheet keeps its neutral cinema contrast outside the player theme',
     (WidgetTester tester) async {
       final backend = _FakeVideoBackend();
       await tester.pumpWidget(_playerApp(contentId: 'show', backend: backend));
@@ -272,8 +272,8 @@ void main() {
         find.byKey(const Key('video-player-episode-season-1-episode-1')),
       );
       final episodeTitle = tester.widget<Text>(find.text('第 1 集'));
-      expect(selected.selectedTileColor, const Color(0x38FFA43A));
-      expect(episodeTitle.style?.color, const Color(0xFFF7F7F8));
+      expect(selected.selectedTileColor, const Color(0xFF303030));
+      expect(episodeTitle.style?.color, const Color(0xFFF5F5F5));
       expect(
         tester.widget<BottomSheet>(find.byType(BottomSheet)).backgroundColor,
         Colors.transparent,
@@ -491,7 +491,7 @@ void main() {
     final settingsRect = tester.getRect(
       find.byKey(const Key('video-player-settings')),
     );
-    expect(actionRect.center.dy, fullscreenRect.center.dy);
+    expect(actionRect.center.dy, lessThan(fullscreenRect.center.dy));
     expect(actionRect.overlaps(fullscreenRect), isFalse);
     expect(actionRect.overlaps(settingsRect), isFalse);
     expect(tester.takeException(), isNull);

@@ -309,40 +309,43 @@ void _registerTvTests() {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      // The panel is scrollable, but must remain navigable without touch/Tab.
-      for (var i = 0; i < 8; i++) {
-        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-        await tester.pumpAndSettle();
-      }
-      // At large text the bottom row has fit and exit side by side.
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-      await tester.pumpAndSettle();
-      final exitButton = find.byKey(const Key('tv-video-exit'));
-      expect(
-        FocusManager.instance.primaryFocus?.context
-            ?.findAncestorWidgetOfExactType<FilledButton>()
-            ?.key,
-        const Key('tv-video-exit'),
-      );
-      expect(tester.getRect(exitButton).bottom, lessThanOrEqualTo(360));
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
-      await tester.pumpAndSettle();
-      for (var i = 0; i < 6; i++) {
-        if (FocusManager.instance.primaryFocus?.context
-                ?.findAncestorWidgetOfExactType<FilledButton>()
-                ?.key ==
-            const Key('tv-video-rate')) {
-          break;
+      // The responsive wrap can change rows. Every control must still be
+      // reachable through the actual four-direction focus graph, without Tab.
+      final queue = <FocusNode>[FocusManager.instance.primaryFocus!];
+      final visited = <FocusNode>{queue.single};
+      final reachable = <String, FocusNode>{};
+      for (var i = 0; i < queue.length && i < 40; i++) {
+        for (final direction in [
+          LogicalKeyboardKey.arrowDown,
+          LogicalKeyboardKey.arrowRight,
+          LogicalKeyboardKey.arrowUp,
+          LogicalKeyboardKey.arrowLeft,
+        ]) {
+          queue[i].requestFocus();
+          await tester.pumpAndSettle();
+          await tester.sendKeyEvent(direction);
+          await tester.pumpAndSettle();
+          final focus = FocusManager.instance.primaryFocus;
+          if (focus == null) continue;
+          final key = focus.context
+              ?.findAncestorWidgetOfExactType<FilledButton>()
+              ?.key;
+          if (key is ValueKey<String>) reachable[key.value] = focus;
+          if (visited.add(focus)) queue.add(focus);
         }
-        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-        await tester.pumpAndSettle();
       }
       expect(
-        FocusManager.instance.primaryFocus?.context
-            ?.findAncestorWidgetOfExactType<FilledButton>()
-            ?.key,
-        const Key('tv-video-rate'),
+        reachable.keys,
+        containsAll(['tv-video-exit', 'tv-video-rate', 'tv-video-fit']),
       );
+      reachable['tv-video-exit']!.requestFocus();
+      await tester.pumpAndSettle();
+      expect(
+        tester.getRect(find.byKey(const Key('tv-video-exit'))).bottom,
+        lessThanOrEqualTo(360),
+      );
+      reachable['tv-video-rate']!.requestFocus();
+      await tester.pumpAndSettle();
       await tester.sendKeyEvent(LogicalKeyboardKey.select);
       await tester.pumpAndSettle();
       expect(find.text('播放速度'), findsOneWidget);

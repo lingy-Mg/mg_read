@@ -18,6 +18,8 @@ import 'video_tv_shortcuts.dart';
 
 import '../api/models.dart';
 import 'video_player_visuals.dart';
+import 'video_player_modal.dart';
+import 'dart:math' as math;
 
 typedef VideoEpisodeChoice = ({String groupId, String episodeId});
 
@@ -29,15 +31,9 @@ Future<VideoEpisodeChoice?> showVideoEpisodeSheet({
   required ValueListenable<VideoPlaybackBackendState> playbackState,
   Future<VideoEpisodeGroup> Function(String groupId)? loadGroup,
   bool tvMode = false,
-}) => showModalBottomSheet<VideoEpisodeChoice>(
+}) => showVideoPlayerModal<VideoEpisodeChoice>(
   context: context,
-  backgroundColor: Colors.transparent,
-  barrierColor: const Color(0xA6000000),
-  elevation: 0,
-  useSafeArea: true,
-  showDragHandle: false,
-  isScrollControlled: true,
-  constraints: const BoxConstraints(maxWidth: double.infinity),
+  maxWidth: 760,
   builder: (_) => VideoTvShortcuts(
     enabled: tvMode,
     child: Theme(
@@ -122,15 +118,23 @@ final class _VideoEpisodeSheetState extends State<_VideoEpisodeSheet> {
     final group = _group;
     final media = MediaQuery.of(context);
     final bool landscape = media.orientation == Orientation.landscape;
+    final columns = math.min(media.size.width - 48, 760) >= 720 ? 2 : 1;
+    final rows = ((group?.episodes.length ?? 1) / columns).ceil();
+    final height = math.min(
+      media.size.height * (landscape ? .82 : .74),
+      164 +
+          math.max(1, math.min(rows, 8)) *
+              (widget.tvMode ? 72 : 58) *
+              media.textScaler.scale(1) +
+          media.padding.bottom,
+    );
     return VideoPlayerGlassPanel(
       key: const Key('video-player-episode-sheet'),
       borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
       showBorder: false,
-      blurSigma: 22,
+
       child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: media.size.height * (landscape ? .86 : .7),
-        ),
+        constraints: BoxConstraints(minHeight: height, maxHeight: height),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
@@ -155,7 +159,7 @@ final class _VideoEpisodeSheetState extends State<_VideoEpisodeSheet> {
                 children: <Widget>[
                   const Icon(
                     Icons.queue_play_next_rounded,
-                    color: videoPlayerAccent,
+                    color: videoPlayerForeground,
                     size: 22,
                   ),
                   const SizedBox(width: 8),
@@ -173,6 +177,7 @@ final class _VideoEpisodeSheetState extends State<_VideoEpisodeSheet> {
                       onPressed: () => Navigator.pop(context),
                       child: const Text('返回播放'),
                     ),
+                  const SizedBox(width: 12),
                   Text(
                     group?.deferred == true
                         ? '待加载'
@@ -181,6 +186,12 @@ final class _VideoEpisodeSheetState extends State<_VideoEpisodeSheet> {
                       color: videoPlayerSecondary,
                       fontSize: 13,
                     ),
+                  ),
+                  IconButton(
+                    key: const Key('video-player-episodes-close'),
+                    tooltip: '关闭选集',
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded, size: 22),
                   ),
                 ],
               ),
@@ -309,9 +320,9 @@ final class _EpisodeTile extends StatelessWidget {
       visualDensity: tvMode ? VisualDensity.standard : VisualDensity.compact,
       focusColor: tvMode ? videoPlayerAccent.withValues(alpha: .5) : null,
       minLeadingWidth: 24,
-      minVerticalPadding: 0,
+      minVerticalPadding: 8,
       tileColor: Colors.transparent,
-      selectedTileColor: videoPlayerSelectedSurface,
+      selectedTileColor: const Color(0xFF303030),
       selected: selected,
       contentPadding: const EdgeInsets.symmetric(horizontal: 12),
       leading: Icon(
@@ -319,7 +330,7 @@ final class _EpisodeTile extends StatelessWidget {
             ? Icons.play_circle_fill_rounded
             : Icons.play_circle_outline_rounded,
         size: 21,
-        color: selected ? videoPlayerAccent : videoPlayerSecondary,
+        color: selected ? videoPlayerAccent : videoPlayerForeground,
       ),
       title: Text(
         episode.title,
@@ -327,7 +338,7 @@ final class _EpisodeTile extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
           color: selected ? videoPlayerForeground : videoPlayerSecondary,
-          fontSize: tvMode ? 22 : 14,
+          fontSize: tvMode ? 22 : 15,
           fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
         ),
       ),
@@ -477,13 +488,13 @@ final class _GroupChip extends StatelessWidget {
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       padding: const EdgeInsets.symmetric(horizontal: 3),
       backgroundColor: const Color(0x14000000),
-      selectedColor: videoPlayerAccent,
+      selectedColor: Colors.white,
       side: BorderSide.none,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
       label: Text(
         group.title,
         style: TextStyle(
-          color: selected ? const Color(0xFF111214) : videoPlayerForeground,
+          color: selected ? const Color(0xFF181818) : videoPlayerForeground,
           fontWeight: FontWeight.w600,
         ),
       ),

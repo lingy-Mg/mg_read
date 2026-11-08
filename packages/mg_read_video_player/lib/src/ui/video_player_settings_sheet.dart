@@ -2,7 +2,7 @@
 ///
 /// Responsibilities:
 /// - Keep episode navigation, repeat, rate and fit controls in one visual panel.
-/// - Reuse the video glass treatment in portrait and fullscreen landscapes.
+/// - Use bounded matte panels in desktop, portrait and fullscreen landscapes.
 ///
 /// Notes:
 /// - This panel only emits existing chrome callbacks and owns no playback state.
@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 
 import '../api/models.dart';
 import 'video_player_visuals.dart';
+import 'video_player_modal.dart';
 
 Future<void> showVideoPlayerSettingsSheet({
   required BuildContext context,
@@ -26,14 +27,8 @@ Future<void> showVideoPlayerSettingsSheet({
   required Future<void> Function() onPreviousEpisode,
   required Future<void> Function() onNextEpisode,
   required Future<void> Function(bool) onAutoAdvance,
-}) => showModalBottomSheet<void>(
+}) => showVideoPlayerModal<void>(
   context: context,
-  backgroundColor: Colors.transparent,
-  barrierColor: const Color(0xA6000000),
-  elevation: 0,
-  useSafeArea: true,
-  showDragHandle: false,
-  constraints: const BoxConstraints(maxWidth: double.infinity),
   builder: (_) => Theme(
     data: videoPlayerTheme(),
     child: _VideoPlayerSettingsSheet(
@@ -119,7 +114,7 @@ final class _VideoPlayerSettingsSheetState
       key: const Key('video-player-settings-sheet'),
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       showBorder: false,
-      blurSigma: 22,
+
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxHeight: media.size.height * (landscape ? .86 : .72),
@@ -146,20 +141,54 @@ final class _VideoPlayerSettingsSheetState
                 children: <Widget>[
                   const Icon(
                     Icons.tune_rounded,
-                    color: videoPlayerAccent,
+                    color: videoPlayerForeground,
                     size: 22,
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    '播放设置',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: videoPlayerForeground,
-                      fontWeight: FontWeight.w700,
+                  Expanded(
+                    child: Text(
+                      '播放设置',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: videoPlayerForeground,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
+                  ),
+                  IconButton(
+                    key: const Key('video-player-settings-close'),
+                    tooltip: '关闭播放设置',
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded, size: 22),
                   ),
                 ],
               ),
               const SizedBox(height: 16),
+              const _SettingsSectionLabel('播放速度'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  for (final rate in _rates)
+                    ChoiceChip(
+                      key: Key('video-player-rate-${_rateKey(rate)}'),
+                      label: Text('${_trimRate(rate)}×'),
+                      selected: _rate == rate,
+                      showCheckmark: false,
+                      selectedColor: videoPlayerAccent,
+                      backgroundColor: const Color(0x1AFFFFFF),
+                      side: BorderSide.none,
+                      labelStyle: TextStyle(
+                        color: _rate == rate
+                            ? Colors.white
+                            : videoPlayerForeground,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      onSelected: (_) => _setRate(rate),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 20),
               const _SettingsSectionLabel('选集切换'),
               const SizedBox(height: 8),
               Row(
@@ -234,31 +263,6 @@ final class _VideoPlayerSettingsSheetState
                 ),
               ),
               const SizedBox(height: 18),
-              const _SettingsSectionLabel('播放速度'),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: <Widget>[
-                  for (final rate in _rates)
-                    ChoiceChip(
-                      key: Key('video-player-rate-${_rateKey(rate)}'),
-                      label: Text('${_trimRate(rate)}×'),
-                      selected: _rate == rate,
-                      showCheckmark: false,
-                      selectedColor: videoPlayerAccent,
-                      backgroundColor: const Color(0x1AFFFFFF),
-                      side: BorderSide.none,
-                      labelStyle: TextStyle(
-                        color: _rate == rate
-                            ? const Color(0xFF111214)
-                            : videoPlayerForeground,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      onSelected: (_) => _setRate(rate),
-                    ),
-                ],
-              ),
             ],
           ),
         ),
@@ -331,9 +335,8 @@ final class _SettingsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => DecoratedBox(
     decoration: const BoxDecoration(
-      color: Color(0x14000000),
+      color: Color(0xFF242424),
       borderRadius: BorderRadius.all(Radius.circular(12)),
-      border: Border.fromBorderSide(BorderSide(color: Color(0x1FFFFFFF))),
     ),
     child: Padding(
       padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),

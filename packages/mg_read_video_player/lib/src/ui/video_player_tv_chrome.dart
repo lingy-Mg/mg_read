@@ -1,5 +1,6 @@
 /// Remote-first video controls; receives callbacks and owns no playback state.
-/// Compact bottom controls keep a visible focus ring and leave the picture
+/// A neutral black gradient and red timeline keep controls consistent with touch
+/// and desktop. Bottom controls keep a visible focus ring and leave the picture
 /// visible; enlarged text can wrap and scroll without losing remote focus.
 library;
 
@@ -10,6 +11,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../api/models.dart';
 import 'video_tv_shortcuts.dart';
+import 'video_player_visuals.dart';
 
 class VideoPlayerTvChrome extends StatelessWidget {
   const VideoPlayerTvChrome({
@@ -59,8 +61,15 @@ class VideoPlayerTvChrome extends StatelessWidget {
               constraints: BoxConstraints(
                 maxHeight: MediaQuery.sizeOf(context).height * .8,
               ),
-              color: const Color(0xE6101620),
-              padding: const EdgeInsets.all(20),
+              key: const Key('tv-video-bottom-band'),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.transparent, Color(0xE6000000)],
+                ),
+              ),
+              padding: const EdgeInsets.fromLTRB(28, 44, 28, 20),
               child: SafeArea(
                 top: false,
                 child: SingleChildScrollView(
@@ -77,14 +86,15 @@ class VideoPlayerTvChrome extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 20,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w600,
                                 color: Colors.white,
                               ),
                             ),
                           ),
                           const SizedBox(width: 16),
                           Text(
-                            '${_time(snapshot.position)} / ${_time(snapshot.duration)}',
+                            '${videoPlayerTime(snapshot.position)} / ${videoPlayerTime(snapshot.duration)}',
                             style: const TextStyle(
                               fontSize: 16,
                               color: Colors.white70,
@@ -94,6 +104,10 @@ class VideoPlayerTvChrome extends StatelessWidget {
                       ),
                       const SizedBox(height: 12),
                       LinearProgressIndicator(
+                        key: const Key('tv-video-progress'),
+                        color: videoPlayerAccent,
+                        backgroundColor: Colors.white24,
+                        minHeight: 3,
                         value: snapshot.duration.inMilliseconds > 0
                             ? (snapshot.position.inMilliseconds /
                                       snapshot.duration.inMilliseconds)
@@ -141,7 +155,7 @@ class VideoPlayerTvChrome extends StatelessWidget {
                       ),
                       const SizedBox(height: 12),
                       const Text(
-                        '方向键 选择操作    OK 确认    返回 隐藏控制栏',
+                        '方向键选择 · OK 确认 · 返回收起',
                         style: TextStyle(fontSize: 14, color: Colors.white70),
                       ),
                     ],
@@ -159,7 +173,7 @@ class VideoPlayerTvChrome extends StatelessWidget {
     String label,
     Future<void> Function() action, {
     FocusNode? focus,
-  }) => FilledButton(
+  }) => FilledButton.icon(
     key: Key(key),
     focusNode: focus,
     onPressed: () => unawaited(_perform(action)),
@@ -168,10 +182,12 @@ class VideoPlayerTvChrome extends StatelessWidget {
     },
     style: ButtonStyle(
       minimumSize: const WidgetStatePropertyAll(Size(72, 48)),
+      shape: WidgetStatePropertyAll(
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
       padding: const WidgetStatePropertyAll(
         EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       ),
-      textStyle: const WidgetStatePropertyAll(TextStyle(fontSize: 16)),
       side: WidgetStateProperty.resolveWith(
         (states) => BorderSide(
           color: states.contains(WidgetState.focused)
@@ -182,12 +198,24 @@ class VideoPlayerTvChrome extends StatelessWidget {
       ),
       backgroundColor: WidgetStateProperty.resolveWith(
         (states) => states.contains(WidgetState.focused)
-            ? const Color(0xFF316DCD)
-            : const Color(0xFF263446),
+            ? videoPlayerAccent
+            : const Color(0x20FFFFFF),
       ),
       foregroundColor: const WidgetStatePropertyAll(Colors.white),
     ),
-    child: Text(label),
+    icon: Icon(switch (key) {
+      'tv-video-play' =>
+        snapshot.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+      'tv-video-backward' => Icons.replay_10_rounded,
+      'tv-video-forward' => Icons.forward_10_rounded,
+      'tv-video-episodes' => Icons.playlist_play_rounded,
+      'tv-video-previous' => Icons.skip_previous_rounded,
+      'tv-video-next' => Icons.skip_next_rounded,
+      'tv-video-rate' => Icons.speed_rounded,
+      'tv-video-fit' => Icons.aspect_ratio_rounded,
+      _ => Icons.close_rounded,
+    }, size: 22),
+    label: Text(label, style: const TextStyle(fontSize: 16)),
   );
 
   Future<void> _perform(Future<void> Function() action) async {
@@ -203,29 +231,32 @@ class VideoPlayerTvChrome extends StatelessWidget {
     final rate = await showDialog<double>(
       context: context,
       builder: (context) => VideoTvShortcuts(
-        child: AlertDialog(
-          scrollable: true,
-          title: const Text('播放速度'),
-          content: Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              for (final value in [.5, 1.0, 1.25, 1.5, 2.0])
-                TextButton(
-                  autofocus: value == snapshot.rate,
-                  onPressed: () => Navigator.pop(context, value),
-                  child: Text('$value×', style: const TextStyle(fontSize: 24)),
-                ),
-            ],
+        child: Theme(
+          data: videoPlayerTheme(),
+          child: AlertDialog(
+            backgroundColor: const Color(0xFF181818),
+            surfaceTintColor: Colors.transparent,
+            scrollable: true,
+            title: const Text('播放速度'),
+            content: Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                for (final value in [.5, 1.0, 1.25, 1.5, 2.0])
+                  TextButton(
+                    autofocus: value == snapshot.rate,
+                    onPressed: () => Navigator.pop(context, value),
+                    child: Text(
+                      '$value×',
+                      style: const TextStyle(fontSize: 24),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
     );
     if (rate != null && context.mounted) await onRate(rate);
-  }
-
-  String _time(Duration duration) {
-    final seconds = duration.inSeconds.clamp(0, 999999);
-    return '${seconds ~/ 3600}:${((seconds ~/ 60) % 60).toString().padLeft(2, '0')}:${(seconds % 60).toString().padLeft(2, '0')}';
   }
 }

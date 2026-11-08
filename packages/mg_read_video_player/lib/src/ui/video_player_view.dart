@@ -95,7 +95,7 @@ final class VideoPlayerView extends StatefulWidget {
   /// Maximum wait after backend open before a missing first frame can retry.
   final Duration firstFrameTimeout;
 
-  /// Optional compact host action placed in the touch player's top toolbar.
+  /// Optional compact host action placed in the pointer/touch top toolbar.
   ///
   /// Use an icon button. It shares chrome visibility and gesture locking, and
   /// is omitted in TV mode.
@@ -135,6 +135,7 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   VideoPlayerFailure? _failure;
   VideoFitMode _fitMode = VideoFitMode.contain;
   bool _controlsVisible = true;
+  bool _pointerOverControls = false;
   bool _fullscreenRequested = false;
   bool _controlsLocked = false;
   late bool _autoAdvance;
@@ -199,7 +200,10 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   void didUpdateWidget(covariant VideoPlayerView oldWidget) {
     super.didUpdateWidget(oldWidget);
     _hostBridge.observer = widget.observer;
-    if (oldWidget.tvMode != widget.tvMode) _tvSeekGesture.cancel();
+    if (oldWidget.tvMode != widget.tvMode) {
+      _tvSeekGesture.cancel();
+      _pointerOverControls = false;
+    }
     if (oldWidget.controller != widget.controller) {
       _controller.detach(this);
       if (_ownsController) _controller.dispose();
@@ -687,42 +691,6 @@ final class _VideoPlayerViewState extends State<VideoPlayerView>
   }
 
   void _publish() => _controller.publish(this, _snapshot);
-
-  @override
-  Widget build(BuildContext context) => VideoPlayerStage(
-    controller: _controller,
-    backend: _backend,
-    snapshot: _snapshot,
-    activeEpisode: _episode,
-    tvMode: widget.tvMode,
-    topRightAction: widget.topRightAction,
-    tvPlayFocus: _tvPlayFocus,
-    focusNode: _focusNode,
-    exitAuthorized: _exitAuthorized,
-    onPopAttempt: () => widget.tvMode ? _tvBack() : unawaited(requestExit()),
-    onKeyEvent: _handleKey,
-    onToggleControls: toggleControls,
-    onRetry: _retry,
-    onExit: requestExit,
-    onPlayOrPause: playOrPause,
-    onSeek: seek,
-    onRate: setRate,
-    onEnhancementMode: setEnhancementMode,
-    onReplay: replay,
-    onPreviousEpisode: playPreviousEpisode,
-    onNextEpisode: playNextEpisode,
-    onAutoAdvance: setAutoAdvance,
-    onControlsLocked: setControlsLocked,
-    onInteractionStart: _handleInteractionStart,
-    onInteractionEnd: _handleInteractionEnd,
-    onFit: cycleFitMode,
-    onEpisodes: _showEpisodes,
-    onFullscreen: requestFullscreen,
-    onReadBrightness: _hostBridge.readBrightness,
-    onBrightness: _hostBridge.setBrightness,
-    onReadSystemVolume: _hostBridge.readSystemVolume,
-    onSystemVolume: _hostBridge.setSystemVolume,
-  );
 
   @override
   void dispose() {

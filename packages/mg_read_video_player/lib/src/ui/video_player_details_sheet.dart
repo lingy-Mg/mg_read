@@ -21,16 +21,14 @@ import 'package:flutter/services.dart';
 import '../api/controller.dart';
 import '../api/models.dart';
 import 'video_player_visuals.dart';
+import 'video_player_modal.dart';
 
 Future<void> showVideoDetailsSheet(
   BuildContext context, {
   required VideoPlayerController controller,
   required VideoEpisode? activeEpisode,
-}) => showModalBottomSheet<void>(
+}) => showVideoPlayerModal<void>(
   context: context,
-  isScrollControlled: true,
-  backgroundColor: Colors.transparent,
-  barrierColor: const Color(0xB8000000),
   builder: (sheetContext) => ListenableBuilder(
     listenable: controller,
     builder: (context, child) => _VideoDetailsSheet(
@@ -63,8 +61,8 @@ final class _VideoDetailsSheet extends StatelessWidget {
         alignment: Alignment.bottomCenter,
         child: VideoPlayerGlassPanel(
           key: const Key('video-details-glass'),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          blurSigma: 28,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+
           child: Material(
             color: Colors.transparent,
             child: Column(
@@ -80,7 +78,7 @@ final class _VideoDetailsSheet extends StatelessWidget {
                           '视频详情',
                           style: theme.textTheme.titleLarge?.copyWith(
                             color: videoPlayerForeground,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
@@ -250,7 +248,7 @@ final class _DetailsHeading extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.titleLarge?.copyWith(
                   color: videoPlayerForeground,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w600,
                   height: 1.18,
                 ),
               ),
@@ -300,7 +298,7 @@ final class _DetailsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => VideoPlayerGlassPanel(
     borderRadius: BorderRadius.circular(16),
-    blurSigma: 14,
+
     showShadow: false,
     padding: const EdgeInsets.fromLTRB(15, 13, 15, 12),
     child: Column(
@@ -310,7 +308,7 @@ final class _DetailsCard extends StatelessWidget {
           title,
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
             color: videoPlayerForeground,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: 10),

@@ -1,8 +1,8 @@
-/// Shared visual tokens and glass surfaces for the package-owned video UI.
+/// Shared cinema palette and matte surfaces for the package-owned video UI.
 ///
 /// Responsibilities:
 /// - Keep chrome, sheets and session states legible independently of host theme.
-/// - Provide the translucent visual treatment used above the video surface.
+/// - Keep red highlights, neutral gray surfaces and white type consistent.
 ///
 /// Notes:
 /// - These tokens affect presentation only; playback state remains in the view.
@@ -13,24 +13,31 @@ library;
 // library-level public naming rules.
 // ignore_for_file: public_member_api_docs
 
-import 'dart:ui';
+import 'package:flutter/foundation.dart';
 
 import 'package:flutter/material.dart';
 
-const Color videoPlayerBackground = Color(0xFF050607);
-const Color videoPlayerForeground = Color(0xFFF7F7F8);
-const Color videoPlayerSecondary = Color(0xFFBEC1C7);
-const Color videoPlayerAccent = Color(0xFFFFA43A);
-const Color videoPlayerGlass = Color(0x96030609);
+const Color videoPlayerBackground = Color(0xFF080808);
+const Color videoPlayerForeground = Color(0xFFF5F5F5);
+const Color videoPlayerSecondary = Color(0xFFB3B3B3);
+const Color videoPlayerAccent = Color(0xFFE50914);
+const Color videoPlayerGlass = Color(0xFA181818);
 const Color videoPlayerGlassBorder = Color(0x24FFFFFF);
-const Color videoPlayerSelectedSurface = Color(0x38FFA43A);
+const Color videoPlayerSelectedSurface = Color(0x26E50914);
 
 /// Applies the fixed video color system without inheriting host brightness.
 ThemeData videoPlayerTheme() {
   final base = ThemeData(
     brightness: Brightness.dark,
     useMaterial3: true,
-    colorSchemeSeed: videoPlayerAccent,
+    colorScheme: const ColorScheme.dark(
+      primary: videoPlayerAccent,
+      onPrimary: Colors.white,
+      secondary: Colors.white,
+      onSecondary: Colors.black,
+      surface: Color(0xFF181818),
+      onSurface: videoPlayerForeground,
+    ),
   );
   return base.copyWith(
     scaffoldBackgroundColor: videoPlayerBackground,
@@ -47,7 +54,7 @@ ThemeData videoPlayerTheme() {
     ),
     dividerTheme: const DividerThemeData(color: Color(0x24FFFFFF)),
     popupMenuTheme: const PopupMenuThemeData(
-      color: Color(0xF226292E),
+      color: Color(0xFF262626),
       surfaceTintColor: Colors.transparent,
       textStyle: TextStyle(color: videoPlayerForeground),
     ),
@@ -59,7 +66,7 @@ ThemeData videoPlayerTheme() {
   );
 }
 
-/// A clipped, blurred translucent panel for controls placed over video.
+/// A clipped matte panel; the legacy internal name is kept for callers.
 final class VideoPlayerGlassPanel extends StatelessWidget {
   const VideoPlayerGlassPanel({
     required this.child,
@@ -67,7 +74,7 @@ final class VideoPlayerGlassPanel extends StatelessWidget {
     this.padding,
     this.showBorder = true,
     this.showShadow = true,
-    this.blurSigma = 18,
+
     super.key,
   });
 
@@ -76,43 +83,33 @@ final class VideoPlayerGlassPanel extends StatelessWidget {
   final EdgeInsetsGeometry? padding;
   final bool showBorder;
   final bool showShadow;
-  final double blurSigma;
 
   @override
   Widget build(BuildContext context) => ClipRRect(
     borderRadius: borderRadius,
-    child: BackdropFilter(
-      filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: <Color>[Color(0xA30A0D12), videoPlayerGlass],
-          ),
-          borderRadius: borderRadius,
-          border: showBorder ? Border.all(color: videoPlayerGlassBorder) : null,
-          boxShadow: showShadow
-              ? const <BoxShadow>[
-                  BoxShadow(
-                    color: Color(0x52000000),
-                    blurRadius: 24,
-                    offset: Offset(0, 10),
-                  ),
-                ]
-              : null,
-        ),
-        child: padding == null
-            ? child
-            : Padding(padding: padding!, child: child),
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        color: videoPlayerGlass,
+        borderRadius: borderRadius,
+        border: showBorder ? Border.all(color: videoPlayerGlassBorder) : null,
+        boxShadow: showShadow
+            ? const [
+                BoxShadow(
+                  color: Color(0x52000000),
+                  blurRadius: 24,
+                  offset: Offset(0, 10),
+                ),
+              ]
+            : null,
       ),
+      child: padding == null ? child : Padding(padding: padding!, child: child),
     ),
   );
 }
 
 /// A small, deliberately low-obstruction surface for transient gestures.
 ///
-/// Unlike [VideoPlayerGlassPanel], this avoids the dark blur treatment so
+/// Unlike [VideoPlayerGlassPanel], this uses a lighter translucent treatment so
 /// seek and rate feedback leaves the video image clearly visible.
 final class VideoPlayerTransientFeedbackPanel extends StatelessWidget {
   const VideoPlayerTransientFeedbackPanel({
@@ -135,4 +132,24 @@ final class VideoPlayerTransientFeedbackPanel extends StatelessWidget {
     ),
     child: padding == null ? child : Padding(padding: padding!, child: child),
   );
+}
+
+/// Desktop layout follows the input platform, never a landscape phone's width.
+bool videoPlayerUsesPointerControls(BuildContext context) =>
+    switch (defaultTargetPlatform) {
+      TargetPlatform.windows ||
+      TargetPlatform.macOS ||
+      TargetPlatform.linux => true,
+      _ => false,
+    };
+
+/// Shared readable transport time without a leading zero-hour field.
+String videoPlayerTime(Duration duration) {
+  final total = duration.inSeconds.clamp(0, 359999);
+  final hours = total ~/ 3600;
+  final minutes = total.remainder(3600) ~/ 60;
+  final seconds = total.remainder(60).toString().padLeft(2, '0');
+  return hours > 0
+      ? '$hours:${minutes.toString().padLeft(2, '0')}:$seconds'
+      : '$minutes:$seconds';
 }

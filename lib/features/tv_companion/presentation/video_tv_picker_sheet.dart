@@ -1,6 +1,7 @@
-/// Dark, bounded TV picker presentation for the video player's modal route.
+/// Cinema-styled, bounded TV picker presentation for the video player's modal route.
 ///
 /// Owns layout only: discovery, retries and handoff stay with the caller.
+/// Neutral black/gray surfaces and red actions match video chrome.
 /// The whole sheet scrolls on short screens and respects the bottom safe area.
 library;
 
@@ -8,10 +9,10 @@ import 'package:flutter/material.dart';
 
 import '../domain/companion_models.dart';
 
-const _accent = Color(0xFFFFA43A);
-const _foreground = Color(0xFFF7F7F8);
-const _secondary = Color(0xFFA5ADB9);
-const _card = Color(0xFF20262F);
+const _accent = Color(0xFFE50914);
+const _foreground = Color(0xFFF5F5F5);
+const _secondary = Color(0xFFB3B3B3);
+const _card = Color(0xFF262626);
 
 /// Device selection and discovery states, independent of transport lifetime.
 final class VideoTvPickerSheet extends StatelessWidget {
@@ -26,7 +27,14 @@ final class VideoTvPickerSheet extends StatelessWidget {
     this.error,
   });
 
-  static const backgroundColor = Color(0xFF14181F);
+  static const backgroundColor = Color(0xFF181818);
+
+  /// Shared with the modal route so nested manual connection dialogs inherit it.
+  static ThemeData themeFor(ThemeData base) => base.copyWith(
+    colorScheme: const ColorScheme.dark(primary: _accent, onPrimary: Colors.white, surface: backgroundColor, onSurface: _foreground),
+    textTheme: base.textTheme.apply(bodyColor: _foreground, displayColor: _foreground),
+    dialogTheme: const DialogThemeData(backgroundColor: backgroundColor, surfaceTintColor: Colors.transparent),
+  );
 
   final bool loading;
   final List<CompanionEndpoint> endpoints;
@@ -40,10 +48,7 @@ final class VideoTvPickerSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final base = Theme.of(context);
     return Theme(
-      data: base.copyWith(
-        colorScheme: ColorScheme.fromSeed(seedColor: _accent, brightness: Brightness.dark).copyWith(surface: backgroundColor),
-        textTheme: base.textTheme.apply(bodyColor: _foreground, displayColor: _foreground),
-      ),
+      data: themeFor(base),
       child: Material(
         color: backgroundColor,
         child: SafeArea(
@@ -62,7 +67,7 @@ final class VideoTvPickerSheet extends StatelessWidget {
                       width: 32,
                       height: 4,
                       margin: const EdgeInsets.only(bottom: 20),
-                      decoration: BoxDecoration(color: const Color(0xFF46505D), borderRadius: BorderRadius.circular(2)),
+                      decoration: BoxDecoration(color: const Color(0xFF707070), borderRadius: BorderRadius.circular(2)),
                     ),
                   ),
                   Row(
@@ -133,12 +138,12 @@ final class VideoTvPickerSheet extends StatelessWidget {
                       icon: Icon(loading ? Icons.wifi_find_rounded : Icons.refresh_rounded, size: 18),
                       label: Text(loading ? '正在搜索电视…' : '重新搜索'),
                       style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF3A2B1E),
-                        foregroundColor: _accent,
+                        backgroundColor: const Color(0xFFE50914),
+                        foregroundColor: Colors.white,
                         disabledBackgroundColor: _card,
                         disabledForegroundColor: _secondary,
                         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                     ),
                   ),
@@ -170,9 +175,9 @@ final class _DiscoveryState extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(18),
     decoration: BoxDecoration(
-      color: const Color(0xFF1A2028),
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: const Color(0xFF29313C)),
+      color: const Color(0xFF222222),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: const Color(0xFF333333)),
     ),
     child: Row(
       children: [
@@ -221,7 +226,7 @@ final class _ActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Material(
     color: _card,
-    borderRadius: BorderRadius.circular(16),
+    borderRadius: BorderRadius.circular(8),
     clipBehavior: Clip.antiAlias,
     child: InkWell(
       onTap: onTap,
@@ -265,7 +270,7 @@ final class _IconTile extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     width: 44,
     height: 44,
-    decoration: BoxDecoration(color: accented ? const Color(0xFF3A2B1E) : const Color(0xFF2A323D), borderRadius: BorderRadius.circular(14)),
-    child: Icon(icon, size: 23, color: accented ? _accent : _secondary),
+    decoration: BoxDecoration(color: accented ? const Color(0xFFE50914) : const Color(0xFF303030), borderRadius: BorderRadius.circular(8)),
+    child: Icon(icon, size: 23, color: accented ? Colors.white : _secondary),
   );
 }

@@ -22,6 +22,8 @@ Future<void> loadVisualEvidenceFonts() async {
   // Native system fallbacks are absent in flutter_tester. Give the default
   // Material family the same local CJK fixture font for readable UI evidence.
   await (FontLoader('Roboto')..addFont(rootBundle.load('packages/novel_reader_ui/assets/fonts/MiSansVF.ttf'))).load();
+  // Windows Material typography selects Segoe UI instead of Roboto.
+  await (FontLoader('Segoe UI')..addFont(rootBundle.load('packages/novel_reader_ui/assets/fonts/MiSansVF.ttf'))).load();
   await (FontLoader('MaterialIcons')..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
   _fontsLoaded = true;
 }
