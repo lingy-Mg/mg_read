@@ -9,8 +9,8 @@ part of 'audio_playback_settings_sheet.dart';
 
 abstract final class _SettingsTokens {
   static const neutralControl = AudioPlayerColors.control;
-  static const selected = AudioPlayerColors.accentGlass;
-  static const cardRadius = 22.0;
+  static const selected = AudioPlayerColors.accentSoft;
+  static const cardRadius = 16.0;
 }
 
 final class _SettingsHandle extends StatelessWidget {
@@ -52,15 +52,13 @@ final class _SettingsHeader extends StatelessWidget {
                 '音乐播放设置',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   color: AudioPlayerColors.ink,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w600,
                   letterSpacing: -0.4,
                 ),
               ),
               const SizedBox(height: 2),
               Text(
-                hasRememberPosition
-                    ? '续播和防止自动锁屏会保存，其余仅作用于当前会话'
-                    : '防止自动锁屏会保存，其余仅作用于当前会话',
+                hasRememberPosition ? '续播与屏幕偏好会自动保存' : '调整当前播放体验',
                 style: Theme.of(
                   context,
                 ).textTheme.bodySmall?.copyWith(color: AudioPlayerColors.muted),
@@ -106,11 +104,10 @@ final class _SessionSummary extends StatelessWidget {
     return Semantics(
       container: true,
       label: '当前播放调节摘要',
-      child: AudioGlassPanel(
+      child: AudioSurfacePanel(
         key: const Key('audio-settings-summary'),
         borderRadius: BorderRadius.circular(18),
-        tone: AudioGlassTone.accent,
-        shadow: false,
+        tone: AudioSurfaceTone.accent,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 11),
           child: Row(
@@ -166,7 +163,7 @@ final class _SummaryItem extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: Theme.of(context).textTheme.titleSmall?.copyWith(
             color: AudioPlayerColors.accentPressed,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),
@@ -196,9 +193,9 @@ final class _SettingsCard extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => AudioGlassPanel(
+  Widget build(BuildContext context) => AudioSurfacePanel(
     borderRadius: BorderRadius.circular(_SettingsTokens.cardRadius),
-    blur: 16,
+
     child: Padding(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 13),
       child: Column(
@@ -213,7 +210,7 @@ final class _SettingsCard extends StatelessWidget {
                   title,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: AudioPlayerColors.ink,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -231,7 +228,7 @@ final class _SettingsCard extends StatelessWidget {
                     value,
                     style: Theme.of(context).textTheme.labelLarge?.copyWith(
                       color: AudioPlayerColors.ink,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -329,6 +326,7 @@ final class _RateTrack extends StatelessWidget {
     required this.selectedRate,
     required this.disableAnimations,
     required this.onSelected,
+    super.key,
   });
 
   final List<double> rates;
@@ -337,79 +335,33 @@ final class _RateTrack extends StatelessWidget {
   final ValueChanged<double> onSelected;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: 48 + math.max(0, MediaQuery.textScalerOf(context).scale(16) - 16),
-    child: Stack(
-      alignment: Alignment.topCenter,
-      children: <Widget>[
-        Positioned(
-          top: 10,
-          left: 17,
-          right: 17,
-          child: Container(height: 2, color: AudioPlayerColors.track),
-        ),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            for (final rate in rates)
-              Expanded(
-                child: Semantics(
-                  button: true,
-                  selected: (selectedRate - rate).abs() < 0.01,
-                  label: '${formatAudioRate(rate)} 倍速',
-                  child: InkResponse(
-                    key: Key('audio-rate-${(rate * 100).round()}'),
-                    onTap: () => onSelected(rate),
-                    radius: 22,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        AnimatedContainer(
-                          duration: disableAnimations
-                              ? Duration.zero
-                              : const Duration(milliseconds: 180),
-                          curve: Curves.easeOutCubic,
-                          width: (selectedRate - rate).abs() < 0.01 ? 20 : 14,
-                          height: (selectedRate - rate).abs() < 0.01 ? 20 : 14,
-                          decoration: BoxDecoration(
-                            color: (selectedRate - rate).abs() < 0.01
-                                ? AudioPlayerColors.accent
-                                : AudioPlayerColors.control,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: (selectedRate - rate).abs() < 0.01
-                                  ? AudioPlayerColors.accent
-                                  : AudioPlayerColors.subtle,
-                              width: 1.5,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            formatAudioRate(rate),
-                            maxLines: 1,
-                            style: Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(
-                                  color: (selectedRate - rate).abs() < 0.01
-                                      ? AudioPlayerColors.accentPressed
-                                      : AudioPlayerColors.muted,
-                                  fontWeight: (selectedRate - rate).abs() < 0.01
-                                      ? FontWeight.w800
-                                      : FontWeight.w500,
-                                ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      const spacing = 8.0;
+      final columns = (constraints.maxWidth / 56).floor().clamp(3, 6);
+      final width = (constraints.maxWidth - spacing * (columns - 1)) / columns;
+      return Wrap(
+        spacing: spacing,
+        runSpacing: spacing,
+        children: <Widget>[
+          for (final rate in rates)
+            SizedBox(
+              width: width,
+              height:
+                  44 +
+                  math.max(0, MediaQuery.textScalerOf(context).scale(14) - 14),
+              child: _TimerOption(
+                key: Key('audio-rate-${(rate * 100).round()}'),
+                label: formatAudioRate(rate),
+                semanticLabel: '${formatAudioRate(rate)} 倍速',
+                selected: (selectedRate - rate).abs() < 0.01,
+                disableAnimations: disableAnimations,
+                onTap: () => onSelected(rate),
               ),
-          ],
-        ),
-      ],
-    ),
+            ),
+        ],
+      );
+    },
   );
 }
 
@@ -488,6 +440,7 @@ final class _TimerSelector extends StatelessWidget {
     required this.selectedTimer,
     required this.disableAnimations,
     required this.onSelected,
+    super.key,
   });
 
   final List<Duration?> timers;
@@ -499,7 +452,7 @@ final class _TimerSelector extends StatelessWidget {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       const spacing = 7.0;
-      final width = (constraints.maxWidth - spacing * 3) / 4;
+      final width = (constraints.maxWidth - spacing * 2) / 3;
       return Wrap(
         spacing: spacing,
         runSpacing: 7,
@@ -507,7 +460,9 @@ final class _TimerSelector extends StatelessWidget {
           for (final timer in timers)
             SizedBox(
               width: width,
-              height: 38,
+              height:
+                  44 +
+                  math.max(0, MediaQuery.textScalerOf(context).scale(14) - 14),
               child: _TimerOption(
                 key: Key(
                   timer == null
@@ -530,6 +485,7 @@ final class _TimerOption extends StatelessWidget {
   const _TimerOption({
     required this.label,
     required this.selected,
+    this.semanticLabel,
     required this.disableAnimations,
     required this.onTap,
     super.key,
@@ -537,6 +493,7 @@ final class _TimerOption extends StatelessWidget {
 
   final String label;
   final bool selected;
+  final String? semanticLabel;
   final bool disableAnimations;
   final VoidCallback onTap;
 
@@ -544,7 +501,7 @@ final class _TimerOption extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
     button: true,
     selected: selected,
-    label: '定时停止 $label',
+    label: semanticLabel ?? '定时停止 $label',
     child: Material(
       color: Colors.transparent,
       child: InkWell(
@@ -572,7 +529,7 @@ final class _TimerOption extends StatelessWidget {
               color: selected
                   ? AudioPlayerColors.accentPressed
                   : AudioPlayerColors.ink,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w600,
             ),
           ),
         ),
@@ -589,7 +546,7 @@ final class _SettingsFooter extends StatelessWidget {
   @override
   Widget build(BuildContext context) => DecoratedBox(
     decoration: const BoxDecoration(
-      color: AudioPlayerColors.glassStrong,
+      color: AudioPlayerColors.surfaceStrong,
       border: Border(top: BorderSide(color: AudioPlayerColors.divider)),
     ),
     child: SafeArea(
@@ -609,7 +566,7 @@ final class _SettingsFooter extends StatelessWidget {
             ),
             textStyle: Theme.of(
               context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
           child: const Text('完成'),
         ),

@@ -28,7 +28,7 @@ void main() {
     expect(region.value.systemNavigationBarColor, Colors.transparent);
     expect(region.value.systemNavigationBarIconBrightness, Brightness.light);
     expect(region.value.systemStatusBarContrastEnforced, isFalse);
-    expect(find.byKey(const Key('audio-loading-glass')), findsOneWidget);
+    expect(find.text('正在准备音频…'), findsOneWidget);
   });
 
   testWidgets('restores the saved track and position before becoming ready', (

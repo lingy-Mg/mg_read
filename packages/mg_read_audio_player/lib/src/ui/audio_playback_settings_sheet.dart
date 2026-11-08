@@ -18,10 +18,12 @@ import 'package:flutter/material.dart';
 
 import '../api/audio_controller.dart';
 import '../api/audio_models.dart';
-import 'audio_player_glass.dart';
+import 'audio_player_surface.dart';
 import 'audio_player_theme.dart';
 
 part 'audio_playback_settings_components.dart';
+
+enum AudioSettingsSection { rate, timer }
 
 Future<void> showAudioPlaybackSettingsSheet(
   BuildContext context, {
@@ -30,6 +32,7 @@ Future<void> showAudioPlaybackSettingsSheet(
   required bool keepScreenOn,
   Future<void> Function(bool enabled)? onKeepScreenOnChanged,
   bool rememberPosition = true,
+  AudioSettingsSection? initialSection,
   Future<void> Function(bool enabled)? onRememberPositionChanged,
 }) => showModalBottomSheet<void>(
   context: context,
@@ -42,6 +45,7 @@ Future<void> showAudioPlaybackSettingsSheet(
     keepScreenOn: keepScreenOn,
     onKeepScreenOnChanged: onKeepScreenOnChanged,
     rememberPosition: rememberPosition,
+    initialSection: initialSection,
     onRememberPositionChanged: onRememberPositionChanged,
   ),
 );
@@ -53,6 +57,7 @@ final class _AudioPlaybackSettingsSheet extends StatefulWidget {
     required this.keepScreenOn,
     this.onKeepScreenOnChanged,
     required this.rememberPosition,
+    this.initialSection,
     this.onRememberPositionChanged,
   });
 
@@ -61,6 +66,7 @@ final class _AudioPlaybackSettingsSheet extends StatefulWidget {
   final bool keepScreenOn;
   final Future<void> Function(bool enabled)? onKeepScreenOnChanged;
   final bool rememberPosition;
+  final AudioSettingsSection? initialSection;
   final Future<void> Function(bool enabled)? onRememberPositionChanged;
 
   @override
@@ -80,6 +86,8 @@ final class _AudioPlaybackSettingsSheetState
     Duration(minutes: 90),
   ];
 
+  final _rateAnchor = GlobalKey();
+  final _timerAnchor = GlobalKey();
   late double _rate;
   late double _volume;
   late double _lastAudibleVolume;
@@ -97,6 +105,18 @@ final class _AudioPlaybackSettingsSheetState
     _timer = widget.snapshot.sleepTimerDuration;
     _keepScreenOn = widget.keepScreenOn;
     _rememberPosition = widget.rememberPosition;
+    if (widget.initialSection != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final anchor = widget.initialSection == AudioSettingsSection.rate
+            ? _rateAnchor
+            : _timerAnchor;
+        final target = anchor.currentContext;
+        if (target != null) {
+          unawaited(Scrollable.ensureVisible(target, alignment: 0.15));
+        }
+      });
+    }
   }
 
   @override
@@ -113,13 +133,12 @@ final class _AudioPlaybackSettingsSheetState
       child: FractionallySizedBox(
         heightFactor: heightFactor,
         alignment: Alignment.bottomCenter,
-        child: AudioGlassPanel(
+        child: AudioSurfacePanel(
           key: const Key('audio-settings-sheet'),
           borderRadius: const BorderRadius.vertical(
             top: Radius.circular(AudioPlayerMetrics.sheetRadius),
           ),
-          tone: AudioGlassTone.strong,
-          blur: 28,
+          tone: AudioSurfaceTone.strong,
           child: Material(
             color: Colors.transparent,
             child: Column(
@@ -144,38 +163,13 @@ final class _AudioPlaybackSettingsSheetState
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                     child: Column(
                       children: <Widget>[
-                        if (widget.onRememberPositionChanged != null) ...[
-                          _SettingsCard(
-                            key: const Key('audio-remember-position'),
-                            icon: Icons.history_rounded,
-                            title: '记住上次播放位置',
-                            value: _rememberPosition ? '已开启' : '已关闭',
-                            child: _RememberPositionControl(
-                              enabled: _rememberPosition,
-                              onChanged: _savingRememberPosition
-                                  ? null
-                                  : _setRememberPosition,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                        ],
-                        _SettingsCard(
-                          key: const Key('audio-keep-screen-on'),
-                          icon: Icons.light_mode_rounded,
-                          title: '播放时防止自动锁屏',
-                          value: _keepScreenOn ? '已开启' : '已关闭',
-                          child: _KeepScreenOnControl(
-                            enabled: _keepScreenOn,
-                            onChanged: _setKeepScreenOn,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
                         _SettingsCard(
                           key: const Key('audio-rate'),
                           icon: Icons.speed_rounded,
                           title: '播放速度',
                           value: '${formatAudioRate(_rate)}x',
                           child: _RateTrack(
+                            key: _rateAnchor,
                             rates: _rates,
                             selectedRate: _rate,
                             disableAnimations: disableAnimations,
@@ -203,12 +197,40 @@ final class _AudioPlaybackSettingsSheetState
                           title: '定时停止',
                           value: _timerLabel,
                           child: _TimerSelector(
+                            key: _timerAnchor,
                             timers: _timers,
                             selectedTimer: _timer,
                             disableAnimations: disableAnimations,
                             onSelected: _setTimer,
                           ),
                         ),
+                        const SizedBox(height: 10),
+                        if (widget.onRememberPositionChanged != null) ...[
+                          _SettingsCard(
+                            key: const Key('audio-remember-position'),
+                            icon: Icons.history_rounded,
+                            title: '记住上次播放位置',
+                            value: _rememberPosition ? '已开启' : '已关闭',
+                            child: _RememberPositionControl(
+                              enabled: _rememberPosition,
+                              onChanged: _savingRememberPosition
+                                  ? null
+                                  : _setRememberPosition,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                        ],
+                        _SettingsCard(
+                          key: const Key('audio-keep-screen-on'),
+                          icon: Icons.light_mode_rounded,
+                          title: '播放时防止自动锁屏',
+                          value: _keepScreenOn ? '已开启' : '已关闭',
+                          child: _KeepScreenOnControl(
+                            enabled: _keepScreenOn,
+                            onChanged: _setKeepScreenOn,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
                       ],
                     ),
                   ),

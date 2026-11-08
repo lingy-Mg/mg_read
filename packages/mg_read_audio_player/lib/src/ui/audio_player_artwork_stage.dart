@@ -1,8 +1,8 @@
 /// Cover and static ambient artwork presentation for the audio player.
 ///
 /// Responsibilities:
-/// - Render one thin-framed foreground cover without performing artwork I/O.
-/// - Fill and crop host artwork beneath a sampled, tinted glass layer.
+/// - Render one generously sized, softly rounded foreground cover without performing artwork I/O.
+/// - Fill and crop host artwork beneath a static, tinted ambient layer.
 /// - Cross-fade artwork only when the selected chapter changes.
 ///
 /// Notes:
@@ -67,8 +67,8 @@ final class AudioPlayerArtworkBackdrop extends StatelessWidget {
             child: ImageFiltered(
               key: const Key('audio-artwork-backdrop-blur'),
               imageFilter: ImageFilter.blur(
-                sigmaX: 14,
-                sigmaY: 14,
+                sigmaX: 48,
+                sigmaY: 48,
                 tileMode: TileMode.clamp,
               ),
               child: Transform.scale(
@@ -114,7 +114,11 @@ final class AudioPlayerArtworkBackdrop extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: <Color>[Color(0x00000000), Color(0x26000000)],
+                colors: <Color>[
+                  Color(0x00111315),
+                  AudioPlayerColors.backgroundBottom,
+                ],
+                stops: <double>[0.05, 0.85],
               ),
             ),
           ),
@@ -165,20 +169,19 @@ class _AudioPlayerCoverState extends State<AudioPlayerCover> {
       width: widget.size,
       height: widget.size,
       child: DecoratedBox(
-        key: const Key('audio-cover-glass'),
+        key: const Key('audio-cover-frame'),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.42)),
+          borderRadius: BorderRadius.circular(12),
           boxShadow: const <BoxShadow>[
             BoxShadow(
-              color: Color(0x24000000),
+              color: Color(0x50000000),
               blurRadius: 32,
               offset: Offset(0, 18),
             ),
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(29),
+          borderRadius: BorderRadius.circular(12),
           child: AnimatedSwitcher(
             key: Key(
               _switchDirection > 0
@@ -265,7 +268,7 @@ final class AudioPlayerCoverPlaceholder extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
                     Icon(
-                      Icons.headphones_rounded,
+                      Icons.music_note_rounded,
                       size: compact ? 40 : 64,
                       color: AudioPlayerColors.ink,
                     ),
@@ -277,11 +280,11 @@ final class AudioPlayerCoverPlaceholder extends StatelessWidget {
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
                         child: Text(
-                          'MGREAD AUDIO',
+                          'MGREAD',
                           style: Theme.of(context).textTheme.labelSmall
                               ?.copyWith(
                                 color: Colors.white.withValues(alpha: 0.86),
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w500,
                                 letterSpacing: compact ? 1.2 : 2.2,
                               ),
                         ),

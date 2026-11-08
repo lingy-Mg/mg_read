@@ -9,11 +9,13 @@ library;
 import 'package:flutter/material.dart';
 
 import 'audio_player_artwork_stage.dart';
-import 'audio_player_glass.dart';
+import 'audio_player_surface.dart';
 import 'audio_player_theme.dart';
 
 final class AudioLoadingView extends StatelessWidget {
-  const AudioLoadingView({super.key});
+  const AudioLoadingView({required this.onBack, super.key});
+
+  final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
@@ -22,48 +24,59 @@ final class AudioLoadingView extends StatelessWidget {
       children: <Widget>[
         const AudioPlayerAmbientBackground(),
         SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
-            child: Column(
-              children: <Widget>[
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: const <Widget>[
-                    _SkeletonCircle(size: 44),
-                    _SkeletonBar(width: 132, height: 16),
-                    _SkeletonCircle(size: 44),
-                  ],
-                ),
-                const Spacer(),
-                const _SkeletonCover(),
-                const SizedBox(height: 28),
-                const _SkeletonBar(width: 220, height: 18),
-                const SizedBox(height: 12),
-                const _SkeletonBar(width: 132, height: 13),
-                const Spacer(),
-                SizedBox(
-                  width: double.infinity,
-                  child: AudioGlassPanel(
-                    key: const Key('audio-loading-glass'),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    tone: AudioGlassTone.strong,
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: <Widget>[
-                        SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.2,
-                            color: AudioPlayerColors.accent,
+          child: LayoutBuilder(
+            builder: (context, viewport) => SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: viewport.maxHeight),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(28, 8, 28, 28),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          IconButton(
+                            key: const Key('audio-back'),
+                            tooltip: '返回',
+                            onPressed: onBack,
+                            icon: const Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              size: 30,
+                            ),
                           ),
+                          const Expanded(child: Center(child: Text('正在加载'))),
+                          const SizedBox(width: 48),
+                        ],
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: SizedBox.square(
+                          dimension: (viewport.biggest.shortestSide - 100)
+                              .clamp(120, 320),
+                          child: const _SkeletonCover(),
                         ),
-                        SizedBox(width: 11),
-                        Text('正在准备音频…'),
-                      ],
-                    ),
+                      ),
+                      const _SkeletonBar(width: 220, height: 18),
+                      const SizedBox(height: 12),
+                      const _SkeletonBar(width: 132, height: 13),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 40),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: <Widget>[
+                            SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(width: 12),
+                            Text('正在准备音频…'),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -107,9 +120,8 @@ final class AudioErrorView extends StatelessWidget {
               children: <Widget>[
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: AudioGlassPanel(
+                  child: AudioSurfacePanel(
                     borderRadius: BorderRadius.circular(99),
-                    shadow: false,
                     child: IconButton(
                       key: const Key('audio-back'),
                       tooltip: '返回',
@@ -130,10 +142,10 @@ final class AudioErrorView extends StatelessWidget {
                     child: Center(
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 420),
-                        child: AudioGlassPanel(
+                        child: AudioSurfacePanel(
                           key: const Key('audio-error-glass'),
                           padding: const EdgeInsets.fromLTRB(24, 30, 24, 24),
-                          tone: AudioGlassTone.strong,
+                          tone: AudioSurfaceTone.strong,
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: <Widget>[
@@ -156,7 +168,7 @@ final class AudioErrorView extends StatelessWidget {
                                 textAlign: TextAlign.center,
                                 style: theme.textTheme.titleLarge?.copyWith(
                                   color: AudioPlayerColors.ink,
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                               const SizedBox(height: 9),
@@ -174,10 +186,9 @@ final class AudioErrorView extends StatelessWidget {
                                 const SizedBox(height: 18),
                                 SizedBox(
                                   width: double.infinity,
-                                  child: AudioGlassPanel(
+                                  child: AudioSurfacePanel(
                                     padding: const EdgeInsets.all(13),
                                     borderRadius: BorderRadius.circular(15),
-                                    shadow: false,
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
@@ -214,7 +225,7 @@ final class AudioErrorView extends StatelessWidget {
                                                 ?.copyWith(
                                                   color:
                                                       AudioPlayerColors.muted,
-                                                  fontWeight: FontWeight.w700,
+                                                  fontWeight: FontWeight.w600,
                                                 ),
                                           ),
                                           const SizedBox(height: 3),
@@ -277,14 +288,10 @@ class _SkeletonCover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final compact = MediaQuery.sizeOf(context).height < 700;
-    final size = compact ? 208.0 : 274.0;
     return Container(
-      width: size,
-      height: size,
       decoration: BoxDecoration(
         color: AudioPlayerColors.control,
-        borderRadius: BorderRadius.circular(32),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: const Icon(
         Icons.graphic_eq_rounded,
@@ -293,22 +300,6 @@ class _SkeletonCover extends StatelessWidget {
       ),
     );
   }
-}
-
-class _SkeletonCircle extends StatelessWidget {
-  const _SkeletonCircle({required this.size});
-
-  final double size;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: size,
-    height: size,
-    decoration: const BoxDecoration(
-      color: AudioPlayerColors.control,
-      shape: BoxShape.circle,
-    ),
-  );
 }
 
 class _SkeletonBar extends StatelessWidget {

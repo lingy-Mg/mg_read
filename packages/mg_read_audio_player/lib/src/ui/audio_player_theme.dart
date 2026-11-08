@@ -1,4 +1,4 @@
-/// Internal visual language for the cover-led frosted audio player surface.
+/// Internal visual language for the minimal, cover-led audio player surface.
 ///
 /// Responsibilities:
 /// - Centralize the player's color, radius and spacing decisions.
@@ -13,48 +13,34 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 abstract final class AudioPlayerColors {
-  static const backgroundTop = Color(0xFF322F2D);
-  static const backgroundBottom = Color(0xFF181614);
-  static const surface = Color(0x26FFFFFF);
-  static const surfaceStrong = Color(0x33FFFFFF);
-  static const ink = Color(0xEBFFFFFF);
-  static const muted = Color(0xA8FFFFFF);
-  static const subtle = Color(0x73FFFFFF);
-  static const accent = Color(0xE6FFFFFF);
-  static const accentPressed = Color(0xFFFFFFFF);
-  static const accentSoft = Color(0x33FFFFFF);
+  static const backgroundTop = Color(0xFF292D32);
+  static const backgroundBottom = Color(0xFF111315);
+  static const surface = Color(0xFF25282D);
+  static const surfaceStrong = Color(0xFF1B1E22);
+  static const ink = Color(0xFFF6F7F9);
+  static const muted = Color(0xFFB8BDC5);
+  static const subtle = Color(0xFF8C939D);
+  static const accent = Color(0xFFF6F7F9);
+  static const accentPressed = Colors.white;
+  static const accentSoft = Color(0x1AFFFFFF);
   static const warning = Color(0xFFFFC5B8);
-  static const warningSoft = Color(0x24FFB5A5);
+  static const warningSoft = Color(0xFF372726);
   static const track = Color(0x40FFFFFF);
-  static const divider = Color(0x33FFFFFF);
-  static const control = Color(0x2EFFFFFF);
-  static const disabled = Color(0x45FFFFFF);
-  static const coverStart = Color(0xFF61534A);
-  static const coverEnd = Color(0xFF171413);
-  static const shadow = Color(0x12000000);
-  static const blueGlow = Color(0x00000000);
-  static const scrim = Color(0x8A000000);
-  // Keeps ink and secondary text legible even on a white or saturated cover.
+  static const divider = Color(0xFF34383F);
+  static const control = Color(0xFF30343B);
+  static const disabled = Color(0xFF676D75);
+  static const coverStart = Color(0xFF4C5868);
+  static const coverEnd = Color(0xFF222830);
+  static const scrim = Color(0x99000000);
+  // Upper bound on ambient luminance, including white and saturated covers.
   static const artworkBackdropTint = Color(0xD6000000);
-
-  static const glass = Color(0x0FFFFFFF);
-  static const glassHighlight = Color(0x21FFFFFF);
-  static const glassStrong = Color(0x16FFFFFF);
-  static const glassStrongHighlight = Color(0x2BFFFFFF);
-  static const glassBorder = Color(0x3DFFFFFF);
-  static const accentGlass = Color(0x1DFFFFFF);
-  static const accentGlassHighlight = Color(0x30FFFFFF);
-  static const accentBorder = Color(0x45FFFFFF);
-  static const warningGlass = Color(0x24FFB5A5);
-  static const warningGlassHighlight = Color(0x33FFCEC4);
-  static const warningBorder = Color(0x55FFCEC4);
+  static const accentBorder = Color(0x406D7785);
 }
 
 abstract final class AudioPlayerMetrics {
-  static const pageMaxWidth = 520.0;
-  static const sheetRadius = 30.0;
-  static const cardRadius = 28.0;
-  static const controlRadius = 20.0;
+  static const pageMaxWidth = 480.0;
+  static const sheetRadius = 24.0;
+  static const cardRadius = 16.0;
   static const minimumTapTarget = 44.0;
 }
 
@@ -73,7 +59,7 @@ ThemeData audioPlayerTheme(ThemeData base) {
         onSurface: AudioPlayerColors.ink,
         error: AudioPlayerColors.warning,
         onError: AudioPlayerColors.backgroundBottom,
-        outline: AudioPlayerColors.glassBorder,
+        outline: AudioPlayerColors.divider,
       );
   return base.copyWith(
     brightness: Brightness.dark,
@@ -86,6 +72,16 @@ ThemeData audioPlayerTheme(ThemeData base) {
       displayColor: AudioPlayerColors.ink,
     ),
     iconTheme: const IconThemeData(color: AudioPlayerColors.ink),
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(
+        foregroundColor: AudioPlayerColors.ink,
+        disabledForegroundColor: AudioPlayerColors.disabled,
+        minimumSize: const Size.square(AudioPlayerMetrics.minimumTapTarget),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(foregroundColor: AudioPlayerColors.ink),
+    ),
     bottomSheetTheme: const BottomSheetThemeData(
       backgroundColor: Colors.transparent,
       modalBackgroundColor: Colors.transparent,

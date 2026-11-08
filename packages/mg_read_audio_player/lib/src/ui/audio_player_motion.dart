@@ -12,7 +12,6 @@ library;
 
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 
@@ -134,76 +133,54 @@ class _AudioAnimatedPlayPauseButtonState
 
   @override
   Widget build(BuildContext context) {
+    final waiting =
+        widget.snapshot.buffering || widget.snapshot.resourceLoading;
     return SizedBox.square(
       key: const Key('audio-play-pause-surface'),
-      dimension: 94,
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.center,
-        children: <Widget>[
-          Listener(
-            onPointerDown: (_) => setState(() => _pressed = true),
-            onPointerUp: (_) => setState(() => _pressed = false),
-            onPointerCancel: (_) => setState(() => _pressed = false),
-            child: AnimatedScale(
+      dimension: 76,
+      child: Listener(
+        onPointerDown: (_) => setState(() => _pressed = true),
+        onPointerUp: (_) => setState(() => _pressed = false),
+        onPointerCancel: (_) => setState(() => _pressed = false),
+        child: AnimatedScale(
+          duration: widget.disableAnimations
+              ? Duration.zero
+              : const Duration(milliseconds: 120),
+          curve: Curves.easeOutCubic,
+          scale: _pressed ? 0.94 : 1,
+          child: IconButton.filled(
+            key: const Key('audio-play-pause'),
+            tooltip: widget.snapshot.playing ? '暂停' : '播放',
+            onPressed: widget.onPressed,
+            style: IconButton.styleFrom(
+              backgroundColor: AudioPlayerColors.ink,
+              foregroundColor: AudioPlayerColors.backgroundBottom,
+              shape: const CircleBorder(),
+              padding: EdgeInsets.zero,
+            ),
+            iconSize: 40,
+            icon: AnimatedSwitcher(
               duration: widget.disableAnimations
                   ? Duration.zero
-                  : const Duration(milliseconds: 120),
-              curve: Curves.easeOutCubic,
-              scale: _pressed ? 0.94 : 1,
-              child: ClipOval(
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.32),
+                  : const Duration(milliseconds: 160),
+              child: waiting
+                  ? const SizedBox.square(
+                      key: Key('audio-buffering'),
+                      dimension: 28,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        color: AudioPlayerColors.backgroundBottom,
                       ),
-                      boxShadow: const <BoxShadow>[
-                        BoxShadow(
-                          color: Color(0x18000000),
-                          blurRadius: 20,
-                          offset: Offset(0, 6),
-                        ),
-                      ],
+                    )
+                  : Icon(
+                      widget.snapshot.playing
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                      key: ValueKey<bool>(widget.snapshot.playing),
                     ),
-                    child: IconButton(
-                      key: const Key('audio-play-pause'),
-                      tooltip: widget.snapshot.playing ? '暂停' : '播放',
-                      onPressed: widget.onPressed,
-                      iconSize: 42,
-                      color: AudioPlayerColors.ink,
-                      icon: AnimatedSwitcher(
-                        duration: widget.disableAnimations
-                            ? Duration.zero
-                            : const Duration(milliseconds: 160),
-                        child:
-                            (widget.snapshot.buffering ||
-                                widget.snapshot.resourceLoading)
-                            ? const SizedBox.square(
-                                key: Key('audio-buffering'),
-                                dimension: 30,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.4,
-                                  color: AudioPlayerColors.ink,
-                                ),
-                              )
-                            : Icon(
-                                widget.snapshot.playing
-                                    ? Icons.pause_rounded
-                                    : Icons.play_arrow_rounded,
-                                key: ValueKey<bool>(widget.snapshot.playing),
-                              ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -300,21 +277,56 @@ class _SeekFifteenIcon extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: <Widget>[
-          Icon(
-            forward ? Icons.rotate_right_rounded : Icons.rotate_left_rounded,
-            size: 28,
+          Transform.flip(
+            flipX: forward,
+            child: const CustomPaint(
+              size: Size.square(30),
+              painter: _SeekArrowPainter(),
+            ),
           ),
           Text(
             '15',
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              fontSize: 8.5,
-              fontWeight: FontWeight.w900,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              height: 1,
             ),
           ),
         ],
       ),
     );
   }
+}
+
+/// A clean replay arc leaves its center free for the fifteen-second label.
+class _SeekArrowPainter extends CustomPainter {
+  const _SeekArrowPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AudioPlayerColors.ink
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(
+      const Rect.fromLTWH(4, 5, 22, 22),
+      -math.pi / 2,
+      math.pi * 1.75,
+      false,
+      paint,
+    );
+    canvas.drawPath(
+      Path()
+        ..moveTo(11, 1)
+        ..lineTo(15, 5)
+        ..lineTo(11, 9),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_SeekArrowPainter oldDelegate) => false;
 }
 
 final class AudioPlayerProgressThumbShape extends SliderComponentShape {
@@ -328,7 +340,7 @@ final class AudioPlayerProgressThumbShape extends SliderComponentShape {
 
   @override
   Size getPreferredSize(bool isEnabled, bool isDiscrete) =>
-      Size.fromRadius(dragging ? 9 : 7);
+      Size.fromRadius(dragging ? 7 : 4);
 
   @override
   void paint(
@@ -351,12 +363,13 @@ final class AudioPlayerProgressThumbShape extends SliderComponentShape {
       activationAnimation.value,
       dragging ? 1.0 : 0.0,
     );
-    final glowRadius = 10 + pulse * 3 + interaction * 2;
-    canvas.drawCircle(
-      center,
-      glowRadius,
-      Paint()..color = color.withValues(alpha: 0.08 + pulse * 0.10),
-    );
-    canvas.drawCircle(center, 7 + interaction * 1.5, Paint()..color = color);
+    if (interaction > 0) {
+      canvas.drawCircle(
+        center,
+        12,
+        Paint()..color = color.withValues(alpha: 0.10),
+      );
+    }
+    canvas.drawCircle(center, 4 + interaction * 3, Paint()..color = color);
   }
 }

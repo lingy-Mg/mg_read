@@ -147,4 +147,9 @@ Future<void> _open(
   );
   await tester.tap(find.text('打开设置'));
   await tester.pumpAndSettle();
+  final toggle = find.byKey(const Key('audio-remember-position-switch'));
+  if (toggle.evaluate().isNotEmpty) {
+    await tester.ensureVisible(toggle);
+    await tester.pumpAndSettle();
+  }
 }

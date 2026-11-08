@@ -34,11 +34,11 @@ void main() {
         of: find.byKey(const Key('audio-play-pause')),
         matching: find.byType(BackdropFilter),
       ),
-      findsAtLeastNWidgets(2),
+      findsNothing,
     );
     expect(
       tester.getSize(find.byKey(const Key('audio-play-pause-surface'))),
-      const Size.square(94),
+      const Size.square(76),
     );
     final transportBottom = tester
         .getBottomLeft(find.byKey(const Key('audio-play-pause-surface')))
@@ -50,8 +50,8 @@ void main() {
       const Key('audio-next'),
     ]) {
       expect(
-        tester.getBottomLeft(find.byKey(key)).dy,
-        closeTo(transportBottom - 6, 0.01),
+        tester.getCenter(find.byKey(key)).dy,
+        closeTo(transportBottom - 38, 0.01),
       );
     }
 

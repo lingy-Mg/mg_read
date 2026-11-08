@@ -15,7 +15,7 @@ import 'package:flutter/material.dart';
 import '../api/audio_artwork.dart';
 import '../api/audio_controller.dart';
 import '../api/audio_models.dart';
-import 'audio_player_glass.dart';
+import 'audio_player_surface.dart';
 import 'audio_player_theme.dart';
 
 Future<void> showAudioQueueSheet(
@@ -27,7 +27,7 @@ Future<void> showAudioQueueSheet(
   context: context,
   isScrollControlled: true,
   backgroundColor: Colors.transparent,
-  barrierColor: const Color(0x24000000),
+  barrierColor: AudioPlayerColors.scrim,
   builder: (sheetContext) => _AudioQueueSheet(
     snapshot: snapshot,
     controller: controller,
@@ -88,13 +88,14 @@ class _AudioQueueSheetState extends State<_AudioQueueSheet> {
     return SafeArea(
       top: false,
       child: FractionallySizedBox(
-        heightFactor: 0.92,
+        heightFactor: 0.84,
         alignment: Alignment.bottomCenter,
-        child: AudioGlassPanel(
+        child: AudioSurfacePanel(
           key: const Key('audio-queue-glass'),
-          borderRadius: BorderRadius.zero,
-          tone: AudioGlassTone.soft,
-          blur: 36,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AudioPlayerMetrics.sheetRadius),
+          ),
+          tone: AudioSurfaceTone.strong,
           child: Material(
             color: Colors.transparent,
             child: Column(
@@ -114,7 +115,7 @@ class _AudioQueueSheetState extends State<_AudioQueueSheet> {
                               style: Theme.of(context).textTheme.titleLarge
                                   ?.copyWith(
                                     color: AudioPlayerColors.ink,
-                                    fontWeight: FontWeight.w800,
+                                    fontWeight: FontWeight.w600,
                                   ),
                             ),
                             const SizedBox(height: 3),
@@ -208,25 +209,16 @@ class _AudioQueueTile extends StatelessWidget {
               color: entry.isLocked
                   ? AudioPlayerColors.subtle
                   : AudioPlayerColors.ink,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
             );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Material(
-        color: selected
-            ? Colors.white.withValues(alpha: 0.13)
-            : Colors.white.withValues(alpha: 0.05),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: BorderSide(
-            color: selected
-                ? AudioPlayerColors.accentBorder
-                : AudioPlayerColors.divider,
-          ),
-        ),
+        color: selected ? AudioPlayerColors.accentSoft : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(12),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
             child: Row(
@@ -260,7 +252,7 @@ class _AudioQueueTile extends StatelessWidget {
                         entry.isLocked
                             ? '需解锁后播放'
                             : selected
-                            ? '正在播放'
+                            ? (playing ? '正在播放' : '已暂停')
                             : entry.creator ?? '可播放',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,

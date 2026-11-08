@@ -1,4 +1,4 @@
-/// Validate rendered color compositions used by the artwork-led glass UI.
+/// Validate rendered color compositions used by the artwork-led minimal UI.
 library;
 
 import 'package:flutter/material.dart';
@@ -7,7 +7,7 @@ import 'package:mg_read_audio_player/src/ui/audio_player_theme.dart';
 
 void main() {
   test(
-    'foreground text survives bright artwork and the strongest glass tint',
+    'foreground text survives bright artwork and opaque control surfaces',
     () {
       for (final artwork in [
         Colors.white,
@@ -22,7 +22,7 @@ void main() {
         );
         for (final glass in [
           Colors.transparent,
-          AudioPlayerColors.glassStrongHighlight,
+          AudioPlayerColors.surfaceStrong,
           AudioPlayerColors.control,
         ]) {
           final background = Color.alphaBlend(glass, backdrop);

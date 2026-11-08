@@ -2,7 +2,7 @@
 ///
 /// Responsibilities:
 /// - Present only metadata already available in the live player snapshot.
-/// - Show the active chapter resource and a clearly unavailable comment area.
+/// - Show the active chapter and actionable source/resource information.
 ///
 /// Notes:
 /// - The sheet owns no media state and performs no host or network I/O.
@@ -18,7 +18,7 @@ import '../api/audio_controller.dart';
 import '../api/audio_models.dart';
 import '../api/audio_contracts.dart';
 import 'audio_player_artwork_stage.dart';
-import 'audio_player_glass.dart';
+import 'audio_player_surface.dart';
 import 'audio_player_theme.dart';
 
 Future<void> showAudioDetailsSheet(
@@ -83,13 +83,12 @@ class _AudioDetailsSheet extends StatelessWidget {
       child: FractionallySizedBox(
         heightFactor: 0.82,
         alignment: Alignment.bottomCenter,
-        child: AudioGlassPanel(
+        child: AudioSurfacePanel(
           key: const Key('audio-details-glass'),
           borderRadius: const BorderRadius.vertical(
             top: Radius.circular(AudioPlayerMetrics.sheetRadius),
           ),
-          tone: AudioGlassTone.strong,
-          blur: 28,
+          tone: AudioSurfaceTone.strong,
           child: Material(
             color: Colors.transparent,
             child: Column(
@@ -105,7 +104,7 @@ class _AudioDetailsSheet extends StatelessWidget {
                           '音频详情',
                           style: theme.textTheme.titleLarge?.copyWith(
                             color: AudioPlayerColors.ink,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
@@ -129,11 +128,10 @@ class _AudioDetailsSheet extends StatelessWidget {
                         children: <Widget>[
                           SizedBox.square(
                             dimension: 110,
-                            child: AudioGlassPanel(
+                            child: AudioSurfacePanel(
                               padding: const EdgeInsets.all(3),
                               borderRadius: BorderRadius.circular(20),
-                              tone: AudioGlassTone.accent,
-                              shadow: false,
+                              tone: AudioSurfaceTone.accent,
                               child: ClipRRect(
                                 key: const Key('audio-details-artwork'),
                                 borderRadius: BorderRadius.circular(17),
@@ -155,7 +153,7 @@ class _AudioDetailsSheet extends StatelessWidget {
                                   overflow: TextOverflow.ellipsis,
                                   style: theme.textTheme.titleLarge?.copyWith(
                                     color: AudioPlayerColors.ink,
-                                    fontWeight: FontWeight.w800,
+                                    fontWeight: FontWeight.w600,
                                     height: 1.18,
                                   ),
                                 ),
@@ -190,7 +188,7 @@ class _AudioDetailsSheet extends StatelessWidget {
                                           ?.copyWith(
                                             color:
                                                 AudioPlayerColors.accentPressed,
-                                            fontWeight: FontWeight.w700,
+                                            fontWeight: FontWeight.w600,
                                           ),
                                     ),
                                   ),
@@ -201,10 +199,8 @@ class _AudioDetailsSheet extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 22),
-                      AudioGlassPanel(
+                      AudioSurfacePanel(
                         borderRadius: BorderRadius.circular(16),
-                        blur: 14,
-                        shadow: false,
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           child: Row(
@@ -227,15 +223,13 @@ class _AudioDetailsSheet extends StatelessWidget {
                         '当前章节',
                         style: theme.textTheme.titleMedium?.copyWith(
                           color: AudioPlayerColors.ink,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       const SizedBox(height: 10),
-                      AudioGlassPanel(
+                      AudioSurfacePanel(
                         borderRadius: BorderRadius.circular(16),
-                        tone: AudioGlassTone.accent,
-                        blur: 14,
-                        shadow: false,
+                        tone: AudioSurfaceTone.accent,
                         child: Padding(
                           padding: const EdgeInsets.all(15),
                           child: Column(
@@ -248,7 +242,7 @@ class _AudioDetailsSheet extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.bodyLarge?.copyWith(
                                   color: AudioPlayerColors.ink,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w600,
                                   height: 1.35,
                                 ),
                               ),
@@ -257,7 +251,7 @@ class _AudioDetailsSheet extends StatelessWidget {
                                 '第 ${displayedIndex + 1} 集',
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: AudioPlayerColors.accentPressed,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                               const SizedBox(height: 14),
@@ -308,127 +302,6 @@ class _AudioDetailsSheet extends StatelessWidget {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 24),
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: Text(
-                              '评论',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                color: AudioPlayerColors.ink,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                          DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: AudioPlayerColors.control,
-                              borderRadius: BorderRadius.circular(99),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              child: Text(
-                                '即将开放',
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: AudioPlayerColors.muted,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      AudioGlassPanel(
-                        key: const Key('audio-details-comment-composer'),
-                        borderRadius: BorderRadius.circular(16),
-                        blur: 14,
-                        shadow: false,
-                        child: Padding(
-                          padding: const EdgeInsets.all(13),
-                          child: Row(
-                            children: <Widget>[
-                              const CircleAvatar(
-                                radius: 18,
-                                backgroundColor: AudioPlayerColors.accentSoft,
-                                foregroundColor: AudioPlayerColors.accent,
-                                child: Icon(
-                                  Icons.person_outline_rounded,
-                                  size: 20,
-                                ),
-                              ),
-                              const SizedBox(width: 11),
-                              Expanded(
-                                child: Text(
-                                  '说说你对本集的看法…',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: AudioPlayerColors.subtle,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              FilledButton(
-                                onPressed: null,
-                                style: FilledButton.styleFrom(
-                                  minimumSize: const Size(58, 38),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                  ),
-                                ),
-                                child: const Text('发布'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      AudioGlassPanel(
-                        key: const Key('audio-details-comments-placeholder'),
-                        borderRadius: BorderRadius.circular(16),
-                        blur: 14,
-                        shadow: false,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 18,
-                          ),
-                          child: Row(
-                            children: <Widget>[
-                              const Icon(
-                                Icons.chat_bubble_outline_rounded,
-                                color: AudioPlayerColors.subtle,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: <Widget>[
-                                    Text(
-                                      '评论功能正在准备中',
-                                      style: theme.textTheme.bodyMedium
-                                          ?.copyWith(
-                                            color: AudioPlayerColors.ink,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                    ),
-                                    const SizedBox(height: 3),
-                                    Text(
-                                      '后续可在这里查看并发表本集评论',
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            color: AudioPlayerColors.muted,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -459,7 +332,7 @@ class _DetailStat extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.labelLarge?.copyWith(
               color: AudioPlayerColors.ink,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 4),
