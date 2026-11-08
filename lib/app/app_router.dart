@@ -41,8 +41,6 @@ import 'package:mg_read/features/import_export/presentation/import_export_page.d
 import 'package:mg_read/features/lan_sync/presentation/lan_sync_page.dart';
 import 'package:mg_read/features/tv_companion/presentation/companion_page.dart';
 
-import 'package:mg_read/features/notifications/application/notification_center.dart';
-import 'package:mg_read/features/notifications/presentation/notifications_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_status_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_health_page.dart';
 import 'package:mg_read/features/plugins/presentation/plugin_runtime_source_detail_page.dart';
@@ -130,7 +128,6 @@ String _stableRouteName(Uri uri) {
     'profile' when segments.length > 2 && segments[1] == 'about' => 'profile.about.${segments[2]}',
     'profile' when segments.length > 1 && segments[1] == 'about' => 'profile.about',
     'profile' when segments.length > 1 && segments[1] == 'feedback' => 'profile.feedback',
-    'profile' when segments.length > 1 && segments[1] == 'notifications' => 'profile.notifications',
     'profile' when segments.length > 1 && segments[1] == 'edit' => 'profile.edit',
     'profile' when segments.length > 2 && segments[1] == 'plugins' => 'profile.plugins.${segments[2]}',
     'profile' when segments.length > 1 && segments[1] == 'plugins' => 'profile.plugins',
@@ -326,7 +323,6 @@ class DiscoveryRoute extends GoRouteData with $DiscoveryRoute {
       routes: <TypedRoute<RouteData>>[TypedGoRoute<AboutItemRoute>(path: ':itemId')],
     ),
     TypedGoRoute<FeedbackRoute>(path: 'feedback'),
-    TypedGoRoute<NotificationsRoute>(path: 'notifications'),
     TypedGoRoute<PluginCenterRoute>(path: 'plugins'),
     TypedGoRoute<PluginRuntimeHealthRoute>(path: 'plugins/status'),
     TypedGoRoute<PluginSourceVerificationRoute>(path: 'plugins/verify'),
@@ -370,9 +366,6 @@ class ProfileRoute extends GoRouteData with $ProfileRoute {
             onFeedbackRequested: () {
               const FeedbackRoute().push(context);
             },
-            onNotificationsRequested: () {
-              const NotificationsRoute().push(context);
-            },
             onPluginCenterRequested: () {
               const PluginCenterRoute().push(context);
             },
@@ -394,19 +387,6 @@ class ProfileRoute extends GoRouteData with $ProfileRoute {
           );
         },
       ),
-    );
-  }
-}
-
-/// Local bounded operation notifications reached from the profile bell.
-class NotificationsRoute extends GoRouteData with $NotificationsRoute {
-  const NotificationsRoute();
-
-  @override
-  Widget build(BuildContext context, GoRouterState state) {
-    return Consumer(
-      builder: (BuildContext context, WidgetRef ref, Widget? child) =>
-          NotificationsPage(center: ref.watch(notificationCenterProvider), onBackRequested: () => _returnToProfile(context)),
     );
   }
 }

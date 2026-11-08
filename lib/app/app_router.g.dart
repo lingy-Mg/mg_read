@@ -140,7 +140,6 @@ RouteBase get $profileRoute => GoRouteData.$route(
       routes: [GoRouteData.$route(path: ':itemId', hasOverriddenOnExit: false, factory: $AboutItemRoute._fromState)],
     ),
     GoRouteData.$route(path: 'feedback', hasOverriddenOnExit: false, factory: $FeedbackRoute._fromState),
-    GoRouteData.$route(path: 'notifications', hasOverriddenOnExit: false, factory: $NotificationsRoute._fromState),
     GoRouteData.$route(path: 'plugins', hasOverriddenOnExit: false, factory: $PluginCenterRoute._fromState),
     GoRouteData.$route(path: 'plugins/status', hasOverriddenOnExit: false, factory: $PluginRuntimeHealthRoute._fromState),
     GoRouteData.$route(path: 'plugins/verify', hasOverriddenOnExit: false, factory: $PluginSourceVerificationRoute._fromState),
@@ -235,25 +234,6 @@ mixin $FeedbackRoute on GoRouteData {
 
   @override
   String get location => GoRouteData.$location('/profile/feedback');
-
-  @override
-  void go(BuildContext context) => context.go(location);
-
-  @override
-  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
-
-  @override
-  void pushReplacement(BuildContext context) => context.pushReplacement(location);
-
-  @override
-  void replace(BuildContext context) => context.replace(location);
-}
-
-mixin $NotificationsRoute on GoRouteData {
-  static NotificationsRoute _fromState(GoRouterState state) => const NotificationsRoute();
-
-  @override
-  String get location => GoRouteData.$location('/profile/notifications');
 
   @override
   void go(BuildContext context) => context.go(location);

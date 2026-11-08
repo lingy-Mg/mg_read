@@ -330,7 +330,6 @@ extension LocalDocumentImports on ContentLibrary {
       record.addAll({'status': 'succeeded', 'itemId': item.id.value, 'title': item.title, 'errorCode': null, 'errorDetail': null});
       await _saveLocalJob(record);
       await _localFiles.removeStaging(id);
-      _enqueueNotification(kind: LibraryNotificationKind.bookshelfAdded, title: item.title);
     } on Object catch (error) {
       await _failLocalJob(record, error);
     } finally {

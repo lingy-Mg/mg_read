@@ -42,7 +42,6 @@ class ProfilePage extends StatefulWidget {
     this.onPendingSettingRequested,
     this.onDiagnosticsRequested,
     this.onEditRequested,
-    this.onNotificationsRequested,
     required this.appVersion,
     this.profileIdentity = ProfileIdentity.defaults,
     this.readingStats,
@@ -63,7 +62,6 @@ class ProfilePage extends StatefulWidget {
   final ValueChanged<String>? onPendingSettingRequested;
   final VoidCallback? onDiagnosticsRequested;
   final VoidCallback? onEditRequested;
-  final VoidCallback? onNotificationsRequested;
   final String appVersion;
   final ProfileIdentity profileIdentity;
 
@@ -129,10 +127,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           AppSpacing.profileContentBottomSafeDistance + MediaQuery.viewPaddingOf(context).bottom,
                         ),
                         children: <Widget>[
-                          ProfileTopBar(
-                            onToggleTheme: widget.onToggleTheme,
-                            onNotifications: widget.onNotificationsRequested ?? _showUnavailableMessage,
-                          ),
+                          ProfileTopBar(onToggleTheme: widget.onToggleTheme),
                           const SizedBox(height: AppSpacing.compact + 2),
                           ProfileOverviewCard(
                             data: data,
@@ -241,13 +236,12 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
-/// The profile page header with theme and notification actions.
+/// The profile page header with its optional theme action.
 class ProfileTopBar extends StatelessWidget {
   /// Creates the title and fixed-size top actions.
-  const ProfileTopBar({required this.onToggleTheme, required this.onNotifications, super.key});
+  const ProfileTopBar({required this.onToggleTheme, super.key});
 
   final VoidCallback? onToggleTheme;
-  final VoidCallback onNotifications;
 
   @override
   Widget build(BuildContext context) {
@@ -265,9 +259,7 @@ class ProfileTopBar extends StatelessWidget {
               onPressed: onToggleTheme!,
               icon: theme.brightness == Brightness.dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
             ),
-            const SizedBox(width: AppSpacing.compact),
           ],
-          _ProfileTopBarAction(tooltip: '通知', onPressed: onNotifications, icon: Icons.notifications_none_rounded),
         ],
       ),
     );

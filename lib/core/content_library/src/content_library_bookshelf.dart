@@ -9,21 +9,15 @@ final class _BookshelfOperations {
     if (item.source.pluginId != request.pluginId || item.source.remoteContentId != request.remoteContentId || item.kind != request.kind) {
       throw ArgumentError('A metadata refresh cannot replace the shelf identity.');
     }
-    return (await _add(request, visibility: item.visibility)).item;
+    return _add(request, visibility: item.visibility);
   });
 
-  Future<LibraryItem> add(BookshelfAddRequest request) async {
-    final result = await _library._trace(
-      operation: 'bookshelfAdd',
-      contentKind: request.kind.code,
-      itemCount: 1,
-      action: () => _library._withStorageMaintenance(() => _add(request)),
-    );
-    if (result.created) {
-      _library._enqueueNotification(kind: LibraryNotificationKind.bookshelfAdded, title: result.item.title);
-    }
-    return result.item;
-  }
+  Future<LibraryItem> add(BookshelfAddRequest request) => _library._trace(
+    operation: 'bookshelfAdd',
+    contentKind: request.kind.code,
+    itemCount: 1,
+    action: () => _library._withStorageMaintenance(() => _add(request)),
+  );
 
   /// Adds or returns the item identified by a typed source reference.
   ///
@@ -50,14 +44,11 @@ final class _BookshelfOperations {
   );
 
   Future<void> remove(LibraryItemId id, LibraryRemovalPolicy policy) async {
-    final removed = await _library._trace(
+    await _library._trace(
       operation: 'bookshelfRemove',
       itemCount: 1,
       action: () => _library._withStorageMaintenance(() => _remove(id, policy)),
     );
-    if (removed != null) {
-      _library._enqueueNotification(kind: LibraryNotificationKind.bookshelfRemoved, title: removed.title);
-    }
   }
 
   /// Changes only the local shelf visibility for one item.
@@ -67,7 +58,7 @@ final class _BookshelfOperations {
   Future<void> setVisibility(LibraryItemId id, LibraryVisibility visibility) =>
       _library._trace(operation: 'bookshelfSetVisibility', itemCount: 1, action: () => _setVisibility(id, visibility));
 
-  Future<_BookshelfAddResult> _add(BookshelfAddRequest request, {LibraryVisibility visibility = LibraryVisibility.normal}) async {
+  Future<LibraryItem> _add(BookshelfAddRequest request, {LibraryVisibility visibility = LibraryVisibility.normal}) async {
     _safeText(request.title);
     final details = _shelfSummary(request);
     try {
@@ -87,7 +78,7 @@ final class _BookshelfOperations {
         detailsJson: jsonEncode(details),
         maximumActiveItems: bookshelfMaxItemCount,
       );
-      return _BookshelfAddResult(item: _storedItem(result.item), created: result.created);
+      return _storedItem(result.item);
     } on PersistenceCapacityError {
       throw const BookshelfCapacityExceededException(currentCount: bookshelfMaxItemCount, requestedNewItems: 1);
     }
@@ -106,13 +97,13 @@ final class _BookshelfOperations {
     await _library._persistence.metadataRecords.contentLibrary.setVisibility(id.value, visibility.wireValue);
   }
 
-  Future<LibraryItem?> _remove(LibraryItemId id, LibraryRemovalPolicy policy) async {
+  Future<void> _remove(LibraryItemId id, LibraryRemovalPolicy policy) async {
     final row = await _library._persistence.metadataRecords.contentLibrary.readItem(id.value);
-    if (row == null) return null;
+    if (row == null) return;
     final removedItem = _storedItem(row);
     if (policy == LibraryRemovalPolicy.removeFromShelfKeepContent) {
       await _library._persistence.metadataRecords.contentLibrary.retainItem(id.value);
-      return removedItem;
+      return;
     }
     await _library._persistence.metadataRecords.contentLibrary.deleteItem(id.value);
     await _library._storageMaintenance.clearLocked();
@@ -125,15 +116,7 @@ final class _BookshelfOperations {
     } on Object {
       // Metadata is already authoritative. A later cache clear can retry files.
     }
-    return removedItem;
   }
-}
-
-final class _BookshelfAddResult {
-  const _BookshelfAddResult({required this.item, required this.created});
-
-  final LibraryItem item;
-  final bool created;
 }
 
 /// Typed, metadata-only LAN synchronization for source-bound shelf items.

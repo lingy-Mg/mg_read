@@ -7,6 +7,7 @@
 ///
 /// 注意：
 /// - 只支持全新 schema，不读取或迁移历史 Content Library metadata records。
+/// - 初始化清理已退役的本机通知记录，保留其他 metadata 与内容数据。
 /// - TEMP staging table 不属于持久 schema，只用于把完整目录一次批量送入 SQLite。
 part of 'record_store.dart';
 
@@ -130,6 +131,9 @@ CREATE TABLE IF NOT EXISTS bookmarks (
 )''';
 
 Future<void> _createContentLibrarySchema(_PersistenceDatabase database) async {
+  await database.customStatement(
+    "DELETE FROM metadata_records WHERE record_kind = 'content_library_notification' AND scope_kind = 'content_library' AND scope_id = 'default'",
+  );
   await _upgradeLocalDocumentSchema(database);
   await database.customStatement(_createLibraryItemsSql);
   await database.customStatement(_createCatalogChaptersSql);

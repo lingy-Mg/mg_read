@@ -51,7 +51,6 @@ import 'package:mg_read/features/lan_sync/data/persistent_device_identity_store.
 import 'package:mg_read/features/lan_sync/data/persistent_paired_device_repository.dart';
 import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
 import 'package:mg_read/features/network_proxy/application/network_proxy_settings.dart';
-import 'package:mg_read/features/notifications/application/notification_center.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
 import 'package:mg_read/features/profile/application/profile_reading_stats_loader.dart';
 import 'package:mg_read/features/discovery/application/bookshelf_membership.dart';
@@ -348,8 +347,6 @@ Future<void> bootstrapMgReadApp({
           ),
         if (contentLibrary != null || contentLibraryFactory != null)
           profileReadingStatsLoaderProvider.overrideWithValue(DeferredProfileReadingStatsLoader(getLibrary)),
-        if (contentLibrary != null || contentLibraryFactory != null)
-          notificationCenterProvider.overrideWithValue(DeferredNotificationCenter(getLibrary)),
         if (contentLibrary != null || contentLibraryFactory != null)
           lanSyncGatewayProvider.overrideWith((ref) {
             final runtime = ref.watch(pluginRuntimeFacadeProvider);

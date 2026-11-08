@@ -41,6 +41,8 @@ void main() {
     expect(find.text('问题诊断'), findsNothing);
     expect(find.byKey(const Key('profile-tv-mode')), findsNothing);
     expect(find.byType(AppBottomNavigation), findsOneWidget);
+    expect(find.byTooltip('通知'), findsNothing);
+    expect(find.byIcon(Icons.notifications_none_rounded), findsNothing);
 
     final Rect card = tester.getRect(find.byType(ProfileOverviewCard));
     final Rect firstSettingsRow = tester.getRect(find.byType(ProfileSettingsRow).first);
@@ -108,19 +110,20 @@ void main() {
     expect(find.text('此操作尚未接入真实数据，可由后续功能替换。'), findsOneWidget);
   });
 
-  testWidgets('delegates the notification bell to the app layer', (WidgetTester tester) async {
-    var notificationsRequested = false;
+  testWidgets('delegates the remaining header theme action to the app layer', (WidgetTester tester) async {
+    var themeRequested = false;
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
-        home: ProfilePage(appVersion: '9.8.7', onNotificationsRequested: () => notificationsRequested = true),
+        home: ProfilePage(appVersion: '9.8.7', onToggleTheme: () => themeRequested = true),
       ),
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('通知'));
+    expect(find.byTooltip('通知'), findsNothing);
+    await tester.tap(find.byKey(const Key('theme-mode-toggle')));
 
-    expect(notificationsRequested, isTrue);
+    expect(themeRequested, isTrue);
     expect(find.text('此操作尚未接入真实数据，可由后续功能替换。'), findsNothing);
   });
 

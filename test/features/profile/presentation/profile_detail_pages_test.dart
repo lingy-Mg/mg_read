@@ -16,32 +16,10 @@ import 'package:mg_read/features/profile/presentation/about_page.dart';
 import 'package:mg_read/features/profile/presentation/feedback_page.dart';
 import 'package:mg_read/features/profile/presentation/profile_page.dart';
 import 'package:mg_read/features/lan_sync/presentation/lan_sync_page.dart';
-import 'package:mg_read/features/notifications/presentation/notifications_page.dart';
 
 import '../../../app/mg_read_app_test_support.dart';
 
 void main() {
-  testWidgets('profile bell opens the notification route and back returns', (WidgetTester tester) async {
-    await _setViewport(tester, const Size(390, 900));
-    final settings = await createTestAppSettings();
-    addTearDown(settings.close);
-    await tester.pumpWidget(testMgReadApp(settings));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const Key('app-nav-profile')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('通知'));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(NotificationsPage), findsOneWidget);
-    expect(find.text('暂无通知'), findsOneWidget);
-    expect(find.byKey(const Key('app-bottom-navigation')), findsNothing);
-
-    await tester.tap(find.byKey(const Key('notifications-back')));
-    await tester.pumpAndSettle();
-    expect(find.byType(ProfilePage), findsOneWidget);
-  });
-
   testWidgets('profile opens typed about and feedback routes and back returns', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     final settings = await createTestAppSettings();
@@ -91,20 +69,13 @@ void main() {
 
     await tester.tap(find.byKey(const Key('app-nav-profile')));
     await tester.pumpAndSettle();
-    final profileScroll = find.byKey(const Key('profile-page-content'));
-    final action = find.byKey(const Key('profile-setting-data-backup'));
-    await tester.scrollUntilVisible(
-      action,
-      220,
-      scrollable: find.descendant(of: profileScroll, matching: find.byType(Scrollable)),
-    );
-    await tester.tap(action);
+    await tester.tap(find.text('局域网同步'));
     await tester.pumpAndSettle();
 
     expect(find.byType(LanSyncPage), findsOneWidget);
     expect(find.text('发送数据'), findsOneWidget);
     expect(find.byKey(const Key('lan-sync-scan')), findsOneWidget);
-    expect(find.textContaining('首版传输不加密'), findsOneWidget);
+    expect(find.byKey(const Key('lan-sync-temporary-transfer')), findsOneWidget);
     expect(find.byKey(const Key('app-bottom-navigation')), findsNothing);
 
     await tester.tap(find.byKey(const Key('lan-sync-back')));
