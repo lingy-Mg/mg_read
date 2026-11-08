@@ -102,7 +102,7 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
                       AppSecondaryPageIconButton(
                         key: const Key('lan-sync-scan'),
                         label: '扫码',
-                        icon: Icons.qr_code_scanner_rounded,
+                        icon: Icons.crop_free_rounded,
                         onPressed: () => unawaited(_scanAndRoute()),
                       ),
                     ],
