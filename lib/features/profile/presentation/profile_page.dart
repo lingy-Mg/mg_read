@@ -1,8 +1,8 @@
 /// “我的”主页面。
 ///
 /// 职责：
-/// - 顶层直接切换 TV 模式；其余按阅读外观、内容存储和高级设置分组。
-/// - 局域网同步只保留概览卡入口。
+/// - 顶层只保留设置分类，具体选项在分类与设置子页中逐级展开。
+/// - 概览卡提供局域网同步快捷入口，完整连接工具在分类页中展示。
 /// - 作为设置子页面的顶部节奏基准。
 ///
 /// 注意：
@@ -12,19 +12,17 @@
 ///
 library;
 
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/profile/presentation/profile_view_data.dart';
+import 'package:mg_read/features/profile/presentation/profile_settings_catalog.dart';
 import 'package:mg_read/features/profile/presentation/tv_profile_page.dart';
 import 'package:mg_read/features/profile/domain/profile_identity.dart';
 import 'package:mg_read/features/profile/domain/profile_reading_stats.dart';
 import 'package:mg_read/features/profile/presentation/widgets/profile_overview_card.dart';
 import 'package:mg_read/features/profile/presentation/widgets/profile_settings_list.dart';
-import 'package:mg_read/features/profile/presentation/widgets/profile_tv_mode_card.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 import 'package:mg_read/shared/presentation/widgets/app_page_backdrop.dart';
@@ -153,48 +151,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                           ],
                           const SizedBox(height: AppSpacing.section - 2),
-                          const ProfileTvModeCard(),
-                          const SizedBox(height: AppSpacing.section),
-                          ..._settingsGroup(
-                            '阅读与外观',
-                            data.settings.where((item) => const {'reading-settings', 'theme-appearance'}.contains(item.id)).toList(),
-                          ),
-                          ..._settingsGroup(
-                            '内容与存储',
-                            data.settings
-                                .where(
-                                  (item) =>
-                                      const {'source-management', 'downloads-cache', 'import-export', 'tv-companion'}.contains(item.id),
-                                )
-                                .toList(),
-                          ),
-                          Material(
-                            color: Colors.transparent,
-                            child: ExpansionTile(
-                              key: const Key('profile-advanced-settings'),
-                              tilePadding: EdgeInsets.zero,
-                              title: const Text('高级设置'),
-                              subtitle: const Text('代理、运行时与问题诊断'),
-                              children: [
-                                ProfileSettingsList(
-                                  items: [
-                                    ...data.settings.where((item) => item.id == 'network-proxy'),
-                                    if ((Platform.isAndroid || Platform.isWindows || Platform.isMacOS) &&
-                                        !const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME'))
-                                      ProfileSettingsItemViewData(
-                                        id: 'node-runtime',
-                                        title: Platform.isAndroid ? 'Node.js 运行时' : 'JavaScript 运行时',
-                                        description: '切换运行时，重启后生效',
-                                        icon: ProfileSettingsIcon.sources,
-                                      ),
-                                    ...data.about.where((item) => item.id == 'diagnostics'),
-                                  ],
-                                  onItemPressed: (item) =>
-                                      item.id == 'diagnostics' ? _handleAboutItemPressed(item) : _handleSettingsItemPressed(item),
-                                ),
-                              ],
-                            ),
-                          ),
+                          ..._settingsGroup('设置', ProfileSettingsCatalog.categories),
                           const SizedBox(height: AppSpacing.section - 4),
                           _ProfileSectionTitle(title: '关于与其他'),
                           const SizedBox(height: AppSpacing.comfortable / 2),

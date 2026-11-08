@@ -39,6 +39,8 @@ void main() {
 
     await tester.tap(find.byKey(const Key('app-nav-profile')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('profile-setting-data-storage')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('profile-setting-downloads-cache')));
     await tester.pumpAndSettle();
 
@@ -59,7 +61,7 @@ void main() {
     expect(find.byKey(const Key('profile-setting-clear-cache')), findsNothing);
   });
 
-  testWidgets('profile setting opens a real secondary placeholder route', (WidgetTester tester) async {
+  testWidgets('profile category opens a setting and returns one level at a time', (WidgetTester tester) async {
     final settings = await createTestAppSettings();
     addTearDown(settings.close);
     await tester.pumpWidget(testMgReadApp(settings));
@@ -77,13 +79,20 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ProfileSettingPlaceholderPage), findsOneWidget);
-    expect(find.descendant(of: find.byKey(const Key('secondary-placeholder-top-bar')), matching: find.text('阅读器与播放器')), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const Key('secondary-placeholder-top-bar')), matching: find.text('阅读与播放')), findsOneWidget);
     expect(find.byKey(const Key('reading-settings-preview')), findsNothing);
     expect(find.text('功能建设中'), findsNothing);
     expect(tester.getTopLeft(find.byKey(const Key('secondary-placeholder-top-bar'))).dy, 0);
     expect(find.byKey(const Key('secondary-placeholder-back')), findsOneWidget);
     expect(find.byKey(const Key('app-bottom-navigation')), findsNothing);
 
+    await tester.tap(find.byKey(const Key('profile-setting-novel-settings')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('novel-preload-count-increase')), findsOneWidget);
+    expect(find.byKey(const Key('profile-setting-audio-settings')), findsNothing);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('profile-general-setting-reading-settings')), findsOneWidget);
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
     expect(find.byType(ProfileSettingPlaceholderPage), findsNothing);

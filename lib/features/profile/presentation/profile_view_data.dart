@@ -129,7 +129,20 @@ final class ProfileSettingsItemViewData {
 }
 
 /// Symbol choices that keep the profile fixture independent from Material UI.
-enum ProfileSettingsIcon { reading, sources, networkProxy, download, appearance, importExport, backup, diagnostics, about, feedback }
+enum ProfileSettingsIcon {
+  reading,
+  audio,
+  video,
+  sources,
+  networkProxy,
+  download,
+  appearance,
+  importExport,
+  backup,
+  diagnostics,
+  about,
+  feedback,
+}
 
 /// Clearly disclosed fixture data used while account and sync capabilities are
 /// intentionally outside the current application milestone.

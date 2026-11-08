@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/profile/presentation/profile_general_setting_page.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 
 import '../../../core/settings/settings_testkit.dart';
 
@@ -24,6 +25,10 @@ void main() {
   for (final (String settingId, String goldenName) in <(String, String)>[
     ('reading-settings', 'reading_settings_compact_light.png'),
     ('theme-appearance', 'appearance_settings_compact_light.png'),
+    ('novel-settings', 'novel_settings_compact_light.png'),
+    ('audio-settings', 'audio_settings_compact_light.png'),
+    ('display-settings', 'display_settings_compact_light.png'),
+    ('data-storage', 'data_storage_compact_light.png'),
   ]) {
     testWidgets('matches $settingId compact light reference', (WidgetTester tester) async {
       final AppSettingsManager settings = AppSettingsManager(store: FakeSettingsStore(), registry: AppSettingKeys.registry);
@@ -36,6 +41,7 @@ void main() {
           child: MaterialApp(
             debugShowCheckedModeBanner: false,
             theme: AppTheme.light(),
+            builder: (context, child) => TvModeScope(enabled: false, onChanged: (_) {}, child: child!),
             home: ProfileGeneralSettingPage(settingId: settingId, onBackRequested: () {}),
           ),
         ),
@@ -65,15 +71,12 @@ void main() {
           child: MaterialApp(
             debugShowCheckedModeBanner: false,
             theme: dark ? AppTheme.dark() : AppTheme.light(),
-            home: ProfileGeneralSettingPage(settingId: 'theme-appearance', onBackRequested: () {}),
+            builder: (context, child) => TvModeScope(enabled: false, onChanged: (_) {}, child: child!),
+            home: ProfileGeneralSettingPage(settingId: shelf ? 'bookshelf-settings' : 'theme-colors', onBackRequested: () {}),
           ),
         ),
       );
       await tester.pumpAndSettle();
-      if (shelf) {
-        await tester.ensureVisible(find.text('书架样式'));
-        await tester.pumpAndSettle();
-      }
       expect(tester.takeException(), isNull);
       await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/$name'));
     });

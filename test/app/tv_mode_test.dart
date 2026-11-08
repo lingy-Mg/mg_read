@@ -84,7 +84,7 @@ void main() {
     }
   }, timeout: const Timeout(Duration(minutes: 1)));
 
-  testWidgets('profile switches TV directly and exits without opening appearance', (tester) async {
+  testWidgets('TV switch lives inside display settings and preserves category navigation', (tester) async {
     const renderingChannel = MethodChannel('mgread/rendering_settings');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       renderingChannel,
@@ -104,22 +104,31 @@ void main() {
     router.go('/profile');
     await tester.pumpAndSettle();
     expect(find.byType(ProfilePage), findsOneWidget);
+    expect(find.byKey(const Key('profile-tv-mode')), findsNothing);
+    await tester.tap(find.byKey(const Key('profile-setting-theme-appearance')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('profile-tv-mode')), findsNothing);
+    await tester.tap(find.byKey(const Key('profile-setting-display-settings')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('profile-tv-mode')));
     await tester.pumpAndSettle();
     expect(settings.get(AppSettingKeys.tvMode), isTrue);
-    expect(router.routeInformationProvider.value.uri.path, '/profile');
+    expect(find.byKey(const Key('profile-general-setting-display-settings')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('secondary-placeholder-back')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('profile-general-setting-theme-appearance')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('secondary-placeholder-back')));
+    await tester.pumpAndSettle();
     expect(find.byType(TvProfilePage), findsOneWidget);
-    expect(find.byType(ProfileGeneralSettingPage), findsNothing);
     await tester.tap(find.byKey(const Key('tv-settings-exit-mode')));
     await tester.pumpAndSettle();
     expect(settings.get(AppSettingKeys.tvMode), isFalse);
     expect(router.routeInformationProvider.value.uri.path, '/profile');
-    expect(find.byKey(const Key('profile-tv-mode')), findsOneWidget);
-    expect(tester.widget<SwitchListTile>(find.byKey(const Key('profile-tv-mode'))).value, isFalse);
-    router.go('/profile/settings/theme-appearance');
+    expect(find.byKey(const Key('profile-tv-mode')), findsNothing);
+    router.go('/profile/settings/display-settings');
     await tester.pumpAndSettle();
     expect(find.byType(ProfileGeneralSettingPage), findsOneWidget);
-    expect(find.byKey(const Key('appearance-tv-mode')), findsNothing);
+    expect(tester.widget<SwitchListTile>(find.byKey(const Key('profile-tv-mode'))).value, isFalse);
     expect(tester.takeException(), isNull);
   }, timeout: const Timeout(Duration(minutes: 1)));
 

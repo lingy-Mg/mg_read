@@ -1,7 +1,13 @@
+/// 个人设置的分类与功能入口列表，接收不可变数据和显式导航回调。
+/// 触屏行使用统一间距与命中区域；TV 行使用可见遥控焦点，不持有业务状态或执行 IO。
+library;
+
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/profile/presentation/profile_view_data.dart';
+import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
+import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 
 /// A precise, bordered list of profile settings without default ListTile
 /// spacing or typography.
@@ -78,6 +84,31 @@ class ProfileSettingsRow extends StatelessWidget {
         ? '${item.title}，${item.description}'
         : '${item.title}，${item.description}，${item.trailingLabel}';
 
+    if (TvModeScope.isEnabled(context)) {
+      return TvFocusable(
+        key: ValueKey<String>('profile-setting-${item.id}'),
+        label: accessibilityLabel,
+        onPressed: onPressed,
+        child: Row(
+          children: [
+            Icon(_iconFor(item.icon), color: tokens.accent),
+            const SizedBox(width: AppSpacing.regular),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(item.title, style: theme.textTheme.titleLarge),
+                  const SizedBox(height: AppSpacing.unit),
+                  Text(item.description, style: theme.textTheme.bodyMedium),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded),
+          ],
+        ),
+      );
+    }
+
     return Semantics(
       button: true,
       label: accessibilityLabel,
@@ -145,7 +176,9 @@ class ProfileSettingsRow extends StatelessWidget {
 
   IconData _iconFor(ProfileSettingsIcon icon) {
     return switch (icon) {
-      ProfileSettingsIcon.reading => Icons.calendar_month_outlined,
+      ProfileSettingsIcon.reading => Icons.menu_book_outlined,
+      ProfileSettingsIcon.audio => Icons.headphones_rounded,
+      ProfileSettingsIcon.video => Icons.play_circle_outline_rounded,
       ProfileSettingsIcon.sources => Icons.account_tree_outlined,
       ProfileSettingsIcon.networkProxy => Icons.route_outlined,
       ProfileSettingsIcon.download => Icons.file_download_outlined,

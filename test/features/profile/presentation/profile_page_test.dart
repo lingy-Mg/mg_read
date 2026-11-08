@@ -29,15 +29,17 @@ void main() {
     expect(find.byType(ProfileOverviewCard), findsOneWidget);
     expect(find.text('书海行者'), findsOneWidget);
     expect(find.text('VIP'), findsOneWidget);
-    expect(find.text('阅读与外观'), findsOneWidget);
-    expect(find.text('阅读器与播放器'), findsOneWidget);
-    expect(find.text('数据源管理'), findsOneWidget);
-    expect(find.text('缓存管理'), findsOneWidget);
+    expect(find.text('设置'), findsOneWidget);
+    expect(find.text('阅读与播放'), findsOneWidget);
+    expect(find.text('数据与存储'), findsOneWidget);
+    expect(find.text('连接与设备'), findsOneWidget);
+    expect(find.text('数据源管理'), findsNothing);
+    expect(find.text('缓存管理'), findsNothing);
     expect(find.text('下载与缓存'), findsNothing);
     expect(find.text('清理缓存'), findsNothing);
     expect(find.text('隐私与权限'), findsNothing);
     expect(find.text('问题诊断'), findsNothing);
-    expect(find.byKey(const Key('profile-tv-mode')), findsOneWidget);
+    expect(find.byKey(const Key('profile-tv-mode')), findsNothing);
     expect(find.byType(AppBottomNavigation), findsOneWidget);
 
     final Rect card = tester.getRect(find.byType(ProfileOverviewCard));
@@ -63,7 +65,6 @@ void main() {
       tester.widget<Icon>(firstSettingsChevron),
       isA<Icon>().having((Icon icon) => icon.size, 'chevron size', AppSpacing.profileChevronSize),
     );
-    expect(tester.getRect(find.byKey(const Key('profile-tv-mode'))).bottom, lessThan(firstSettingsRow.top));
     await tester.scrollUntilVisible(
       find.text('关于与其他'),
       200,
@@ -80,8 +81,8 @@ void main() {
     await tester.pumpAndSettle();
 
     final Text pageTitle = tester.widget<Text>(find.descendant(of: find.byType(ProfileTopBar), matching: find.text('我的')));
-    final Text settingTitle = tester.widget<Text>(find.text('阅读器与播放器'));
-    final Text settingDescription = tester.widget<Text>(find.text('章节预加载、音频退出行为'));
+    final Text settingTitle = tester.widget<Text>(find.text('阅读与播放'));
+    final Text settingDescription = tester.widget<Text>(find.text('小说阅读、音频与视频播放器'));
     final Finder profileNavigation = find.byKey(const Key('app-nav-profile'));
     final SemanticsNode profileSemantics = tester.getSemantics(profileNavigation);
 
@@ -180,57 +181,18 @@ void main() {
     expect(requestedDestination, AppNavigationDestination.home);
   });
 
-  testWidgets('delegates the diagnostics entry to the app layer', (WidgetTester tester) async {
-    var diagnosticsRequested = false;
-    await tester.pumpWidget(_host(onDiagnosticsRequested: () => diagnosticsRequested = true));
+  testWidgets('delegates each category to a separate route', (tester) async {
+    final opened = <String>[];
+    await tester.pumpWidget(_host(onPendingSettingRequested: opened.add));
     await tester.pumpAndSettle();
-
-    await tester.drag(find.byKey(const Key('profile-page-content')), const Offset(0, -600));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const Key('profile-advanced-settings')));
-    await tester.tap(find.text('高级设置'));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const Key('profile-setting-diagnostics')));
-    final diagnostics = find.byKey(const Key('profile-setting-diagnostics'));
-    await tester.tap(diagnostics);
-
-    expect(diagnosticsRequested, isTrue);
-  });
-
-  testWidgets('delegates the single cache entry to the app layer', (WidgetTester tester) async {
-    var cacheRequested = false;
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light(),
-        home: ProfilePage(appVersion: '9.8.7', onPluginCacheRequested: () => cacheRequested = true),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.drag(find.byKey(const Key('profile-page-content')), const Offset(0, -200));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('profile-setting-downloads-cache')));
-
-    expect(cacheRequested, isTrue);
-    expect(find.byKey(const Key('profile-setting-clear-cache')), findsNothing);
-  });
-
-  testWidgets('delegates the import export entry to the app layer', (WidgetTester tester) async {
-    var requested = false;
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light(),
-        home: ProfilePage(appVersion: '9.8.7', onImportExportRequested: () => requested = true),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.drag(find.byKey(const Key('profile-page-content')), const Offset(0, -420));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('profile-setting-import-export')));
-
-    expect(requested, isTrue);
-    expect(find.text('导入导出'), findsOneWidget);
+    for (final id in ['reading-settings', 'theme-appearance', 'data-storage', 'connection-devices', 'advanced-settings']) {
+      final entry = find.byKey(Key('profile-setting-$id'));
+      await tester.ensureVisible(entry);
+      await tester.tap(entry);
+      await tester.pumpAndSettle();
+    }
+    expect(opened, ['reading-settings', 'theme-appearance', 'data-storage', 'connection-devices', 'advanced-settings']);
+    expect(find.byType(ExpansionTile), findsNothing);
   });
 
   testWidgets('keeps the phone-width profile content centered on wide windows', (WidgetTester tester) async {
@@ -290,7 +252,7 @@ void main() {
 Widget _host({
   ValueChanged<AppNavigationDestination>? onDestinationRequested,
   VoidCallback? onToggleTheme,
-  VoidCallback? onDiagnosticsRequested,
+  ValueChanged<String>? onPendingSettingRequested,
   double topInset = 0,
   TextScaler? textScaler,
 }) {
@@ -312,7 +274,7 @@ Widget _host({
       appVersion: '9.8.7',
       onDestinationRequested: onDestinationRequested,
       onToggleTheme: onToggleTheme,
-      onDiagnosticsRequested: onDiagnosticsRequested,
+      onPendingSettingRequested: onPendingSettingRequested,
     ),
   );
 }

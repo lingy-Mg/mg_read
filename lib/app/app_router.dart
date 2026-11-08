@@ -618,7 +618,7 @@ class DiagnosticsRoute extends GoRouteData with $DiagnosticsRoute {
   }
 }
 
-/// Empty secondary page for a profile setting awaiting its capability.
+/// Setting categories and detail pages share stable URLs and push one level at a time.
 class ProfileSettingPlaceholderRoute extends GoRouteData with $ProfileSettingPlaceholderRoute {
   const ProfileSettingPlaceholderRoute({required this.settingId});
 
@@ -638,6 +638,20 @@ class ProfileSettingPlaceholderRoute extends GoRouteData with $ProfileSettingPla
     return ProfileSettingPlaceholderPage(
       settingId: settingId,
       onBackRequested: () => _returnToProfile(context),
+      onSettingRequested: (id) {
+        switch (id) {
+          case 'source-management':
+            const PluginCenterRoute().push(context);
+          case 'downloads-cache':
+            const PluginCacheRoute().push(context);
+          case 'import-export':
+            const ImportExportRoute().push(context);
+          case 'diagnostics':
+            const DiagnosticsRoute().push(context);
+          default:
+            ProfileSettingPlaceholderRoute(settingId: id).push(context);
+        }
+      },
       onDestinationRequested: (AppNavigationDestination destination) {
         _goToDestination(context, destination);
       },

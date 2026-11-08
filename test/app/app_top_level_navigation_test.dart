@@ -141,12 +141,17 @@ void main() {
     await tester.pumpAndSettle();
     await tester.drag(find.byKey(const Key('profile-page-content')), const Offset(0, -420));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('profile-setting-data-storage')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('profile-setting-import-export')));
     await tester.pumpAndSettle();
 
     expect(find.byType(ImportExportPage), findsOneWidget);
     expect(find.byType(ProfilePage), findsNothing);
     await tester.tap(find.byKey(const Key('import-export-back')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('profile-general-setting-data-storage')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('secondary-placeholder-back')));
     await tester.pumpAndSettle();
     expect(find.byType(ProfilePage), findsOneWidget);
   });
