@@ -4,11 +4,13 @@ library;
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:mg_read/app/app_theme.dart';
 import '../application/companion_controller.dart';
 import '../domain/companion_command.dart';
 import '../domain/companion_models.dart';
 import 'companion_messages.dart';
 import 'companion_text_dialog.dart';
+import 'companion_widgets.dart';
 
 class CompanionRemote extends StatefulWidget {
   const CompanionRemote({required this.service, super.key});
@@ -181,148 +183,213 @@ class _CompanionRemoteState extends State<CompanionRemote> {
       return ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          Text(title, style: Theme.of(context).textTheme.headlineSmall),
-          Text(
-            !connected
-                ? '连接未建立'
-                : service.stale
-                ? '状态更新延迟，控制已暂停'
-                : service.hasControl
-                ? '实时连接 · 本机正在控制'
-                : state?.controllerId == null
-                ? '实时连接 · 点击操作取得控制权'
-                : '实时连接 · TV 或另一台手机正在操作',
+          CompanionPanel(
+            tonal: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CompanionStatusBadge(
+                  label: !connected
+                      ? '尚未连接'
+                      : service.stale
+                      ? '等待状态更新'
+                      : '实时连接',
+                  active: enabled,
+                ),
+                const SizedBox(height: AppSpacing.regular),
+                Row(
+                  children: [
+                    Icon(Icons.connected_tv_rounded, color: Theme.of(context).colorScheme.primary, size: 32),
+                    const SizedBox(width: AppSpacing.regular),
+                    Expanded(
+                      child: Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.compact),
+                Text(
+                  !connected
+                      ? '连接未建立'
+                      : service.stale
+                      ? '状态更新延迟，控制已暂停'
+                      : service.hasControl
+                      ? '实时连接 · 本机正在控制'
+                      : state?.controllerId == null
+                      ? '实时连接 · 点击操作取得控制权'
+                      : '实时连接 · TV 或另一台手机正在操作',
+                ),
+                if (service.remoteStateAt != null) ...[
+                  const SizedBox(height: AppSpacing.unit),
+                  Text(
+                    '最近更新 ${service.remoteStateAt!.toLocal().toString().substring(11, 19)}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ],
+            ),
           ),
-          if (service.remoteStateAt != null) Text('状态时间：${service.remoteStateAt!.toLocal().toString().substring(11, 19)}'),
           if (_message != null) Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(_message!)),
           if (service.errorCode != null) Text(companionErrorText(service.errorCode)),
           const SizedBox(height: 20),
-          Text(state?.content?.title ?? 'TV 当前未播放视频', style: Theme.of(context).textTheme.titleLarge),
-          if (state?.content case final content?) Text('分组：${content.groupId} · 集数：${content.episodeId}'),
-          Text(_statusLabel(state?.status)),
-          if (state?.saveFailure == true) const Text('TV 播放中，进度尚未保存。请检查 TV 存储。'),
-          if (state?.failureCode != null) Text(companionErrorText(state?.failureCode)),
-          if (service.lastReceipt case final receipt?)
-            Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(_phaseLabel(receipt))),
-          if (state != null && state.durationMs > 0) ...[
-            Slider(
-              value: (_dragPosition ?? state.positionMs.toDouble()).clamp(0, state.durationMs.toDouble()),
-              min: 0,
-              max: state.durationMs.toDouble(),
-              onChanged: enabled ? (value) => _seek(value) : null,
-              onChangeEnd: enabled ? (value) => _seek(value, finalValue: true) : null,
-            ),
-            Text('${_time((_dragPosition ?? state.positionMs).toInt())} / ${_time(state.durationMs)}'),
-          ],
-          Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 12,
-            runSpacing: 8,
-            children: [
-              IconButton(
-                tooltip: '上一集',
-                onPressed: enabled && state?.hasPrevious == true ? () => _send(CompanionCommandType.previousEpisode) : null,
-                icon: const Icon(Icons.skip_previous),
-              ),
-              IconButton(
-                tooltip: '后退 10 秒',
-                onPressed: enabled && (state?.durationMs ?? 0) > 0
-                    ? () => _seek(((state!.positionMs - 10000).clamp(0, state.durationMs)).toDouble(), finalValue: true)
-                    : null,
-                icon: const Icon(Icons.replay_10),
-              ),
-              IconButton.filled(
-                tooltip: state?.playing == true ? '暂停' : '播放',
-                onPressed: enabled && state?.content != null
-                    ? () => _send(state!.playing ? CompanionCommandType.pause : CompanionCommandType.play)
-                    : null,
-                icon: Icon(state?.playing == true ? Icons.pause : Icons.play_arrow),
-                iconSize: 40,
-              ),
-              IconButton(
-                tooltip: '前进 10 秒',
-                onPressed: enabled && (state?.durationMs ?? 0) > 0
-                    ? () => _seek(((state!.positionMs + 10000).clamp(0, state.durationMs)).toDouble(), finalValue: true)
-                    : null,
-                icon: const Icon(Icons.forward_10),
-              ),
-              IconButton(
-                tooltip: '下一集',
-                onPressed: enabled && state?.hasNext == true ? () => _send(CompanionCommandType.nextEpisode) : null,
-                icon: const Icon(Icons.skip_next),
-              ),
-            ],
-          ),
-          if (state?.content != null) ...[
-            const SizedBox(height: 16),
-            DropdownButtonFormField<double>(
-              initialValue: state!.rate,
-              decoration: const InputDecoration(labelText: '播放倍速'),
-              items: [
-                for (final rate in {.25, .5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, state.rate}.toList()..sort())
-                  DropdownMenuItem(value: rate, child: Text('${rate}x')),
-              ],
-              onChanged: enabled
-                  ? (value) {
-                      if (value != null) unawaited(_send(CompanionCommandType.setRate, {'rate': value}));
-                    }
-                  : null,
-            ),
-            const SizedBox(height: 12),
-            const Text('应用播放音量'),
-            TextButton.icon(
-              onPressed: enabled ? () => _send(CompanionCommandType.setMuted, {'muted': state.volume > 0}) : null,
-              icon: Icon(state.volume == 0 ? Icons.volume_off : Icons.volume_up),
-              label: Text(state.volume == 0 ? '取消应用静音' : '应用静音'),
-            ),
-            Slider(
-              value: (_volumePreviews[CompanionCommandType.setVolume] ?? state.volume).clamp(0, 100),
-              min: 0,
-              max: 100,
-              onChanged: enabled ? (value) => _volume(CompanionCommandType.setVolume, value) : null,
-              onChangeEnd: enabled ? (value) => _volume(CompanionCommandType.setVolume, value, finalValue: true) : null,
-            ),
-            if (state.canSystemVolume) ...[
-              const Text('TV 系统媒体音量'),
-              Slider(
-                value: (_volumePreviews[CompanionCommandType.setSystemVolume] ?? state.systemVolume ?? 0).clamp(0, 100),
-                min: 0,
-                max: 100,
-                onChanged: enabled ? (value) => _volume(CompanionCommandType.setSystemVolume, value) : null,
-                onChangeEnd: enabled ? (value) => _volume(CompanionCommandType.setSystemVolume, value, finalValue: true) : null,
-              ),
-            ],
-            TextButton(onPressed: enabled ? () => _episodes(state) : null, child: const Text('选集 / 分组')),
-          ],
-          const Divider(height: 32),
-          Center(
+          CompanionPanel(
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _direction('up', Icons.keyboard_arrow_up, '向上', enabled),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                Text(
+                  '正在播放',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: AppSpacing.compact),
+                Text(
+                  state?.content?.title ?? 'TV 当前未播放视频',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                if (state?.content case final content?) Text('分组：${content.groupId} · 集数：${content.episodeId}'),
+                Text(_statusLabel(state?.status)),
+                if (state?.saveFailure == true) const Text('TV 播放中，进度尚未保存。请检查 TV 存储。'),
+                if (state?.failureCode != null) Text(companionErrorText(state?.failureCode)),
+                if (service.lastReceipt case final receipt?)
+                  Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(_phaseLabel(receipt))),
+                if (state != null && state.durationMs > 0) ...[
+                  Slider(
+                    value: (_dragPosition ?? state.positionMs.toDouble()).clamp(0, state.durationMs.toDouble()),
+                    min: 0,
+                    max: state.durationMs.toDouble(),
+                    onChanged: enabled ? (value) => _seek(value) : null,
+                    onChangeEnd: enabled ? (value) => _seek(value, finalValue: true) : null,
+                  ),
+                  Text('${_time((_dragPosition ?? state.positionMs).toInt())} / ${_time(state.durationMs)}'),
+                ],
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 12,
+                  runSpacing: 8,
                   children: [
-                    _direction('left', Icons.keyboard_arrow_left, '向左', enabled),
-                    _direction('confirm', Icons.check, '确认', enabled),
-                    _direction('right', Icons.keyboard_arrow_right, '向右', enabled),
+                    IconButton(
+                      tooltip: '上一集',
+                      onPressed: enabled && state?.hasPrevious == true ? () => _send(CompanionCommandType.previousEpisode) : null,
+                      icon: const Icon(Icons.skip_previous),
+                    ),
+                    IconButton(
+                      tooltip: '后退 10 秒',
+                      onPressed: enabled && (state?.durationMs ?? 0) > 0
+                          ? () => _seek(((state!.positionMs - 10000).clamp(0, state.durationMs)).toDouble(), finalValue: true)
+                          : null,
+                      icon: const Icon(Icons.replay_10),
+                    ),
+                    IconButton.filled(
+                      tooltip: state?.playing == true ? '暂停' : '播放',
+                      onPressed: enabled && state?.content != null
+                          ? () => _send(state!.playing ? CompanionCommandType.pause : CompanionCommandType.play)
+                          : null,
+                      icon: Icon(state?.playing == true ? Icons.pause : Icons.play_arrow),
+                      iconSize: 40,
+                    ),
+                    IconButton(
+                      tooltip: '前进 10 秒',
+                      onPressed: enabled && (state?.durationMs ?? 0) > 0
+                          ? () => _seek(((state!.positionMs + 10000).clamp(0, state.durationMs)).toDouble(), finalValue: true)
+                          : null,
+                      icon: const Icon(Icons.forward_10),
+                    ),
+                    IconButton(
+                      tooltip: '下一集',
+                      onPressed: enabled && state?.hasNext == true ? () => _send(CompanionCommandType.nextEpisode) : null,
+                      icon: const Icon(Icons.skip_next),
+                    ),
                   ],
                 ),
-                _direction('down', Icons.keyboard_arrow_down, '向下', enabled),
+                if (state?.content != null) ...[
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<double>(
+                    initialValue: state!.rate,
+                    decoration: const InputDecoration(labelText: '播放倍速'),
+                    items: [
+                      for (final rate in {.25, .5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, state.rate}.toList()..sort())
+                        DropdownMenuItem(value: rate, child: Text('${rate}x')),
+                    ],
+                    onChanged: enabled
+                        ? (value) {
+                            if (value != null) unawaited(_send(CompanionCommandType.setRate, {'rate': value}));
+                          }
+                        : null,
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('应用播放音量'),
+                  TextButton.icon(
+                    onPressed: enabled ? () => _send(CompanionCommandType.setMuted, {'muted': state.volume > 0}) : null,
+                    icon: Icon(state.volume == 0 ? Icons.volume_off : Icons.volume_up),
+                    label: Text(state.volume == 0 ? '取消应用静音' : '应用静音'),
+                  ),
+                  Slider(
+                    value: (_volumePreviews[CompanionCommandType.setVolume] ?? state.volume).clamp(0, 100),
+                    min: 0,
+                    max: 100,
+                    onChanged: enabled ? (value) => _volume(CompanionCommandType.setVolume, value) : null,
+                    onChangeEnd: enabled ? (value) => _volume(CompanionCommandType.setVolume, value, finalValue: true) : null,
+                  ),
+                  if (state.canSystemVolume) ...[
+                    const Text('TV 系统媒体音量'),
+                    Slider(
+                      value: (_volumePreviews[CompanionCommandType.setSystemVolume] ?? state.systemVolume ?? 0).clamp(0, 100),
+                      min: 0,
+                      max: 100,
+                      onChanged: enabled ? (value) => _volume(CompanionCommandType.setSystemVolume, value) : null,
+                      onChangeEnd: enabled ? (value) => _volume(CompanionCommandType.setSystemVolume, value, finalValue: true) : null,
+                    ),
+                  ],
+                  TextButton(onPressed: enabled ? () => _episodes(state) : null, child: const Text('选集 / 分组')),
+                ],
               ],
             ),
           ),
-          Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 12,
-            children: [
-              OutlinedButton.icon(
-                onPressed: enabled ? () => _send(CompanionCommandType.navigate, {'key': 'back'}) : null,
-                icon: const Icon(Icons.arrow_back),
-                label: const Text('TV 返回'),
-              ),
-              OutlinedButton.icon(onPressed: enabled ? _input : null, icon: const Icon(Icons.keyboard), label: const Text('给 TV 搜索框输入')),
-              if (enabled && !service.hasControl) TextButton(onPressed: () => _takeControl(), child: const Text('请求接管')),
-            ],
+          const SizedBox(height: AppSpacing.comfortable),
+          CompanionPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('方向遥控', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                const SizedBox(height: AppSpacing.unit),
+                Text(
+                  '轻点移动焦点，长按连续移动',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: AppSpacing.comfortable),
+                Center(
+                  child: Column(
+                    children: [
+                      _direction('up', Icons.keyboard_arrow_up, '向上', enabled),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _direction('left', Icons.keyboard_arrow_left, '向左', enabled),
+                          _direction('confirm', Icons.check, '确认', enabled),
+                          _direction('right', Icons.keyboard_arrow_right, '向右', enabled),
+                        ],
+                      ),
+                      _direction('down', Icons.keyboard_arrow_down, '向下', enabled),
+                    ],
+                  ),
+                ),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 12,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: enabled ? () => _send(CompanionCommandType.navigate, {'key': 'back'}) : null,
+                      icon: const Icon(Icons.arrow_back),
+                      label: const Text('TV 返回'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: enabled ? _input : null,
+                      icon: const Icon(Icons.keyboard),
+                      label: const Text('给 TV 搜索框输入'),
+                    ),
+                    if (enabled && !service.hasControl) TextButton(onPressed: () => _takeControl(), child: const Text('请求接管')),
+                  ],
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 24),
           Wrap(
@@ -339,7 +406,7 @@ class _CompanionRemoteState extends State<CompanionRemote> {
   Future<void> _takeControl() async {
     try {
       await service.request('requestControl');
-      if (mounted) setState(() => _message = '请在 TV 上确认接管请求。');
+      if (mounted) setState(() => _message = service.hasControl ? '已取得 TV 控制权。' : '已申请接管，请查看最新控制状态。');
     } on Object {
       if (mounted) setState(() => _message = '请求未发送，请重试。');
     }

@@ -4,10 +4,12 @@ library;
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:mg_read/app/app_theme.dart';
 import '../application/companion_controller.dart';
 import '../domain/companion_models.dart';
 import '../domain/companion_command.dart';
 import 'companion_messages.dart';
+import 'companion_widgets.dart';
 
 class CompanionCatalogPage extends StatefulWidget {
   const CompanionCatalogPage({required this.service, this.embedded = false, super.key});
@@ -21,7 +23,7 @@ class _CompanionCatalogPageState extends State<CompanionCatalogPage> {
   final _query = TextEditingController();
   List<Map<String, Object?>> _sources = [], _items = [];
   String? _source, _error, _cursor;
-  bool _busy = false, _hasMore = false;
+  bool _busy = false, _hasMore = false, _loadingSources = true, _queried = false;
   int _generation = 0;
   int? _browseOffset;
   String _method = 'search';
@@ -39,11 +41,20 @@ class _CompanionCatalogPageState extends State<CompanionCatalogPage> {
   }
 
   Future<void> _sourcesLoad() async {
+    setState(() => _loadingSources = true);
     try {
       final result = await widget.service.request('sources');
-      if (mounted) setState(() => _sources = [for (final item in result['sources'] as List) companionMap(item)]);
+      if (mounted) {
+        setState(() {
+          _sources = [for (final item in result['sources'] as List) companionMap(item)];
+          if (!_sources.any((source) => source['id'] == _source)) _source = null;
+          _error = null;
+        });
+      }
     } on Object catch (error) {
       if (mounted) setState(() => _error = companionErrorText(error is CompanionFailure ? error.code : 'operation_failed'));
+    } finally {
+      if (mounted) setState(() => _loadingSources = false);
     }
   }
 
@@ -53,6 +64,7 @@ class _CompanionCatalogPageState extends State<CompanionCatalogPage> {
     final generation = ++_generation;
     setState(() {
       _busy = true;
+      _queried = true;
       _error = null;
     });
     try {
@@ -95,55 +107,84 @@ class _CompanionCatalogPageState extends State<CompanionCatalogPage> {
       slivers: [
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                const Text('使用 TV 已安装的来源和登录状态搜索。搜索不会切换 TV 画面。'),
-                DropdownButtonFormField<String>(
-                  initialValue: _source,
-                  decoration: const InputDecoration(labelText: 'TV 来源'),
-                  items: [
-                    const DropdownMenuItem(value: null, child: Text('全部影视来源')),
-                    for (final source in _sources) DropdownMenuItem(value: source['id'] as String, child: Text(source['label'] as String)),
-                  ],
-                  onChanged: (value) => setState(() => _source = value),
-                ),
-                TextField(
-                  controller: _query,
-                  maxLength: 256,
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(
-                    labelText: '找电影或剧集',
-                    suffixIcon: IconButton(tooltip: '搜索', onPressed: () => _search(), icon: const Icon(Icons.search)),
+            padding: const EdgeInsets.all(AppSpacing.compactPagePadding),
+            child: CompanionPanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('在手机挑选，在 TV 播放', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: AppSpacing.compact),
+                  Text(
+                    '使用 TV 已安装的来源搜索，找片时不会打断电视画面。',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
-                  onSubmitted: (_) => _search(),
-                ),
-                Wrap(
-                  spacing: 12,
-                  children: [
-                    TextButton(
-                      onPressed: _busy ? null : () => _search(method: 'favorites'),
-                      child: const Text('TV 普通收藏'),
-                    ),
-                    TextButton(
-                      onPressed: _busy ? null : () => _search(method: 'history'),
-                      child: const Text('TV 观看记录'),
-                    ),
-                    TextButton(onPressed: _sourcesLoad, child: const Text('刷新来源')),
-                    if (_busy)
-                      TextButton(
-                        onPressed: () {
-                          _generation++;
-                          widget.service.cancelSearch();
-                          setState(() => _busy = false);
-                        },
-                        child: const Text('取消搜索'),
+                  const SizedBox(height: AppSpacing.comfortable),
+                  TextField(
+                    controller: _query,
+                    maxLength: 256,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(hintText: '搜索电影、电视剧', prefixIcon: const Icon(Icons.search_rounded), counterText: ''),
+                    onSubmitted: _busy ? null : (_) => _search(),
+                  ),
+                  const SizedBox(height: AppSpacing.regular),
+                  DropdownButtonFormField<String>(
+                    key: ValueKey(_source),
+                    initialValue: _source,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'TV 影视来源', prefixIcon: Icon(Icons.extension_outlined)),
+                    items: [
+                      const DropdownMenuItem(value: null, child: Text('全部影视来源')),
+                      for (final source in _sources)
+                        DropdownMenuItem(value: source['id'] as String, child: Text(source['label'] as String)),
+                    ],
+                    onChanged: _loadingSources || _busy ? null : (value) => setState(() => _source = value),
+                  ),
+                  const SizedBox(height: AppSpacing.regular),
+                  FilledButton.icon(
+                    onPressed: _busy ? null : () => _search(),
+                    icon: const Icon(Icons.search_rounded),
+                    label: const Text('在 TV 来源中搜索'),
+                  ),
+                  const SizedBox(height: AppSpacing.compact),
+                  Wrap(
+                    spacing: AppSpacing.compact,
+                    runSpacing: AppSpacing.compact,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: _busy ? null : () => _search(method: 'favorites'),
+                        icon: const Icon(Icons.bookmark_border_rounded),
+                        label: const Text('TV 收藏'),
                       ),
-                  ],
-                ),
-                if (_error != null) Text(_error!),
-                if (_busy) const LinearProgressIndicator(),
-              ],
+                      OutlinedButton.icon(
+                        onPressed: _busy ? null : () => _search(method: 'history'),
+                        icon: const Icon(Icons.history_rounded),
+                        label: const Text('TV 观看记录'),
+                      ),
+                      TextButton(onPressed: _loadingSources ? null : _sourcesLoad, child: const Text('刷新来源')),
+                      if (_busy)
+                        TextButton(
+                          onPressed: () {
+                            _generation++;
+                            widget.service.cancelSearch();
+                            setState(() => _busy = false);
+                          },
+                          child: const Text('取消搜索'),
+                        ),
+                    ],
+                  ),
+                  if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: AppSpacing.compact),
+                      child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                    ),
+                  if (_busy || _loadingSources) const LinearProgressIndicator(),
+                  if (!_loadingSources && _sources.isEmpty && _error == null)
+                    const Padding(
+                      padding: EdgeInsets.only(top: AppSpacing.compact),
+                      child: Text('TV 暂无可用影视来源，请先在电视上安装或启用数据源。'),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -154,24 +195,45 @@ class _CompanionCatalogPageState extends State<CompanionCatalogPage> {
                 padding: const EdgeInsets.all(16),
                 child: _cursor != null || _browseOffset != null
                     ? TextButton(onPressed: _busy ? null : () => _search(more: true), child: const Text('加载更多'))
-                    : Text(
-                        _hasMore
-                            ? '聚合结果较多，可选择单个来源继续分页。'
-                            : _items.isEmpty && !_busy
-                            ? '暂无结果，请搜索或选择 TV 收藏。'
-                            : '',
-                      ),
+                    : _items.isEmpty && !_busy
+                    ? Column(
+                        children: [
+                          Icon(
+                            _queried ? Icons.search_off_rounded : Icons.movie_filter_outlined,
+                            size: 44,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(height: AppSpacing.regular),
+                          Text(_queried ? '暂无匹配内容' : '下一部想看什么？', style: Theme.of(context).textTheme.titleMedium),
+                          const SizedBox(height: AppSpacing.compact),
+                          Text(
+                            _queried ? '试试其他关键词或来源，也可查看 TV 收藏。' : '输入片名搜索，或从 TV 收藏和观看记录中挑选。',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      )
+                    : Text(_hasMore ? '聚合结果较多，可选择单个来源继续分页。' : ''),
               );
             }
             final item = _items[index];
             final variants = item['variants'] as List?;
-            return ListTile(
-              leading: const Icon(Icons.movie_outlined),
-              title: Text(item['title'] as String),
-              subtitle: Text(
-                '${item['sourceName'] ?? item['pluginId']}${variants != null && variants.length > 1 ? ' · ${variants.length} 个来源版本' : ''}',
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(AppSpacing.compactPagePadding, 0, AppSpacing.compactPagePadding, AppSpacing.compact),
+              child: CompanionPanel(
+                padding: 0,
+                child: ListTile(
+                  contentPadding: const EdgeInsets.all(AppSpacing.regular),
+                  shape: const RoundedRectangleBorder(borderRadius: AppRadii.card),
+                  leading: Icon(Icons.movie_outlined, color: Theme.of(context).colorScheme.primary),
+                  title: Text(item['title'] as String),
+                  subtitle: Text(
+                    '${item['sourceName'] ?? item['pluginId']}${variants != null && variants.length > 1 ? ' · ${variants.length} 个来源版本' : ''}',
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => _detail(item),
+                ),
               ),
-              onTap: () => _detail(item),
             );
           }, childCount: _items.length + 1),
         ),

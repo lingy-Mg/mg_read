@@ -1,13 +1,15 @@
 /// Direct LAN TV selection, playback control, and TV-side reception status.
 ///
 /// Leaving this page stops only its discovery subscription and control lease;
-/// it never stops playback on either device.
+/// it never stops playback on either device. Presentation widgets receive
+/// projections and callbacks; only this route coordinates discovery and IO.
 library;
 
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/lan_sync/application/device_sync_controller.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 
@@ -15,9 +17,12 @@ import '../application/companion_controller.dart';
 import '../domain/companion_models.dart';
 import 'companion_catalog_page.dart';
 import 'companion_discovery_startup.dart';
+import 'companion_devices_view.dart';
 import 'companion_history_page.dart';
 import 'companion_messages.dart';
 import 'companion_remote.dart';
+import 'companion_receiver_view.dart';
+import 'companion_widgets.dart';
 import 'manual_tv_address_dialog.dart';
 
 Future<void> openCompanionPage(BuildContext context) => Navigator.of(context).push<void>(
@@ -117,121 +122,105 @@ final class _CompanionPageState extends ConsumerState<CompanionPage> {
       animation: service,
       builder: (context, _) => Scaffold(
         appBar: AppBar(
-          title: const Text('局域网 TV 播放'),
-          actions: [IconButton(tooltip: '重新搜索', onPressed: _busy ? null : _start, icon: const Icon(Icons.refresh))],
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('局域网 TV 播放', maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text(
+                tv ? '电视接收端' : '手机连接电视，选片与遥控',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+          actions: tv ? [IconButton(tooltip: '刷新状态', onPressed: _busy ? null : _start, icon: const Icon(Icons.refresh_rounded))] : null,
         ),
-        body: Column(
-          children: [
-            if (_notice != null)
-              MaterialBanner(
-                content: Text(_notice!),
-                actions: [TextButton(onPressed: () => setState(() => _notice = null), child: const Text('知道了'))],
-              ),
-            if (_busy) const LinearProgressIndicator(),
-            if (!tv)
-              SegmentedButton<int>(
-                segments: const [
-                  ButtonSegment(value: 0, label: Text('设备')),
-                  ButtonSegment(value: 1, label: Text('遥控')),
-                  ButtonSegment(value: 2, label: Text('TV 找片')),
+        body: SafeArea(
+          top: false,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 800),
+              child: Column(
+                children: [
+                  SizedBox(height: 3, child: _busy ? const LinearProgressIndicator() : null),
+                  if (!tv)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.compactPagePadding,
+                        AppSpacing.compact,
+                        AppSpacing.compactPagePadding,
+                        0,
+                      ),
+                      child: CompanionPageTabs(selected: _tab, onChanged: (value) => setState(() => _tab = value)),
+                    ),
+                  Expanded(
+                    child: tv
+                        ? _receiverStatus()
+                        : _tab != 0 && service.connectionStatus != CompanionConnectionStatus.connected
+                        ? CompanionConnectionRequired(
+                            catalog: _tab == 2,
+                            reconnecting:
+                                service.connectionStatus == CompanionConnectionStatus.reconnecting ||
+                                service.connectionStatus == CompanionConnectionStatus.connecting,
+                            onDevices: () => setState(() => _tab = 0),
+                          )
+                        : _tab == 1
+                        ? CompanionRemote(service: service)
+                        : _tab == 2
+                        ? CompanionCatalogPage(key: ValueKey(service.selectedDeviceId), service: service, embedded: true)
+                        : _devicePicker(),
+                  ),
                 ],
-                selected: {_tab},
-                onSelectionChanged: (value) => setState(() => _tab = value.single),
               ),
-            Expanded(
-              child: tv
-                  ? _receiverStatus()
-                  : _tab == 1
-                  ? CompanionRemote(service: service)
-                  : _tab == 2
-                  ? CompanionCatalogPage(service: service, embedded: true)
-                  : _devicePicker(),
             ),
-            Wrap(
-              spacing: 12,
-              children: [
-                TextButton.icon(
-                  onPressed: () => Navigator.of(context).push<void>(MaterialPageRoute<void>(builder: (_) => const CompanionHistoryPage())),
-                  icon: const Icon(Icons.history),
-                  label: const Text('本机与 TV 观看记录'),
-                ),
-                TextButton.icon(
-                  onPressed: () => _run(() => ref.read(companionOpenDeviceSyncProvider)()),
-                  icon: const Icon(Icons.sync),
-                  label: const Text('设备同步 / 来源传输'),
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _receiverStatus() => ListView(
-    padding: const EdgeInsets.all(20),
-    children: [
-      Text('TV 接收状态', style: Theme.of(context).textTheme.titleLarge),
-      const SizedBox(height: 8),
-      Text(service.receiverEnabled ? '本机正在同一局域网开放视频接收。' : '本机当前未开放 TV 接收。'),
-      if (service.identity != null) ...[const SizedBox(height: 12), Text('设备：${service.identity!.label}')],
-      if (service.hostPort != null) ...[
-        const SizedBox(height: 8),
-        for (final address in service.localAddresses) SelectableText('$address:${service.hostPort}'),
-      ],
-      const SizedBox(height: 16),
-      const Text('手机可在播放器右上角选择本机播放。来源页面与手机播放记录按各自设备管理。'),
-      if (service.connectedControllerIds.isNotEmpty) ...[
-        const SizedBox(height: 16),
-        Text('当前手机连接：${service.connectedControllerIds.map(service.deviceLabel).join('、')}'),
-      ],
+  Widget _tools() => CompanionTools(
+    onHistory: () => Navigator.of(context).push<void>(MaterialPageRoute<void>(builder: (_) => const CompanionHistoryPage())),
+    onSync: _busy ? null : () => _run(() => ref.read(companionOpenDeviceSyncProvider)()),
+  );
+
+  Widget _receiverStatus() => CompanionReceiverView(
+    enabled: service.receiverEnabled,
+    error: _notice,
+    label: service.identity?.label ?? '本机 TV',
+    addresses: [
+      if (service.hostPort != null)
+        for (final address in service.localAddresses) '$address:${service.hostPort}',
     ],
+    controllers: service.connectedControllerIds.map(service.deviceLabel).toList(),
+    tools: _tools(),
   );
 
   Widget _devicePicker() {
     final endpoints =
         service.endpoints.values.where((endpoint) => endpoint.receiving && endpoint.expiresAt.isAfter(DateTime.now())).toList()
           ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        Text('发现 TV', style: Theme.of(context).textTheme.titleLarge),
-        const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('手机与 TV 需要在可互访的同一局域网。直接连接并在 TV 播放，不需要扫码配对或电视端批准。')),
-        if (service.connectionStatus == CompanionConnectionStatus.connected)
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.connected_tv),
-              title: Text('${service.selectedLabel} · ${service.stale ? '状态延迟' : '已连接'}'),
-              trailing: TextButton(onPressed: _busy ? null : () => _run(service.disconnect), child: const Text('断开')),
-              subtitle: const Text('断开遥控连接不会停止 TV 播放'),
-            ),
-          ),
-        if (endpoints.isEmpty)
-          const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Text('暂未发现 TV。请打开 TV 上的 MgRead 并检查访客 Wi-Fi 或设备隔离设置。')),
-        for (final endpoint in endpoints)
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.tv),
-              title: Text(endpoint.label),
-              subtitle: Text('${endpoint.address}:${endpoint.port} · 可接收'),
-              trailing: FilledButton.tonal(
-                onPressed: _busy
-                    ? null
-                    : () => _run(() async {
-                        await service.connect(endpoint);
-                        if (mounted) setState(() => _tab = 1);
-                      }),
-                child: Text(
-                  service.selectedDeviceId == endpoint.deviceId && service.connectionStatus == CompanionConnectionStatus.connected
-                      ? '已连接'
-                      : '连接',
-                ),
-              ),
-            ),
-          ),
-        OutlinedButton.icon(onPressed: _busy ? null : _manual, icon: const Icon(Icons.edit_road), label: const Text('手动输入 TV 地址')),
-        if (service.errorCode != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(companionErrorText(service.errorCode))),
-      ],
+    return CompanionDevicesView(
+      endpoints: endpoints,
+      status: service.connectionStatus,
+      selectedId: service.selectedDeviceId,
+      selectedLabel: service.selectedLabel,
+      stale: service.stale,
+      playingTitle: service.remoteState?.content?.title,
+      busy: _busy,
+      discovering: _discoveryStarted && _notice == null,
+      error: _notice ?? (service.errorCode == null ? null : companionErrorText(service.errorCode)),
+      onRefresh: _start,
+      onManual: _manual,
+      onDisconnect: () => _run(service.disconnect),
+      onRemote: () => setState(() => _tab = 1),
+      onCatalog: () => setState(() => _tab = 2),
+      onConnect: (endpoint) => _run(() async {
+        await service.connect(endpoint);
+        if (mounted) setState(() => _tab = 1);
+      }),
+      tools: _tools(),
     );
   }
 
