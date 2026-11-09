@@ -150,6 +150,8 @@ void main() {
     );
     expect(find.byKey(const Key('video-details-url-copy')), findsOneWidget);
     expect(find.byKey(const Key('video-details-headers-copy')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('video-details-technical')));
+    await tester.pumpAndSettle();
     expect(find.text('show'), findsOneWidget);
     expect(find.text('group-a'), findsOneWidget);
     expect(find.text('episode-1'), findsOneWidget);

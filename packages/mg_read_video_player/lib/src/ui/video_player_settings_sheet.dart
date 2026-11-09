@@ -2,7 +2,7 @@
 ///
 /// Responsibilities:
 /// - Keep episode navigation, repeat, rate and fit controls in one visual panel.
-/// - Use bounded matte panels in desktop, portrait and fullscreen landscapes.
+/// - Use a narrow, fine-grained menu without changing TV or shared chrome.
 ///
 /// Notes:
 /// - This panel only emits existing chrome callbacks and owns no playback state.
@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import '../api/models.dart';
 import 'video_player_visuals.dart';
 import 'video_player_modal.dart';
+import 'video_player_compact_panel.dart';
 
 Future<void> showVideoPlayerSettingsSheet({
   required BuildContext context,
@@ -29,6 +30,7 @@ Future<void> showVideoPlayerSettingsSheet({
   required Future<void> Function(bool) onAutoAdvance,
 }) => showVideoPlayerModal<void>(
   context: context,
+  maxWidth: 360,
   builder: (_) => Theme(
     data: videoPlayerTheme(),
     child: _VideoPlayerSettingsSheet(
@@ -108,182 +110,165 @@ final class _VideoPlayerSettingsSheetState
 
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
-    final landscape = media.orientation == Orientation.landscape;
-    return VideoPlayerGlassPanel(
+    final pointer = videoPlayerUsesPointerControls(context);
+    return VideoPlayerCompactPanel(
       key: const Key('video-player-settings-sheet'),
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-      showBorder: false,
-
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: media.size.height * (landscape ? .86 : .72),
-        ),
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(18, 10, 18, 16 + media.padding.bottom),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              const Align(
-                child: SizedBox(
-                  width: 30,
-                  height: 3,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Color(0x8CFFFFFF),
-                      borderRadius: BorderRadius.all(Radius.circular(99)),
+      title: '播放设置',
+      closeKey: const Key('video-player-settings-close'),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(left: 2, bottom: 6),
+              child: Text(
+                '播放速度',
+                style: TextStyle(color: videoPlayerSecondary, fontSize: 11),
+              ),
+            ),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                for (final rate in _rates)
+                  ChoiceChip(
+                    key: Key('video-player-rate-${_rateKey(rate)}'),
+                    label: Text('${_trimRate(rate)}×'),
+                    selected: _rate == rate,
+                    showCheckmark: false,
+                    selectedColor: videoPlayerAccent.withValues(alpha: .18),
+                    backgroundColor: const Color(0x0AFFFFFF),
+                    side: BorderSide(
+                      color: _rate == rate
+                          ? videoPlayerAccent.withValues(alpha: .65)
+                          : const Color(0x14FFFFFF),
+                      width: .5,
                     ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: pointer
+                        ? MaterialTapTargetSize.shrinkWrap
+                        : MaterialTapTargetSize.padded,
+                    padding: EdgeInsets.zero,
+                    labelPadding: const EdgeInsets.symmetric(horizontal: 9),
+                    labelStyle: TextStyle(
+                      color: _rate == rate
+                          ? Colors.white
+                          : videoPlayerSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    onSelected: (_) => _setRate(rate),
+                  ),
+              ],
+            ),
+            const _MenuDivider(),
+            _SettingsRow(
+              icon: Icons.repeat_rounded,
+              label: '自动连播',
+              detail: _autoAdvance ? '当前开启' : '当前关闭',
+              onTap: () => _setAutoAdvance(!_autoAdvance),
+              trailing: _smallSwitch(
+                context,
+                key: const Key('video-player-auto-advance'),
+                value: _autoAdvance,
+                onChanged: _setAutoAdvance,
+              ),
+            ),
+            _SettingsRow(
+              icon: Icons.aspect_ratio_rounded,
+              label: '画面比例',
+              detail: _fitLabel(_fitMode),
+              detailHint: _fitMode == VideoFitMode.contain ? '默认' : null,
+              onTap: _cycleFitMode,
+              trailing: TextButton(
+                key: const Key('video-player-fit'),
+                onPressed: _cycleFitMode,
+                style: TextButton.styleFrom(
+                  foregroundColor: videoPlayerSecondary,
+                  minimumSize: Size(44, pointer ? 32 : 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+                child: const Text('切换', style: TextStyle(fontSize: 11)),
+              ),
+            ),
+            _SettingsRow(
+              icon: Icons.auto_awesome_outlined,
+              label: '动漫高清修复',
+              detail: _enhancementMode == VideoEnhancementMode.off
+                  ? '当前关闭'
+                  : 'Anime4K 快速模式',
+              onTap: () => _setEnhancementMode(
+                _enhancementMode == VideoEnhancementMode.off,
+              ),
+              trailing: _smallSwitch(
+                context,
+                key: const Key('video-player-anime4k'),
+                value: _enhancementMode != VideoEnhancementMode.off,
+                onChanged: _setEnhancementMode,
+              ),
+            ),
+            const _MenuDivider(),
+            Row(
+              children: [
+                Expanded(
+                  child: _EpisodeAction(
+                    key: const Key('video-player-previous-episode'),
+                    icon: Icons.skip_previous_rounded,
+                    label: '上一集',
+                    enabled:
+                        widget.snapshot.hasPreviousEpisode ||
+                        widget.snapshot.position >= const Duration(seconds: 5),
+                    onPressed: widget.onPreviousEpisode,
                   ),
                 ),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: <Widget>[
-                  const Icon(
-                    Icons.tune_rounded,
-                    color: videoPlayerForeground,
-                    size: 22,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _EpisodeAction(
+                    key: const Key('video-player-next-episode'),
+                    icon: Icons.skip_next_rounded,
+                    label: '下一集',
+                    enabled: widget.snapshot.hasNextEpisode,
+                    onPressed: widget.onNextEpisode,
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '播放设置',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: videoPlayerForeground,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    key: const Key('video-player-settings-close'),
-                    tooltip: '关闭播放设置',
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close_rounded, size: 22),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              const _SettingsSectionLabel('播放速度'),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: <Widget>[
-                  for (final rate in _rates)
-                    ChoiceChip(
-                      key: Key('video-player-rate-${_rateKey(rate)}'),
-                      label: Text('${_trimRate(rate)}×'),
-                      selected: _rate == rate,
-                      showCheckmark: false,
-                      selectedColor: videoPlayerAccent,
-                      backgroundColor: const Color(0x1AFFFFFF),
-                      side: BorderSide.none,
-                      labelStyle: TextStyle(
-                        color: _rate == rate
-                            ? Colors.white
-                            : videoPlayerForeground,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      onSelected: (_) => _setRate(rate),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              const _SettingsSectionLabel('选集切换'),
-              const SizedBox(height: 8),
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: _EpisodeAction(
-                      key: const Key('video-player-previous-episode'),
-                      icon: Icons.skip_previous_rounded,
-                      label: '上一集',
-                      enabled:
-                          widget.snapshot.hasPreviousEpisode ||
-                          widget.snapshot.position >=
-                              const Duration(seconds: 5),
-                      onPressed: widget.onPreviousEpisode,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _EpisodeAction(
-                      key: const Key('video-player-next-episode'),
-                      icon: Icons.skip_next_rounded,
-                      label: '下一集',
-                      enabled: widget.snapshot.hasNextEpisode,
-                      onPressed: widget.onNextEpisode,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              const _SettingsSectionLabel('播放方式'),
-              const SizedBox(height: 8),
-              _SettingsRow(
-                icon: Icons.repeat_rounded,
-                label: '自动连播',
-                detail: _autoAdvance ? '当前开启' : '当前关闭',
-                trailing: Switch.adaptive(
-                  key: const Key('video-player-auto-advance'),
-                  value: _autoAdvance,
-                  activeTrackColor: videoPlayerAccent,
-                  onChanged: _setAutoAdvance,
                 ),
-              ),
-              const SizedBox(height: 12),
-              _SettingsRow(
-                icon: Icons.aspect_ratio_rounded,
-                label: '画面比例',
-                detail: _fitLabel(_fitMode),
-                detailHint: _fitMode == VideoFitMode.contain ? '默认' : null,
-                trailing: TextButton(
-                  key: const Key('video-player-fit'),
-                  onPressed: _cycleFitMode,
-                  style: TextButton.styleFrom(
-                    foregroundColor: videoPlayerAccent,
-                  ),
-                  child: const Text('切换'),
-                ),
-              ),
-              const SizedBox(height: 18),
-              const _SettingsSectionLabel('画质增强'),
-              const SizedBox(height: 8),
-              _SettingsRow(
-                icon: Icons.auto_awesome_rounded,
-                label: '动漫高清修复',
-                detail: _enhancementMode == VideoEnhancementMode.off
-                    ? '当前关闭'
-                    : 'Anime4K 快速模式',
-                trailing: Switch.adaptive(
-                  key: const Key('video-player-anime4k'),
-                  value: _enhancementMode != VideoEnhancementMode.off,
-                  activeTrackColor: videoPlayerAccent,
-                  onChanged: _setEnhancementMode,
-                ),
-              ),
-              const SizedBox(height: 18),
-            ],
-          ),
+              ],
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-final class _SettingsSectionLabel extends StatelessWidget {
-  const _SettingsSectionLabel(this.label);
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Text(
-    label,
-    style: const TextStyle(
-      color: videoPlayerSecondary,
-      fontSize: 12,
-      fontWeight: FontWeight.w600,
+Widget _smallSwitch(
+  BuildContext context, {
+  required Key key,
+  required bool value,
+  required ValueChanged<bool> onChanged,
+}) => SizedBox(
+  width: 44,
+  height: videoPlayerUsesPointerControls(context) ? 36 : 44,
+  child: Transform.scale(
+    scale: .76,
+    child: Switch.adaptive(
+      key: key,
+      value: value,
+      activeTrackColor: videoPlayerAccent,
+      onChanged: onChanged,
     ),
+  ),
+);
+
+class _MenuDivider extends StatelessWidget {
+  const _MenuDivider();
+  @override
+  Widget build(BuildContext context) => const Padding(
+    padding: EdgeInsets.symmetric(vertical: 7),
+    child: Divider(height: 1, color: Color(0x14FFFFFF)),
   );
 }
 
@@ -295,25 +280,27 @@ final class _EpisodeAction extends StatelessWidget {
     required this.onPressed,
     super.key,
   });
-
   final IconData icon;
   final String label;
   final bool enabled;
   final VoidCallback onPressed;
 
   @override
-  Widget build(BuildContext context) => FilledButton.tonalIcon(
+  Widget build(BuildContext context) => TextButton.icon(
     onPressed: enabled ? onPressed : null,
-    style: FilledButton.styleFrom(
-      foregroundColor: enabled
-          ? videoPlayerForeground
-          : videoPlayerSecondary.withValues(alpha: .45),
-      backgroundColor: const Color(0x1AFFFFFF),
-      disabledBackgroundColor: const Color(0x0DFFFFFF),
-      padding: const EdgeInsets.symmetric(vertical: 12),
+    style: TextButton.styleFrom(
+      foregroundColor: videoPlayerSecondary,
+      backgroundColor: const Color(0x08FFFFFF),
+      disabledForegroundColor: const Color(0x55FFFFFF),
+      minimumSize: Size(44, videoPlayerUsesPointerControls(context) ? 32 : 44),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
     ),
-    icon: Icon(icon, size: 20),
-    label: Text(label),
+    icon: Icon(icon, size: 16),
+    label: Text(
+      label,
+      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w400),
+    ),
   );
 }
 
@@ -323,83 +310,83 @@ final class _SettingsRow extends StatelessWidget {
     required this.label,
     required this.detail,
     required this.trailing,
+    required this.onTap,
     this.detailHint,
   });
-
   final IconData icon;
-  final String label;
-  final String detail;
+  final String label, detail;
   final Widget trailing;
   final String? detailHint;
+  final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: const BoxDecoration(
-      color: Color(0xFF242424),
-      borderRadius: BorderRadius.all(Radius.circular(12)),
-    ),
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
-      child: Row(
-        children: <Widget>[
-          Icon(icon, color: videoPlayerSecondary, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: videoPlayerForeground,
-                    fontWeight: FontWeight.w600,
+  Widget build(BuildContext context) => Material(
+    color: Colors.transparent,
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(5),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 4),
+        child: Row(
+          children: [
+            Icon(icon, color: videoPlayerSecondary, size: 16),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: videoPlayerForeground,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w400,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text.rich(
-                  key: detailHint == null
-                      ? null
-                      : const Key('video-player-fit-default-hint'),
-                  TextSpan(
-                    children: <InlineSpan>[
-                      TextSpan(text: detail),
-                      if (detailHint case final hint?)
-                        TextSpan(
-                          text: '  $hint',
-                          style: TextStyle(
-                            color: videoPlayerSecondary.withValues(alpha: .68),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500,
+                  const SizedBox(height: 2),
+                  Text.rich(
+                    key: detailHint == null
+                        ? null
+                        : const Key('video-player-fit-default-hint'),
+                    TextSpan(
+                      children: [
+                        TextSpan(text: detail),
+                        if (detailHint case final hint?)
+                          TextSpan(
+                            text: '  $hint',
+                            style: const TextStyle(
+                              color: Colors.white38,
+                              fontSize: 10,
+                            ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
+                    style: const TextStyle(
+                      color: videoPlayerSecondary,
+                      fontSize: 10,
+                      height: 1.3,
+                    ),
                   ),
-                  style: const TextStyle(
-                    color: videoPlayerSecondary,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          trailing,
-        ],
+            const SizedBox(width: 6),
+            trailing,
+          ],
+        ),
       ),
     ),
   );
 }
 
 const List<double> _rates = <double>[.5, .75, 1, 1.25, 1.5, 2];
-
 String _fitLabel(VideoFitMode mode) => switch (mode) {
   VideoFitMode.contain => '适应',
   VideoFitMode.cover => '填充',
   VideoFitMode.stretch => '拉伸',
 };
-
 String _trimRate(double rate) => rate == rate.roundToDouble()
     ? rate.toStringAsFixed(0)
     : rate.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '');
-
 String _rateKey(double rate) => _trimRate(rate).replaceAll('.', '-');
