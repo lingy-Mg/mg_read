@@ -1,4 +1,4 @@
-/// Verifies large discovery JSON through the real Node wire and Dart decoder.
+/// Verifies discovery budgets and complete 10 MiB novel text over the real Node wire.
 library;
 
 import 'dart:convert';
@@ -34,7 +34,7 @@ void main() {
             'displayName': 'Budget fixture',
             'sourceUrl': 'https://fixture.example/',
             'pluginApi': 1,
-            'contentKinds': ['video'],
+            'contentKinds': ['video', 'novel'],
           },
         }),
       );
@@ -103,6 +103,33 @@ void main() {
         (ping as PluginDiscoveryDocumentResult).document.components,
         hasLength(1),
       );
+      for (final chapterId in ['large', 'escaped']) {
+        final content = await runtime.invoke(
+          SourceContentInvocation(
+            pluginId: 'org.test.budget',
+            id: 'novel:1',
+            chapterId: chapterId,
+          ),
+        );
+        expect(content.text, hasLength(10 * 1024 * 1024));
+        expect(content.text!.codeUnitAt(0), chapterId == 'escaped' ? 0 : 120);
+      }
+      await expectLater(
+        runtime.invoke(
+          const SourceContentInvocation(
+            pluginId: 'org.test.budget',
+            id: 'novel:1',
+            chapterId: 'oversized',
+          ),
+        ),
+        throwsA(
+          isA<PluginRuntimeException>().having(
+            (error) => error.message,
+            'measured text limit',
+            contains('10485761 bytes exceeds the 10485760-byte limit'),
+          ),
+        ),
+      );
     },
   );
 }
@@ -124,5 +151,8 @@ export function discover(request) {
 export function search(){return {items:[],nextCursor:null,totalCount:0};}
 export function getDetail(){throw new Error('unused');}
 export function getChapters(){throw new Error('unused');}
-export function getContent(){throw new Error('unused');}
+export function getContent(request){return {
+  chapterId:request.chapterId,contentKind:'novel',title:null,updatedAt:null,pages:[],
+  text:(request.chapterId==='escaped'?'\0':'x').repeat(10*1024*1024+(request.chapterId==='oversized'?1:0))
+};}
 ''';

@@ -1,8 +1,11 @@
 part of mgread_plugin_runtime;
 
-/// Inline results allow 10 MiB; RPC envelopes have a separate 64 KiB reserve.
+/// Ordinary results allow 10 MiB. Novel text allows 10 MiB before JSON escaping;
+/// worst-case JSON uses six bytes per input byte plus 64 KiB of metadata.
+/// RPC envelopes have another 64 KiB reserve. Matches runtime-payload-limits.ts.
 const _maxInlineResultBytes = 10 * 1024 * 1024;
-const _maxControlFrameBytes = _maxInlineResultBytes + 64 * 1024;
+const _maxNovelResultBytes = 6 * 10 * 1024 * 1024 + 64 * 1024;
+const _maxControlFrameBytes = _maxNovelResultBytes + 64 * 1024;
 
 /// Per-connection request multiplexer limit negotiated by `runtime.hello`.
 const _maxInFlightRequests = 256;

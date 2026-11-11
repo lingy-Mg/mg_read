@@ -13,6 +13,7 @@ import {
   MAX_INLINE_CHAPTER_CATALOG_BYTES,
   MAX_INLINE_RESULT_BYTES,
   MAX_INLINE_TEXT_BYTES,
+  MAX_INLINE_NOVEL_RESULT_BYTES,
   MAX_INLINE_MANGA_MANIFEST_BYTES,
   MAX_LABEL_CHARACTERS,
   MAX_MANGA_PAGES,
@@ -179,7 +180,9 @@ export function validateContentResult(
     title: readNullableString(raw, "title", MAX_LABEL_CHARACTERS),
     updatedAt: readNullableTimestamp(raw, "updatedAt"),
   });
-  assertInlineBudget(result, contentKind === "manga" ? MAX_INLINE_MANGA_MANIFEST_BYTES : MAX_INLINE_RESULT_BYTES);
+  const maximumBytes = contentKind === "manga" ? MAX_INLINE_MANGA_MANIFEST_BYTES
+    : contentKind === "novel" ? MAX_INLINE_NOVEL_RESULT_BYTES : MAX_INLINE_RESULT_BYTES;
+  assertInlineBudget(result, maximumBytes);
   return result;
 }
 

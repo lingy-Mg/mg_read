@@ -13,10 +13,15 @@ test('novel text keeps a full long chapter beyond the old 48 KiB limit', () => {
 });
 
 test('novel budget uses UTF-8 bytes and reports measured size without text', () => {
-  const limit = 1024 * 1024;
+  const limit = 10 * 1024 * 1024;
   const text = '章'.repeat(Math.floor(limit / 3)) + 'x';
   assert.equal(Buffer.byteLength(text), limit);
   assert.equal(validate(text).text, text);
-  assert.throws(() => validate(text + '章'), /text.*1048579 bytes.*1048576-byte limit/u);
+  assert.throws(() => validate(text + '章'), /text.*10485763 bytes.*10485760-byte limit/u);
   assert.throws(() => validate(42), /text.*string or null/u);
+});
+
+test('a complete 10 MiB chapter also fits when JSON needs worst-case escaping', () => {
+  const text = '\0'.repeat(10 * 1024 * 1024);
+  assert.equal(validate(text).text, text);
 });
