@@ -22,6 +22,7 @@ import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
 import 'plugin_content_kind_labels.dart';
 
 part 'plugin_runtime_source_detail_tv.dart';
+part 'plugin_runtime_source_detail_actions.dart';
 
 /// 单个数据源的 Runtime 详情页面。
 ///
@@ -52,11 +53,13 @@ class PluginRuntimeSourceDetailPage extends ConsumerWidget {
               AppSecondaryPageTopBar(
                 key: const Key('data-source-detail-top-bar'),
                 backButtonKey: const Key('data-source-detail-back'),
-                title: '查看数据源',
+                title: '数据源详情',
                 onBack: onBackRequested,
               ),
               Expanded(
                 child: connection.when(
+                  skipLoadingOnReload: true,
+                  skipError: connection.hasValue,
                   loading: () => const AppLoadingState(label: '正在加载数据源详情', message: '正在读取数据源信息。'),
                   error: (Object _, StackTrace _) => _DetailFailure(onRetry: () => ref.invalidate(pluginRuntimeConnectionProvider)),
                   data: (PluginRuntimeConnection value) {
@@ -64,7 +67,15 @@ class PluginRuntimeSourceDetailPage extends ConsumerWidget {
                     if (source == null) {
                       return _DetailFailure(onRetry: () => ref.invalidate(pluginRuntimeConnectionProvider), message: '该数据源已不存在或暂时不可用。');
                     }
-                    return _DetailContent(source: source, onVerificationRequested: onVerificationRequested);
+                    return _DetailContent(
+                      source: source,
+                      onVerificationRequested: onVerificationRequested,
+                      onRemoved: () {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已卸载“${source.displayName}”。')));
+                        onBackRequested();
+                      },
+                    );
                   },
                 ),
               ),
@@ -77,9 +88,10 @@ class PluginRuntimeSourceDetailPage extends ConsumerWidget {
 }
 
 class _DetailContent extends ConsumerWidget {
-  const _DetailContent({required this.source, required this.onVerificationRequested});
+  const _DetailContent({required this.source, required this.onVerificationRequested, required this.onRemoved});
 
   final PluginRuntimePlugin source;
+  final VoidCallback onRemoved;
   final ValueChanged<String>? onVerificationRequested;
 
   @override
@@ -97,8 +109,12 @@ class _DetailContent extends ConsumerWidget {
         archiveUsage.value.fileCount > 0;
     final opening = ref.watch(pluginRuntimeSourceDirectoryProvider).contains(source.id);
     final packaging = ref.watch(pluginRuntimeDevelopmentPackageProvider).contains(source.id);
-    final removing = ref.watch(pluginRuntimeSourceActionProvider).contains(source.id);
+    final removing = ref.watch(pluginRuntimeSourceActionProvider).isNotEmpty;
+    final busy = ref.watch(pluginRuntimeSourceManagementBusyProvider) || opening || packaging;
+    final enabledControl = _SourceEnabledControl(source: source, busy: busy);
     final actions = _DetailActions(
+      busy: busy,
+      enabledControl: enabledControl,
       isDesktop: isDesktop,
       isDevelopment: isDevelopment,
       isWindows: isWindows,
@@ -106,8 +122,18 @@ class _DetailContent extends ConsumerWidget {
       opening: opening,
       packaging: packaging,
       removing: removing,
-      canVerify: isDesktop && source.enabled && source.activeVersion != null && onVerificationRequested != null,
-      onVerify: onVerificationRequested == null ? null : () => onVerificationRequested!(source.id),
+      canVerify:
+          !busy &&
+          isDesktop &&
+          source.canDiscoverAndSearch &&
+          source.enabled &&
+          source.activeVersion != null &&
+          onVerificationRequested != null,
+      onVerify: onVerificationRequested == null
+          ? null
+          : () {
+              if (!ref.read(pluginRuntimeSourceManagementBusyProvider)) onVerificationRequested!(source.id);
+            },
       onOpenDirectory: () => _openDirectory(context, ref, source, isDevelopment),
       onPackage: () => _packageDevelopmentSource(context, ref, source),
       onRemove: () => _uninstall(context, ref, source),
@@ -161,7 +187,9 @@ class _DetailContent extends ConsumerWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: AppSpacing.comfortable),
+                const SizedBox(height: AppSpacing.regular),
+                enabledControl,
+                const SizedBox(height: AppSpacing.regular),
                 DecoratedBox(
                   key: const Key('data-source-detail-description'),
                   decoration: BoxDecoration(color: tokens.featureSurface, borderRadius: AppRadii.discoveryTile),
@@ -190,6 +218,8 @@ class _DetailContent extends ConsumerWidget {
                     _DetailFieldData(label: '类型', value: pluginContentKindsLabel(source.contentKinds)),
                     if (source.r18) const _DetailFieldData(label: '分级', value: 'R18'),
                     _DetailFieldData(label: '版本', value: source.activeVersion ?? '等待激活', wide: true, expandable: true),
+                    if (source.pendingVersion != null)
+                      _DetailFieldData(label: '待生效版本', value: '${source.pendingVersion}（下次启动生效）', wide: true),
                     _DetailFieldData(label: '状态', value: source.canDiscoverAndSearch ? _statusLabel(source) : source.sourceStateLabel),
                     if (!source.canDiscoverAndSearch)
                       _DetailFieldData(label: '不可用说明', value: '${source.sourceStateReason ?? '发现和搜索不可用。'} 已缓存内容仍可查看。', wide: true),
@@ -209,6 +239,7 @@ class _DetailContent extends ConsumerWidget {
   }
 
   Future<void> _packageDevelopmentSource(BuildContext context, WidgetRef ref, PluginRuntimePlugin source) async {
+    if (ref.read(pluginRuntimeSourceManagementBusyProvider)) return;
     try {
       final fileName = await ref.read(pluginRuntimeDevelopmentPackageProvider.notifier).package(pluginId: source.id);
       if (!context.mounted || fileName == null) return;
@@ -224,6 +255,7 @@ class _DetailContent extends ConsumerWidget {
   }
 
   Future<void> _openDirectory(BuildContext context, WidgetRef ref, PluginRuntimePlugin source, bool isDevelopment) async {
+    if (ref.read(pluginRuntimeSourceManagementBusyProvider)) return;
     try {
       final kind = await ref.read(pluginRuntimeSourceDirectoryProvider.notifier).open(pluginId: source.id);
       if (!context.mounted) return;
@@ -241,76 +273,35 @@ class _DetailContent extends ConsumerWidget {
   }
 
   Future<void> _uninstall(BuildContext context, WidgetRef ref, PluginRuntimePlugin source) async {
+    if (source.status == 'development' || ref.read(pluginRuntimeSourceManagementBusyProvider)) return;
     final confirmed = await showSourceManagementDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) => SourceManagementDialog(
         destructive: true,
-        title: const Text('删除数据源？'),
-        content: Text('将立即删除“${source.displayName}”及其 Runtime 私有数据。已保存到书架的内容不会受到影响。'),
+        title: const Text('卸载数据源？'),
+        content: Text('将卸载“${source.displayName}”并删除它的运行数据、缓存和安装包。书架内容会保留。此操作无法撤销。'),
         actions: <Widget>[
           TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
           FilledButton(
             key: const Key('data-source-detail-remove-confirm'),
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('删除'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            child: const Text('确认卸载'),
           ),
         ],
       ),
     );
-    if (confirmed != true || !context.mounted) return;
+    if (confirmed != true || !context.mounted || ref.read(pluginRuntimeSourceManagementBusyProvider)) return;
     try {
       await ref.read(pluginRuntimeSourceActionProvider.notifier).uninstall(pluginId: source.id);
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据源已即时删除。')));
+      onRemoved();
     } on Object {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据源删除失败，请稍后重试。')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据源卸载失败，请稍后重试。')));
     }
-  }
-}
-
-class _VerifySourceButton extends StatelessWidget {
-  const _VerifySourceButton({required this.onPressed});
-
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final bool compact = _useCompactDetailActionLayout(context);
-    return SizedBox(
-      width: double.infinity,
-      child: FilledButton.icon(
-        key: const Key('data-source-detail-verify'),
-        onPressed: onPressed,
-        icon: const Icon(Icons.fact_check_outlined),
-        label: _detailActionLabel('检测搜索、发现与阅读链路', compact),
-      ),
-    );
-  }
-}
-
-class _RemoveSourceButton extends StatelessWidget {
-  const _RemoveSourceButton({required this.isRemoving, required this.onPressed});
-
-  final bool isRemoving;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AppThemeTokens.of(context);
-    final bool compact = _useCompactDetailActionLayout(context);
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        key: const Key('data-source-detail-remove'),
-        onPressed: onPressed,
-        icon: isRemoving
-            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-            : const Icon(Icons.delete_outline),
-        label: _detailActionLabel(isRemoving ? '正在删除' : '删除数据源', compact),
-        style: OutlinedButton.styleFrom(foregroundColor: tokens.notification),
-      ),
-    );
   }
 }
 
@@ -528,133 +519,6 @@ class _DetailMetadataGrid extends StatelessWidget {
   );
 }
 
-class _DetailActions extends StatelessWidget {
-  const _DetailActions({
-    required this.isDesktop,
-    required this.isDevelopment,
-    required this.isWindows,
-    required this.opensArchive,
-    required this.opening,
-    required this.packaging,
-    required this.removing,
-    required this.canVerify,
-    required this.onVerify,
-    required this.onOpenDirectory,
-    required this.onPackage,
-    required this.onRemove,
-  });
-
-  final bool isDesktop;
-  final bool isDevelopment;
-  final bool isWindows;
-  final bool opensArchive;
-  final bool opening;
-  final bool packaging;
-  final bool removing;
-  final bool canVerify;
-  final VoidCallback? onVerify;
-  final VoidCallback onOpenDirectory;
-  final VoidCallback onPackage;
-  final VoidCallback onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    if (TvModeScope.isEnabled(context)) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _tvAction('verify', Icons.fact_check_outlined, '检测数据源', canVerify ? onVerify : null),
-          if (!isDesktop) const Padding(padding: EdgeInsets.all(12), child: Text('全链路检测需在电脑运行')),
-          if (isDevelopment && isWindows)
-            _tvAction('package', Icons.inventory_2_outlined, packaging ? '正在打包…' : '打包数据源', packaging ? null : onPackage),
-          if (isDesktop)
-            _tvAction(
-              'open-directory',
-              Icons.folder_open_outlined,
-              opening
-                  ? '正在打开…'
-                  : opensArchive
-                  ? '打开安装包目录'
-                  : '打开代码目录',
-              opening ? null : onOpenDirectory,
-            ),
-          if (!isDevelopment) _tvAction('remove', Icons.delete_outline, removing ? '正在删除…' : '删除数据源', removing ? null : onRemove),
-        ],
-      );
-    }
-    final tokens = AppThemeTokens.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: tokens.surface,
-        borderRadius: AppRadii.profileList,
-        border: Border.all(color: tokens.divider),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.comfortable),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text('数据源操作', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: AppSpacing.regular),
-            _VerifySourceButton(onPressed: canVerify ? onVerify : null),
-            if (!isDesktop)
-              const Padding(
-                padding: EdgeInsets.only(top: AppSpacing.unit),
-                child: Text('全链路检测需在电脑运行。请返回数据源工具使用运行诊断，或通过搜索验证该源。'),
-              ),
-            if (isDevelopment && isWindows) ...<Widget>[
-              const SizedBox(height: AppSpacing.regular),
-              _PackageDevelopmentButton(isPackaging: packaging, onPressed: packaging ? null : onPackage),
-            ],
-            if (isDesktop) ...<Widget>[
-              const SizedBox(height: AppSpacing.regular),
-              _OpenDirectoryButton(
-                isDevelopment: isDevelopment,
-                opensArchive: opensArchive,
-                isOpening: opening,
-                onPressed: opening ? null : onOpenDirectory,
-              ),
-            ] else ...<Widget>[
-              const SizedBox(height: AppSpacing.regular),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Icon(Icons.info_outline, size: 18, color: tokens.mutedText),
-                  const SizedBox(width: AppSpacing.unit),
-                  Expanded(
-                    child: Text('代码文件夹可在桌面端打开。', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
-                  ),
-                ],
-              ),
-            ],
-            if (!isDevelopment) ...<Widget>[
-              const SizedBox(height: AppSpacing.regular),
-              Divider(height: 1, color: tokens.divider),
-              const SizedBox(height: AppSpacing.regular),
-              _RemoveSourceButton(isRemoving: removing, onPressed: removing ? null : onRemove),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _tvAction(String id, IconData icon, String label, VoidCallback? callback) => Padding(
-    padding: const EdgeInsets.only(bottom: 12),
-    child: TvFocusable(
-      key: Key('data-source-detail-$id'),
-      onPressed: callback,
-      child: Row(
-        children: [
-          Icon(icon),
-          const SizedBox(width: 12),
-          Expanded(child: Text(label)),
-        ],
-      ),
-    ),
-  );
-}
-
 String _formatInstallationBytes(int bytes) {
   if (bytes < 1024) return '$bytes B';
   if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
@@ -663,68 +527,6 @@ String _formatInstallationBytes(int bytes) {
   }
   return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
 }
-
-class _OpenDirectoryButton extends StatelessWidget {
-  const _OpenDirectoryButton({required this.isDevelopment, required this.opensArchive, required this.isOpening, required this.onPressed});
-
-  final bool isDevelopment;
-  final bool opensArchive;
-  final bool isOpening;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final bool compact = _useCompactDetailActionLayout(context);
-    return SizedBox(
-      width: double.infinity,
-      child: FilledButton.icon(
-        key: const Key('data-source-detail-open-directory'),
-        onPressed: onPressed,
-        icon: isOpening
-            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-            : const Icon(Icons.folder_open_outlined),
-        label: _detailActionLabel(
-          isOpening
-              ? '正在打开…'
-              : isDevelopment
-              ? '打开开发项目文件夹'
-              : opensArchive
-              ? '打开原始安装包文件夹'
-              : '打开已安装源码文件夹',
-          compact,
-        ),
-      ),
-    );
-  }
-}
-
-class _PackageDevelopmentButton extends StatelessWidget {
-  const _PackageDevelopmentButton({required this.isPackaging, required this.onPressed});
-
-  final bool isPackaging;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final bool compact = _useCompactDetailActionLayout(context);
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        key: const Key('data-source-detail-package-development'),
-        onPressed: onPressed,
-        icon: isPackaging
-            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-            : const Icon(Icons.inventory_2_outlined),
-        label: _detailActionLabel(isPackaging ? '正在打包…' : '打包数据源插件', compact),
-      ),
-    );
-  }
-}
-
-bool _useCompactDetailActionLayout(BuildContext context) =>
-    MediaQuery.sizeOf(context).width < 360 || MediaQuery.textScalerOf(context).scale(1) > 1;
-
-Widget _detailActionLabel(String label, bool compact) => compact ? Text(label, textAlign: TextAlign.center, softWrap: true) : Text(label);
 
 class _DetailFailure extends StatelessWidget {
   const _DetailFailure({required this.onRetry, this.message = '数据源详情暂不可用。'});

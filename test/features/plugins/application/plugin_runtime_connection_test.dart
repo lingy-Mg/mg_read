@@ -333,7 +333,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('数据源'), findsOneWidget);
+    expect(find.text('数据源管理'), findsOneWidget);
     expect(find.text('我的数据源'), findsOneWidget);
     expect(find.textContaining('1 个数据源'), findsOneWidget);
     expect(find.text('示例插件'), findsOneWidget);
@@ -379,27 +379,32 @@ void main() {
     expect(find.byType(ProfilePage), findsOneWidget);
     final profileContent = find.byKey(const Key('profile-page-content'));
     await tester.scrollUntilVisible(
-      find.byKey(const Key('profile-setting-source-management')),
+      find.byKey(const Key('profile-setting-data-storage')),
       220,
       scrollable: find.descendant(of: profileContent, matching: find.byType(Scrollable)),
     );
-    await tester.tap(find.byKey(const Key('profile-setting-source-management')));
+    await tester.tap(find.byKey(const Key('profile-setting-data-storage')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('数据源管理'));
     await tester.pumpAndSettle();
 
     expect(find.byType(PluginRuntimeStatusPage), findsOneWidget);
-    expect(find.text('数据源'), findsOneWidget);
+    expect(find.text('数据源管理'), findsOneWidget);
     expect(find.text('示例插件'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey<String>('data-source-org.example.fixture')));
     await tester.pumpAndSettle();
     expect(find.byType(PluginRuntimeSourceDetailPage), findsOneWidget);
-    expect(find.text('查看数据源'), findsOneWidget);
+    expect(find.text('数据源详情'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('data-source-detail-back')));
     await tester.pumpAndSettle();
     expect(find.byType(PluginRuntimeStatusPage), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('profile-detail-back')));
+    await tester.pumpAndSettle();
+    expect(find.text('数据与存储'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('secondary-placeholder-back')));
     await tester.pumpAndSettle();
     expect(find.byType(ProfilePage), findsOneWidget);
   });

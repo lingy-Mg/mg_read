@@ -35,13 +35,17 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    final tools = find.byKey(const Key('data-source-development-tools'));
+    await tester.ensureVisible(tools);
+    await tester.tap(tools);
+    await tester.pumpAndSettle();
 
     expect(
       find.byKey(const Key('data-source-add-development-directory')),
       Platform.isWindows || Platform.isMacOS ? findsOneWidget : findsNothing,
     );
     expect(find.byKey(const Key('runtime-debug-http-toggle')), findsOneWidget);
-    if (Platform.isWindows) expect(find.textContaining('两类可以同时使用'), findsOneWidget);
+    expect(find.textContaining('停用保留数据'), findsOneWidget);
     expect(
       reportedErrors.where((details) => details.exceptionAsString().contains('ListTile background color or ink splashes may be invisible')),
       isEmpty,
@@ -85,6 +89,10 @@ void main() {
         ),
       ),
     );
+    await tester.pumpAndSettle();
+    final tools = find.byKey(const Key('data-source-development-tools'));
+    await tester.ensureVisible(tools);
+    await tester.tap(tools);
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('runtime-debug-http-temporary-port')), findsOneWidget);

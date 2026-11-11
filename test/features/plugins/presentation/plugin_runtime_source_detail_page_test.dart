@@ -43,11 +43,11 @@ void main() {
     expect(remove.hitTestable(), findsOneWidget);
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
-    expect(find.text('删除数据源？'), findsOneWidget);
+    expect(find.text('卸载数据源？'), findsOneWidget);
     expect(gateway.uninstalledPluginIds, isEmpty);
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
-    expect(find.text('删除数据源？'), findsNothing);
+    expect(find.text('卸载数据源？'), findsNothing);
     expect(gateway.uninstalledPluginIds, isEmpty, reason: 'confirmation initially focuses Cancel');
     expect(tester.takeException(), isNull);
   });
@@ -102,6 +102,44 @@ void main() {
     }
   });
 
+  testWidgets('successful uninstall returns after the source disappears from the refreshed catalog', (tester) async {
+    final gateway = _DirectoryGateway(_installedConnection);
+    var returned = 0;
+    await tester.pumpWidget(_host(gateway, 'org.example.installed', onBack: () => returned++));
+    await tester.pumpAndSettle();
+    final remove = find.byKey(const Key('data-source-detail-remove'));
+    await tester.scrollUntilVisible(remove, 250, scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
+    await tester.tap(remove);
+    await tester.pumpAndSettle();
+    expect(returned, 0);
+    await tester.tap(find.byKey(const Key('data-source-detail-remove-confirm')));
+    await tester.pumpAndSettle();
+    expect(gateway.connection.plugins, isEmpty);
+    expect(returned, 1);
+    expect(find.text('已卸载“已安装数据源”。'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('detail enable and uninstall controls respect an installation started on another page', (tester) async {
+    final gateway = _DirectoryGateway(_installedConnection);
+    await tester.pumpWidget(_host(gateway, 'org.example.installed'));
+    await tester.pumpAndSettle();
+    final page = tester.element(find.byType(PluginRuntimeSourceDetailPage));
+    final container = ProviderScope.containerOf(page);
+    final completion = Completer<List<PluginTransferImportResult>?>();
+    final importing = container.read(pluginRuntimeSourceImportProvider.notifier).importSourceCollection(() => completion.future);
+    await tester.pump();
+    expect(tester.widget<SwitchListTile>(find.byKey(const Key('data-source-detail-enabled'))).onChanged, isNull);
+    await tester.scrollUntilVisible(find.byKey(const Key('data-source-detail-remove')), 250, scrollable: find.byType(Scrollable).first);
+    expect(tester.widget<OutlinedButton>(find.byKey(const Key('data-source-detail-remove'))).onPressed, isNull);
+    completion.complete(null);
+    await importing;
+    await tester.pumpAndSettle();
+    expect(tester.widget<OutlinedButton>(find.byKey(const Key('data-source-detail-remove'))).onPressed, isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('labels installed source code as a non-live Runtime copy', (WidgetTester tester) async {
     final gateway = _DirectoryGateway(_installedConnection);
     String? verifiedPluginId;
@@ -114,7 +152,7 @@ void main() {
     expect(find.text('来源网址'), findsOneWidget);
     expect(find.text('缺少'), findsOneWidget);
     expect(find.text('Runtime 已安装数据源插件'), findsOneWidget);
-    expect(find.text('已启用'), findsOneWidget);
+    expect(find.text('已启用'), findsNWidgets(2));
     await tester.scrollUntilVisible(find.byKey(const Key('data-source-installation-size-card')), 200, scrollable: find.byType(Scrollable));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('data-source-installation-size-card')), findsOneWidget);
@@ -131,16 +169,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('data-source-detail-remove')));
     await tester.pumpAndSettle();
-    expect(find.text('删除数据源？'), findsOneWidget);
+    expect(find.text('卸载数据源？'), findsOneWidget);
     await tester.tap(find.byKey(const Key('data-source-detail-remove-confirm')));
     await tester.pumpAndSettle();
     expect(gateway.uninstalledPluginIds, <String>['org.example.installed']);
-    expect(find.text('数据源已即时删除。'), findsOneWidget);
-    if (Platform.isWindows || Platform.isMacOS) {
-      await tester.drag(find.byKey(const Key('data-source-detail-content')), const Offset(0, -400));
-      await tester.pumpAndSettle();
-      expect(find.text('打开已安装源码文件夹'), findsOneWidget);
-    }
+    expect(find.text('已卸载“已安装数据源”。'), findsOneWidget);
   });
 
   testWidgets('explains when only the original installation artifact remains', (WidgetTester tester) async {
@@ -242,7 +275,7 @@ void main() {
         expect(rect.height, greaterThanOrEqualTo(48));
       }
       expect(find.text('检测搜索、发现与阅读链路'), findsOneWidget);
-      expect(find.text('删除数据源'), findsOneWidget);
+      expect(find.text('卸载数据源'), findsOneWidget);
       expect(tester.getSemantics(verify).label, contains('检测搜索、发现与阅读链路'));
       await tester.scrollUntilVisible(verify, 200, scrollable: find.byType(Scrollable));
       expect(tester.takeException(), isNull);
@@ -258,6 +291,7 @@ Widget _host(
   ValueChanged<String>? onVerificationRequested,
   TextScaler? textScaler,
   bool tv = false,
+  VoidCallback? onBack,
 }) => ProviderScope(
   overrides: [
     pluginRuntimeGatewayProvider.overrideWithValue(gateway),
@@ -269,7 +303,11 @@ Widget _host(
       data: MediaQuery.of(context).copyWith(textScaler: textScaler ?? MediaQuery.textScalerOf(context)),
       child: TvModeScope(enabled: tv, onChanged: (_) {}, child: child ?? const SizedBox.shrink()),
     ),
-    home: PluginRuntimeSourceDetailPage(pluginId: pluginId, onBackRequested: () {}, onVerificationRequested: onVerificationRequested),
+    home: PluginRuntimeSourceDetailPage(
+      pluginId: pluginId,
+      onBackRequested: onBack ?? () {},
+      onVerificationRequested: onVerificationRequested,
+    ),
   ),
 );
 
@@ -382,7 +420,7 @@ const _mediaConnection = PluginRuntimeConnection(
 final class _DirectoryGateway implements PluginRuntimeGateway {
   _DirectoryGateway(this.connection, {this.directoryKind, this.archiveFiles = 0});
 
-  final PluginRuntimeConnection connection;
+  PluginRuntimeConnection connection;
   final PluginCodeDirectoryKind? directoryKind;
   final int archiveFiles;
   final List<String> openedPluginIds = <String>[];
@@ -439,6 +477,12 @@ final class _DirectoryGateway implements PluginRuntimeGateway {
   @override
   Future<void> uninstall({required String pluginId}) async {
     uninstalledPluginIds.add(pluginId);
+    connection = PluginRuntimeConnection(
+      isHealthy: connection.isHealthy,
+      nodeVersion: connection.nodeVersion,
+      runtimeVersion: connection.runtimeVersion,
+      plugins: connection.plugins.where((source) => source.id != pluginId).toList(),
+    );
   }
 
   @override

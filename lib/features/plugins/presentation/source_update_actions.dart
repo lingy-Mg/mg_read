@@ -11,34 +11,39 @@ import '../application/source_plugin_transfer_gateway.dart';
 import '../application/source_update_coordinator.dart';
 import 'source_collection_import_sheet.dart';
 
-Future<void> checkSourceUpdates(BuildContext context, WidgetRef ref) async {
-  final result = await ref.read(sourceUpdateCoordinatorProvider).check(force: true);
-  if (!context.mounted) return;
-  if (result.status != UpdateCheckStatus.available) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.message)));
-    return;
-  }
-  await offerSourceUpdates(context, ref, result.value!);
-}
+Future<void> checkSourceUpdates(BuildContext context, WidgetRef ref) => _runSourceUpdates(context, ref);
 
-Future<void> offerSourceUpdates(BuildContext context, WidgetRef ref, List<SourceCollectionCandidate> updates) async {
-  if (ref.read(pluginRuntimeSourceImportProvider).isImporting) return;
+Future<void> offerSourceUpdates(BuildContext context, WidgetRef ref, List<SourceCollectionCandidate> updates) =>
+    _runSourceUpdates(context, ref, offeredUpdates: updates);
+
+Future<void> _runSourceUpdates(BuildContext context, WidgetRef ref, {List<SourceCollectionCandidate>? offeredUpdates}) async {
+  if (ref.read(pluginRuntimeSourceManagementBusyProvider)) return;
   final importer = ref.read(pluginRuntimeSourceImportProvider.notifier);
   final gateway = ref.read(sourcePluginTransferGatewayProvider);
+  var updates = offeredUpdates;
   try {
     final results = await importer.importSourceCollection(() async {
-      if (!await showSourceUpdatesConfirmationDialog(context, updates) || !context.mounted) return null;
-      final selection = sourceCollectionSelection(updates, {for (final item in updates) item.plugin.id});
+      if (updates == null) {
+        final result = await ref.read(sourceUpdateCoordinatorProvider).check(force: true);
+        if (!context.mounted) return null;
+        if (result.status != UpdateCheckStatus.available) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.message)));
+          return null;
+        }
+        updates = result.value!;
+      }
+      if (!context.mounted || !await showSourceUpdatesConfirmationDialog(context, updates!) || !context.mounted) return null;
+      final selection = sourceCollectionSelection(updates!, {for (final item in updates!) item.plugin.id});
       if (selection == null) return null;
       return gateway.importArtifacts(selection.artifacts, forceUpgradePluginIds: selection.forceUpgradePluginIds);
-    }, initialMessage: '正在准备数据源更新');
+    }, initialMessage: updates == null ? '正在检查数据源更新' : '正在准备数据源更新');
     if (context.mounted && results != null) {
       final connection = await ref.read(pluginRuntimeConnectionProvider.future);
       if (!context.mounted) return;
       await showSourceCollectionImportResults(
         context,
         results,
-        updates,
+        updates!,
         onlineRepository: true,
         updating: true,
         pendingPluginIds: {

@@ -10,6 +10,8 @@ class _TvDataSourceContent extends StatelessWidget {
     required this.sourceBuilder,
     required this.filter,
     required this.onFilter,
+    required this.statusFilter,
+    required this.onStatusFilter,
     required this.query,
     required this.onQuery,
     required this.onReset,
@@ -26,6 +28,8 @@ class _TvDataSourceContent extends StatelessWidget {
   final IndexedWidgetBuilder sourceBuilder;
   final _DataSourceFilter filter;
   final ValueChanged<_DataSourceFilter> onFilter;
+  final _DataSourceStatusFilter statusFilter;
+  final ValueChanged<_DataSourceStatusFilter> onStatusFilter;
   final String query;
   final ValueChanged<String> onQuery;
   final VoidCallback onReset;
@@ -121,7 +125,7 @@ class _TvDataSourceContent extends StatelessWidget {
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 10),
                                   child: Text(
-                                    '${_filterLabel(filter)} · $visibleCount 个${query.isEmpty ? '' : ' · “$query”'}',
+                                    '${_filterLabel(filter)} · ${statusFilter.label} · $visibleCount 个${query.isEmpty ? '' : ' · “$query”'}',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
@@ -150,7 +154,7 @@ class _TvDataSourceContent extends StatelessWidget {
                       ? '正在处理，请稍候'
                       : sources.isEmpty
                       ? '选择「添加数据源」，可从在线仓库安装'
-                      : '方向键选择   ·   确认打开   ·   长按确认 / 菜单键管理',
+                      : '方向键选择   ·   确认查看详情   ·   菜单键打开内容操作',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText),
                 ),
@@ -192,6 +196,17 @@ class _TvDataSourceContent extends StatelessWidget {
                     Expanded(child: Text(_filterLabel(value), maxLines: 1)),
                   ],
                 ),
+              ),
+            ),
+          const Divider(),
+          for (final value in _DataSourceStatusFilter.values)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: TvFocusable(
+                key: Key('data-source-status-${value.name}'),
+                selected: value == statusFilter,
+                onPressed: () => onStatusFilter(value),
+                child: Text('${value.label} ${sources.where(value.matches).length}'),
               ),
             ),
         ],

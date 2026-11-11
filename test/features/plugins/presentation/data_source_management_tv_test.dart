@@ -75,8 +75,9 @@ void main() {
     expect(_focus(tester, 'data-source-open-org.mgread.qidian').hasFocus, isTrue);
     await _golden(tester, 'tv_data_source_list_dark');
     await _key(tester, LogicalKeyboardKey.select);
-    expect(opened, 'org.mgread.qidian');
-    opened = null;
+    expect(detail, 'org.mgread.qidian');
+    expect(opened, isNull);
+    detail = null;
     await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
     await tester.pump(const Duration(milliseconds: 700));
     await tester.sendKeyUpEvent(LogicalKeyboardKey.select);

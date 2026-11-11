@@ -35,8 +35,34 @@ void main() {
       );
       expect(rows.single.canOpen, isFalse);
       expect(rows.single.enabled, isTrue);
+      expect(rows.single.needsAttention, isTrue);
+      expect(rows.single.statusLabel, state == 'invalid' ? '已失效' : '已禁用');
+      expect(rows.single.unavailableReason, '网站已禁用播放');
       expect(rows.single.kindLabel, contains(state == 'invalid' ? '已失效' : '已禁用'));
       expect(rows.single.description, contains('网站已禁用播放'));
+    });
+  }
+
+  for (final status in ['damaged', 'quarantined', 'pending']) {
+    test('$status retains its real state and pending version without exposing content actions', () {
+      final source = PluginRuntimePlugin(
+        activeVersion: '1.0.0',
+        contentKinds: const ['novel'],
+        displayName: '待处理源',
+        enabled: true,
+        id: 'pending',
+        name: 'pending',
+        pendingVersion: '2.0.0',
+        status: status,
+      );
+      final row = pluginManagementSourcesFromConnection(
+        PluginRuntimeConnection(isHealthy: true, nodeVersion: 'test', runtimeVersion: 'test', plugins: [source]),
+      ).single;
+      expect(row.needsAttention, isTrue);
+      expect(row.canOpen, isFalse);
+      expect(row.pendingVersion, '2.0.0');
+      expect(row.version, '1.0.0');
+      expect(row.statusLabel, isNot('已启用'));
     });
   }
 

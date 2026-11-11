@@ -1,4 +1,4 @@
-/// TV 数据源紧凑卡片：确认打开内容，长按确认或菜单键展开管理操作。
+/// TV 数据源管理条目：确认打开详情，菜单键展开内容操作。
 /// 卡片只持有菜单的临时选择，Runtime 状态和 IO 仍归调用方；处理中禁止重复操作。
 library;
 
@@ -73,12 +73,11 @@ class TvDataSourceManagementRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = AppThemeTokens.of(context);
-    final available = source.enabled && source.canOpen && !pending;
-    final primary = available ? onDiscover ?? onSearch ?? onDetail : onDetail;
+    final primary = onDetail;
     final status = pending
         ? '处理中'
         : source.enabled
-        ? source.kindLabel
+        ? '${source.kindLabel} · ${source.statusLabel}'
         : '${source.kindLabel} · 已停用';
     return Padding(
       key: ValueKey('data-source-${source.id}'),
@@ -88,7 +87,7 @@ class TvDataSourceManagementRow extends StatelessWidget {
           Expanded(
             child: TvFocusable(
               key: ValueKey('data-source-open-${source.id}'),
-              label: '${source.name}，$status，确认${available && onDiscover != null ? '浏览内容' : '打开'}，菜单键管理',
+              label: '${source.name}，$status，确认查看详情，菜单键打开内容操作',
               onPressed: pending ? null : primary,
               onMore: pending ? null : () => _showActions(context),
               child: Row(

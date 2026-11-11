@@ -510,6 +510,12 @@ final pluginRuntimeSourceImportProvider = NotifierProvider<PluginRuntimeSourceIm
   PluginRuntimeSourceImportController.new,
 );
 
+/// Shared admission state for installation, updates and source mutations.
+/// Controllers recheck admission synchronously before starting IO.
+final pluginRuntimeSourceManagementBusyProvider = Provider<bool>(
+  (ref) => ref.watch(pluginRuntimeSourceImportProvider).isImporting || ref.watch(pluginRuntimeSourceActionProvider).isNotEmpty,
+);
+
 final class PluginSourceImportState {
   const PluginSourceImportState({required this.isImporting, required this.message, this.logs = const <String>[], this.fraction});
 
@@ -550,7 +556,7 @@ final class PluginRuntimeSourceImportController extends Notifier<PluginSourceImp
   }
 
   Future<bool> importLocalPlugin({bool native = false}) async {
-    if (state.isImporting) return false;
+    if (state.isImporting || ref.read(pluginRuntimeSourceActionProvider).isNotEmpty) return false;
     state = const PluginSourceImportState(isImporting: true, message: '正在打开文件选择器', logs: <String>['正在打开文件选择器']);
     final diagnostics = ref.read(diagnosticsManagerProvider);
     final span = diagnostics.startSpan(
@@ -597,7 +603,7 @@ final class PluginRuntimeSourceImportController extends Notifier<PluginSourceImp
     Future<List<PluginTransferImportResult>?> Function() operation, {
     String initialMessage = '正在准备数据源合集',
   }) async {
-    if (state.isImporting) return null;
+    if (state.isImporting || ref.read(pluginRuntimeSourceActionProvider).isNotEmpty) return null;
     state = PluginSourceImportState(isImporting: true, message: initialMessage, logs: <String>[initialMessage]);
     try {
       final results = await operation();

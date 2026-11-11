@@ -96,30 +96,40 @@ class _PluginRuntimeHelpPageState extends ConsumerState<PluginRuntimeHelpPage> {
                           _HelpSection(
                             icon: Icons.auto_stories_outlined,
                             title: '管理数据源',
-                            body: TvModeScope.isEnabled(context)
-                                ? '使用方向键选择“添加数据源”，按确定进入在线插件仓库或本地安装。仓库中按确定勾选，再选择“导入”。列表中可浏览、搜索、查看详情和启停数据源；返回键关闭面板并回到原操作。'
-                                : const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME')
-                                ? '点击“添加数据源”，选择原生 .mgplugin 文件导入；列表右侧开关控制启用状态。'
-                                : Platform.isMacOS || const bool.fromEnvironment('MGREAD_NODE_ONLY')
-                                ? '点击“添加数据源”，选择 Node 数据源并导入 .mgplugin.js 或 .mgplugin 文件；列表右侧开关控制启用状态。'
-                                : '点击“添加数据源”，按提供方说明选择 Node 或原生类型，两类可以同时使用。Node 支持 .mgplugin.js 和 .mgplugin；原生支持 .mgplugin。列表右侧开关控制启用状态。',
+                            body: '列表右侧开关控制启停；点击数据源查看详情、检测或卸载。按内容类型和状态筛选，或搜索名称、标识和网址。停用保留数据，卸载会删除运行数据与安装包，书架内容会保留。',
                           ),
-                          if (canSelectDevelopmentDirectory) ...<Widget>[
-                            const SizedBox(height: AppSpacing.regular),
-                            _DevelopmentDirectorySection(
-                              isSelecting: ref.watch(pluginRuntimeDevelopmentDirectoryProvider),
-                              onPressed: () => unawaited(_selectDevelopmentDirectory()),
-                            ),
-                          ],
-                          if (canOpenPrivateDirectory) ...<Widget>[
-                            const SizedBox(height: AppSpacing.regular),
-                            _RuntimePrivateDirectorySection(
-                              isOpening: ref.watch(pluginRuntimePrivateDirectoryProvider),
-                              onPressed: () => unawaited(_openRuntimePrivateDirectory()),
-                            ),
-                          ],
                           const SizedBox(height: AppSpacing.regular),
-                          RuntimeDebugPanel(endpointLauncher: widget.debugEndpointLauncher),
+                          const _HelpSection(
+                            icon: Icons.add_to_queue_rounded,
+                            title: '添加与更新',
+                            body:
+                                '在“添加数据源”中选择在线仓库、本地安装包或合集。在线仓库与合集先勾选，再确认安装；更新覆盖会显示版本差异。手动更新在“更多管理”中检查，自动更新在“数据与存储 → 数据源更新”中设置。已下载但未激活的版本会标明下次启动生效。',
+                          ),
+                          const SizedBox(height: AppSpacing.regular),
+                          const _HelpSection(
+                            icon: Icons.help_outline_rounded,
+                            title: '异常与存储',
+                            body: '“待处理”筛选可定位不可用或待生效的数据源。单源详情显示具体原因；更多管理中的运行诊断用于排查服务故障。缓存清理统一在“数据与存储 → 缓存管理”中操作。',
+                          ),
+                          const SizedBox(height: AppSpacing.regular),
+                          ExpansionTile(
+                            key: const Key('data-source-development-tools'),
+                            title: const Text('开发与调试'),
+                            subtitle: const Text('开发目录、运行目录与 Debug 检查页'),
+                            children: [
+                              if (canSelectDevelopmentDirectory)
+                                _DevelopmentDirectorySection(
+                                  isSelecting: ref.watch(pluginRuntimeDevelopmentDirectoryProvider),
+                                  onPressed: () => unawaited(_selectDevelopmentDirectory()),
+                                ),
+                              if (canOpenPrivateDirectory)
+                                _RuntimePrivateDirectorySection(
+                                  isOpening: ref.watch(pluginRuntimePrivateDirectoryProvider),
+                                  onPressed: () => unawaited(_openRuntimePrivateDirectory()),
+                                ),
+                              RuntimeDebugPanel(endpointLauncher: widget.debugEndpointLauncher),
+                            ],
+                          ),
                         ],
                       ),
               ),
@@ -138,7 +148,7 @@ class _PluginRuntimeHelpPageState extends ConsumerState<PluginRuntimeHelpPage> {
         icon: Icons.settings_remote_outlined,
         children: [
           _TvHelpCard(title: '添加与安装', icon: Icons.add_to_queue_rounded, body: '在数据源页选择「添加数据源」。打开在线仓库或选择本地安装包，按确认勾选数据源，再选择底部的「导入」。'),
-          _TvHelpCard(title: '浏览与管理', icon: Icons.movie_outlined, body: '左侧选择内容分类，向右进入列表。按确认浏览内容；长按确认或按菜单键可搜索、查看详情、启用或停用。'),
+          _TvHelpCard(title: '浏览与管理', icon: Icons.movie_outlined, body: '左侧选择内容分类，向右进入列表。按确认查看详情并启停或卸载；菜单键打开浏览、搜索和来源网站。左侧还可按启用状态筛选。'),
           _TvHelpCard(title: '返回与阅读', icon: Icons.keyboard_return_rounded, body: '返回键先关闭弹窗，焦点回到原操作。长文字可按确认展开，再用上下键逐屏阅读。'),
         ],
       ),
@@ -149,7 +159,7 @@ class _PluginRuntimeHelpPageState extends ConsumerState<PluginRuntimeHelpPage> {
         children: [
           _TvHelpCard(title: '没有内容或加载失败', icon: Icons.wifi_off_outlined, body: '检查数据源是否启用，再通过数据源工具打开运行诊断。网络异常时先检查连接；单个来源不可用时，可尝试其他数据源。'),
           _TvHelpCard(title: '安装与更新', icon: Icons.system_update_alt, body: '安装前核对来源和版本。更新确认会列出本地与新版本；覆盖安装需要明确确认。部分更新保存后需要重启才能生效。'),
-          _TvHelpCard(title: '删除与缓存', icon: Icons.delete_outline, body: '删除数据源会移除它的运行数据、缓存和安装包。书架内容会保留；若只是暂时不用，可以先停用。'),
+          _TvHelpCard(title: '删除与缓存', icon: Icons.delete_outline, body: '卸载数据源会移除它的运行数据、缓存和安装包。书架内容会保留；若只是暂时不用，可以先停用。'),
         ],
       ),
       TvSourceSection(

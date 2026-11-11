@@ -80,6 +80,7 @@ final class PluginRuntimeSourceActionController extends Notifier<Set<String>> {
   );
 
   Future<void> uninstallAll({int totalItems = 0}) async {
+    if (state.isNotEmpty || ref.read(pluginRuntimeSourceImportProvider).isImporting) throw AppError.fromCode(AppErrorCode.conflict);
     final progress = ref.read(pluginRuntimeSourceRemovalProgressProvider.notifier);
     progress.begin(totalItems: totalItems);
     try {
@@ -104,7 +105,8 @@ final class PluginRuntimeSourceActionController extends Notifier<Set<String>> {
     required Future<void> Function() operation,
     void Function()? onSuccess,
   }) async {
-    if (state.contains(pluginId) ||
+    if (ref.read(pluginRuntimeSourceImportProvider).isImporting ||
+        state.contains(pluginId) ||
         (pluginId == _allSourcesOperationKey && state.isNotEmpty) ||
         (pluginId != _allSourcesOperationKey && state.contains(_allSourcesOperationKey))) {
       throw AppError.fromCode(AppErrorCode.conflict);

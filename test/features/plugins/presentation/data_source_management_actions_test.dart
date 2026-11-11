@@ -50,9 +50,6 @@ void main() {
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/tv_data_source_management.png'));
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
-    expect(_tvFocus(tester, 'data-source-add-node').hasFocus, isTrue);
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-    await tester.pumpAndSettle();
     expect(_tvFocus(tester, 'data-source-add-online-repository').hasFocus, isTrue);
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await _pumpUntilVisible(tester, find.byKey(const Key('tv-source-collection-selector')));
@@ -144,6 +141,33 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('manual update check owns the installation lock before catalog loading finishes', (tester) async {
+    final catalog = _CatalogReader(_catalog('1.0.0'));
+    catalog.pending = Completer<SourceCollection>();
+    await tester.pumpWidget(
+      _host(
+        _Gateway(),
+        catalog: catalog,
+        sourceTransfers: _SourceTransferGateway(action: PluginTransferPlanAction.same, receiverVersion: '1.0.0'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _openTools(tester);
+    await tester.tap(find.byKey(const Key('data-source-check-updates')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(catalog.readCount, 1);
+    expect(find.text('正在检查数据源更新'), findsWidgets);
+    expect(tester.widget<TextButton>(find.byKey(const Key('data-source-add'))).onPressed, isNull);
+    await _openTools(tester, settling: false);
+    expect(tester.widget<ListTile>(find.byKey(const Key('data-source-check-updates'))).onTap, isNull);
+    expect(tester.widget<ListTile>(find.byKey(const Key('data-source-clear-all'))).onTap, isNull);
+    catalog.pending!.complete(catalog.collection);
+    await tester.pumpAndSettle();
+    expect(tester.widget<ListTile>(find.byKey(const Key('data-source-check-updates'))).onTap, isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('reports when all installed sources are current', (tester) async {
     final gateway = _SourceTransferGateway(action: PluginTransferPlanAction.same, receiverVersion: '1.0.0');
     final catalog = _CatalogReader(_catalog('1.0.0'));
@@ -230,7 +254,7 @@ void main() {
     await tester.tap(find.byKey(const Key('data-source-add')));
     await tester.pumpAndSettle();
     expect(gateway.imports, 0);
-    Navigator.of(tester.element(find.text('Node 数据源'))).pop();
+    Navigator.of(tester.element(find.text('本地安装包（Node）'))).pop();
     await tester.pumpAndSettle();
     expect(gateway.imports, 0);
     await tester.tap(find.byKey(const Key('data-source-add')));
@@ -318,7 +342,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(_host(_Gateway(), textScale: 2));
     await tester.pumpAndSettle();
-    final title = tester.getRect(find.text('数据源'));
+    final title = tester.getRect(find.text('数据源管理'));
     expect(title.left, greaterThan(tester.getRect(find.byKey(const Key('profile-detail-back'))).right));
     expect(title.right, lessThan(tester.getRect(find.byKey(const Key('data-source-more'))).left));
     await tester.pump(const Duration(seconds: 1));
@@ -422,11 +446,12 @@ class _CatalogReader implements OnlineSourceCatalogReader {
 
   final SourceCollection collection;
   int readCount = 0;
+  Completer<SourceCollection>? pending;
 
   @override
   Future<SourceCollection> loadCatalog() async {
     readCount++;
-    return collection;
+    return pending == null ? collection : await pending!.future;
   }
 }
 

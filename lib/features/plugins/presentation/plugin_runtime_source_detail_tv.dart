@@ -64,6 +64,7 @@ class _TvSourceDetail extends StatelessWidget {
             _DetailFieldData(label: '来源方式', value: source.status == 'development' ? '开发数据源 · 即时生效' : '已安装数据源'),
             if (source.r18) const _DetailFieldData(label: '分级', value: 'R18'),
             _DetailFieldData(label: '版本', value: source.activeVersion ?? '等待激活', wide: true, expandable: true),
+            if (source.pendingVersion != null) _DetailFieldData(label: '待生效版本', value: '${source.pendingVersion}（下次启动生效）', wide: true),
             _DetailFieldData(label: '来源网址', value: source.sourceUrl ?? '缺少', wide: true),
             if (!source.canDiscoverAndSearch)
               _DetailFieldData(label: '不可用说明', value: '${source.sourceStateReason ?? '发现和搜索不可用。'} 已缓存内容仍可查看。', wide: true),

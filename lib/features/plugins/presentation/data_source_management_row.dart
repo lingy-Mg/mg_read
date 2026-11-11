@@ -1,7 +1,7 @@
 /// 数据源管理列表行与品牌标记。
 ///
 /// 职责：
-/// - 卡片底部展示最多三行网站简介；发现／搜索图标和管理菜单位于右侧。
+/// - 点击条目打开详情，右侧开关直接启停；内容浏览收纳为独立的次级操作。
 /// - 将开发数据源插件与已安装数据源插件的视觉状态保持一致且可访问。
 ///
 /// 注意：
@@ -33,6 +33,10 @@ final class DataSourceManagementRowData {
     this.r18 = false,
     this.canOpen = true,
     this.sourceUrl,
+    this.version,
+    this.pendingVersion,
+    this.availabilityLabel,
+    this.unavailableReason,
   });
 
   final String id;
@@ -47,6 +51,17 @@ final class DataSourceManagementRowData {
   final bool r18;
   final bool canOpen;
   final String? sourceUrl;
+  final String? version;
+  final String? pendingVersion;
+  final String? availabilityLabel;
+  final String? unavailableReason;
+
+  bool get needsAttention => pendingVersion != null || (enabled && !canOpen);
+  String get statusLabel => !enabled
+      ? '已停用'
+      : canOpen
+      ? '已启用'
+      : availabilityLabel ?? '等待激活';
 }
 
 class DataSourceManagementRow extends StatelessWidget {
@@ -86,146 +101,117 @@ class DataSourceManagementRow extends StatelessWidget {
     }
     final theme = Theme.of(context);
     final tokens = AppThemeTokens.of(context);
-    final available = source.enabled && source.canOpen && !isPending;
     return Semantics(
       key: ValueKey<String>('data-source-${source.id}'),
       container: true,
-      label: '${source.name}，${source.description}，${source.kindLabel}，来源网址 ${source.sourceUrl ?? '缺少'}，${source.enabled ? '已启用' : '未启用'}',
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onPressed,
           borderRadius: AppRadii.detailCard,
           child: Padding(
-            padding: EdgeInsets.all(compact ? AppSpacing.regular : AppSpacing.comfortable),
+            padding: const EdgeInsets.all(AppSpacing.regular),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
+              children: [
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    InkWell(
-                      onTap: onPressed,
-                      borderRadius: AppRadii.detailControl,
-                      child: SizedBox.square(
-                        key: ValueKey<String>('data-source-icon-${source.id}'),
-                        dimension: compact ? AppSpacing.minimumTouchTarget : AppSpacing.dataSourceManagementMarkExtent,
-                        child: _DataSourceBrandMark(
-                          sourceId: source.id,
-                          displayName: source.name,
-                          brand: source.brand,
-                          isDevelopment: source.isDevelopment,
-                          iconUrl: source.iconUrl,
-                        ),
+                  children: [
+                    SizedBox.square(
+                      key: ValueKey<String>('data-source-icon-${source.id}'),
+                      dimension: AppSpacing.minimumTouchTarget,
+                      child: _DataSourceBrandMark(
+                        sourceId: source.id,
+                        displayName: source.name,
+                        brand: source.brand,
+                        isDevelopment: source.isDevelopment,
+                        iconUrl: source.iconUrl,
                       ),
                     ),
                     const SizedBox(width: AppSpacing.regular),
                     Expanded(
-                      child: InkWell(
-                        onTap: onPressed,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(
-                              source.name,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                            ),
-                            const SizedBox(height: AppSpacing.unit),
-                            Text(
-                              '${source.kindLabel} · ${source.enabled ? '已启用' : '已停用'}',
-                              style: theme.textTheme.bodySmall?.copyWith(color: tokens.dataSourceAccent),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    SizedBox(
-                      width: AppSpacing.minimumTouchTarget * 3,
-                      child: Wrap(
-                        alignment: WrapAlignment.end,
-                        children: <Widget>[
-                          IconButton(
-                            key: ValueKey<String>('data-source-discover-${source.id}'),
-                            tooltip: '浏览发现 · ${source.name}',
-                            onPressed: available ? onDiscover : null,
-                            icon: const Icon(Icons.explore_outlined),
-                          ),
-                          IconButton(
-                            key: ValueKey<String>('data-source-search-${source.id}'),
-                            tooltip: '在此搜索 · ${source.name}',
-                            onPressed: available ? onSearch : null,
-                            icon: const Icon(Icons.search_rounded),
-                          ),
-                          PopupMenuButton<String>(
-                            key: ValueKey<String>('data-source-menu-${source.id}'),
-                            tooltip: '${source.name}管理',
-                            enabled: !isPending,
-                            onSelected: (value) {
-                              if (value == 'detail') onPressed();
-                              if (value == 'toggle') onChanged(!source.enabled);
-                            },
-                            itemBuilder: (_) => <PopupMenuEntry<String>>[
-                              const PopupMenuItem(value: 'detail', child: Text('详情与管理')),
-                              if (!source.isDevelopment) PopupMenuItem(value: 'toggle', child: Text(source.enabled ? '停用数据源' : '启用数据源')),
-                            ],
-                            icon: const Icon(Icons.more_horiz_rounded),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(source.name, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                          const SizedBox(height: AppSpacing.unit),
+                          Text(
+                            '${source.kindLabel}${source.version == null ? '' : ' · v${source.version}'}',
+                            style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
                           ),
                         ],
                       ),
                     ),
+                    const SizedBox(width: AppSpacing.unit),
+                    if (!source.isDevelopment)
+                      Tooltip(
+                        message: source.enabled ? '停用 ${source.name}' : '启用 ${source.name}',
+                        child: Switch.adaptive(
+                          key: ValueKey<String>('data-source-enabled-${source.id}'),
+                          value: source.enabled,
+                          onChanged: isPending ? null : onChanged,
+                        ),
+                      )
+                    else
+                      const Tooltip(message: '开发数据源由开发目录管理', child: Icon(Icons.code_rounded)),
+                    const Icon(Icons.chevron_right_rounded, size: 18),
                   ],
                 ),
-                if (!compact) ...<Widget>[
-                  const SizedBox(height: AppSpacing.compact),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Icon(Icons.public_rounded, size: 18, color: tokens.mutedText),
-                      const SizedBox(width: AppSpacing.compact),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text('来源网址', style: theme.textTheme.labelSmall?.copyWith(color: tokens.mutedText)),
-                            SelectableText(
-                              source.sourceUrl ?? '缺少',
-                              key: ValueKey<String>('data-source-url-${source.id}'),
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: source.sourceUrl == null ? tokens.mutedText : tokens.dataSourceAccent,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        key: ValueKey<String>('data-source-open-url-${source.id}'),
-                        tooltip: source.sourceUrl == null ? '此数据源未提供来源网址' : '在浏览器打开 ${source.name}',
-                        onPressed: source.sourceUrl == null ? null : onOpenSourceUrl,
-                        icon: const Icon(Icons.open_in_new_rounded, size: 19),
-                      ),
-                    ],
-                  ),
-                ],
-                if (!available) ...<Widget>[
+                const SizedBox(height: AppSpacing.compact),
+                Text(
+                  isPending ? '正在处理，请稍候' : source.statusLabel,
+                  key: ValueKey<String>('data-source-status-${source.id}'),
+                  style: theme.textTheme.bodySmall?.copyWith(color: source.needsAttention ? tokens.notification : tokens.dataSourceAccent),
+                ),
+                if (source.pendingVersion != null)
+                  Text('v${source.pendingVersion} 已下载，下次启动生效', style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+                if (source.enabled && !source.canOpen && source.unavailableReason != null)
+                  Text(source.unavailableReason!, style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
+                if (!compact) ...[
                   const SizedBox(height: AppSpacing.compact),
                   Text(
-                    isPending
-                        ? '正在处理，请稍候'
-                        : !source.enabled
-                        ? '已停用 · 可在右上角菜单启用后查看'
-                        : '等待激活后可查看内容',
+                    source.description,
+                    key: ValueKey<String>('data-source-description-${source.id}'),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText, height: 1.5),
+                  ),
+                  const SizedBox(height: AppSpacing.compact),
+                  SelectableText(
+                    source.sourceUrl ?? '未提供来源网址',
+                    key: ValueKey<String>('data-source-url-${source.id}'),
                     style: theme.textTheme.bodySmall?.copyWith(color: tokens.mutedText),
                   ),
                 ],
-                const SizedBox(height: AppSpacing.regular),
-                Text(
-                  source.description,
-                  key: ValueKey<String>('data-source-description-${source.id}'),
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium?.copyWith(color: tokens.mutedText, height: 1.5),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: PopupMenuButton<String>(
+                    key: ValueKey<String>('data-source-menu-${source.id}'),
+                    tooltip: '${source.name}内容操作',
+                    enabled: !isPending,
+                    onSelected: (value) {
+                      if (value == 'discover') onDiscover?.call();
+                      if (value == 'search') onSearch?.call();
+                      if (value == 'website') onOpenSourceUrl?.call();
+                    },
+                    itemBuilder: (_) => [
+                      if (onDiscover != null)
+                        PopupMenuItem(value: 'discover', enabled: source.canOpen && source.enabled, child: const Text('浏览内容')),
+                      if (onSearch != null)
+                        PopupMenuItem(value: 'search', enabled: source.canOpen && source.enabled, child: const Text('搜索内容')),
+                      PopupMenuItem(value: 'website', enabled: onOpenSourceUrl != null, child: const Text('打开来源网站')),
+                    ],
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpacing.compact),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('内容与网站', style: theme.textTheme.labelMedium?.copyWith(color: tokens.mutedText)),
+                          const SizedBox(width: AppSpacing.unit),
+                          const Icon(Icons.more_horiz_rounded, size: 20),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),

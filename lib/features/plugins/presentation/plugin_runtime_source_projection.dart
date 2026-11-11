@@ -35,8 +35,23 @@ List<DataSourceManagementRowData> pluginManagementSourcesFromConnection(PluginRu
           iconUrl: plugin.iconUrl,
           contentKinds: plugin.contentKinds,
           r18: plugin.r18,
-          canOpen: plugin.enabled && plugin.canDiscoverAndSearch && plugin.activeVersion != null,
+          canOpen:
+              plugin.enabled &&
+              plugin.canDiscoverAndSearch &&
+              plugin.activeVersion != null &&
+              (plugin.status == 'active' || plugin.status == 'development'),
           sourceUrl: plugin.sourceUrl,
+          version: plugin.activeVersion,
+          pendingVersion: plugin.pendingVersion,
+          availabilityLabel: !plugin.canDiscoverAndSearch
+              ? plugin.sourceStateLabel
+              : switch (plugin.status) {
+                  'damaged' => '数据源不可用',
+                  'quarantined' => '已隔离（加载失败）',
+                  'pending' => '等待下次启动生效',
+                  _ => '等待激活',
+                },
+          unavailableReason: plugin.sourceStateReason,
         ),
       )
       .toList(growable: false);

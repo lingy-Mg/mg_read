@@ -28,38 +28,41 @@ Future<DataSourceImportChoice?> showDataSourceImportSheet(BuildContext context) 
   context: context,
   builder: (context) => _ActionSheet(
     title: '添加数据源',
-    description: '从 GitHub 仓库或设备文件安装数据源。',
+    description: '选择来源 → 核对数据源 → 确认安装。',
     children: [
-      _ActionTile(
-        actionKey: const Key('data-source-add-node'),
-        icon: Icons.insert_drive_file_outlined,
-        title: const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME') ? '原生数据源' : 'Node 数据源',
-        subtitle: const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME') ? '选择 .mgplugin 安装包' : '选择 .mgplugin.js 或 .mgplugin 文件',
-        onTap: () => Navigator.pop(context, DataSourceImportChoice.node),
-      ),
-      if (supportsSourceCollectionImport)
+      if (supportsSourceCollectionImport) ...[
+        const _ActionGroupLabel('在线安装'),
         _ActionTile(
           actionKey: const Key('data-source-add-online-repository'),
           icon: Icons.cloud_download_outlined,
           title: '在线插件仓库',
-          subtitle: '从 GitHub 浏览、安装或更新数据源',
+          subtitle: '浏览数据源，勾选后确认安装或更新',
           onTap: () => Navigator.pop(context, DataSourceImportChoice.onlineRepository),
+        ),
+      ],
+      const _ActionGroupLabel('本地导入'),
+      _ActionTile(
+        actionKey: const Key('data-source-add-node'),
+        icon: Icons.insert_drive_file_outlined,
+        title: const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME') ? '本地安装包（原生）' : '本地安装包（Node）',
+        subtitle: const bool.fromEnvironment('MGREAD_NATIVE_RUNTIME') ? '选择提供方给你的 .mgplugin 文件' : '选择 .mgplugin.js 或 .mgplugin 文件',
+        onTap: () => Navigator.pop(context, DataSourceImportChoice.node),
+      ),
+      if (supportsNativeSourceImport)
+        _ActionTile(
+          actionKey: const Key('data-source-add-native'),
+          icon: Icons.developer_board_outlined,
+          title: '本地安装包（原生）',
+          subtitle: '选择适用于当前平台的 .mgplugin 文件',
+          onTap: () => Navigator.pop(context, DataSourceImportChoice.native),
         ),
       if (supportsSourceCollectionImport)
         _ActionTile(
           actionKey: const Key('data-source-add-collection'),
           icon: Icons.library_add_outlined,
           title: '导入数据源合集',
-          subtitle: '选择 .mgplugins 文件，勾选要新增或覆盖的 Node 数据源',
+          subtitle: '选择 .mgplugins 文件，再勾选要安装的数据源',
           onTap: () => Navigator.pop(context, DataSourceImportChoice.collection),
-        ),
-      if (supportsNativeSourceImport)
-        _ActionTile(
-          actionKey: const Key('data-source-add-native'),
-          icon: Icons.developer_board_outlined,
-          title: '原生数据源',
-          subtitle: '选择适用于当前平台的 .mgplugin 安装包',
-          onTap: () => Navigator.pop(context, DataSourceImportChoice.native),
         ),
     ],
   ),
@@ -86,6 +89,7 @@ class DataSourceManagementSheet extends StatelessWidget {
     title: '数据源工具',
     description: busy ? '正在处理数据源，完成后可检测、更新或卸载。' : '检查可用性、排查问题或查看使用帮助。',
     children: [
+      const _ActionGroupLabel('更新与检查'),
       if (canCheckUpdates)
         _ActionTile(
           actionKey: const Key('data-source-check-updates'),
@@ -102,6 +106,7 @@ class DataSourceManagementSheet extends StatelessWidget {
           subtitle: Platform.isWindows || Platform.isMacOS ? '进入检测页，检查已启用的数据源' : '全链路检测需在电脑运行；当前设备请使用运行诊断或搜索验证',
           onTap: busy || !(Platform.isWindows || Platform.isMacOS) ? null : () => Navigator.pop(context, DataSourceManagementAction.verify),
         ),
+      const _ActionGroupLabel('帮助与排查'),
       if (canDiagnose)
         _ActionTile(
           actionKey: const Key('data-source-runtime-status'),
@@ -118,6 +123,7 @@ class DataSourceManagementSheet extends StatelessWidget {
         onTap: () => Navigator.pop(context, DataSourceManagementAction.help),
       ),
       const Divider(),
+      const _ActionGroupLabel('危险操作'),
       _ActionTile(
         actionKey: const Key('data-source-clear-all'),
         icon: Icons.delete_outline_rounded,
@@ -215,7 +221,10 @@ class _ActionTile extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 12),
         child: TvFocusable(
           key: actionKey,
-          autofocus: actionKey == const Key('data-source-add-node') || actionKey == const Key('data-source-check-updates'),
+          autofocus:
+              actionKey == const Key('data-source-add-online-repository') ||
+              (!supportsSourceCollectionImport && actionKey == const Key('data-source-add-node')) ||
+              actionKey == const Key('data-source-check-updates'),
           onPressed: onTap,
           child: Row(
             children: [
@@ -246,4 +255,14 @@ class _ActionTile extends StatelessWidget {
       onTap: onTap,
     );
   }
+}
+
+class _ActionGroupLabel extends StatelessWidget {
+  const _ActionGroupLabel(this.label);
+  final String label;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: AppSpacing.regular, bottom: AppSpacing.unit),
+    child: Text(label, style: Theme.of(context).textTheme.labelLarge?.copyWith(color: AppThemeTokens.of(context).mutedText)),
+  );
 }
