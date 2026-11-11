@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AliceBookHouseSource } from '../dist/source.js';
 import { createSourceTestHarness } from '@mgread/source-testkit';
-import * as plugin from '../dist/index.mjs';
+// Bun shares module instances across test files. Keep this mutable failure fixture
+// separate from the standard reading-chain tests that activate their own host.
+import * as plugin from '../dist/index.mjs?content-errors';
 
 const url = 'https://www.alicesw.com/book/42/first.html';
 const chapterId = `chapter:${Buffer.from('/book/42/first.html').toString('base64url')}`;
