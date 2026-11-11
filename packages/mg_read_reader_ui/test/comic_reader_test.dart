@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
+import 'package:novel_reader_ui/src/core/content_limits.dart';
 import 'package:novel_reader_ui/src/ui/comic/comic_image_cache.dart';
 import 'package:novel_reader_ui/src/ui/comic/comic_image_tile.dart';
 import 'package:novel_reader_ui/src/ui/comic/comic_chapter_preloader.dart';
@@ -25,6 +26,28 @@ void main() {
 
 ComicImageInfo _image(String id, int? size) =>
     ComicImageInfo(id: id, index: 0, width: 1, height: 1, byteLength: size);
+
+class _LargeImageComicSource extends _FakeComicSource {
+  static const size = 9 * 1024 * 1024;
+  @override
+  Future<ComicChapterContent> loadChapterContent(
+    String bookId,
+    String chapterId,
+  ) async => ComicChapterContent(
+    chapterId: chapterId,
+    title: '第一章',
+    images: <ComicImageInfo>[_image('image-1', size)],
+  );
+  @override
+  Future<Uint8List> loadImageBytes(
+    String bookId,
+    String chapterId,
+    String imageId,
+  ) async {
+    final png = await super.loadImageBytes(bookId, chapterId, imageId);
+    return Uint8List(size)..setRange(0, png.length, png);
+  }
+}
 
 class _FakeComicSource implements ComicReaderDataSource {
   int imageCalls = 0;
@@ -79,7 +102,9 @@ class _FakeComicSource implements ComicReaderDataSource {
     final int size = switch (imageId) {
       'one' || 'two' => 2,
       'three' => 8,
-      'too-large' => 8 * 1024 * 1024 + 1,
+      'too-large' => ReaderContentLimits.imageBytes + 1,
+      'at-limit' => ReaderContentLimits.imageBytes,
+      'above-old-limit' => 9 * 1024 * 1024,
       _ => 1,
     };
     if (imageId == 'image-1') {

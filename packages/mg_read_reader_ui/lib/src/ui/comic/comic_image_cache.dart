@@ -7,6 +7,7 @@ import 'dart:typed_data';
 
 import '../../api/comic_contracts.dart';
 import '../../api/comic_models.dart';
+import '../../core/content_limits.dart';
 import 'comic_image_dimensions.dart';
 
 /// Session-local, encoded-byte cache for progressively loaded comic images.
@@ -22,7 +23,7 @@ class ComicImageByteCache {
     required this.dataSource,
     this.maxEntries = 1000,
     int maxBytes = 48 * 1024 * 1024,
-    this.maxSingleImageBytes = 8 * 1024 * 1024,
+    this.maxSingleImageBytes = ReaderContentLimits.imageBytes,
     this.maxConcurrentLoads = 4,
     this.maxQueuedLoads = 32,
     this.onDimensionsChanged,
@@ -242,7 +243,9 @@ class ComicImageByteCache {
         throw StateError('Comic image bytes must not be empty.');
       }
       if (bytes.lengthInBytes > maxSingleImageBytes) {
-        throw StateError('Comic image exceeds the safe encoded-byte limit.');
+        throw StateError(
+          'Comic image is ${bytes.lengthInBytes} bytes; the encoded-byte limit is $maxSingleImageBytes bytes.',
+        );
       }
       if (request.expectedByteLength != null &&
           request.expectedByteLength != bytes.lengthInBytes) {

@@ -450,7 +450,7 @@ void _safeText(String text) {
 
 void _validateCover(List<int> bytes, String mimeType) {
   if (bytes.isEmpty || bytes.length > ContentLimits.coverBytes) {
-    throw ArgumentError.value(bytes.length, 'bytes');
+    throw ArgumentError.value(bytes.length, 'bytes', 'Cover must contain 1 to ${ContentLimits.coverBytes} bytes.');
   }
   if (mimeType.isEmpty || mimeType.length > 128) {
     throw ArgumentError.value(mimeType, 'mimeType');

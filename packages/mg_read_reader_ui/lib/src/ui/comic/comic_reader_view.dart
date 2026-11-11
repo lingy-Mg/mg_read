@@ -28,6 +28,7 @@ import '../../api/comic_contracts.dart';
 import '../../api/comic_controller.dart';
 import '../../api/comic_models.dart';
 import '../../api/models.dart';
+import '../../core/content_limits.dart';
 import '../../platform/reader_platform.dart';
 import '../../platform/screen_awake_coordinator.dart';
 import '../comments/reader_comment_strings.dart';
@@ -137,7 +138,7 @@ class _ComicReaderViewState extends State<ComicReaderView>
   static const Duration _saveDelay = Duration(milliseconds: 800);
   static const int _catalogPageSize = 50;
   static const int _metadataWindowLimit = 3;
-  static const int _maxSingleImageBytes = 8 * 1024 * 1024;
+  static const int _maxSingleImageBytes = ReaderContentLimits.imageBytes;
   static const double _chapterHeaderExtent = 54;
   static const double _boundaryExtent = 72;
   static const double _defaultAspectRatio = .75;

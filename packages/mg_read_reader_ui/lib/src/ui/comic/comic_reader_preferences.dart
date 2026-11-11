@@ -434,15 +434,18 @@ extension _ComicReaderPreferences on _ComicReaderViewState {
     final Set<String> ids = <String>{};
     for (int index = 0; index < content.images.length; index++) {
       final ComicImageInfo image = content.images[index];
+      if (image.byteLength != null &&
+          image.byteLength! > _ComicReaderViewState._maxSingleImageBytes) {
+        throw StateError(
+          'Comic image declares ${image.byteLength} bytes; the limit is ${_ComicReaderViewState._maxSingleImageBytes} bytes.',
+        );
+      }
       if (image.id.trim().isEmpty ||
           !ids.add(image.id) ||
           image.index != index ||
           (image.width != null && image.width! <= 0) ||
           (image.height != null && image.height! <= 0) ||
-          (image.byteLength != null &&
-              (image.byteLength! <= 0 ||
-                  image.byteLength! >
-                      _ComicReaderViewState._maxSingleImageBytes))) {
+          (image.byteLength != null && image.byteLength! <= 0)) {
         throw StateError('Comic image metadata is invalid.');
       }
     }

@@ -17,8 +17,8 @@ internal object ContentLimits {
     const val urlCharacters: Int = 266240
     const val httpHeaderBytes: Int = 294912
     const val headerValueCharacters: Int = 65536
-    const val imageBytes: Int = 104857600
-    const val coverBytes: Int = 104857600
+    const val imageBytes: Int = 52428800
+    const val coverBytes: Int = 52428800
     const val hlsBytes: Int = 10485760
     const val sourceHtmlBytes: Int = 67108864
     const val cacheEntryBytes: Int = 67108864

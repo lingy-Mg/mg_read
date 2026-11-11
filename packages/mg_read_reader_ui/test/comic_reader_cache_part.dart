@@ -147,7 +147,7 @@ void _registerComicCacheTests() {
   });
 
   test(
-    'comic image cache enforces single-flight, byte LRU and 8 MiB default',
+    'comic image cache enforces single-flight, byte LRU and the shared single-image limit',
     () async {
       final source = _FakeComicSource();
       final cache = ComicImageByteCache(
@@ -156,7 +156,7 @@ void _registerComicCacheTests() {
         maxEntries: 2,
         maxBytes: 10,
       );
-      expect(cache.maxSingleImageBytes, 8 * 1024 * 1024);
+      expect(cache.maxSingleImageBytes, ReaderContentLimits.imageBytes);
       final image = _image('one', 2);
       final first = cache.load('chapter-1', image);
       final second = cache.load('chapter-1', image);
@@ -169,8 +169,36 @@ void _registerComicCacheTests() {
       expect(cache.byteCount, 10);
       final limited = ComicImageByteCache(bookId: 'book', dataSource: source);
       await expectLater(
-        limited.load('chapter-1', _image('too-large', 8 * 1024 * 1024 + 1)),
+        limited.load(
+          'chapter-1',
+          _image('too-large', ReaderContentLimits.imageBytes + 1),
+        ),
         throwsStateError,
+      );
+    },
+  );
+
+  test(
+    'single-image loading accepts 9 MiB and exactly 50 MiB while cache retention stays independent',
+    () async {
+      final cache = ComicImageByteCache(
+        bookId: 'book',
+        dataSource: _FakeComicSource(),
+      );
+      addTearDown(cache.dispose);
+      expect(
+        (await cache.load(
+          'chapter-1',
+          _image('above-old-limit', 9 * 1024 * 1024),
+        )).length,
+        9 * 1024 * 1024,
+      );
+      expect(
+        (await cache.load(
+          'chapter-1',
+          _image('at-limit', 50 * 1024 * 1024),
+        )).length,
+        50 * 1024 * 1024,
       );
     },
   );

@@ -10,6 +10,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
+import 'package:mg_read/core/content_limits.dart';
 import 'package:mg_read/shared/presentation/widgets/local_document_image.dart';
 import '../application/local_import_controller.dart';
 import '../data/local_import_ingress.dart';
@@ -202,12 +203,22 @@ class _LocalDocumentDetailPageState extends ConsumerState<LocalDocumentDetailPag
     final selected = await LocalImportIngress.instance.pickImages();
     if (selected.isEmpty) return;
     final input = selected.first;
-    final bytes = await input.openRead().fold<List<int>>(<int>[], (all, chunk) => all..addAll(chunk));
-    if (bytes.length > 8 * 1024 * 1024) {
-      _show('封面最大支持 8 MiB');
-      return;
-    }
     try {
+      final limit = ContentLimits.coverBytes;
+      final tooLargeMessage = '封面最大支持 ${limit ~/ (1024 * 1024)} MiB';
+      if ((input.bytes ?? 0) > limit) {
+        _show(tooLargeMessage);
+        return;
+      }
+      final buffer = BytesBuilder(copy: false);
+      await for (final chunk in input.openRead()) {
+        if (buffer.length + chunk.length > limit) {
+          _show(tooLargeMessage);
+          return;
+        }
+        buffer.add(chunk);
+      }
+      final bytes = buffer.takeBytes();
       final mime = input.fileName.toLowerCase().endsWith('.png')
           ? 'image/png'
           : input.fileName.toLowerCase().endsWith('.webp')

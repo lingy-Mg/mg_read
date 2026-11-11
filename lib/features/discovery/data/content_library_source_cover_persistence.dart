@@ -21,6 +21,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:mg_read/core/content_library/content_library.dart';
+import 'package:mg_read/core/content_limits.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
 /// 搜索、发现、详情、书架、播放器和数据源图标共用的封面解析实现。
@@ -271,7 +272,7 @@ Future<void> _discardResponse(HttpClientResponse response) async {
   }
 }
 
-const int _maximumCoverBytes = 5 * 1024 * 1024;
+const int _maximumCoverBytes = ContentLimits.coverBytes;
 const int _maximumDiscardedResponseBytes = 64 * 1024;
 const String _directClientConfiguration = 'direct';
 

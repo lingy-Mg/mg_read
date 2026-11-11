@@ -147,7 +147,8 @@ plugins/sources/                    真实数据源及其他能力参考实现
   容量的唯一配置是 `tools/content_limits.json`；`tools/generate_content_limits.mjs` 生成 Dart、TS/JS、Rust 和 Kotlin 常量，
   Runtime 构建和 Flutter 检查必须执行 `--check` 防止副本漂移。完整目录和漫画清单另允许 100000 项；
   标题 4096 字符、身份和游标 65536 字符、资源 token 262144 字符；生成、路由、解码、字段校验与 HTTP listener 必须同时支持。
-  漫画单图/封面 100 MiB、HLS 清单 10 MiB；来源私有缓存单条 64 MiB、总量 1 GiB，满时淘汰旧缓存。
+  漫画单图/封面 50 MiB，下载、阅读、持久化、本地封面与同步入口使用同一预算；HLS 清单 10 MiB。
+  来源私有缓存单条 64 MiB、总量 1 GiB，满时淘汰旧缓存。
   本地导入允许 2 GiB 文件、16 GiB 展开量和 200000 条目，EPUB 支持 ZIP64；单篇 XHTML 128 MiB、资源 100 MiB。
   插件 artifact 单文件 256 MiB、批次 2 GiB；正文单次尝试 90 秒、内容调用 300 秒、阅读器等待 330 秒，外层不得提前截断内层。
 

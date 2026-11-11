@@ -16,8 +16,8 @@ abstract final class ContentLimits {
   static const int urlCharacters = 266240;
   static const int httpHeaderBytes = 294912;
   static const int headerValueCharacters = 65536;
-  static const int imageBytes = 104857600;
-  static const int coverBytes = 104857600;
+  static const int imageBytes = 52428800;
+  static const int coverBytes = 52428800;
   static const int hlsBytes = 10485760;
   static const int sourceHtmlBytes = 67108864;
   static const int cacheEntryBytes = 67108864;

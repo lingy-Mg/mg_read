@@ -347,7 +347,7 @@ final class FileObjectStore {
       throw ArgumentError('manga image identity is invalid');
     }
     if (bytes.isEmpty || bytes.length > _mangaImageMaxBytes) {
-      throw ArgumentError('manga image exceeds limit');
+      throw ArgumentError('Manga image is ${bytes.length} bytes; the limit is $_mangaImageMaxBytes bytes.');
     }
     if (!RegExp(r'^image/[A-Za-z0-9.+-]+$').hasMatch(mimeType)) {
       throw ArgumentError.value(mimeType, 'mimeType');

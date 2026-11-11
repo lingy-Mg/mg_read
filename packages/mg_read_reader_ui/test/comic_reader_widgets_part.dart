@@ -2,6 +2,28 @@
 part of 'comic_reader_test.dart';
 
 void _registerComicWidgetTests() {
+  testWidgets(
+    'a 9 MiB page passes the view metadata gate and becomes readable',
+    (tester) async {
+      final observer = _RecordingComicObserver();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ComicReaderView(
+            bookId: 'book',
+            dataSource: _LargeImageComicSource(),
+            stateStore: _MemoryComicStateStore(),
+            observer: observer,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(observer.firstContentCount, 1);
+      expect(find.bySemanticsLabel('漫画图片 1'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
   testWidgets('comic reader exposes stable actions and sends exit observer', (
     WidgetTester tester,
   ) async {

@@ -107,13 +107,17 @@ Future<Uint8List> _fetchComicImageAttempt(Uri uri, {HttpClient? client}) async {
       if (!declaredAsImage && !declaredAsGenericBinary) {
         throw _ComicImageValidationException('Image MIME is invalid.');
       }
-      if (response.contentLength > maximumBytes) throw StateError('Image exceeds the shared 100 MiB budget.');
+      if (response.contentLength > maximumBytes) {
+        throw StateError('Image is ${response.contentLength} bytes; the limit is $maximumBytes bytes.');
+      }
       unreadResponse = null;
       final bytes = await response
           .timeout(const Duration(seconds: 20))
           .fold<BytesBuilder>(BytesBuilder(), (b, chunk) {
+            if (b.length + chunk.length > maximumBytes) {
+              throw StateError('Image is at least ${b.length + chunk.length} bytes; the limit is $maximumBytes bytes.');
+            }
             b.add(chunk);
-            if (b.length > maximumBytes) throw StateError('Image exceeds the shared 100 MiB budget.');
             return b;
           })
           .then((b) => b.takeBytes());

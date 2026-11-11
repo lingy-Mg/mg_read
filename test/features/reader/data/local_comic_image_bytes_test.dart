@@ -3,9 +3,16 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/features/reader/data/local_comic_image_bytes.dart';
+import 'package:mg_read/core/content_limits.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('local raster pages accept exactly 50 MiB and reject one extra byte', () async {
+    final allowed = Uint8List(50 * 1024 * 1024);
+    expect(identical(await prepareLocalComicImageBytes(allowed, mimeType: 'image/png'), allowed), isTrue);
+    await expectLater(prepareLocalComicImageBytes(Uint8List(ContentLimits.imageBytes + 1), mimeType: 'image/png'), throwsFormatException);
+  });
 
   test('raster PNG bytes are returned unchanged', () async {
     final original = await _png(width: 3, height: 2);

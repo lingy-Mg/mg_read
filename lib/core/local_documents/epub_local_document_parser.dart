@@ -551,6 +551,8 @@ String? _resolvePath(String base, String href) {
 String _dirOf(String path) => path.contains('/') ? path.substring(0, path.lastIndexOf('/')) : '';
 int _entryLimit(String path, String? mime) => _isXhtmlName(path)
     ? _maxXhtml
+    : mime?.startsWith('image/') == true
+    ? ContentLimits.imageBytes
     : mime?.startsWith('text/css') == true || ['.css', '.xml', '.opf', '.ncx'].any(path.toLowerCase().endsWith)
     ? _maxMetadata
     : _maxResource;

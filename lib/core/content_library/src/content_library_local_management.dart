@@ -3,7 +3,7 @@
 part of 'content_library.dart';
 
 Future<Map<String, Object?>> _prepareLocalCover(LocalDocumentObjectStore store, List<int> bytes) async {
-  if (bytes.length > 8 * 1024 * 1024 || bytes.isEmpty) throw const LocalDocumentException('cover_too_large');
+  if (bytes.length > ContentLimits.coverBytes || bytes.isEmpty) throw const LocalDocumentException('cover_too_large');
   String? mime;
   if (bytes.length >= 8 && bytes.take(8).join(',') == '137,80,78,71,13,10,26,10') mime = 'image/png';
   if (bytes.length >= 3 && bytes[0] == 0xff && bytes[1] == 0xd8 && bytes[2] == 0xff) mime = 'image/jpeg';
@@ -32,7 +32,7 @@ extension LocalDocumentManagement on ContentLibrary {
           local.remove('coverHash');
           local.remove('coverMimeType');
         } else {
-          if (bytes.isEmpty || bytes.length > 8 * 1024 * 1024) throw const LocalDocumentException('cover_too_large');
+          if (bytes.isEmpty || bytes.length > ContentLimits.coverBytes) throw const LocalDocumentException('cover_too_large');
           String? detected;
           if (bytes.length >= 8 && bytes.take(8).join(',') == '137,80,78,71,13,10,26,10') detected = 'image/png';
           if (bytes.length >= 3 && bytes[0] == 0xff && bytes[1] == 0xd8 && bytes[2] == 0xff) detected = 'image/jpeg';

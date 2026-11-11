@@ -4,6 +4,7 @@ library;
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter_test/flutter_test.dart';
@@ -61,7 +62,7 @@ void main() {
       session.generation,
     );
     await session.close();
-    const senderCover = <int>[137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3];
+    final senderCover = Uint8List(9 * 1024 * 1024)..setRange(0, 8, [137, 80, 78, 71, 13, 10, 26, 10]);
     await source.updateLocalDocumentCover(sourceId, bytes: senderCover);
 
     final bundlePath = '${root.path}${Platform.pathSeparator}local-only.mgread';
@@ -69,6 +70,7 @@ void main() {
     final exporter = ImportExportService(_LocalOnlyGateway(source), picker);
     final exportPlan = await exporter.prepareExport();
     final descriptor = exportPlan.manifest.localDocuments.single;
+    expect(descriptor.coverBytes, 9 * 1024 * 1024);
     expect(descriptor.title, '用户书名');
     expect(descriptor.author, '作者甲');
     expect(descriptor.progress?.totalReadingSeconds, 37);

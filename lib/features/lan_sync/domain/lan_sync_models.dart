@@ -13,12 +13,13 @@ library;
 import 'package:flutter/foundation.dart';
 
 import 'package:mg_read/core/content_library/content_library.dart';
+import 'package:mg_read/core/content_limits.dart';
 
 const int lanSyncProtocolVersion = 3;
 const int lanSyncMaxManifestBytes = 1024 * 1024;
 const int lanSyncMaxPluginBytes = 32 * 1024 * 1024;
 const int lanSyncMaxLocalDocumentBytes = 256 * 1024 * 1024;
-const int lanSyncMaxLocalCoverBytes = 8 * 1024 * 1024;
+const int lanSyncMaxLocalCoverBytes = ContentLimits.coverBytes;
 const int lanSyncMaxLocalDocumentCount = 1000;
 const int lanSyncMaxShelfItemCount = bookshelfMaxItemCount;
 const int lanSyncMaxBatchBytes = 512 * 1024 * 1024;

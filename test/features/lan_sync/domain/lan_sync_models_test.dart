@@ -129,7 +129,7 @@ void main() {
       title: '本地书',
       options: const <String, Object?>{'chapterRule': 'auto'},
       coverSha256: 'b'.padRight(64, 'b'),
-      coverBytes: 12,
+      coverBytes: 50 * 1024 * 1024,
       coverMimeType: 'image/png',
       bookmarks: <LanSyncLocalBookmark>[
         LanSyncLocalBookmark(
@@ -152,6 +152,11 @@ void main() {
     final decoded = LanSyncManifest.fromPairedTasksJson(manifest.toPairedTasksJson());
     expect(decoded.localDocuments.single.documentId, document.documentId);
     expect(decoded.localDocuments.single.coverSha256, document.coverSha256);
+    expect(decoded.localDocuments.single.coverBytes, 50 * 1024 * 1024);
+    expect(
+      () => LanSyncLocalDocumentDescriptor.fromJson({...document.toJson(), 'coverBytes': 50 * 1024 * 1024 + 1}),
+      throwsFormatException,
+    );
     expect(decoded.localDocuments.single.bookmarks.single.excerpt, '原文');
   });
 

@@ -377,7 +377,9 @@ final class ContentLibraryComicReaderDataSource
       }
     }
     if (bytes.isEmpty) throw StateError('Comic image is empty.');
-    if (bytes.length > _maximumImageBytes) throw StateError('Comic image exceeds the shared 100 MiB budget.');
+    if (bytes.length > _maximumImageBytes) {
+      throw StateError('Comic image is ${bytes.length} bytes; the limit is $_maximumImageBytes bytes.');
+    }
     try {
       await library.saveMangaImage(
         itemId: item.id,

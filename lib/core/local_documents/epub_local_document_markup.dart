@@ -65,9 +65,9 @@ String _copyResource(
   if (existing != null) return existing.id;
   final id = _stableId('r', path);
   final fileName = 'resources/${id}_${path.split('/').last.replaceAll(RegExp(r'[^\w.-]'), '_')}';
-  final bytes = _bytes(entry, _maxResource, 'image');
+  final bytes = _bytes(entry, ContentLimits.imageBytes, 'image');
   if (mime == 'image/svg+xml') {
-    final svg = _xmlBytes(bytes, _maxResource, 'svg');
+    final svg = _xmlBytes(bytes, ContentLimits.imageBytes, 'svg');
     final elements = [svg.rootElement, ...svg.rootElement.descendants.whereType<XmlElement>()];
     if (elements.any(
       (node) =>

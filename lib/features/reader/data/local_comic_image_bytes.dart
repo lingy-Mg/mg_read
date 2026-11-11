@@ -10,7 +10,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_svg/flutter_svg.dart';
 
-const int _maxSvgBytes = ContentLimits.imageBytes;
+const int _maxImageBytes = ContentLimits.imageBytes;
 const int _maxRasterEdge = 4096;
 const int _maxRasterPixels = 4 * 1024 * 1024;
 
@@ -21,11 +21,11 @@ const int _maxRasterPixels = 4 * 1024 * 1024;
 /// are bounded; malformed SVGs fail with a readable [FormatException].
 Future<Uint8List> prepareLocalComicImageBytes(Uint8List bytes, {required String? mimeType}) async {
   final normalizedMime = mimeType?.split(';').first.trim().toLowerCase();
+  if (bytes.length > _maxImageBytes) {
+    throw FormatException('Local EPUB image is ${bytes.length} bytes; the image limit is $_maxImageBytes bytes.');
+  }
   if (normalizedMime != 'image/svg+xml') return bytes;
   if (bytes.isEmpty) throw const FormatException('Local EPUB SVG is empty.');
-  if (bytes.length > _maxSvgBytes) {
-    throw const FormatException('Local EPUB SVG exceeds the shared 100 MiB image budget.');
-  }
 
   PictureInfo? pictureInfo;
   ui.Picture? outputPicture;

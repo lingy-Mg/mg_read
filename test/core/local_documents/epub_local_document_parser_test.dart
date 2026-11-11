@@ -22,6 +22,27 @@ void main() {
     if (await temp.exists()) await temp.delete(recursive: true);
   });
 
+  test('EPUB comic resources accept 50 MiB and reject one extra byte before decoding', () async {
+    final opf = _opf2.replaceFirst('<manifest>', '<manifest><item id="page" href="page.png" media-type="image/png"/>');
+    final base = await _epub(temp, {'OPS/chapter.xhtml': _xhtml('<img src="page.png"/>')}, opf: opf);
+    final baseBytes = await base.readAsBytes();
+    for (final size in [50 * 1024 * 1024, 50 * 1024 * 1024 + 1]) {
+      final archive = ZipDecoder().decodeBytes(baseBytes);
+      final image = Uint8List(size)..setRange(0, 8, [137, 80, 78, 71, 13, 10, 26, 10]);
+      archive.addFile(ArchiveFile.bytes('OPS/page.png', image));
+      final file = File('${temp.path}/image-$size.epub');
+      await file.writeAsBytes(ZipEncoder().encode(archive));
+      final target = Directory('${temp.path}/out-$size');
+      if (size == 50 * 1024 * 1024) {
+        final parsed = await parser.parse(source: file, output: target);
+        expect(parsed.readingKind, LocalDocumentReadingKind.comic);
+        expect(parsed.resources.single.bytes, size);
+      } else {
+        await _expectCode(parser, file, target, 'epub_entry_size');
+      }
+    }
+  });
+
   test('ZIP64 directories are accepted without weakening EPUB content validation', () async {
     final file = await _epub(temp, {'OPS/chapter.xhtml': _xhtml('<p>ZIP64 正文</p>')}, opf: _opf2);
     final bytes = await file.readAsBytes();

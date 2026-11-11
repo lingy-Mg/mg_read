@@ -537,10 +537,10 @@ void main() {
     'empty': (response) async {
       response.headers.contentType = ContentType('image', 'png');
     },
-    'larger than 8 MiB': (response) async {
+    'larger than 50 MiB': (response) async {
       response.headers.contentType = ContentType('image', 'png');
       final chunk = Uint8List(1024 * 1024);
-      for (var index = 0; index < 9; index++) {
+      for (var index = 0; index < 51; index++) {
         response.add(chunk);
       }
     },
@@ -549,8 +549,12 @@ void main() {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       addTearDown(() => server.close(force: true));
       server.listen((request) async {
-        await failure.value(request.response);
-        await request.response.close();
+        try {
+          await failure.value(request.response);
+          await request.response.close();
+        } on SocketException {
+          // An oversize response is intentionally canceled by the reader.
+        }
       });
       final fixture = await _LibraryFixture.open();
       addTearDown(fixture.close);
