@@ -6,6 +6,12 @@ import org.junit.Test
 
 class AndroidBrowserSessionContractTest {
     @Test
+    fun browserResponseBudgetAllowsTenMiBAndRejectsOneByteMore() {
+        assertTrue(isAllowedBrowserResponseSize(10 * 1024 * 1024))
+        assertTrue(!isAllowedBrowserResponseSize(10 * 1024 * 1024 + 1))
+        assertTrue(!isAllowedBrowserResponseSize(0))
+    }
+    @Test
     fun normalizesSecureOriginsWithoutLosingNonDefaultPorts() {
         assertEquals("https://example.com", originOf("https://EXAMPLE.com/protected"))
         assertEquals("https://example.com:8443", originOf("https://example.com:8443/"))

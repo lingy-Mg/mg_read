@@ -223,8 +223,8 @@ test("content v1 requires explicit null keys and preserves zero and empty arrays
   assert.throws(() => validateContentResult("org.example.nulls", "空值数据源", { contentKind: "manga", chapterId: "chapter:bad", title: null, updatedAt: null, text: null, pages: [{ id: "page:bad", index: 0, url: "https://example.invalid/page/0", mimeType: null, width: null, height: null, resourcePolicy: "refreshable", expiresAt: null }] }), PluginContentValidationError);
   const underManifestBudget = Array.from({ length: 60 }, (_, index) => ({ id: `page:${index}:${"x".repeat(8180)}`, index, url: "https://example.invalid/page/0", mimeType: null, width: null, height: null }));
   assert.equal(validateContentResult("org.example.nulls", "空值数据源", { contentKind: "manga", chapterId: "chapter:budget", title: null, updatedAt: null, text: null, pages: underManifestBudget }).pages.length, 60);
-  const overManifestBudget = Array.from({ length: 63 }, (_, index) => ({ id: `page:${index}:${"x".repeat(8180)}`, index, url: "https://example.invalid/page/0", mimeType: null, width: null, height: null }));
-  assert.throws(() => validateContentResult("org.example.nulls", "空值数据源", { contentKind: "manga", chapterId: "chapter:budget", title: null, updatedAt: null, text: null, pages: overManifestBudget }), PluginContentValidationError);
+  const expandedManifest = Array.from({ length: 500 }, (_, index) => ({ id: `page:${index}:${"x".repeat(8180)}`, index, url: "https://example.invalid/page/0", mimeType: null, width: null, height: null }));
+  assert.equal(validateContentResult("org.example.nulls", "空值数据源", { contentKind: "manga", chapterId: "chapter:budget", title: null, updatedAt: null, text: null, pages: expandedManifest }).pages.length, 500);
 
   assert.throws(
     () =>
@@ -370,7 +370,7 @@ test("complete chapter catalogs enforce count, byte, uniqueness, and shape limit
     PluginContentValidationError,
   );
   const oversized = Array.from({ length: 4_500 }, (_, index) =>
-    chapter(index, `chapter:${"x".repeat(480)}`),
+    chapter(index, `chapter:${"x".repeat(2500)}`),
   );
   assert.throws(
     () =>

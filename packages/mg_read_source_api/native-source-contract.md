@@ -6,7 +6,7 @@
 
 - 原生插件在一个共享 worker 内按需初始化，随后以 HTTP `{method,params}` 接受六个来源方法。
   Node 与原生保持相同内容语义、稳定 id/target/cursor/chapterId 和强类型 Facade；SDK 校验预算、能力和资源归属。
-- manifest 可声明 novel/manga/audio/video；JSON 8 MiB，小说单章 1 MiB，目录/漫画页最多 5000。参考 Alice 只声明小说。
+- manifest 可声明 novel/manga/audio/video；通用结果、目录和漫画清单 JSON 为 10 MiB，小说单章正文为 10 MiB UTF-8，小说 JSON 另留最坏六倍转义与 64 KiB 元数据空间。目录/漫画页最多 5000，搜索每页和发现单集合最多 1000 项。参考 Alice 只声明小说。
 - 插件内部 `{$resource:{kind,url,headers?}}` 由 SDK 投影为 `/v1/source-resource/<base64url-json>`。
   payload 与 Node 一样包含完整描述，额外 engine=native；缓存存 descriptor，不存动态端口。无内存令牌表或闲置过期。
 - Base64 可逆，不保证上游头的秘密性。媒体公开 headers 为空，但 payload 本身可能携带上游头，禁止把其当成加密。

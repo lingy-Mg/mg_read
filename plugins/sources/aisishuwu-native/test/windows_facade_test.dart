@@ -27,7 +27,7 @@ void main() {
       final artifact = File(
         '${root.path}${Platform.pathSeparator}plugins${Platform.pathSeparator}'
         'sources${Platform.pathSeparator}aisishuwu-native${Platform.pathSeparator}'
-        'dist${Platform.pathSeparator}aisishuwu-native-0.3.0.mgplugin',
+        'dist${Platform.pathSeparator}aisishuwu-native-0.3.2.mgplugin',
       );
       expect(await hostExecutable.exists(), isTrue);
       expect(await artifact.exists(), isTrue);
@@ -60,7 +60,7 @@ void main() {
       final source = installed.singleWhere((item) => item.id == _pluginId);
       expect(source.status, 'active');
       expect(source.enabled, isTrue);
-      expect(source.activeVersion, '0.3.0');
+      expect(source.activeVersion, '0.3.2');
 
       final proxy = _environmentProxy();
       if (proxy != null) await runtime.configurePluginHttpProxy(proxy);
@@ -227,7 +227,7 @@ void main() {
       final recoveredSource = installedAfterCrash.singleWhere((item) => item.id == _pluginId);
       expect(recoveredSource.status, 'active');
       expect(recoveredSource.enabled, isTrue);
-      expect(recoveredSource.activeVersion, '0.3.0');
+      expect(recoveredSource.activeVersion, '0.3.2');
 
       final restartCacheWatch = Stopwatch()..start();
       final cachedDetail = await runtime.invoke(const SourceDetailInvocation(pluginId: _pluginId, id: _bookId));
@@ -270,7 +270,7 @@ void main() {
             pluginId: _pluginId,
             provenance: PluginArtifactProvenance.installed,
             checksum: _crc32(packageBytes),
-            version: '0.3.0',
+            version: '0.3.2',
           ),
           bytes: Stream<List<int>>.value(packageBytes),
         ),

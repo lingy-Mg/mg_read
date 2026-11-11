@@ -4,6 +4,7 @@
  * Responsibilities:
  * - validate the versioned plugin request before it reaches a platform host;
  * - preserve invocation cancellation/deadline and map host failures to stable errors.
+ * - permit up to 10 MiB of UTF-8 response body across supported platform providers.
  *
  * Notes:
  * - this file does not launch a browser or persist browser state;
@@ -15,7 +16,7 @@ import { Buffer } from "node:buffer";
 import { PluginManagerError } from "./plugin-manager-contract.js";
 
 export const maximumBrowserRequestBytes = 64 * 1024;
-export const maximumBrowserResponseBytes = 2 * 1024 * 1024;
+export const maximumBrowserResponseBytes = 10 * 1024 * 1024;
 export const maximumBrowserTimeoutMs = 120_000;
 
 export interface PluginBrowserSessionRequest {

@@ -25,6 +25,18 @@ function request(overrides = {}) {
   };
 }
 
+test('browser responses accept 10 MiB of UTF-8 and reject larger bodies or requests', async () => {
+  const limit = 10 * 1024 * 1024;
+  let body = 'x'.repeat(limit);
+  const provider = {async request(value) {return {version:1,status:200,finalUrl:value.url,headers:{},body};}};
+  const invoke = maxResponseBytes => requestPluginBrowserSession(provider, 'org.mgread.fixture',
+    request({maxResponseBytes}), new AbortController().signal, String(Date.now()+10000));
+  assert.equal((await invoke(limit)).body.length, limit);
+  await assert.rejects(invoke(limit+1), error => error.code === 'invalid_request');
+  body += 'x';
+  await assert.rejects(invoke(limit));
+});
+
 test("v1 forwards all host transports and both presentation modes", async () => {
   const calls = [];
   const provider = {

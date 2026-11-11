@@ -71,7 +71,9 @@ export interface PluginWebViewPage {
     params?: PluginJsonObject,
     options?: PluginWebViewCallOptions,
   ): Promise<T>;
+  /** Rendered HTML is bounded to 10 MiB of UTF-8 by the host. */
   getHtml(options?: PluginWebViewCallOptions): Promise<string>;
+  /** Browser-session response bodies are bounded to 10 MiB of UTF-8. */
   fetch(request: PluginWebViewFetchRequest): Promise<PluginWebViewFetchResponse>;
   click(request: { readonly x: number; readonly y: number; readonly timeoutMs?: number }): Promise<void>;
   inputText(text: string, options?: PluginWebViewCallOptions): Promise<void>;

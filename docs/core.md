@@ -141,8 +141,9 @@ plugins/sources/                    真实数据源及其他能力参考实现
 
 - Node/Bun/Javet 共用 10 MiB 通用内容响应预算（发现、搜索、详情等）；小说正文允许 10 MiB UTF-8 字节，
   小说 JSON 独立容纳最坏六倍转义及 64 KiB 元数据，控制帧另留 64 KiB RPC 信封空间。
-  Flutter Facade 与 Runtime 的握手限制必须一致。该预算不取代目录 2 MiB、漫画清单 512 KiB
-  的专用限制，也不取代组件数量、集合项数和字段长度校验；媒体与图片主体仍走资源数据面。
+  Flutter Facade 与 Runtime 的握手限制必须一致。目录和漫画清单各允许 10 MiB JSON；搜索每页和发现单集合各允许 1000 项。
+  Windows/Android 浏览器会话响应允许 10 MiB UTF-8；独立原生 SDK 小说正文同为 10 MiB UTF-8。
+  大小预算不取代组件数量、目录章数、漫画页数和字段长度校验；媒体与图片主体仍走资源数据面。
 
 - 统一称“数据源”；只有项目、artifact、安装、启停和 Runtime 生命周期使用“数据源插件”。
 - 调用链为 `discover/search -> contentId -> getDetail/getChapters -> chapterId -> getContent`。ID、cursor 和

@@ -12,7 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{future::Future, pin::Pin};
 
 const SOURCE_ID: &str = "org.mgread.aisishuwu.native";
-const SOURCE_VERSION: &str = "0.3.0";
+const SOURCE_VERSION: &str = "0.3.2";
 const BODY_LIMIT: usize = 4 * 1024 * 1024;
 const REQUEST_LIMIT: usize = 128;
 const STEPS_LIMIT: usize = 128;

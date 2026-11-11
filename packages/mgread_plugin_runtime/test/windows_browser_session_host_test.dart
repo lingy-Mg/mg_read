@@ -1,3 +1,6 @@
+/// Windows browser-host session, response budgets and lifecycle tests using a scoped fake platform.
+library;
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -7,6 +10,40 @@ import 'package:flutter/services.dart';
 import 'package:mgread_plugin_runtime/src/windows_browser_session_host.dart';
 
 void main() {
+  test(
+    'Windows browser accepts a 10 MiB response budget and rejects one byte more',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'mgread-browser-budget-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      const limit = 10 * 1024 * 1024;
+      final platform = _FakeBrowserPlatform()..responseBody = 'x' * limit;
+      final host = WindowsBrowserSessionHost(root, platform: platform);
+      addTearDown(host.dispose);
+      final raw = _request(presentation: 'hidden', transport: 'webview')
+        ..['maxResponseBytes'] = limit;
+      final result = await host.request(
+        jobId: 'large',
+        deadlineUnixMs: DateTime.now()
+            .add(const Duration(seconds: 10))
+            .millisecondsSinceEpoch,
+        raw: raw,
+      );
+      expect(result['body'], hasLength(limit));
+      raw['maxResponseBytes'] = limit + 1;
+      await expectLater(
+        host.request(
+          jobId: 'oversized',
+          deadlineUnixMs: DateTime.now()
+              .add(const Duration(seconds: 10))
+              .millisecondsSinceEpoch,
+          raw: raw,
+        ),
+        throwsA(isA<WindowsBrowserSessionException>()),
+      );
+    },
+  );
   test(
     'one source reuses one WebView for hidden and visible browser fetch',
     () async {
@@ -484,6 +521,7 @@ final class _FakeBrowserPlatform implements WindowsBrowserPlatform {
   Map<String, Object?>? pageResult;
   bool pageJobActive = false;
   bool pageJobGuarded = false;
+  String responseBody = 'fixture-browser-body';
 
   void completeHeldPageScript() {
     if (pageJobActive || !pageJobGuarded) {
@@ -649,7 +687,7 @@ final class _FakeBrowserPlatform implements WindowsBrowserPlatform {
             'status': 200,
             'finalUrl': 'https://example.com/protected',
             'headers': <String, String>{'content-type': 'text/html'},
-            'body': 'fixture-browser-body',
+            'body': responseBody,
           },
         }),
       );

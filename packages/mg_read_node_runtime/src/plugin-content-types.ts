@@ -2,6 +2,7 @@
  * Plugin content wire protocol types and immutable validation limits.
  * This module contains no request parsing or result-tree traversal.
  * Novel chapters permit up to 10 MiB of UTF-8 text, independently of JSON escaping.
+ * Catalog/manga JSON permits 10 MiB; search pages and discovery collections permit 1000 items.
  */
 
 import type { JsonObject } from "./protocol.js";
@@ -11,23 +12,23 @@ export const MAX_LABEL_CHARACTERS = 256;
 export const MAX_TEXT_METADATA_CHARACTERS = 32_768;
 export const MAX_URL_CHARACTERS = 8_192;
 export const MAX_CURSOR_CHARACTERS = 2_048;
-export const MAX_PAGE_SIZE = 50;
-export const MAX_SEARCH_ITEMS = 50;
+export const MAX_PAGE_SIZE = 1_000;
+export const MAX_SEARCH_ITEMS = 1_000;
 export const MAX_SEARCH_SUGGESTIONS = 50;
 export const MAX_DISCOVERY_TABS = 16;
 export const MAX_DISCOVERY_FILTER_GROUPS = 8;
 export const MAX_DISCOVERY_FILTER_OPTIONS = 64;
 export const MAX_DISCOVERY_COMPONENTS = 128;
 export const MAX_DISCOVERY_DEPTH = 8;
-export const MAX_DISCOVERY_ITEMS = 50;
+export const MAX_DISCOVERY_ITEMS = 1_000;
 export const MAX_CATEGORIES = 32;
 export const MAX_TAGS = 64;
 export const MAX_ATTRIBUTES = 32;
 export const MAX_CHAPTER_ITEMS = 5_000;
 export const MAX_MANGA_PAGES = 500;
 export { MAX_INLINE_RESULT_BYTES, MAX_INLINE_TEXT_BYTES, MAX_INLINE_NOVEL_RESULT_BYTES } from "./runtime-payload-limits.js";
-export const MAX_INLINE_CHAPTER_CATALOG_BYTES = 2 * 1_024 * 1_024;
-export const MAX_INLINE_MANGA_MANIFEST_BYTES = 512 * 1_024;
+export const MAX_INLINE_CHAPTER_CATALOG_BYTES = 10 * 1_024 * 1_024;
+export const MAX_INLINE_MANGA_MANIFEST_BYTES = 10 * 1_024 * 1_024;
 export const MAX_MEDIA_GROUPS = 128;
 export const MAX_MEDIA_HEADERS = 16;
 

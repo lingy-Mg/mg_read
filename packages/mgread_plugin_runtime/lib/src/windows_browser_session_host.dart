@@ -6,6 +6,7 @@
 /// The new page API carries explicitly requested script bodies, raw CDP
 /// commands, and JSON results; all supporting scripts and native inputs remain
 /// host-owned.
+/// Browser response bodies permit up to 10 MiB of UTF-8, matching the Core contract.
 library;
 
 import 'dart:async';
@@ -18,7 +19,7 @@ import 'package:flutter/services.dart';
 part 'windows_webview_page.dart';
 
 const _maximumRequestBytes = 1024 * 1024;
-const _maximumResponseBytes = 2 * 1024 * 1024;
+const _maximumResponseBytes = 10 * 1024 * 1024;
 const _maximumTimeoutMs = 120000;
 const _maximumPendingRequests = 16;
 const _maximumResidentWebViews = 8;

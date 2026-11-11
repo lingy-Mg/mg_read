@@ -4,6 +4,7 @@
  * This is a second validation layer for the private Javet bridge. It accepts
  * only reviewed v1 fields. The additive single-page API accepts script source
  * as data but never accepts Cookie, profile handles, or WebView settings.
+ * Response bodies permit 10 MiB of UTF-8, matching the JS Core and Windows host.
  */
 package com.mgread.mgread_plugin_runtime
 
@@ -96,7 +97,7 @@ internal data class AndroidBrowserSessionRequest(
             val timeoutMs = value.optLong("timeoutMs", -1L)
             require(timeoutMs in 1_000L..MAX_TIMEOUT_MILLIS)
             val maxResponseBytes = value.optInt("maxResponseBytes", -1)
-            require(maxResponseBytes in 1..MAX_RESPONSE_BYTES)
+            require(isAllowedBrowserResponseSize(maxResponseBytes))
             val body = if (value.isNull("body")) null else value.getString("body")
             require(method != "GET" || body == null)
             val headers = parseHeaders(value.getJSONObject("headers"), url)
@@ -247,5 +248,6 @@ private val PAGE_KEYS = setOf(
 )
 private val PAGE_MODIFIERS = setOf("alt", "control", "shift")
 private const val MAX_REQUEST_BYTES = 1024 * 1024
-private const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+private const val MAX_RESPONSE_BYTES = 10 * 1024 * 1024
+internal fun isAllowedBrowserResponseSize(bytes: Int): Boolean = bytes in 1..MAX_RESPONSE_BYTES
 private const val MAX_TIMEOUT_MILLIS = 120_000L

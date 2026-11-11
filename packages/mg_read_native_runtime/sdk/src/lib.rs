@@ -95,7 +95,8 @@ impl Call {
                     &format!("Upstream HTTP {status}"),
                 ));
             }
-            let body = String::from_utf8(http::bounded_body(response, 4 * 1024 * 1024).await?)
+            // A complete 10 MiB chapter needs additional room for upstream HTML markup.
+            let body = String::from_utf8(http::bounded_body(response, 16 * 1024 * 1024).await?)
                 .map_err(|_| invalid("Source text is not UTF-8"))?;
             Ok(json!({"body":body,"status":status,"headers":{}}))
         };
@@ -188,6 +189,12 @@ impl Context {
         if ["discover", "search", "searchSuggestions"].contains(&method) {
             params.entry("pageSize").or_insert(json!(20));
             params.entry("cursor").or_insert(Value::Null);
+            if !params["pageSize"]
+                .as_u64()
+                .is_some_and(|size| (1..=1000).contains(&size))
+            {
+                return Err(invalid("Source pageSize must be between 1 and 1000"));
+            }
         }
         if method == "discover" {
             params.entry("target").or_insert(Value::Null);

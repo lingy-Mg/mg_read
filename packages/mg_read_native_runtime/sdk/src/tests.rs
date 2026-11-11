@@ -102,6 +102,12 @@ fn initialization_cache_isolation_and_shutdown() {
 }
 
 async fn upstream(method: Method, headers: HeaderMap, uri: axum::http::Uri) -> Response {
+    if uri.path() == "/large-novel" {
+        return Response::builder()
+            .header("content-type", "text/plain")
+            .body(Body::from("x".repeat(validation::MAX_NOVEL_TEXT_BYTES)))
+            .unwrap();
+    }
     if uri.path() == "/slow" {
         tokio::time::sleep(Duration::from_secs(10)).await;
     }
@@ -151,6 +157,33 @@ async fn upstream(method: Method, headers: HeaderMap, uri: axum::http::Uri) -> R
             Body::from(body)
         })
         .unwrap()
+}
+
+#[test]
+fn complete_ten_mib_novel_crosses_upstream_http_and_source_validation() {
+    fn novel(call: Call, input: Value) -> SourceFuture {
+        Box::pin(async move {
+            let response = call.http(&input["request"]).await?;
+            Ok(json!({"chapterId":"x","contentKind":"novel","text":response["body"],"pages":[]}))
+        })
+    }
+    let path = directory();
+    let mut settings = config(path.clone());
+    settings.capabilities = vec!["getContent".into()];
+    let context = Context::open(settings, novel).unwrap();
+    let (upstream, task) = start_upstream(&context);
+    let result = context.executor.block_on(context.invoke(
+        json!({"method":"source.getContent.v1","params":{"pluginId":"fixture","chapterId":"x","url":format!("{upstream}/large-novel"),"headers":{}}}),
+        CancellationToken::new(),
+    )).unwrap();
+    assert_eq!(
+        result["text"].as_str().unwrap().len(),
+        validation::MAX_NOVEL_TEXT_BYTES
+    );
+    task.abort();
+    context.shutdown();
+    drop(context);
+    std::fs::remove_dir_all(path).unwrap();
 }
 fn start_upstream(context: &Context) -> (String, tokio::task::JoinHandle<()>) {
     let listener = context

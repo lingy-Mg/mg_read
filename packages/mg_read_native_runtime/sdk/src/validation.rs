@@ -1,12 +1,28 @@
 //! Bounded public source contract checks after plugin-owned resource projection. Flutter
-//! performs the same final typed decode for Node and native content.
+//! performs the same final typed decode for Node and native content. Novel text
+//! permits 10 MiB before JSON escaping; other content results permit 10 MiB JSON.
 use crate::error::{Result, invalid};
 use serde_json::Value;
 use std::collections::HashSet;
 
+pub(crate) const MAX_NOVEL_TEXT_BYTES: usize = 10 * 1024 * 1024;
+const MAX_CONTENT_RESULT_BYTES: usize = 10 * 1024 * 1024;
+const MAX_NOVEL_RESULT_BYTES: usize = 6 * MAX_NOVEL_TEXT_BYTES + 64 * 1024;
+
 pub fn validate(method: &str, request: &Value, result: &Value) -> Result<()> {
-    if !result.is_object() || serde_json::to_vec(result)?.len() > 8 * 1024 * 1024 {
-        return Err(invalid("Invalid source result size"));
+    if !result.is_object() {
+        return Err(invalid("Source result must be an object"));
+    }
+    let maximum = if method == "getContent" && result["contentKind"] == "novel" {
+        MAX_NOVEL_RESULT_BYTES
+    } else {
+        MAX_CONTENT_RESULT_BYTES
+    };
+    let bytes = serde_json::to_vec(result)?.len();
+    if bytes > maximum {
+        return Err(invalid(&format!(
+            "Source result exceeds its budget: {bytes} bytes exceeds the {maximum}-byte limit"
+        )));
     }
     tree(result, 0)?;
     match method {
@@ -39,8 +55,11 @@ pub fn validate(method: &str, request: &Value, result: &Value) -> Result<()> {
                         && pages.is_empty()
                         && result["media"].is_null() =>
                 {
-                    if result["text"].as_str().unwrap().len() > 1024 * 1024 {
-                        return Err(invalid("Novel chapter exceeds 1 MiB"));
+                    let bytes = result["text"].as_str().unwrap().len();
+                    if bytes > MAX_NOVEL_TEXT_BYTES {
+                        return Err(invalid(&format!(
+                            "Novel text exceeds its budget: {bytes} bytes exceeds the {MAX_NOVEL_TEXT_BYTES}-byte limit"
+                        )));
                     }
                 }
                 Some("manga")
@@ -75,7 +94,7 @@ pub fn validate(method: &str, request: &Value, result: &Value) -> Result<()> {
         }
 
         "search" => {
-            let items = array(result, "items", 100)?;
+            let items = array(result, "items", 1000)?;
             unique(items, "id")?;
             for item in items {
                 summary(item)?;
@@ -95,6 +114,7 @@ pub fn validate(method: &str, request: &Value, result: &Value) -> Result<()> {
                 array(&result["document"], "components", 128)?;
             }
             Some("append") => {
+                array(result, "items", 1000)?;
                 if result["collectionId"] != request["collectionId"] {
                     return Err(invalid("Discovery continuation identity mismatch"));
                 }
@@ -152,6 +172,9 @@ fn tree(v: &Value, depth: usize) -> Result<()> {
             }
         }
         Value::Object(o) => {
+            if v["type"] == "contentCollection" {
+                array(v, "items", 1000)?;
+            }
             if o.len() > 128 {
                 return Err(invalid("Source object exceeded"));
             }
@@ -168,6 +191,70 @@ fn tree(v: &Value, depth: usize) -> Result<()> {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn full_ten_mib_novel_allows_json_escaping_and_reports_overflow() {
+        for text in [
+            "x".repeat(MAX_NOVEL_TEXT_BYTES),
+            "\0".repeat(MAX_NOVEL_TEXT_BYTES),
+        ] {
+            let mut result = json!({"chapterId":"x","contentKind":"novel","text":text,"pages":[]});
+            assert!(validate("getContent", &json!({"chapterId":"x"}), &result).is_ok());
+            result["text"] = json!("x".repeat(MAX_NOVEL_TEXT_BYTES + 1));
+            let error = validate("getContent", &json!({"chapterId":"x"}), &result).unwrap_err();
+            assert!(
+                error
+                    .message
+                    .contains("10485761 bytes exceeds the 10485760-byte limit")
+            );
+        }
+    }
+    #[test]
+    fn catalogs_and_manga_manifests_accept_results_above_the_old_budgets() {
+        let items: Vec<Value> = (0..3000)
+            .map(|i| json!({"id":format!("{i}-{}", "x".repeat(3000)),"title":"A","order":i}))
+            .collect();
+        assert!(validate("getChapters", &json!({}), &json!({"items":items})).is_ok());
+        let pages: Vec<Value> = (0..5000).map(|i| json!({"id":format!("{i}"),"index":i,"url":format!("https://example.com/{}", "x".repeat(1800))})).collect();
+        assert!(
+            validate(
+                "getContent",
+                &json!({"chapterId":"x"}),
+                &json!({"chapterId":"x","contentKind":"manga","text":null,"pages":pages})
+            )
+            .is_ok()
+        );
+    }
+    #[test]
+    fn search_accepts_one_thousand_items_and_rejects_more() {
+        let mut items: Vec<Value> = (0..1000)
+            .map(|i| json!({"id":format!("b{i}"),"title":"A","contentKind":"novel"}))
+            .collect();
+        assert!(
+            validate(
+                "search",
+                &json!({}),
+                &json!({"items":items,"nextCursor":null})
+            )
+            .is_ok()
+        );
+        items.push(json!({"id":"extra","title":"A","contentKind":"novel"}));
+        assert!(
+            validate(
+                "search",
+                &json!({}),
+                &json!({"items":items,"nextCursor":null})
+            )
+            .is_err()
+        );
+    }
+    #[test]
+    fn discovery_collections_accept_one_thousand_items_and_reject_more() {
+        let mut items = vec![json!({}); 1000];
+        let document = |items: &Vec<Value>| json!({"kind":"document","document":{"components":[{"type":"contentCollection","items":items}]}});
+        assert!(validate("discover", &json!({}), &document(&items)).is_ok());
+        items.push(json!({}));
+        assert!(validate("discover", &json!({}), &document(&items)).is_err());
+    }
     #[test]
     fn long_novel_is_bounded_without_legacy_48k_truncation() {
         let r = json!({"chapterId":"x","contentKind":"novel","text":"文".repeat(30000),"pages":[]});
