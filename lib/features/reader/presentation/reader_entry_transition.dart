@@ -527,6 +527,7 @@ class _ReaderEntryArtwork extends StatelessWidget {
     return ColoredBox(
       color: Colors.black,
       child: AppCoverImage(
+        loadingBaseColor: Colors.black,
         image: coverImage!,
         label: '阅读器封面',
         placeholder: _entryFallback(tokens),

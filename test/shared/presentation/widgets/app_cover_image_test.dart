@@ -13,6 +13,112 @@ import 'package:mg_read/shared/presentation/widgets/default_content_cover_artwor
 import '../../../support/visual_evidence.dart';
 
 void main() {
+  testWidgets('fullscreen media keeps a dark loading canvas in a light app theme', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: MediaQuery(
+          data: const MediaQueryData(disableAnimations: true),
+          child: const Scaffold(
+            body: SizedBox(
+              width: 100,
+              height: 150,
+              child: AppCoverFeedback(
+                state: AppCoverState.loading,
+                label: '播放器封面',
+                loadingBaseColor: Colors.black,
+                child: ColoredBox(color: Colors.orange),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final decoration =
+        tester.widget<DecoratedBox>(find.descendant(of: find.byType(AppCoverFeedback), matching: find.byType(DecoratedBox))).decoration
+            as BoxDecoration;
+    expect(decoration.gradient!.colors.every((color) => ThemeData.estimateBrightnessForColor(color) == Brightness.dark), isTrue);
+  });
+
+  testWidgets('loading sheen stops for hidden routes and disabled motion', (tester) async {
+    Widget host({required bool tickers, bool disabled = false}) => MaterialApp(
+      home: MediaQuery(
+        data: MediaQueryData(disableAnimations: disabled),
+        child: TickerMode(
+          enabled: tickers,
+          child: const Scaffold(
+            body: SizedBox(
+              width: 100,
+              height: 150,
+              child: AppCoverFeedback(
+                state: AppCoverState.loading,
+                label: '测试封面',
+                child: ColoredBox(color: Colors.orange),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpWidget(host(tickers: true));
+    await tester.pump(AppMotion.coverLoadingDelay);
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(tester.binding.transientCallbackCount, greaterThan(0));
+    await tester.pumpWidget(host(tickers: false));
+    await tester.pump();
+    expect(tester.binding.transientCallbackCount, 0);
+    await tester.pumpWidget(host(tickers: true, disabled: true));
+    await tester.pump();
+    expect(find.byKey(const Key('cover-load-static')), findsOneWidget);
+    expect(tester.binding.transientCallbackCount, 0);
+  });
+
+  testWidgets('refreshing artwork stays visible without a central spinner or scrim', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 100,
+            height: 150,
+            child: AppCoverFeedback(
+              state: AppCoverState.refreshing,
+              label: '旧封面',
+              child: const ColoredBox(key: Key('existing-artwork'), color: Colors.blue),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(
+      tester.widget<Opacity>(find.ancestor(of: find.byKey(const Key('existing-artwork')), matching: find.byType(Opacity)).first).opacity,
+      1,
+    );
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(Icon), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('replacing decoded artwork keeps the old frame and does not flash a skeleton on success', (tester) async {
+    final first = _PendingImage();
+    final replacement = _PendingImage();
+    await tester.pumpWidget(_host(image: first));
+    await tester.runAsync(() async => first.frame.complete(ImageInfo(image: await createTestImage(width: 20, height: 30))));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(_host(image: replacement));
+    expect(tester.widget<RawImage>(find.byType(RawImage)).image, isNotNull);
+    expect(find.byKey(const Key('cover-placeholder')), findsNothing);
+    expect(tester.widget<AppCoverFeedback>(find.byType(AppCoverFeedback)).state, AppCoverState.refreshing);
+    await tester.runAsync(() async {
+      replacement.frame.complete(ImageInfo(image: await createTestImage(width: 40, height: 60)));
+    });
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const Key('cover-placeholder')), findsNothing);
+    expect(find.byType(TweenAnimationBuilder<double>), findsNothing);
+    expect(tester.widget<RawImage>(find.byType(RawImage)).image!.width, 40);
+    expect(tester.widget<AppCoverFeedback>(find.byType(AppCoverFeedback)).state, AppCoverState.ready);
+  });
+
   testWidgets('cover state visual evidence uses the production feedback and artwork', (tester) async {
     await loadVisualEvidenceFonts();
     tester.view.physicalSize = const Size(760, 360);
@@ -40,38 +146,38 @@ void main() {
         Text(title),
       ],
     );
-    await tester.pumpWidget(
-      visualEvidenceHost(
-        MaterialApp(
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.light(),
-          home: Scaffold(
-            body: Center(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  sample('加载中', AppCoverFeedback(state: AppCoverState.loading, label: '封面', child: artwork())),
-                  sample(
-                    '已加载',
-                    AppCoverImage(
-                      image: const AssetImage('assets/fixtures/home_covers/lord_of_mysteries.png'),
-                      placeholder: artwork(),
-                      label: '封面',
-                    ),
+    Widget scene(ThemeData theme) => visualEvidenceHost(
+      MaterialApp(
+        key: ValueKey(theme.brightness),
+        debugShowCheckedModeBanner: false,
+        theme: theme,
+        home: Scaffold(
+          body: Center(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                sample('加载中', AppCoverFeedback(state: AppCoverState.loading, label: '封面', child: artwork())),
+                sample(
+                  '已加载',
+                  AppCoverImage(
+                    image: const AssetImage('assets/fixtures/home_covers/lord_of_mysteries.png'),
+                    placeholder: artwork(),
+                    label: '封面',
                   ),
-                  sample('没有封面', AppCoverFeedback(state: AppCoverState.missing, label: '封面', child: artwork())),
-                  sample('加载失败', AppCoverFeedback(state: AppCoverState.failed, label: '封面', child: artwork())),
-                  MediaQuery(
-                    data: const MediaQueryData(disableAnimations: true),
-                    child: sample('无动画模式', AppCoverFeedback(state: AppCoverState.loading, label: '封面', child: artwork())),
-                  ),
-                ],
-              ),
+                ),
+                sample('没有封面', AppCoverFeedback(state: AppCoverState.missing, label: '封面', child: artwork())),
+                sample('加载失败', AppCoverFeedback(state: AppCoverState.failed, label: '封面', child: artwork())),
+                MediaQuery(
+                  data: const MediaQueryData(disableAnimations: true),
+                  child: sample('无动画模式', AppCoverFeedback(state: AppCoverState.loading, label: '封面', child: artwork())),
+                ),
+              ],
             ),
           ),
         ),
       ),
     );
+    await tester.pumpWidget(scene(AppTheme.light()));
     await tester.runAsync(
       () => precacheImage(const AssetImage('assets/fixtures/home_covers/lord_of_mysteries.png'), tester.element(find.byType(MaterialApp))),
     );
@@ -79,16 +185,28 @@ void main() {
     await tester.pump(const Duration(milliseconds: 240));
     expect(tester.widget<RawImage>(find.byType(RawImage)).image, isNotNull);
     expect(find.descendant(of: find.byType(AppCoverImage), matching: find.byType(DefaultContentCoverArtwork)), findsNothing);
-    await captureVisualEvidence(tester, 'unified-cover-states');
+    await tester.pump(AppMotion.coverLoadingSweep * .36);
+    await captureVisualEvidence(tester, 'cover-loading-polish-light');
+    await tester.pumpWidget(scene(AppTheme.dark()));
+    await tester.pump(AppMotion.coverLoadingDelay);
+    await tester.pump(AppMotion.coverLoadingSweep * .36);
+    await captureVisualEvidence(tester, 'cover-loading-polish-dark');
   });
   testWidgets('keeps a visible loading placeholder until the first decoded frame', (tester) async {
     final image = _PendingImage();
     await tester.pumpWidget(_host(image: image));
     expect(find.byKey(const Key('cover-load-progress')), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(find.text('周围的列表已经可用'), findsOneWidget);
     expect(tester.getSize(find.byKey(const Key('cover-box'))), const Size(100, 150));
     expect(tester.getSemantics(find.byType(AppCoverFeedback)).label, '测试封面加载中');
     await tester.runAsync(() async => image.frame.complete(ImageInfo(image: await createTestImage(width: 20, height: 30))));
+    await tester.pump();
+    expect(
+      find.byKey(const Key('cover-placeholder')),
+      findsNothing,
+      reason: 'The loaded image fades from the neutral skeleton, without flashing fallback artwork.',
+    );
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('cover-load-progress')), findsNothing);
     expect(find.byKey(const Key('cover-placeholder')), findsNothing);

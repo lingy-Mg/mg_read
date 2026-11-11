@@ -375,6 +375,7 @@ final class _MediaEntryCoverArtwork extends StatelessWidget {
   Widget build(BuildContext context) => ColoredBox(
     color: Colors.black,
     child: AppCoverImage(
+      loadingBaseColor: Colors.black,
       image: MemoryImage(Uint8List.fromList(bytes)),
       imageKey: const Key('media-entry-cover-image'),
       label: '$title 的封面',

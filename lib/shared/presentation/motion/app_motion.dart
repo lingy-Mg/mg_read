@@ -16,6 +16,8 @@ abstract final class AppMotion {
   static const Duration themeTransition = Duration(milliseconds: 240);
   static const Duration loadingSettle = Duration(milliseconds: 120);
   static const Duration loadingShimmer = Duration(milliseconds: 980);
+  static const Duration coverLoadingDelay = micro;
+  static const Duration coverLoadingSweep = Duration(milliseconds: 1600);
   static const Duration playingIndicatorCycle = Duration(milliseconds: 820);
   static const Duration carouselTravel = Duration(milliseconds: 360);
   static const Duration bottomNavigationIconResponse = Duration(milliseconds: 220);

@@ -125,7 +125,8 @@ void main() {
     await tester.pump();
 
     expect(find.byType(DefaultContentCoverArtwork), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byKey(const Key('cover-load-progress')), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(tester.getSemantics(find.byType(DiscoveryBookCover)).label, '异步封面 的封面加载中');
 
     completion.complete(null);

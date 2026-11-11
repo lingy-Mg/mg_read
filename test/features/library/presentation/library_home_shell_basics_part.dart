@@ -541,7 +541,8 @@ void _registerLibraryHomeShellBasics() {
     expect(find.byWidgetPredicate((Widget widget) => widget is LibraryBookListItem && widget.isRefreshing), findsOneWidget);
     final Finder refreshLabel = find.byWidgetPredicate((Widget widget) => widget is Semantics && widget.properties.label == '诡秘之主 的封面刷新中');
     expect(refreshLabel, findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsWidgets);
+    expect(find.descendant(of: refreshLabel, matching: find.byKey(const Key('cover-load-progress'))), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
 
     refreshCompleter.complete();
     await settleWidgetImages(tester);

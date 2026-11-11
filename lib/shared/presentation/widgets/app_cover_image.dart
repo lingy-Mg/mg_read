@@ -1,20 +1,24 @@
 /// 跨书架、发现、搜索、详情和播放器的封面展示状态。
 /// 字节请求、缓存、刷新和重试归调用方；本组件覆盖图片解码等待、失败降级和首次显示过渡。
-/// 不阻塞父页面、不更改封面比例、不自动重试；无动画模式使用静态等待图标并立即显示图片。
+/// 不阻塞父页面、不更改封面比例、不自动重试；无动画模式使用静态骨架并立即显示图片。
 library;
 
-import 'package:flutter/material.dart';
+import 'dart:async';
 
-import '../motion/app_motion.dart';
+import 'package:flutter/material.dart';
+import 'package:mg_read/app/app_theme.dart';
+
+part 'app_cover_loading_surface.dart';
 
 enum AppCoverState { loading, refreshing, missing, failed, ready }
 
 class AppCoverFeedback extends StatelessWidget {
-  const AppCoverFeedback({required this.state, required this.label, required this.child, super.key});
+  const AppCoverFeedback({required this.state, required this.label, required this.child, this.loadingBaseColor, super.key});
 
   final AppCoverState state;
   final String label;
   final Widget child;
+  final Color? loadingBaseColor;
 
   @override
   Widget build(BuildContext context) => Semantics(
@@ -27,67 +31,31 @@ class AppCoverFeedback extends StatelessWidget {
       AppCoverState.ready => label,
     },
     child: ExcludeSemantics(
-      child: state == AppCoverState.ready || state == AppCoverState.missing
-          ? child
-          : Stack(
-              fit: StackFit.passthrough,
-              children: [
-                child,
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final side = constraints.biggest.shortestSide;
-                        final size = side.isFinite ? (side * .22).clamp(14.0, 26.0) : 22.0;
-                        return ColoredBox(
-                          color: const Color(0x29000000),
-                          child: Center(
-                            child: DecoratedBox(
-                              decoration: const BoxDecoration(color: Color(0xD9121824), shape: BoxShape.circle),
-                              child: Padding(
-                                padding: const EdgeInsets.all(8),
-                                child: state == AppCoverState.failed
-                                    ? Icon(
-                                        Icons.broken_image_outlined,
-                                        key: const Key('cover-load-failed'),
-                                        size: size,
-                                        color: Colors.white,
-                                      )
-                                    : SizedBox.square(
-                                        dimension: size,
-                                        child: AppMotion.disablesAnimations(context)
-                                            ? Icon(
-                                                Icons.hourglass_empty_rounded,
-                                                key: const Key('cover-load-static'),
-                                                size: size,
-                                                color: Colors.white,
-                                              )
-                                            : const CircularProgressIndicator(
-                                                key: Key('cover-load-progress'),
-                                                strokeWidth: 2,
-                                                color: Colors.white,
-                                              ),
-                                      ),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              ],
+      child: switch (state) {
+        AppCoverState.loading => _CoverLoadingSurface(placeholder: true, baseColor: loadingBaseColor, child: child),
+        AppCoverState.refreshing => _CoverLoadingSurface(placeholder: false, baseColor: loadingBaseColor, child: child),
+        AppCoverState.failed => Stack(
+          fit: StackFit.passthrough,
+          children: [
+            child,
+            const Positioned.fill(
+              child: IgnorePointer(child: _CoverFailureMark(key: Key('cover-load-failed'))),
             ),
+          ],
+        ),
+        AppCoverState.missing || AppCoverState.ready => child,
+      },
     ),
   );
 }
 
 /// Keeps the placeholder visible through first-frame decode, including memory and asset images.
-class AppCoverImage extends StatelessWidget {
+class AppCoverImage extends StatefulWidget {
   const AppCoverImage({
     required this.image,
     required this.placeholder,
     required this.label,
+    this.loadingBaseColor,
     this.loading = false,
     this.failed = false,
     this.width,
@@ -102,6 +70,9 @@ class AppCoverImage extends StatelessWidget {
   final ImageProvider? image;
   final Widget placeholder;
   final String label;
+
+  /// Optional opaque canvas for fullscreen media, independent of the host theme.
+  final Color? loadingBaseColor;
   final bool loading;
   final bool failed;
   final double? width;
@@ -112,46 +83,83 @@ class AppCoverImage extends StatelessWidget {
   final Key? imageKey;
 
   @override
+  State<AppCoverImage> createState() => _AppCoverImageState();
+}
+
+class _AppCoverImageState extends State<AppCoverImage> {
+  ImageProvider? _presentedImage;
+  bool _hasPresentedFrame = false;
+  bool _fadeCurrent = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (AppMotion.disablesAnimations(context)) _fadeCurrent = false;
+  }
+
+  @override
+  void didUpdateWidget(AppCoverImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.image == null) {
+      _presentedImage = null;
+      _hasPresentedFrame = false;
+      _fadeCurrent = false;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    Widget surface(AppCoverState state, Widget child) => AppCoverFeedback(state: state, label: label, child: child);
-    if (image == null) {
+    Widget surface(AppCoverState state, Widget child) =>
+        AppCoverFeedback(state: state, label: widget.label, loadingBaseColor: widget.loadingBaseColor, child: child);
+    if (widget.image == null) {
       return surface(
-        loading
+        widget.loading
             ? AppCoverState.loading
-            : failed
+            : widget.failed
             ? AppCoverState.failed
             : AppCoverState.missing,
-        placeholder,
+        widget.placeholder,
       );
     }
     return Image(
-      key: imageKey,
-      image: image!,
-      width: width,
-      height: height,
-      fit: fit,
-      alignment: alignment,
+      key: widget.imageKey,
+      image: widget.image!,
+      width: widget.width,
+      height: widget.height,
+      fit: widget.fit,
+      alignment: widget.alignment,
       gaplessPlayback: true,
       excludeFromSemantics: true,
-      errorBuilder: (_, _, _) => surface(AppCoverState.failed, placeholder),
+      errorBuilder: (_, _, _) {
+        _presentedImage = null;
+        _hasPresentedFrame = false;
+        _fadeCurrent = false;
+        return surface(AppCoverState.failed, widget.placeholder);
+      },
       frameBuilder: (context, child, frame, synchronous) {
         if (frame == null) {
           final previous = child is RawImage && child.image != null;
-          return surface(previous ? AppCoverState.refreshing : AppCoverState.loading, previous ? child : placeholder);
+          return surface(previous ? AppCoverState.refreshing : AppCoverState.loading, previous ? child : widget.placeholder);
         }
-        final content = frameBuilder?.call(context, child, frame, synchronous) ?? child;
-        final state = loading
+        final content = widget.frameBuilder?.call(context, child, frame, synchronous) ?? child;
+        if (_presentedImage != widget.image) {
+          _fadeCurrent = !_hasPresentedFrame && !synchronous && !AppMotion.disablesAnimations(context);
+          _hasPresentedFrame = true;
+          _presentedImage = widget.image;
+        }
+        final state = widget.loading
             ? AppCoverState.refreshing
-            : failed
+            : widget.failed
             ? AppCoverState.failed
             : AppCoverState.ready;
-        if (synchronous || AppMotion.disablesAnimations(context)) return surface(state, content);
+        if (!_fadeCurrent || AppMotion.disablesAnimations(context)) return surface(state, content);
         return surface(
           state,
           TweenAnimationBuilder<double>(
-            tween: Tween(begin: synchronous ? 1 : 0, end: 1),
+            tween: Tween(begin: 0, end: 1),
             duration: AppMotion.effectiveDuration(context, AppMotion.short),
             curve: AppMotion.navigationCurve,
+            onEnd: () => _fadeCurrent = false,
             child: content,
             builder: (context, progress, child) => progress >= 1
                 ? child!
@@ -159,7 +167,10 @@ class AppCoverImage extends StatelessWidget {
                     fit: StackFit.passthrough,
                     children: [
                       Positioned.fill(
-                        child: Opacity(opacity: 1 - progress, child: placeholder),
+                        child: Opacity(
+                          opacity: 1 - progress,
+                          child: _CoverSkeleton(baseColor: widget.loadingBaseColor),
+                        ),
                       ),
                       Opacity(opacity: progress, child: child),
                     ],
