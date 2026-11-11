@@ -22,14 +22,15 @@ async function temporaryDirectory(t, prefix) {
 
 async function waitFor(predicate, timeoutMs = 12_000) {
   const deadline = Date.now() + timeoutMs;
-  while (!predicate()) {
+  while (!(await predicate())) {
     if (Date.now() >= deadline) throw new Error("Timed out waiting for hot reload.");
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 }
 
-function source(prefix, delayMs = 0) {
+function source(prefix, delayMs = 0, marker = null) {
   return `
+${marker === null ? '' : 'import { writeFile } from "node:fs/promises";'}
 export function activate() {}
 const summary = (query) => ({
   id: "live:" + query, title: ${JSON.stringify(prefix)} + "：" + query,
@@ -40,6 +41,7 @@ const summary = (query) => ({
 });
 export function discover() { return { kind: "document", document: { components: [] } }; }
 export async function search(request) {
+  ${marker === null ? '' : `await writeFile(${JSON.stringify(marker)}, 'started');`}
   ${delayMs > 0 ? `await new Promise((resolve) => setTimeout(resolve, ${delayMs}));` : ""}
   return { items: [summary(request.query)], nextCursor: null, totalCount: 1 };
 }
@@ -125,7 +127,8 @@ test(
   assert.equal(repeatedArtifact.developmentRevision, initialArtifact.developmentRevision);
 
   const reloadStartedAt = performance.now();
-  await writeFile(join(firstRoot, "src", "index.mjs"), source("第二版", 3_000));
+  const searchMarker = join(root, 'second-search-started');
+  await writeFile(join(firstRoot, "src", "index.mjs"), source("第二版", 3_000, searchMarker));
   await waitFor(() => events.some((event) => event.code === "development_plugin_updated"));
   console.log(JSON.stringify({ developmentHotReloadMs: Math.round(performance.now() - reloadStartedAt) }));
   assert.equal((await search(manager, "org.example.watched")).items[0].title, "第二版：测试");
@@ -133,7 +136,10 @@ test(
   assert.notEqual(updatedArtifact.developmentFingerprint, initialArtifact.developmentFingerprint);
   assert.ok(updatedArtifact.developmentRevision > initialArtifact.developmentRevision);
 
+  await rm(searchMarker, {force:true});
   const staleRequest = search(manager, "org.example.watched");
+  // Wait for the old source to enter the request before publishing a replacement.
+  await waitFor(() => readFile(searchMarker).then(() => true, () => false));
   await writeFile(join(firstRoot, "src", "index.mjs"), source("第三版"));
   await waitFor(
     () => events.filter((event) => event.code === "development_plugin_updated").length === 2,

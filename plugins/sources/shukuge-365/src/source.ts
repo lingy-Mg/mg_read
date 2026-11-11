@@ -1,12 +1,13 @@
 /** 365小说网 parser and HTTP/resource boundary. No response body or user input is logged. */
+import { contentLimits } from './content-limits.js';
 import { Buffer } from 'node:buffer';
 import * as cheerio from 'cheerio/slim';
 
 import type { ContentDetail, ContentSummary, MgReadPluginContext } from './contracts.js';
 
 const origin = 'http://www.shukuge.com';
-const maxCatalogPages = 50;
-const maxChapterItems = 5000;
+const maxCatalogPages = contentLimits.catalogItems;
+const maxChapterItems = contentLimits.catalogItems;
 const chapterGroupSize = 500;
 
 export const categories = Object.freeze([
@@ -189,7 +190,7 @@ export class ShukugeSource {
     const visited = new Set<string>();
     const paragraphs: string[] = [];
     let title: string | null = null;
-    for (let pageIndex = 0; pageIndex < 10 && !visited.has(url.toString()); pageIndex += 1) {
+    for (let pageIndex = 0; pageIndex < contentLimits.catalogItems && !visited.has(url.toString()); pageIndex += 1) {
       visited.add(url.toString());
       const $ = cheerio.load(await this.#html(url));
       title ??= clean($('.bookd-title h1').first().text());

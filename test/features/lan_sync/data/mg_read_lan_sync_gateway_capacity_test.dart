@@ -14,15 +14,17 @@ import 'package:mg_read/features/lan_sync/application/lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/data/mg_read_lan_sync_gateway.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_sync_models.dart';
 
+const _testShelfCapacity = 100;
+
 void main() {
   test('translates an over-capacity LAN batch without partial shelf writes', () async {
     final root = await Directory.systemTemp.createTemp('mg-read-lan-capacity-');
-    final library = await ContentLibrary.open(dataRoot: root);
+    final library = await ContentLibrary.open(dataRoot: root, maximumShelfItems: _testShelfCapacity);
     addTearDown(() async {
       await library.close();
       await root.delete(recursive: true);
     });
-    for (var index = 0; index < bookshelfMaxItemCount - 1; index++) {
+    for (var index = 0; index < _testShelfCapacity - 1; index++) {
       await library.addLibraryItem(
         BookshelfAddRequest(
           title: '本地书籍 $index',
@@ -50,7 +52,7 @@ void main() {
       ),
       throwsA(isA<LanSyncGatewayException>().having((error) => error.code, 'code', bookshelfCapacityExceededCode)),
     );
-    expect((await library.listLibrary(const LibraryQuery(limit: bookshelfMaxItemCount))).items, hasLength(bookshelfMaxItemCount - 1));
+    expect((await library.listLibrary(const LibraryQuery(limit: _testShelfCapacity))).items, hasLength(_testShelfCapacity - 1));
   });
 }
 

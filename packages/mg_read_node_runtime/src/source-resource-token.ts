@@ -6,10 +6,11 @@
  * process-local token table. Base64URL only makes JSON path-safe; it provides
  * no confidentiality or authenticity.
  */
+import { contentLimits } from './content-limits.js';
 import type { JsonObject } from "./protocol.js";
 
 const TOKEN_VERSION = 1;
-const MAX_TOKEN_CHARACTERS = 24 * 1024;
+const MAX_TOKEN_CHARACTERS = contentLimits.resourceTokenCharacters;
 
 export interface SourceResourceTokenPayload {
   readonly pluginId: string;
@@ -27,7 +28,7 @@ export function decodeSourceResourceUrl(
     return undefined;
   }
   if (url.protocol !== "http:" && url.protocol !== "https:" || url.search !== "" || url.hash !== "") return undefined;
-  const match = /^\/v1\/source-resource\/([A-Za-z0-9_-]{16,24576})$/u.exec(url.pathname);
+  const match = /^\/v1\/source-resource\/([A-Za-z0-9_-]{16,})$/u.exec(url.pathname);
   return match === null ? undefined : decodeSourceResourceToken(match[1]!);
 }
 
@@ -36,11 +37,13 @@ export function encodeSourceResourceToken(
   pluginId: string,
   request: JsonObject,
 ): string {
-  return Buffer.from(JSON.stringify({
+  const token = Buffer.from(JSON.stringify({
     pluginId,
     request,
     version: TOKEN_VERSION,
   }), "utf8").toString("base64url");
+  if (token.length > MAX_TOKEN_CHARACTERS) throw new Error(`Resource descriptor exceeds its budget: ${token.length} characters exceeds ${MAX_TOKEN_CHARACTERS}.`);
+  return token;
 }
 
 /** Decodes and validates a self-contained loopback path segment. */

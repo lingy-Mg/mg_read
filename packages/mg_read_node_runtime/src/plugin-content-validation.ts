@@ -4,6 +4,7 @@
  */
 
 import type { JsonObject } from "./protocol.js";
+import { contentLimits } from './content-limits.js';
 import {
   MAX_ATTRIBUTES,
   MAX_CATEGORIES,
@@ -127,6 +128,7 @@ export function validateChaptersResult(
   value: unknown,
 ): PluginChaptersResult {
   const raw = readRecord(value);
+  assertInlineBudget(raw, MAX_INLINE_CHAPTER_CATALOG_BYTES);
   assertOnlyKeys(raw, ["groups", "items"]);
   const items = Object.freeze(
     readArray(raw, "items", MAX_CHAPTER_ITEMS).map(validateChapterSummary),
@@ -153,6 +155,7 @@ export function validateContentResult(
 ): PluginChapterContent {
   const raw = readRecord(value);
   const contentKind = readEnum(raw, "contentKind", contentKinds);
+  assertInlineBudget(raw, contentKind === "novel" ? MAX_INLINE_NOVEL_RESULT_BYTES : contentKind === "manga" ? MAX_INLINE_MANGA_MANIFEST_BYTES : MAX_INLINE_RESULT_BYTES);
   const text = readNullableText(raw, "text");
   const pages = Object.freeze(
     readArray(raw, "pages", MAX_MANGA_PAGES).map(validateMangaPage),
@@ -299,7 +302,7 @@ function validateMediaResource(value: unknown): PluginMediaResource {
   const entries = Object.entries(headers);
   if (entries.length > MAX_MEDIA_HEADERS) fail();
   for (const [name, header] of entries) {
-    if (!/^[A-Za-z0-9-]{1,64}$/.test(name) || typeof header !== "string" || header.length > 4096 || /[\r\n]/.test(header)) fail();
+    if (!/^[A-Za-z0-9-]{1,64}$/.test(name) || typeof header !== "string" || header.length > contentLimits.headerValueCharacters || /[\r\n]/.test(header)) fail();
   }
   const resourcePolicy = readEnum(raw, "resourcePolicy", new Set(["sessionOnly", "refreshable"] as const));
   const expiresAt = readNullableTimestamp(raw, "expiresAt");
@@ -602,10 +605,12 @@ export function assertUnique(values: readonly string[]): void {
 }
 
 export function assertInlineBudget(
-  value: JsonObject,
-  maximumBytes = MAX_INLINE_RESULT_BYTES,
+  value: unknown,
+  maximumBytes: number = MAX_INLINE_RESULT_BYTES,
 ): void {
-  const actualBytes = Buffer.byteLength(JSON.stringify(value), "utf8");
+  const encoded = JSON.stringify(value);
+  if (typeof encoded !== "string") fail("Response value cannot be encoded as JSON.");
+  const actualBytes = Buffer.byteLength(encoded, "utf8");
   if (actualBytes > maximumBytes) {
     fail(`Response validation failed at the inline payload budget: ${actualBytes} bytes exceeds the ${maximumBytes}-byte limit.`);
   }

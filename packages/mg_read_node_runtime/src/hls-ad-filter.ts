@@ -5,6 +5,7 @@
  * A failed/ambiguous probe keeps the original interval. Cancellation is propagated
  * to every request and reader; unchanged sources incur no filtering/probe work.
  */
+import { contentLimits } from './content-limits.js';
 import { analyzeHlsAdIslands, readHlsAdFilter, type HlsAdCandidate } from "./hls-ad-analysis.js";
 import { readTransportClock, transportClockDelta, type TransportClock } from "./hls-transport-clock.js";
 import { openSourceProxyResource, type SourceProxyEntry, type SourceProxyResource } from "./source-resource-proxy.js";
@@ -46,7 +47,7 @@ export async function filterSourceHlsResource(
   resource: SourceProxyResource, entry: SourceProxyEntry, signal: AbortSignal,
 ): Promise<SourceProxyResource> {
   if (resource.request.kind !== "hls" || resource.response.status !== 200 || readHlsAdFilter(resource.request.hlsAdFilter) === undefined) return resource;
-  const text = new TextDecoder().decode(await readPrefix(resource.response, 1024 * 1024, signal, true));
+  const text = new TextDecoder().decode(await readPrefix(resource.response, contentLimits.hlsBytes, signal, true));
   const timeout = AbortSignal.any([signal, AbortSignal.timeout(6000)]);
   const probes = new Map<string, Promise<TransportClock | undefined>>();
   const probe = (url: string) => {

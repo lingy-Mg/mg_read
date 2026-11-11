@@ -4,6 +4,7 @@
 /// 调用方仍拥有持久化与请求去重，失败后必须释放共享 Future 以允许手动重试。
 library;
 
+import 'package:mg_read/core/content_limits.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -20,7 +21,7 @@ Future<T> requestNovelChapter<T>(Future<T> Function() request, {SourceContentGat
           ? (gateway as CancellableSourceContentGateway).runCancellable(cancellation, request)
           : Future<T>.sync(request);
       return await pending.timeout(
-        const Duration(seconds: 20),
+        const Duration(seconds: ContentLimits.novelAttemptSeconds),
         onTimeout: () {
           cancellation.cancel();
           throw TimeoutException('小说章节请求超时，请重试。');

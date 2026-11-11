@@ -4,12 +4,13 @@
  * It stores only reproducible public responses under Runtime's injected cacheDir.
  * Chapter and user-specific state are handled outside this cache.
  */
+import { contentLimits } from './content-limits.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile, } from 'node:fs/promises';
 import { isAbsolute, resolve } from 'node:path';
 const schemaVersion = 1;
-const maximumCacheBytes = 100 * 1024 * 1024;
-const maximumEntryBytes = 2 * 1024 * 1024;
+const maximumCacheBytes = contentLimits.cacheTotalBytes;
+const maximumEntryBytes = contentLimits.cacheEntryBytes;
 const cacheFilePattern = /^[a-f0-9]{64}\.json$/u;
 export class BoundedTextCache {
     #root;

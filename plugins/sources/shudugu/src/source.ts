@@ -4,6 +4,7 @@
  * 职责：解析发现、搜索、详情、目录和正文，并复用插件私有的 HTML/投影缓存。
  * 注意：发现页允许过期详情投影立即返回并后台刷新；用户打开详情和目录仍遵守一小时严格新鲜度。
  */
+import { contentLimits } from './content-limits.js';
 import * as cheerio from 'cheerio/slim';
 import type { Element } from 'domhandler';
 import type {
@@ -212,7 +213,7 @@ export class ShuduguSource {
     const parts: string[] = [];
     let pageUrl = chapterUrl;
     let title: string | null = null;
-    for (let page = 1; page <= 120; page += 1) {
+    for (let page = 1; page <= contentLimits.catalogItems; page += 1) {
       if (visited.has(pageUrl.toString())) throw new Error('Chapter pagination loop detected.');
       visited.add(pageUrl.toString());
       const $ = cheerio.load(await this.#getHtml(pageUrl));
@@ -226,7 +227,7 @@ export class ShuduguSource {
       if (pageText !== '') parts.push(pageText);
       if (nextPage === null) break;
       pageUrl = nextPage;
-      if (page === 120) throw new Error('Chapter pagination exceeds the safety limit.');
+      if (page === contentLimits.catalogItems) throw new Error('Chapter pagination exceeds the safety limit.');
     }
     const text = parts.join('\n\n').trim();
     return Object.freeze({ chapterId: request.chapterId, contentKind: 'novel', title, updatedAt: null, text, pages: Object.freeze([]) });
@@ -378,7 +379,7 @@ export class ShuduguSource {
     const seen = new Set<string>();
     let pageUrl = base;
     let pageHtml = firstHtml;
-    for (let page = 1; page <= 120; page += 1) {
+    for (let page = 1; page <= contentLimits.catalogItems; page += 1) {
       const $ = cheerio.load(pageHtml);
       for (const chapter of this.#parseCatalog($, pageUrl)) {
         if (seen.has(chapter.id)) continue;
@@ -387,7 +388,7 @@ export class ShuduguSource {
       }
       const nextPage = this.#nextCatalogPage($, pageUrl, bookId);
       if (nextPage === null) return Object.freeze(chapters);
-      if (page === 120) throw new Error('Catalog pagination exceeds the safety limit.');
+      if (page === contentLimits.catalogItems) throw new Error('Catalog pagination exceeds the safety limit.');
       pageUrl = nextPage;
       pageHtml = await this.#getHtml(pageUrl, policy);
     }

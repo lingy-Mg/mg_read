@@ -15,6 +15,7 @@
  * TODO:
  * - 将剩余 VM 编排方法继续下沉到显式内部端口。
  */
+import { contentLimits } from './content-limits.js';
 import { createHash } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createRequire } from "node:module";
@@ -248,7 +249,7 @@ export class PluginManager {
   setResourceOrigin(origin: string): void { this.#resourceOrigin = origin; }
 
   createResourceUrl(pluginId: string, request: JsonObject): string {
-    if (!isPluginId(pluginId) || Buffer.byteLength(JSON.stringify(request), "utf8") > 16 * 1024) throw new PluginManagerError("invalid_request");
+    if (!isPluginId(pluginId) || Buffer.byteLength(JSON.stringify(request), "utf8") > contentLimits.resourceTokenCharacters * 3 / 4 - 256) throw new PluginManagerError("invalid_request");
     const token = encodeSourceResourceToken(pluginId, request);
     this.#sourceResources.created(pluginId, request, (next) => this.createResourceUrl(pluginId, next));
     return `${this.#resourceOrigin}/v1/source-resource/${token}`;

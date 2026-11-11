@@ -22,6 +22,38 @@ void main() {
     if (await temp.exists()) await temp.delete(recursive: true);
   });
 
+  test('ZIP64 directories are accepted without weakening EPUB content validation', () async {
+    final file = await _epub(temp, {'OPS/chapter.xhtml': _xhtml('<p>ZIP64 正文</p>')}, opf: _opf2);
+    final bytes = await file.readAsBytes();
+    final old = ByteData.sublistView(bytes);
+    final end = bytes.length - 22;
+    final zip64 = ByteData(76);
+    zip64.setUint32(0, 0x06064b50, Endian.little);
+    zip64.setUint64(4, 44, Endian.little);
+    zip64.setUint16(12, 45, Endian.little);
+    zip64.setUint16(14, 45, Endian.little);
+    zip64.setUint64(24, old.getUint16(end + 8, Endian.little), Endian.little);
+    zip64.setUint64(32, old.getUint16(end + 10, Endian.little), Endian.little);
+    zip64.setUint64(40, old.getUint32(end + 12, Endian.little), Endian.little);
+    zip64.setUint64(48, old.getUint32(end + 16, Endian.little), Endian.little);
+    zip64.setUint32(56, 0x07064b50, Endian.little);
+    zip64.setUint64(64, end, Endian.little);
+    zip64.setUint32(72, 1, Endian.little);
+    old.setUint16(end + 8, 0xffff, Endian.little);
+    old.setUint16(end + 10, 0xffff, Endian.little);
+    old.setUint32(end + 12, 0xffffffff, Endian.little);
+    old.setUint32(end + 16, 0xffffffff, Endian.little);
+    await file.writeAsBytes([...bytes.take(end), ...zip64.buffer.asUint8List(), ...bytes.skip(end)]);
+    final parsed = await parser.parse(source: file, output: output);
+    expect(parsed.chapters, isNotEmpty);
+    expect(jsonEncode(await _chapter(parsed.chapters.first, output)), contains('ZIP64 正文'));
+    // Reject overflowing ZIP64 declarations before the decoder can allocate.
+    zip64.setUint64(24, -1, Endian.little);
+    zip64.setUint64(32, -1, Endian.little);
+    await file.writeAsBytes([...bytes.take(end), ...zip64.buffer.asUint8List(), ...bytes.skip(end)]);
+    await _expectCode(parser, file, output, 'epub_zip_directory_limit');
+  });
+
   test('EPUB3 respects spine order, nested nav fragments, rich blocks and images', () async {
     final file = await _epub(temp, <String, String>{
       'OPS/z-last.xhtml': _xhtml('''<h1>Last</h1><p>Tail</p>'''),

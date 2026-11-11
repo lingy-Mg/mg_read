@@ -28,6 +28,13 @@ test('search and discovery accept 1000 items, rejecting item 1001', () => {
 });
 const chapter = i => ({id:`${i}-${'x'.repeat(4090)}`,title:'章节',order:i,url:null,volumeTitle:null,
   wordCount:null,updatedAt:null,isLocked:null,attributes:[]});
+
+test('a complete catalog beyond 5000 chapters retains its final chapter', () => {
+  const items=Array.from({length:6001},(_,i)=>({...chapter(i),id:`chapter:${i}`}));
+  const result=validateChaptersResult('fixture','Fixture',{items});
+  assert.equal(result.items.length,6001);
+  assert.equal(result.items.at(-1).id,'chapter:6000');
+});
 test('complete catalogs larger than 2 MiB load while the 10 MiB budget still applies', () => {
   const items=Array.from({length:800},(_,i)=>chapter(i));
   assert.ok(Buffer.byteLength(JSON.stringify({items}))>2*1024*1024);
@@ -36,11 +43,11 @@ test('complete catalogs larger than 2 MiB load while the 10 MiB budget still app
     items:Array.from({length:2900},(_,i)=>chapter(i)),
   }),/10485760-byte limit/u);
 });
-test('a manga manifest larger than 512 KiB loads without altering its 500-page limit', () => {
+test('a manga manifest larger than 512 KiB loads including pages beyond the old 500-page limit', () => {
   const pages=Array.from({length:500},(_,index)=>({id:`page:${index}`,index,
     url:`https://example.com/${'x'.repeat(4096)}`,mimeType:null,width:null,height:null}));
   const content={chapterId:'chapter:1',contentKind:'manga',title:null,updatedAt:null,text:null,pages};
   assert.ok(Buffer.byteLength(JSON.stringify(content))>512*1024);
   assert.equal(validateContentResult('fixture','Fixture',content).pages.length,500);
-  assert.throws(()=>validateContentResult('fixture','Fixture',{...content,pages:[...pages,{...pages[0],id:'extra',index:500}]}));
+  assert.equal(validateContentResult('fixture','Fixture',{...content,pages:[...pages,{...pages[0],id:'extra',index:500}]}).pages.length,501);
 });

@@ -12,6 +12,7 @@
 /// State and transport remain re-exported for existing app composition callers.
 library;
 
+import 'package:mg_read/core/content_limits.dart';
 import 'dart:typed_data';
 
 import 'package:novel_reader_ui/novel_reader_ui.dart';
@@ -39,7 +40,7 @@ final class ContentLibraryComicReaderDataSource
        _externalFetcher = fetcher,
        _httpClientOwner = fetcher == null ? createComicImageHttpClientOwner(httpClientFactory) : null;
 
-  static const _maximumImageBytes = 8 * 1024 * 1024;
+  static const _maximumImageBytes = ContentLimits.imageBytes;
 
   final ContentLibrary library;
   final SourceContentGateway gateway;
@@ -376,7 +377,7 @@ final class ContentLibraryComicReaderDataSource
       }
     }
     if (bytes.isEmpty) throw StateError('Comic image is empty.');
-    if (bytes.length > _maximumImageBytes) throw StateError('Comic image exceeds 8 MiB.');
+    if (bytes.length > _maximumImageBytes) throw StateError('Comic image exceeds the shared 100 MiB budget.');
     try {
       await library.saveMangaImage(
         itemId: item.id,

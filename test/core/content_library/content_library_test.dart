@@ -96,8 +96,10 @@ void main() {
     expect(items.single.kind, ContentKind.novel);
   });
 
-  test('bookshelf enforces the global active capacity', () async {
-    for (var index = 0; index < bookshelfMaxItemCount; index++) {
+  test('bookshelf enforces a configured active capacity', () async {
+    await library.close();
+    library = await ContentLibrary.open(dataRoot: root, maximumShelfItems: 100);
+    for (var index = 0; index < 100; index++) {
       await addItem(remoteId: 'capacity-$index', title: '书 $index');
     }
     await expectLater(addItem(remoteId: 'capacity-overflow'), throwsA(isA<BookshelfCapacityExceededException>()));

@@ -11,6 +11,7 @@
  * - canonical JSON 的键递归排序，header 必须逐字节匹配该规范形式。
  *
  */
+import { contentLimits } from './content-limits.js';
 import { createHash } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, extname, resolve } from "node:path";
@@ -26,7 +27,7 @@ import {
 } from "./plugin-package.js";
 import { supportedPluginNodeRange } from "./runtime-version.js";
 
-export const MAX_PLUGIN_ARTIFACT_BYTES = 32 * 1024 * 1024;
+export const MAX_PLUGIN_ARTIFACT_BYTES = contentLimits.pluginArtifactBytes;
 export const MAX_PLUGIN_SINGLE_FILE_HEADER_BYTES = 512 * 1024;
 export const MAX_PLUGIN_ICON_BYTES = 256 * 1024;
 export const PLUGIN_SINGLE_FILE_PREFIX = "// @mgread-plugin-v1 ";

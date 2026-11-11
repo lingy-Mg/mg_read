@@ -47,14 +47,14 @@ test("40 sources install in one inbox pass and cold activation is bounded and co
   t.diagnostic(`40-source metadata restart: ${Math.round(performance.now() - restartStart)} ms; modules loaded=0`);
 });
 
-test("inbox enforces 512 MiB before installing any file", async (t) => {
+test("inbox enforces the shared batch budget before installing any file", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "mgread-inbox-budget-"));
   t.after(() => rm(root, {recursive: true, force: true}));
   const inbox = join(root, "inbox");
   await mkdir(inbox);
   for (let index = 0; index < 17; index++) {
     const file = await open(join(inbox, `${index}.mgplugin.js`), "w");
-    await file.truncate(32 * 1024 * 1024);
+    await file.truncate(256 * 1024 * 1024);
     await file.close();
   }
   await assert.rejects(installPluginArtifactInbox(join(root, "data"), inbox, () => {}), /inbox is over budget/);

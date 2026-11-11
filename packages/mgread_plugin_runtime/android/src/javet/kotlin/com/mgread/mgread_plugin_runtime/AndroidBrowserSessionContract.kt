@@ -53,7 +53,7 @@ internal data class AndroidBrowserSessionRequest(
             }
             val sessionKey = value.requiredString("sessionKey", 64)
             require(SESSION_KEY.matches(sessionKey))
-            val url = value.requiredString("url", 4096)
+            val url = value.requiredString("url", ContentLimits.upstreamUrlCharacters)
             originOf(url)
             require(operation == "request" || operation == "interaction")
             if (operation == "interaction") {
@@ -214,7 +214,7 @@ internal data class AndroidBrowserSessionRequest(
 }
 
 private fun JSONObject.requiredHttpUrl(name: String): String {
-    val value = requiredString(name, 4096)
+    val value = requiredString(name, ContentLimits.upstreamUrlCharacters)
     val uri = URI(value)
     require((uri.scheme == "https" || uri.scheme == "http") && uri.rawUserInfo == null && uri.host != null)
     return uri.toString()

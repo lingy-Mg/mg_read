@@ -3,6 +3,9 @@
 根规则始终适用。本目录只拥有各来源的请求、解析、稳定身份、fixture 和私有缓存；来源名称、版本、能力和
 artifact 模式以 Node 来源 `package.json.mgread` 或原生来源构建生成的 `manifest.json` 为准，文件局部边界写入口源码头。
 
+来源容量使用根 `tools/content_limits.json` 生成的本地 `content-limits` 模块（原生来源使用 SDK `limits`）；
+不要重新添加比公开内容预算更低的目录、正文、资源描述或缓存私有上限。网站实际分页和展示投影数量仍由来源拥有。
+
 每个 Node 来源都必须在 `package.json.mgread.sourceUrl` 提供规范来源主页：使用绝对 HTTP(S) URL，不含凭据、
 查询或片段；Runtime 统一规范化主机、默认端口和路径尾斜线。修改来源元数据时同步提升插件 patch 版本和 lock 根版本。
 

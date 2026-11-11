@@ -5,6 +5,7 @@ library;
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+import 'package:mg_read/core/content_limits.dart';
 
 final class LocalDocumentObjectStore {
   LocalDocumentObjectStore(Directory appRoot) : _root = Directory('${appRoot.path}/files/local-documents');
@@ -47,15 +48,16 @@ final class LocalDocumentObjectStore {
     if (await folder.exists()) await folder.delete(recursive: true);
   }
 
-  Future<Map<String, Object?>> readGeneration(String generation) => readJson(generation, 'manifest.json', maxBytes: 32 * 1024 * 1024);
+  Future<Map<String, Object?>> readGeneration(String generation) =>
+      readJson(generation, 'manifest.json', maxBytes: ContentLimits.epubContainerBytes);
 
-  Future<Map<String, Object?>> readJson(String generation, String relative, {int maxBytes = 4 * 1024 * 1024}) async {
+  Future<Map<String, Object?>> readJson(String generation, String relative, {int maxBytes = ContentLimits.inlineBytes}) async {
     final file = _file(generation, relative);
     if (await file.length() > maxBytes) throw const FormatException('local_document_object_too_large');
     return Isolate.run(() => Map<String, Object?>.from(jsonDecode(file.readAsStringSync()) as Map));
   }
 
-  Future<List<int>> readResource(String generation, String relative, {int maxBytes = 32 * 1024 * 1024}) async {
+  Future<List<int>> readResource(String generation, String relative, {int maxBytes = ContentLimits.epubResourceBytes}) async {
     final file = _file(generation, relative);
     if (await file.length() > maxBytes) throw const FormatException('local_document_resource_too_large');
     return file.readAsBytes();
@@ -73,7 +75,7 @@ final class LocalDocumentObjectStore {
 
   Future<void> commitSmallOriginal(String hash, List<int> bytes) async {
     _validate(hash);
-    if (bytes.length > 8 * 1024 * 1024) throw const FormatException('cover_too_large');
+    if (bytes.length > ContentLimits.coverBytes) throw const FormatException('cover_too_large');
     final file = _blob(hash);
     await file.parent.create(recursive: true);
     if (await file.exists()) return;
@@ -85,7 +87,7 @@ final class LocalDocumentObjectStore {
   Future<List<int>> readSmallOriginal(String hash) async {
     _validate(hash);
     final file = _blob(hash);
-    if (await file.length() > 8 * 1024 * 1024) throw const FormatException('cover_too_large');
+    if (await file.length() > ContentLimits.coverBytes) throw const FormatException('cover_too_large');
     return file.readAsBytes();
   }
 

@@ -73,13 +73,13 @@ impl Resources {
         let token = URL_SAFE_NO_PAD.encode(serde_json::to_vec(
             &json!({"version":1,"engine":"native","pluginId":self.plugin_id,"request":descriptor}),
         )?);
-        if token.len() > 24 * 1024 {
+        if token.len() > crate::limits::RESOURCE_TOKEN_CHARACTERS {
             return Err(invalid("Resource descriptor exceeds its limit"));
         }
         Ok(format!("{}{token}", self.prefix()))
     }
     pub fn decode(&self, token: &str) -> Result<Value> {
-        if token.len() < 16 || token.len() > 24 * 1024 {
+        if token.len() < 16 || token.len() > crate::limits::RESOURCE_TOKEN_CHARACTERS {
             return Err(invalid("Invalid resource payload"));
         }
         let bytes = URL_SAFE_NO_PAD
@@ -223,7 +223,7 @@ async fn open_resource(
     let status = upstream.status();
     if playlist && status.is_success() {
         let base = upstream.url().clone();
-        let bytes = http::bounded_body(upstream, 1024 * 1024).await?;
+        let bytes = http::bounded_body(upstream, crate::limits::HLS_BYTES).await?;
         let text = std::str::from_utf8(&bytes).map_err(|_| invalid("Invalid HLS text"))?;
         let body = crate::hls::rewrite(text, &base, |uri, kind, role| {
             let mut next = descriptor.clone();

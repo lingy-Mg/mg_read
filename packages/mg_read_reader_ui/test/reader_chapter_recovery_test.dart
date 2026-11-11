@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
+import 'package:novel_reader_ui/src/core/content_limits.dart';
 
 void main() {
   for (final mode in ReaderNavigationMode.values) {
@@ -58,7 +59,9 @@ void main() {
         await tester.pump(const Duration(milliseconds: 16));
       }
       expect(source.attempts['c1'], 1);
-      await tester.pump(const Duration(seconds: 71));
+      await tester.pump(
+        const Duration(seconds: ReaderContentLimits.readerWaitSeconds + 1),
+      );
       await tester.pump();
       expect(find.text('重试加载'), findsOneWidget);
       expect(controller.snapshot.chapter?.id, 'c0');
@@ -86,7 +89,9 @@ void main() {
       await _mount(tester, source, controller);
       unawaited(controller.nextChapter());
       await tester.pump();
-      await tester.pump(const Duration(seconds: 71));
+      await tester.pump(
+        const Duration(seconds: ReaderContentLimits.readerWaitSeconds + 1),
+      );
       await tester.pump();
       expect(find.text('重试加载'), findsOneWidget);
       expect(controller.snapshot.chapter?.id, 'c0');
@@ -147,8 +152,9 @@ void main() {
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.platform,
       (call) async {
-        if (call.method == 'Clipboard.setData')
+        if (call.method == 'Clipboard.setData') {
           copied = (call.arguments as Map)['text'] as String?;
+        }
         return null;
       },
     );
@@ -209,8 +215,9 @@ Future<void> _mount(
       ),
     ),
   );
-  if (expectReady)
+  if (expectReady) {
     await _until(tester, () => controller.snapshot.chapter?.id == 'c0');
+  }
 }
 
 Future<void> _until(WidgetTester tester, bool Function() condition) async {

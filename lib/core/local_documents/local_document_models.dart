@@ -3,15 +3,16 @@
 /// Paths below are staging-relative internal descriptors, never UI contracts.
 library;
 
+import 'package:mg_read/core/content_limits.dart';
 import 'dart:io';
 
 enum LocalDocumentFormat { txt, epub }
 
 enum LocalDocumentReadingKind { text, comic }
 
-const localDocumentMaxFileBytes = 256 * 1024 * 1024;
-const localDocumentMaxExpandedBytes = 2 * 1024 * 1024 * 1024;
-const localDocumentMaxEntries = 20000;
+const localDocumentMaxFileBytes = ContentLimits.localFileBytes;
+const localDocumentMaxExpandedBytes = ContentLimits.localExpandedBytes;
+const localDocumentMaxEntries = ContentLimits.localEntries;
 const localDocumentParserVersion = 1;
 
 final class LocalDocumentException implements Exception {

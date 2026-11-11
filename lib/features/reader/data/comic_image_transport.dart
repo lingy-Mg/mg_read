@@ -5,6 +5,7 @@
 /// closed on disposal and loopback resources bypass proxies.
 library;
 
+import 'package:mg_read/core/content_limits.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
@@ -49,7 +50,7 @@ final class _ComicImageValidationException extends HttpException {
 }
 
 Future<Uint8List> _fetchComicImageAttempt(Uri uri, {HttpClient? client}) async {
-  const maximumBytes = 8 * 1024 * 1024;
+  const maximumBytes = ContentLimits.imageBytes;
   final ownedClient = client ?? HttpClient();
   if (client == null) {
     ownedClient
@@ -106,13 +107,13 @@ Future<Uint8List> _fetchComicImageAttempt(Uri uri, {HttpClient? client}) async {
       if (!declaredAsImage && !declaredAsGenericBinary) {
         throw _ComicImageValidationException('Image MIME is invalid.');
       }
-      if (response.contentLength > maximumBytes) throw StateError('Image exceeds 8 MiB.');
+      if (response.contentLength > maximumBytes) throw StateError('Image exceeds the shared 100 MiB budget.');
       unreadResponse = null;
       final bytes = await response
           .timeout(const Duration(seconds: 20))
           .fold<BytesBuilder>(BytesBuilder(), (b, chunk) {
             b.add(chunk);
-            if (b.length > maximumBytes) throw StateError('Image exceeds 8 MiB.');
+            if (b.length > maximumBytes) throw StateError('Image exceeds the shared 100 MiB budget.');
             return b;
           })
           .then((b) => b.takeBytes());

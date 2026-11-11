@@ -7,6 +7,7 @@ import test from 'node:test';
 import { collectDiscoveryContent, collectDiscoveryContinuations, createSourceTestHarness } from '@mgread/source-testkit';
 import { AliceBookHouseSource } from '../dist/source.js';
 import { browseNextPage, browsePath, browseState, browseTarget } from '../dist/source-browse-routes.js';
+import { discoveryPayloadMaximumBytes } from '../dist/source-discovery-budget.js';
 
 const categories = [
   { id: '71', title: '科幻' }, { id: '64', title: '都市' },
@@ -57,7 +58,7 @@ async function fixture(t, { next = true } = {}) {
 test('home retains recommendations, exposes original/latest, and parses every real category ranking', async (t) => {
   const { source } = await fixture(t);
   const result = await source.discover(request(null));
-  assert.ok(Buffer.byteLength(JSON.stringify(result), 'utf8') <= 52 * 1024);
+  assert.ok(Buffer.byteLength(JSON.stringify(result), 'utf8') <= discoveryPayloadMaximumBytes);
   const components = result.document.components;
   const rankings = components.filter((component) => component.id.startsWith('source-home-ranking-section:'));
   assert.deepEqual(rankings.map((component) => component.title), categories.map((category) => `${category.title}排行榜`));

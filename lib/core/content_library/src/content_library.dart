@@ -8,11 +8,12 @@
 /// 注意：
 /// - 不泄漏 SQLite、路径、动态 JSON 或 Runtime 传输对象。
 /// - ContentLibrary 是业务数据权威；持久化与诊断失败必须保留既有边界。
-/// - 所有新书架条目必须在 metadata 事务内遵守全局 100 本硬上限。
+/// - 所有新书架条目必须在 metadata 事务内遵守共享容量策略（默认 10000 本）。
 /// - 目录/正文引用写入、书架删除与清理共享可重入维护屏障，普通读取不排队。
 ///
 library;
 
+import 'package:mg_read/core/content_limits.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -57,10 +58,18 @@ Iterable<RecordDocumentCodec> get contentLibraryRecordDocumentCodecs sync* {
 RecordDocumentRegistry get _registry => RecordDocumentRegistry(contentLibraryRecordDocumentCodecs);
 
 final class ContentLibrary {
-  ContentLibrary._(this._persistence, this._diagnostics, {required this._closePersistenceOnClose});
+  ContentLibrary._(
+    this._persistence,
+    this._diagnostics, {
+    required this._closePersistenceOnClose,
+    this.maximumShelfItems = bookshelfMaxItemCount,
+  }) : assert(maximumShelfItems > 0);
   final AppPersistence _persistence;
   final DiagnosticsManager? _diagnostics;
   final bool _closePersistenceOnClose;
+
+  /// Capacity policy for this library; tests and embedded consumers can use a smaller budget.
+  final int maximumShelfItems;
   final _ContentLibraryMaintenanceBarrier _maintenanceBarrier = _ContentLibraryMaintenanceBarrier();
   late final LocalDocumentObjectStore _localFiles = LocalDocumentObjectStore(_persistence.dataRoot);
   final Map<String, _LocalImportOperation> _localImports = {};
@@ -76,10 +85,15 @@ final class ContentLibrary {
   late final _CoverOperations _covers = _CoverOperations(this);
   late final _MangaImageCacheOperations _mangaImageCache = _MangaImageCacheOperations(this);
   late final _StorageMaintenanceOperations _storageMaintenance = _StorageMaintenanceOperations(this);
-  static Future<ContentLibrary> open({required Directory dataRoot, DiagnosticsManager? diagnostics}) async => ContentLibrary._(
+  static Future<ContentLibrary> open({
+    required Directory dataRoot,
+    DiagnosticsManager? diagnostics,
+    int maximumShelfItems = bookshelfMaxItemCount,
+  }) async => ContentLibrary._(
     await AppPersistence.open(dataRoot: dataRoot, registry: _registry, diagnostics: diagnostics),
     diagnostics,
     closePersistenceOnClose: true,
+    maximumShelfItems: maximumShelfItems,
   );
 
   /// Creates the library over the composition root's single persistence owner.

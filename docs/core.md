@@ -35,7 +35,7 @@ plugins/sources/                    真实数据源及其他能力参考实现
   `catalog_chapters`、`reading_progress`、`bookmarks` 五张持久表，schema 和生命周期只由 core persistence 管理。
 - `ContentLibrary` 拥有书架、目录、正文、受控文件、小说/漫画/音频/视频进度和书签；Runtime 不打开
   主应用数据库，也不取得内容路径。
-- 书架上限由 `bookshelfMaxItemCount` 统一管理；新增在 metadata 事务内校验，更新不占新名额。
+- 书架上限由 `bookshelfMaxItemCount` 统一管理（共享容量策略默认 10000 本）；新增在 metadata 事务内校验，更新不占新名额。
 - 受控对象先写入并校验，再通过 metadata revision CAS 切换引用；已提交 metadata 是恢复权威，无引用对象
   由有界 maintenance/GC 清理。
 - 远程书籍只有按远程章节身份去重的追加目录；同步只追加未见身份，不修订或删除旧章。阅读会话固定打开时的
@@ -140,10 +140,16 @@ plugins/sources/                    真实数据源及其他能力参考实现
 ## 插件内容 API
 
 - Node/Bun/Javet 共用 10 MiB 通用内容响应预算（发现、搜索、详情等）；小说正文允许 10 MiB UTF-8 字节，
-  小说 JSON 独立容纳最坏六倍转义及 64 KiB 元数据，控制帧另留 64 KiB RPC 信封空间。
+  小说 JSON 独立容纳最坏六倍转义及 1 MiB 元数据，控制帧另留 64 KiB RPC 信封空间。
   Flutter Facade 与 Runtime 的握手限制必须一致。目录和漫画清单各允许 10 MiB JSON；搜索每页和发现单集合各允许 1000 项。
   Windows/Android 浏览器会话响应允许 10 MiB UTF-8；独立原生 SDK 小说正文同为 10 MiB UTF-8。
   大小预算不取代组件数量、目录章数、漫画页数和字段长度校验；媒体与图片主体仍走资源数据面。
+  容量的唯一配置是 `tools/content_limits.json`；`tools/generate_content_limits.mjs` 生成 Dart、TS/JS、Rust 和 Kotlin 常量，
+  Runtime 构建和 Flutter 检查必须执行 `--check` 防止副本漂移。完整目录和漫画清单另允许 100000 项；
+  标题 4096 字符、身份和游标 65536 字符、资源 token 262144 字符；生成、路由、解码、字段校验与 HTTP listener 必须同时支持。
+  漫画单图/封面 100 MiB、HLS 清单 10 MiB；来源私有缓存单条 64 MiB、总量 1 GiB，满时淘汰旧缓存。
+  本地导入允许 2 GiB 文件、16 GiB 展开量和 200000 条目，EPUB 支持 ZIP64；单篇 XHTML 128 MiB、资源 100 MiB。
+  插件 artifact 单文件 256 MiB、批次 2 GiB；正文单次尝试 90 秒、内容调用 300 秒、阅读器等待 330 秒，外层不得提前截断内层。
 
 - 统一称“数据源”；只有项目、artifact、安装、启停和 Runtime 生命周期使用“数据源插件”。
 - 调用链为 `discover/search -> contentId -> getDetail/getChapters -> chapterId -> getContent`。ID、cursor 和

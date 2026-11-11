@@ -47,6 +47,54 @@ var require_boolbase = __commonJS({
   }
 });
 
+// src/content-limits.ts
+var contentLimits = Object.freeze({
+  "inlineBytes": 10485760,
+  "novelBytes": 10485760,
+  "novelMetadataBytes": 1048576,
+  "rpcEnvelopeBytes": 65536,
+  "catalogItems": 1e5,
+  "mangaPages": 1e5,
+  "labelCharacters": 4096,
+  "metadataCharacters": 1048576,
+  "idCharacters": 65536,
+  "cursorCharacters": 65536,
+  "resourceTokenCharacters": 262144,
+  "upstreamUrlCharacters": 65536,
+  "urlCharacters": 266240,
+  "httpHeaderBytes": 294912,
+  "headerValueCharacters": 65536,
+  "imageBytes": 104857600,
+  "coverBytes": 104857600,
+  "hlsBytes": 10485760,
+  "sourceHtmlBytes": 67108864,
+  "cacheEntryBytes": 67108864,
+  "cacheTotalBytes": 1073741824,
+  "sourceDecodePixels": 1e8,
+  "novelAttemptSeconds": 90,
+  "contentTimeoutSeconds": 300,
+  "readerWaitSeconds": 330,
+  "localFileBytes": 2147483648,
+  "localExpandedBytes": 17179869184,
+  "localEntries": 2e5,
+  "epubContainerBytes": 67108864,
+  "epubXhtmlBytes": 134217728,
+  "epubMetadataBytes": 16777216,
+  "epubResourceBytes": 104857600,
+  "epubBlocks": 1e6,
+  "epubDepth": 512,
+  "epubNodes": 2e6,
+  "epubTableRows": 1e5,
+  "epubTableColumns": 1e4,
+  "shelfItems": 1e4,
+  "pluginArtifactBytes": 268435456,
+  "pluginBatchBytes": 2147483648,
+  "pluginArchiveBytes": 268435456,
+  "pluginArchiveEntryBytes": 268435456,
+  "pluginArchiveExpandedBytes": 536870912,
+  "pluginArchiveEntries": 1e5
+});
+
 // src/source.ts
 import { Buffer as Buffer2 } from "node:buffer";
 
@@ -6497,8 +6545,8 @@ var load = getLoad(getParse(parseDocument), esm_default);
 
 // src/source.ts
 var origin = "http://www.shukuge.com";
-var maxCatalogPages = 50;
-var maxChapterItems = 5e3;
+var maxCatalogPages = contentLimits.catalogItems;
+var maxChapterItems = contentLimits.catalogItems;
 var chapterGroupSize = 500;
 var categories = Object.freeze([
   ["fantasy", "玄幻", "/i-xuanhuan/"],
@@ -6676,7 +6724,7 @@ var ShukugeSource = class {
     const visited = /* @__PURE__ */ new Set();
     const paragraphs = [];
     let title = null;
-    for (let pageIndex = 0; pageIndex < 10 && !visited.has(url.toString()); pageIndex += 1) {
+    for (let pageIndex = 0; pageIndex < contentLimits.catalogItems && !visited.has(url.toString()); pageIndex += 1) {
       visited.add(url.toString());
       const $ = load(await this.#html(url));
       title ??= clean($(".bookd-title h1").first().text());

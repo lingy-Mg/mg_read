@@ -26,7 +26,7 @@ pub async fn serve(listener: tokio::net::TcpListener, router: Router, stop: Canc
                         router.clone().oneshot(request.map(Body::new))
                     });
                     let mut builder = hyper::server::conn::http1::Builder::new();
-                    builder.timer(TokioTimer::new()).half_close(false).max_buf_size(64 * 1024);
+                    builder.timer(TokioTimer::new()).half_close(false).max_buf_size(crate::limits::HTTP_HEADER_BYTES);
                     tokio::select! {
                         _ = stop.cancelled() => {},
                         _ = builder.serve_connection(TokioIo::new(socket), service) => {},

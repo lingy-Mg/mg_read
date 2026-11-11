@@ -8,6 +8,7 @@
  * - 不启动第二个 VM 或执行安装脚本。
  *
  */
+import { contentLimits } from './content-limits.js';
 import { createHash, randomUUID } from "node:crypto";
 import { access, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -130,7 +131,7 @@ export async function developmentProjectFingerprint(projectRoot: string): Promis
   for (const path of paths) {
     const bytes = await readFile(resolve(projectRoot, path));
     totalBytes += bytes.byteLength;
-    if (totalBytes > 32 * 1024 * 1024) {
+    if (totalBytes > contentLimits.pluginArtifactBytes) {
       throw new PluginManagerError("plugin_load_failed");
     }
     hash.update(path.replaceAll("\\", "/"));

@@ -188,8 +188,8 @@ internal class AndroidPluginArtifactTransfer(
     }
 
     private companion object {
-        const val MAX_ARTIFACT_BYTES = 32L * 1024L * 1024L
-        const val MAX_TRANSFER_BATCH_BYTES = 512L * 1024L * 1024L
+        val MAX_ARTIFACT_BYTES = ContentLimits.pluginArtifactBytes.toLong()
+        const val MAX_TRANSFER_BATCH_BYTES = ContentLimits.pluginBatchBytes
         const val IO_BUFFER_BYTES = 64 * 1024
         const val EXPORT_CHUNK_BYTES = 64 * 1024
     }

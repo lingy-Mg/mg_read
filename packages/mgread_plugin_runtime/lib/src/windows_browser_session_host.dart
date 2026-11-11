@@ -9,6 +9,7 @@
 /// Browser response bodies permit up to 10 MiB of UTF-8, matching the Core contract.
 library;
 
+import 'content_limits.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
@@ -880,7 +881,11 @@ final class _WindowsBrowserRequest {
     if (!RegExp(r'^[a-z0-9]+(?:[._-][a-z0-9]+)+$').hasMatch(pluginId) ||
         !RegExp(r'^[A-Za-z0-9._-]{1,64}$').hasMatch(sessionKey))
       _invalid();
-    final url = _required(value, 'url', 4096);
+    final url = _required(
+      value,
+      'url',
+      RuntimeContentLimits.upstreamUrlCharacters,
+    );
     final origin = _origin(url);
     final operation = value['operation'] is String
         ? value['operation']! as String

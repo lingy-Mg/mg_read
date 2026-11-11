@@ -6,6 +6,7 @@ pub mod cache;
 pub mod error;
 mod hls;
 mod http;
+pub mod limits;
 mod resource;
 mod server;
 mod validation;
@@ -63,7 +64,7 @@ impl Call {
     pub fn cancelled(&self) -> bool {
         self.cancel.is_cancelled()
             || self.context.stop.is_cancelled()
-            || self.started.elapsed() > Duration::from_secs(90)
+            || self.started.elapsed() > Duration::from_secs(limits::CONTENT_TIMEOUT_SECONDS as u64)
     }
     pub fn cache(&self) -> &cache::Cache {
         &self.context.cache
@@ -96,14 +97,15 @@ impl Call {
                 ));
             }
             // A complete 10 MiB chapter needs additional room for upstream HTML markup.
-            let body = String::from_utf8(http::bounded_body(response, 16 * 1024 * 1024).await?)
-                .map_err(|_| invalid("Source text is not UTF-8"))?;
+            let body =
+                String::from_utf8(http::bounded_body(response, limits::SOURCE_HTML_BYTES).await?)
+                    .map_err(|_| invalid("Source text is not UTF-8"))?;
             Ok(json!({"body":body,"status":status,"headers":{}}))
         };
         tokio::select! { biased;
             _ = self.cancel.cancelled() => Err(error::cancelled()),
             _ = self.context.stop.cancelled() => Err(error::cancelled()),
-            result = tokio::time::timeout(Duration::from_secs(20), operation) => result.map_err(|_| Error::new("runtime_timeout", "Source HTTP timed out"))?,
+            result = tokio::time::timeout(Duration::from_secs(limits::NOVEL_ATTEMPT_SECONDS as u64), operation) => result.map_err(|_| Error::new("runtime_timeout", "Source HTTP timed out"))?,
         }
     }
 }
@@ -213,7 +215,7 @@ impl Context {
         let mut value = tokio::select! { biased;
             _ = cancel.cancelled() => return Err(error::cancelled()),
             _ = self.stop.cancelled() => return Err(error::cancelled()),
-            result = tokio::time::timeout(Duration::from_secs(90), operation) => result.map_err(|_| Error::new("timeout", "Source HTTP call timed out"))?.map_err(|_| Error::new("native_panic", "Source handler failed"))??,
+            result = tokio::time::timeout(Duration::from_secs(limits::CONTENT_TIMEOUT_SECONDS as u64), operation) => result.map_err(|_| Error::new("timeout", "Source HTTP call timed out"))?.map_err(|_| Error::new("native_panic", "Source handler failed"))??,
         };
         self.resources.project(&mut value, 0)?;
         validation::validate(method, &request, &value)?;

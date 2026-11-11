@@ -2,10 +2,11 @@
  * 爱丽丝发现响应的内联字节预算。
  *
  * 职责：在封面已转换为宿主代理地址后，按最终 UTF-8 JSON 大小逐级压缩展示投影。
- * 注意：不删作品、不改身份/分页/封面，不修改详情缓存；预留 4 KiB 给 Runtime 补充字段。
+ * 注意：不删作品、不改身份/分页/封面，不修改详情缓存；预留 64 KiB 给 Runtime 补充字段。
  */
+import { contentLimits } from './content-limits.js';
 import { Buffer } from 'node:buffer';
-export const discoveryPayloadMaximumBytes = 52 * 1024;
+export const discoveryPayloadMaximumBytes = contentLimits.inlineBytes - 64 * 1024;
 export function discoveryPayloadBytes(result) {
     return Buffer.byteLength(JSON.stringify(result), 'utf8');
 }

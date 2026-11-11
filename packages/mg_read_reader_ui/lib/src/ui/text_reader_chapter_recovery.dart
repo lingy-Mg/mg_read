@@ -4,7 +4,9 @@ part of 'text_reader_view.dart';
 
 /// 会话等待上限与失败恢复；不负责网络重试或 IO，宿主仍拥有底层请求。
 /// 重试闭包只属于最近一次失败的导航；新导航、重绑或用户关闭提示时释放。
-const Duration _chapterRequestTimeout = Duration(seconds: 70);
+const Duration _chapterRequestTimeout = Duration(
+  seconds: ReaderContentLimits.readerWaitSeconds,
+);
 
 extension _TextReaderChapterRecovery on _TextReaderViewState {
   Future<T> _awaitChapterRequest<T>(Future<T> request) async {

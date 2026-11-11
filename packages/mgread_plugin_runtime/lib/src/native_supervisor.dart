@@ -23,7 +23,8 @@ final class _NativeRuntimeSupervisor implements _RuntimeSupervisor {
   static const MethodChannel _channel = MethodChannel('mgread/native_runtime');
   static const Duration _startupTimeout = Duration(seconds: 30);
   static const Duration _shutdownTimeout = Duration(seconds: 3);
-  static const int _maxControlResponseBytes = 100 * 1024 * 1024;
+  static const int _maxControlResponseBytes =
+      2 * RuntimeContentLimits.pluginArchiveBytes;
 
   final bool _isAndroid;
   final Directory? _dataRoot;

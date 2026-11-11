@@ -1,6 +1,6 @@
 {
   "name": "@mgread-plugin/diyibanzhu-me",
-  "version": "2.0.9",
+  "version": "2.0.10",
   "private": true,
   "description": "MgRead conversion of the user-provided 第一版主 source.",
   "type": "module",

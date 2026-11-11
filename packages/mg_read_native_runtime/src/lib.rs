@@ -6,6 +6,7 @@ mod android;
 pub mod catalog;
 mod dispatch;
 pub mod error;
+mod limits;
 mod native;
 mod transfer;
 
@@ -149,7 +150,9 @@ pub async fn serve(
     let runtime = Runtime::open(root, token.clone(), port, test_mode)?;
     let router = Router::new()
         .route("/rpc", post(rpc))
-        .layer(DefaultBodyLimit::max(90 * 1024 * 1024))
+        .layer(DefaultBodyLimit::max(
+            crate::limits::PLUGIN_ARCHIVE_BYTES * 2,
+        ))
         .with_state(runtime);
     ready(json!({"port":port,"token":token,"runtimeKind":"native-rust"}));
     axum::serve(listener, router).await.map_err(Into::into)

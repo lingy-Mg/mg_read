@@ -25,7 +25,7 @@ pub fn page(body: &str) -> Result<Html> {
     if body.contains("访问异常，请稍后再试") {
         return Err("source_access_blocked");
     }
-    if body.len() > 4 * 1024 * 1024 {
+    if body.len() > mgread_native_sdk::limits::SOURCE_HTML_BYTES {
         return Err("html_limit");
     }
     Ok(Html::parse_document(body))
@@ -354,7 +354,7 @@ fn text_or_null(root: ElementRef<'_>) -> Option<String> {
     text(root, "h1, .read-title, .book-title")
 }
 fn collect_text(element: ElementRef<'_>, output: &mut String, depth: usize) {
-    if depth > 128 {
+    if depth > 512 {
         return;
     }
     let name = element.value().name();

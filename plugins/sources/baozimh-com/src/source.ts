@@ -5,6 +5,7 @@
  * `#chapter-items` list and the expandable `#chapters_other_list` list, while image bytes are fetched and streamed only by Runtime.
  * HTML, manga pages, credentials, signed media URLs, and user input are handled by this source.
  */
+import { contentLimits } from './content-limits.js';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import * as cheerio from 'cheerio/slim';
@@ -155,7 +156,7 @@ export class BaozimhSource {
           wordCount: null, updatedAt: null, isLocked: false, attributes: Object.freeze([]) }));
       });
       if (chapters.length === 0) throw new Error('Catalog is empty.');
-      if (chapters.length > 5000) throw new Error('Catalog exceeds the Runtime chapter limit.');
+      if (chapters.length > contentLimits.catalogItems) throw new Error('Catalog exceeds the shared content budget.');
       return Object.freeze({ detail, chapters: Object.freeze({ items: Object.freeze(chapters) }) });
     });
   }

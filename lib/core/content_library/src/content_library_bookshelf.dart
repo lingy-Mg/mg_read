@@ -76,11 +76,11 @@ final class _BookshelfOperations {
         sourceChapterCount: details['chapterCount'] as int?,
         summaryExcerpt: _summaryExcerpt(details['description'] as String?),
         detailsJson: jsonEncode(details),
-        maximumActiveItems: bookshelfMaxItemCount,
+        maximumActiveItems: _library.maximumShelfItems,
       );
       return _storedItem(result.item);
     } on PersistenceCapacityError {
-      throw const BookshelfCapacityExceededException(currentCount: bookshelfMaxItemCount, requestedNewItems: 1);
+      throw BookshelfCapacityExceededException(currentCount: _library.maximumShelfItems, requestedNewItems: 1);
     }
   }
 
@@ -268,7 +268,7 @@ final class _LibrarySyncOperations {
         LibrarySyncIdentity(pluginId: item.source.pluginId, remoteContentId: item.source.remoteContentId): item,
     };
     final requestedNewItems = validItems.where((item) => !localByIdentity.containsKey(item.identity)).length;
-    if (localPage.items.length + requestedNewItems > bookshelfMaxItemCount) {
+    if (localPage.items.length + requestedNewItems > _library.maximumShelfItems) {
       throw BookshelfCapacityExceededException(currentCount: localPage.items.length, requestedNewItems: requestedNewItems);
     }
     for (final conflict in preview.conflicts) {
@@ -353,7 +353,7 @@ bool _validItem(LibrarySyncItem item) =>
     (item.coverUrl == null || _safeSyncString(item.coverUrl.toString())) &&
     (item.progress == null || _validProgress(item.progress!));
 
-bool _safeSyncString(String value) => value.isNotEmpty && value.length <= 32768 && !value.contains('\u0000');
+bool _safeSyncString(String value) => value.isNotEmpty && value.length <= ContentLimits.metadataCharacters && !value.contains('\u0000');
 
 bool _validProgress(LibrarySyncReadingProgress value) =>
     _safeSyncString(value.chapterId) &&

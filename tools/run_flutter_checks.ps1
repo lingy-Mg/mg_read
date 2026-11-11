@@ -104,6 +104,11 @@ try {
   Write-Host "DART_FILES=$($dartFiles.Count)"
   Write-Host "TEST_FILES=$($testFiles.Count)"
 
+  Invoke-NativeCheck -Label 'Shared content capacity policy' -Program (Join-Path $repositoryRoot 'packages/mg_read_node_runtime/tools/node-v26.10.0-win-x64/node.exe') -Arguments @(
+    (Join-Path $PSScriptRoot 'generate_content_limits.mjs')
+    '--check'
+  )
+
   Invoke-NativeCheck -Label 'Source file-size policy' -Program 'pwsh' -Arguments @(
     '-NoProfile'
     '-File'

@@ -443,13 +443,13 @@ String _id() {
 }
 
 void _safeText(String text) {
-  if (text.isEmpty || text.length > 32768) {
+  if (text.isEmpty || text.length > ContentLimits.metadataCharacters) {
     throw ArgumentError.value(text, 'text');
   }
 }
 
 void _validateCover(List<int> bytes, String mimeType) {
-  if (bytes.isEmpty || bytes.length > 5 * 1024 * 1024) {
+  if (bytes.isEmpty || bytes.length > ContentLimits.coverBytes) {
     throw ArgumentError.value(bytes.length, 'bytes');
   }
   if (mimeType.isEmpty || mimeType.length > 128) {

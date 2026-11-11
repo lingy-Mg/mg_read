@@ -1,7 +1,7 @@
 part of mgread_plugin_runtime;
 
-const int maxPluginTransferBytes = 32 * 1024 * 1024;
-const int maxPluginTransferBatchBytes = 512 * 1024 * 1024;
+const int maxPluginTransferBytes = RuntimeContentLimits.pluginArtifactBytes;
+const int maxPluginTransferBatchBytes = RuntimeContentLimits.pluginBatchBytes;
 
 enum PluginArtifactFormat { singleFile, archive }
 

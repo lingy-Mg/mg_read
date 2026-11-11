@@ -3,6 +3,54 @@ import { createRequire as __mgreadCreateRequire } from 'node:module'; const requ
 // src/index.mts
 import { createDecipheriv, createHash } from "node:crypto";
 
+// src/content-limits.ts
+var contentLimits = Object.freeze({
+  "inlineBytes": 10485760,
+  "novelBytes": 10485760,
+  "novelMetadataBytes": 1048576,
+  "rpcEnvelopeBytes": 65536,
+  "catalogItems": 1e5,
+  "mangaPages": 1e5,
+  "labelCharacters": 4096,
+  "metadataCharacters": 1048576,
+  "idCharacters": 65536,
+  "cursorCharacters": 65536,
+  "resourceTokenCharacters": 262144,
+  "upstreamUrlCharacters": 65536,
+  "urlCharacters": 266240,
+  "httpHeaderBytes": 294912,
+  "headerValueCharacters": 65536,
+  "imageBytes": 104857600,
+  "coverBytes": 104857600,
+  "hlsBytes": 10485760,
+  "sourceHtmlBytes": 67108864,
+  "cacheEntryBytes": 67108864,
+  "cacheTotalBytes": 1073741824,
+  "sourceDecodePixels": 1e8,
+  "novelAttemptSeconds": 90,
+  "contentTimeoutSeconds": 300,
+  "readerWaitSeconds": 330,
+  "localFileBytes": 2147483648,
+  "localExpandedBytes": 17179869184,
+  "localEntries": 2e5,
+  "epubContainerBytes": 67108864,
+  "epubXhtmlBytes": 134217728,
+  "epubMetadataBytes": 16777216,
+  "epubResourceBytes": 104857600,
+  "epubBlocks": 1e6,
+  "epubDepth": 512,
+  "epubNodes": 2e6,
+  "epubTableRows": 1e5,
+  "epubTableColumns": 1e4,
+  "shelfItems": 1e4,
+  "pluginArtifactBytes": 268435456,
+  "pluginBatchBytes": 2147483648,
+  "pluginArchiveBytes": 268435456,
+  "pluginArchiveEntryBytes": 268435456,
+  "pluginArchiveExpandedBytes": 536870912,
+  "pluginArchiveEntries": 1e5
+});
+
 // node_modules/@jsquash/jpeg/utils.js
 function initEmscriptenModule(moduleFactory, wasmModule, moduleOptionOverrides = {}) {
   let instantiateWasm;
@@ -3107,7 +3155,7 @@ async function restoreImage(bytes, segments) {
   const source = Buffer.from(bytes);
   const input = source.buffer.slice(source.byteOffset, source.byteOffset + source.byteLength);
   const image = source.subarray(0, 3).equals(Buffer.from([255, 216, 255])) ? await decode(input) : source.subarray(0, 4).toString("ascii") === "RIFF" ? await decode4(input) : source.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ? await decode_default(input) : null;
-  if (image === null || image.width < 1 || image.height < segments || image.width * image.height > 25e6) {
+  if (image === null || image.width < 1 || image.height < segments || image.width * image.height > contentLimits.sourceDecodePixels) {
     throw new Error("Image format or dimensions are invalid.");
   }
   const width = image.width;

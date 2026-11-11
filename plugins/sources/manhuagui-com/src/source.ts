@@ -2,6 +2,7 @@
  * Public Manhuagui page parser.
  * Owns stable manga/chapter IDs, bounded P.A.C.K.E.R decoding, and Runtime-proxied images with chapter Referer.
  */
+import { contentLimits } from './content-limits.js';
 import { position, window as pageWindow, type DiscoveryResult } from './discovery-page.js';
 
 import LZString from 'lz-string';
@@ -13,8 +14,8 @@ import type {
 const desktopOrigin = 'https://www.manhuagui.com';
 const mobileOrigin = 'https://m.manhuagui.com';
 const defaultImageOrigin = 'https://i.hamreus.com';
-const packedLimit = 1024 * 1024;
-const unpackedLimit = 2 * 1024 * 1024;
+const packedLimit = contentLimits.inlineBytes;
+const unpackedLimit = contentLimits.inlineBytes;
 
 const categories = Object.freeze([
   { id: 'update', title: '最新更新', path: '/update/' },
@@ -166,7 +167,7 @@ function parsePackedImageData(html: string): PackedData {
   let raw: unknown; try { raw = JSON.parse(json); } catch { throw new Error('Source image data JSON is invalid.'); }
   if (!isRecord(raw) || !Array.isArray(raw.files)) throw new Error('Source image data shape is invalid.');
   const files = raw.files.flatMap((value) => typeof value === 'string' && value !== '' ? [value] : []);
-  if (files.length === 0 || files.length > 5000) throw new Error('Source image count is invalid.');
+  if (files.length === 0 || files.length > contentLimits.mangaPages) throw new Error('Source image count is invalid.');
   const sl = isRecord(raw.sl) ? raw.sl : undefined;
   return {
     files, host: stringValue(raw.host) ?? stringValue(raw.domain) ?? stringValue(raw.server) ?? defaultImageOrigin,

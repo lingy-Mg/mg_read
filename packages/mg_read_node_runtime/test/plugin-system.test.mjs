@@ -358,7 +358,7 @@ test("complete chapter catalogs enforce count, byte, uniqueness, and shape limit
   assert.throws(
     () =>
       validateChaptersResult("org.example.catalog", "完整目录", {
-        items: [...maximum, chapter(5_000)],
+        items: Array.from({length:100001},(_,index)=>chapter(index)),
       }),
     PluginContentValidationError,
   );

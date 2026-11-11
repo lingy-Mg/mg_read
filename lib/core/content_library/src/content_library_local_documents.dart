@@ -22,7 +22,7 @@ extension LocalDocumentImports on ContentLibrary {
     final manifest = await _readLocalDraft(stage);
     final document = ParsedLocalDocument.fromJson(Map<String, Object?>.from(manifest['document']! as Map));
     final cover = document.resources.where((resource) => resource.id == document.coverResourceId).firstOrNull;
-    if (cover == null || cover.bytes > 32 * 1024 * 1024) return null;
+    if (cover == null || cover.bytes > ContentLimits.coverBytes) return null;
     return _localStageFile(stage, cover.file).readAsBytes();
   }
 
@@ -83,7 +83,7 @@ extension LocalDocumentImports on ContentLibrary {
               session: existingSession,
             );
             await _persistence.metadataRecords.transaction(() async {
-              await _persistence.metadataRecords.contentLibrary.reactivateLocalItem(duplicate.itemId, bookshelfMaxItemCount);
+              await _persistence.metadataRecords.contentLibrary.reactivateLocalItem(duplicate.itemId, maximumShelfItems);
               if (state.progress != null) await _persistence.metadataRecords.contentLibrary.saveProgress(duplicate.itemId, state.progress!);
               if (state.bookmarks != null) {
                 await _persistence.metadataRecords.contentLibrary.replaceLocalBookmarks(duplicate.itemId, state.bookmarks!);
@@ -320,7 +320,7 @@ extension LocalDocumentImports on ContentLibrary {
               ),
           ],
           expectedRevision: record['expectedRevision'] as int?,
-          maximumActiveItems: bookshelfMaxItemCount,
+          maximumActiveItems: maximumShelfItems,
           progress: migratedProgress,
           bookmarks: migratedBookmarks,
         );
@@ -392,7 +392,7 @@ List<int> _localLogicalChapterStartIndexes(ParsedLocalDocument document) {
 Future<Map<String, Object?>> _readLocalDraft(Directory stage) async {
   final file = File('${stage.path}/parsed/manifest.json');
   if (!await file.exists()) throw const LocalDocumentException('preview_required');
-  if (await file.length() > 32 * 1024 * 1024) throw const LocalDocumentException('manifest_too_large');
+  if (await file.length() > ContentLimits.epubContainerBytes) throw const LocalDocumentException('manifest_too_large');
   return Isolate.run(() => Map<String, Object?>.from(jsonDecode(file.readAsStringSync()) as Map));
 }
 

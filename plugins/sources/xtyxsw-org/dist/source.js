@@ -3,6 +3,7 @@
  * If direct search is empty, the new-book list and first three catalog categories are inspected, with two requests at most in flight and early cancellation at 20 matches.
  * GET display projections are cached according to the source policy; POST search and page parsing remain source-owned.
  */
+import { contentLimits } from './content-limits.js';
 import * as cheerio from 'cheerio/slim';
 import { ProjectionCache } from './projection-cache.js';
 const origin = 'https://www.xtyxsw.org';
@@ -101,8 +102,8 @@ export class TianyueSource {
                 return; seen.add(chapterNumberValue); chapters.push(Object.freeze({ id: `chapter:${bookId}:${chapterNumberValue}`, title, order: chapters.length, url: chapter.toString(), volumeTitle: null, wordCount: null, updatedAt: null, isLocked: false, attributes: Object.freeze([]) })); });
             if (chapters.length === 0)
                 throw new Error('Catalog is empty.');
-            if (chapters.length > 5000)
-                throw new Error('Catalog exceeds the Runtime chapter limit.');
+            if (chapters.length > contentLimits.catalogItems)
+                throw new Error('Catalog exceeds the shared content budget.');
             return Object.freeze({ items: Object.freeze(chapters) });
         });
     }

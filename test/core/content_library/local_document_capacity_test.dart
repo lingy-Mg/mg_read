@@ -4,13 +4,15 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 
+const _testShelfCapacity = 100;
+
 void main() {
   late Directory root;
   late ContentLibrary library;
 
   setUp(() async {
     root = await Directory.systemTemp.createTemp('mgread-local-capacity-');
-    library = await ContentLibrary.open(dataRoot: root);
+    library = await ContentLibrary.open(dataRoot: root, maximumShelfItems: _testShelfCapacity);
   });
 
   tearDown(() async {
@@ -44,7 +46,7 @@ void main() {
 
   test('100-item cap permits duplicate and replacement without another slot; leases protect GC', () async {
     final remoteItems = <LibraryItemId>[];
-    for (var i = 0; i < bookshelfMaxItemCount; i++) {
+    for (var i = 0; i < _testShelfCapacity; i++) {
       final item = await library.addLibraryItem(
         BookshelfAddRequest(
           title: 'Remote $i',
@@ -57,36 +59,36 @@ void main() {
       );
       remoteItems.add(item.id);
     }
-    expect((await library.listLibrary(const LibraryQuery())).items, hasLength(bookshelfMaxItemCount));
+    expect((await library.listLibrary(const LibraryQuery())).items, hasLength(_testShelfCapacity));
 
     const initialText = '第一章\n\n容量上限仍允许稍后重试。';
     final initial = await prepare('capacity.txt', initialText);
     final blocked = await library.commitLocalImport(initial.id);
     expect(blocked.status, LocalImportStatus.needsAction);
     expect(blocked.errorCode, 'bookshelf_full');
-    expect(await library.loadShelfProjection(), hasLength(bookshelfMaxItemCount));
+    expect(await library.loadShelfProjection(), hasLength(_testShelfCapacity));
 
     await library.close();
-    library = await ContentLibrary.open(dataRoot: root);
+    library = await ContentLibrary.open(dataRoot: root, maximumShelfItems: _testShelfCapacity);
     await library.removeLibraryItem(remoteItems.last, LibraryRemovalPolicy.removeIncludingUnreferencedContent);
     final added = await library.commitLocalImport(initial.id);
     expect(added.status, LocalImportStatus.succeeded, reason: added.errorCode);
     final localId = added.itemId!;
-    expect(await library.loadShelfProjection(), hasLength(bookshelfMaxItemCount));
+    expect(await library.loadShelfProjection(), hasLength(_testShelfCapacity));
 
     final duplicate = await prepare('duplicate.txt', initialText);
     expect(duplicate.isDuplicate, isTrue);
     final deduplicated = await library.commitLocalImport(duplicate.id);
     expect(deduplicated.status, LocalImportStatus.succeeded, reason: deduplicated.errorCode);
     expect(deduplicated.itemId?.value, localId.value);
-    expect(await library.loadShelfProjection(), hasLength(bookshelfMaxItemCount));
+    expect(await library.loadShelfProjection(), hasLength(_testShelfCapacity));
 
     final replacement = await library.reparseLocalDocument(localId, const LocalDocumentParseOptions(chapterRule: 'none'));
     expect(replacement.status, LocalImportStatus.awaitingConfirmation, reason: replacement.errorCode);
     final replaced = await library.commitLocalImport(replacement.id);
     expect(replaced.status, LocalImportStatus.succeeded, reason: replaced.errorCode);
     expect(replaced.itemId?.value, localId.value);
-    expect(await library.loadShelfProjection(), hasLength(bookshelfMaxItemCount));
+    expect(await library.loadShelfProjection(), hasLength(_testShelfCapacity));
 
     final session = (await library.openLocalDocumentSession(localId))!;
     await library.removeLibraryItem(localId, LibraryRemovalPolicy.removeFromShelfKeepContent);
@@ -96,7 +98,7 @@ void main() {
     final reactivated = await library.commitLocalImport(redownload.id);
     expect(reactivated.status, LocalImportStatus.succeeded, reason: reactivated.errorCode);
     expect(reactivated.itemId?.value, localId.value);
-    expect(await library.loadShelfProjection(), hasLength(bookshelfMaxItemCount));
+    expect(await library.loadShelfProjection(), hasLength(_testShelfCapacity));
 
     final bytesBeforeDelete = await library.localDocumentUsageBytes();
     await library.removeLibraryItem(localId, LibraryRemovalPolicy.removeIncludingUnreferencedContent);

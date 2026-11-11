@@ -53,7 +53,7 @@
 
 ## 验证
 
-- `wire_connection.dart` 与 Node Core 共用 10 MiB 内联结果、另加 64 KiB RPC 信封空间的控制帧和两个最大帧的写队列；
+- `wire_connection.dart` 与 Node Core 共用根 `tools/content_limits.json` 生成的容量：普通内联结果 10 MiB，小说允许最坏六倍转义及 1 MiB 元数据，控制帧另加 64 KiB RPC 信封，写队列容纳两个最大帧；
   变更时同步 Core `runtime-payload-limits.ts`、协议 fixture 和 `discovery_payload_budget_test.dart`。
 
 - 发现 `filters` 的不可变模型和解码归 `plugin_discovery_filters.dart`；直接回归为 `test/discovery_filters_test.dart`，

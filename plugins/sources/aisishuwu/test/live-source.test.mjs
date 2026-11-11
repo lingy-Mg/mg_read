@@ -10,6 +10,7 @@ import {
   runReadingSourceFlow,
 } from '@mgread/source-testkit';
 import * as plugin from '../dist/index.mjs';
+import { discoveryPayloadMaximumBytes } from '../dist/source-discovery-budget.js';
 
 // Explicit, opt-in online acceptance. It never writes pages or source content
 // to disk, and asserts only stable structural facts about the public Plugin API.
@@ -17,7 +18,7 @@ test('live source completes category, search, detail, catalog, and content flow'
   const harness = await createSourceTestHarness({
     plugin,
     pluginId: 'org.mgread.aisishuwu',
-    version: '0.2.19',
+    version: '0.2.20',
     fetch,
     prefix: 'mgread-aisishuwu-live-',
     runtimeVersion: 'live-test',
@@ -30,7 +31,7 @@ test('live source completes category, search, detail, catalog, and content flow'
 
   const categories = await plugin.discover({ target: null, cursor: null, collectionId: null, pageSize: 20 });
   assert.equal(categories.kind, 'document');
-  assertInlineJsonSize(categories, { maximumBytes: 52 * 1024, stage: 'discover.home' });
+  assertInlineJsonSize(categories, { maximumBytes: discoveryPayloadMaximumBytes, stage: 'discover.home' });
   const featured = categories.document.components.find((component) => component.id === 'source-featured-section');
   assert.equal(featured?.type, 'section');
   assert.equal(featured?.children[0].layout, 'carousel');
@@ -58,7 +59,7 @@ test('live source completes category, search, detail, catalog, and content flow'
 
   const discovery = await plugin.discover({ target, cursor: null, collectionId: null, pageSize: 20 });
   assert.equal(discovery.kind, 'document');
-  assertInlineJsonSize(discovery, { maximumBytes: 52 * 1024, stage: 'discover.category' });
+  assertInlineJsonSize(discovery, { maximumBytes: discoveryPayloadMaximumBytes, stage: 'discover.category' });
   const book = collectDiscoveryContent(discovery)[0];
   assert.match(book.id, /^novel:\d+$/u);
   assert.match(book.coverUrl ?? '', /^https?:\/\//u);
@@ -67,7 +68,7 @@ test('live source completes category, search, detail, catalog, and content flow'
   assert.equal(filter.groups[0].selectedOptionId, '71');
   for (const order of filter.groups[1].options.filter((option) => option.id !== 'default')) {
     const sorted = await plugin.discover({ target: order.target, cursor: null, collectionId: null, pageSize: 5 });
-    assertInlineJsonSize(sorted, { maximumBytes: 52 * 1024, stage: `discover.category.${order.id}` });
+    assertInlineJsonSize(sorted, { maximumBytes: discoveryPayloadMaximumBytes, stage: `discover.category.${order.id}` });
     assert.ok(collectDiscoveryContent(sorted).length > 0);
     assert.equal(sorted.document.components[0].groups[0].selectedOptionId, '71');
     assert.equal(sorted.document.components[0].groups[1].selectedOptionId, order.id);
@@ -84,7 +85,7 @@ test('live source completes category, search, detail, catalog, and content flow'
   }
   for (const target of ['library:original', 'library:latest']) {
     const list = await plugin.discover({ target, cursor: null, collectionId: null, pageSize: 20 });
-    assertInlineJsonSize(list, { maximumBytes: 52 * 1024, stage: target });
+    assertInlineJsonSize(list, { maximumBytes: discoveryPayloadMaximumBytes, stage: target });
     const contents = collectDiscoveryContent(list);
     assert.ok(contents.length > 0);
     const [continuation] = collectDiscoveryContinuations(list);
@@ -92,7 +93,7 @@ test('live source completes category, search, detail, catalog, and content flow'
     assert.equal(continuation.cursor, 'browse-page:1:20');
     const append = await plugin.discover({ ...continuation, pageSize: 20 });
     assert.equal(append.kind, 'append');
-    assertInlineJsonSize(append, { maximumBytes: 52 * 1024, stage: `${target}.append` });
+    assertInlineJsonSize(append, { maximumBytes: discoveryPayloadMaximumBytes, stage: `${target}.append` });
     const seen = new Set(contents.map((content) => content.id));
     assert.ok(append.items.every((item) => !seen.has(item.content.id)));
   }
@@ -105,7 +106,7 @@ test('live source completes category, search, detail, catalog, and content flow'
       pageSize: 5,
     });
     assert.equal(ranking.kind, 'document');
-    assertInlineJsonSize(ranking, { maximumBytes: 52 * 1024, stage: rankingTarget });
+    assertInlineJsonSize(ranking, { maximumBytes: discoveryPayloadMaximumBytes, stage: rankingTarget });
     const collection = ranking.document.components[0].children[0];
     t.diagnostic(`${rankingTarget}: items=${collection.items.length} bytes=${Buffer.byteLength(JSON.stringify(ranking), 'utf8')}`);
     assert.equal(collection.layout, 'list');

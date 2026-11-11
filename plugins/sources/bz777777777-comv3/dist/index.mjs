@@ -47,6 +47,54 @@ var require_boolbase = __commonJS({
   }
 });
 
+// src/content-limits.ts
+var contentLimits = Object.freeze({
+  "inlineBytes": 10485760,
+  "novelBytes": 10485760,
+  "novelMetadataBytes": 1048576,
+  "rpcEnvelopeBytes": 65536,
+  "catalogItems": 1e5,
+  "mangaPages": 1e5,
+  "labelCharacters": 4096,
+  "metadataCharacters": 1048576,
+  "idCharacters": 65536,
+  "cursorCharacters": 65536,
+  "resourceTokenCharacters": 262144,
+  "upstreamUrlCharacters": 65536,
+  "urlCharacters": 266240,
+  "httpHeaderBytes": 294912,
+  "headerValueCharacters": 65536,
+  "imageBytes": 104857600,
+  "coverBytes": 104857600,
+  "hlsBytes": 10485760,
+  "sourceHtmlBytes": 67108864,
+  "cacheEntryBytes": 67108864,
+  "cacheTotalBytes": 1073741824,
+  "sourceDecodePixels": 1e8,
+  "novelAttemptSeconds": 90,
+  "contentTimeoutSeconds": 300,
+  "readerWaitSeconds": 330,
+  "localFileBytes": 2147483648,
+  "localExpandedBytes": 17179869184,
+  "localEntries": 2e5,
+  "epubContainerBytes": 67108864,
+  "epubXhtmlBytes": 134217728,
+  "epubMetadataBytes": 16777216,
+  "epubResourceBytes": 104857600,
+  "epubBlocks": 1e6,
+  "epubDepth": 512,
+  "epubNodes": 2e6,
+  "epubTableRows": 1e5,
+  "epubTableColumns": 1e4,
+  "shelfItems": 1e4,
+  "pluginArtifactBytes": 268435456,
+  "pluginBatchBytes": 2147483648,
+  "pluginArchiveBytes": 268435456,
+  "pluginArchiveEntryBytes": 268435456,
+  "pluginArchiveExpandedBytes": 536870912,
+  "pluginArchiveEntries": 1e5
+});
+
 // src/source.ts
 import { Buffer as Buffer2 } from "node:buffer";
 
@@ -6495,14 +6543,62 @@ function isNode(obj) {
 // node_modules/cheerio/dist/esm/slim.js
 var load = getLoad(getParse(parseDocument), esm_default);
 
+// ../../../packages/mg_read_plugin_cache/content-limits.js
+var contentLimits2 = Object.freeze({
+  "inlineBytes": 10485760,
+  "novelBytes": 10485760,
+  "novelMetadataBytes": 1048576,
+  "rpcEnvelopeBytes": 65536,
+  "catalogItems": 1e5,
+  "mangaPages": 1e5,
+  "labelCharacters": 4096,
+  "metadataCharacters": 1048576,
+  "idCharacters": 65536,
+  "cursorCharacters": 65536,
+  "resourceTokenCharacters": 262144,
+  "upstreamUrlCharacters": 65536,
+  "urlCharacters": 266240,
+  "httpHeaderBytes": 294912,
+  "headerValueCharacters": 65536,
+  "imageBytes": 104857600,
+  "coverBytes": 104857600,
+  "hlsBytes": 10485760,
+  "sourceHtmlBytes": 67108864,
+  "cacheEntryBytes": 67108864,
+  "cacheTotalBytes": 1073741824,
+  "sourceDecodePixels": 1e8,
+  "novelAttemptSeconds": 90,
+  "contentTimeoutSeconds": 300,
+  "readerWaitSeconds": 330,
+  "localFileBytes": 2147483648,
+  "localExpandedBytes": 17179869184,
+  "localEntries": 2e5,
+  "epubContainerBytes": 67108864,
+  "epubXhtmlBytes": 134217728,
+  "epubMetadataBytes": 16777216,
+  "epubResourceBytes": 104857600,
+  "epubBlocks": 1e6,
+  "epubDepth": 512,
+  "epubNodes": 2e6,
+  "epubTableRows": 1e5,
+  "epubTableColumns": 1e4,
+  "shelfItems": 1e4,
+  "pluginArtifactBytes": 268435456,
+  "pluginBatchBytes": 2147483648,
+  "pluginArchiveBytes": 268435456,
+  "pluginArchiveEntryBytes": 268435456,
+  "pluginArchiveExpandedBytes": 536870912,
+  "pluginArchiveEntries": 1e5
+});
+
 // ../../../packages/mg_read_plugin_cache/index.js
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 var schemaVersion = 2;
 var directoryName = "plugin-cache-v2";
-var maximumCacheBytes = 100 * 1024 * 1024;
-var maximumEntryBytes = 1024 * 1024;
+var maximumCacheBytes = contentLimits2.cacheTotalBytes;
+var maximumEntryBytes = contentLimits2.cacheEntryBytes;
 var cacheFilePattern = /^[a-f0-9]{64}\.json$/u;
 var PluginCache = class {
   #root;
@@ -6784,7 +6880,7 @@ var BzSource = class {
     const values = [];
     const seen = /* @__PURE__ */ new Set();
     let url = first2;
-    for (let page = 0; page < 60; page += 1) {
+    for (let page = 0; page < contentLimits.catalogItems; page += 1) {
       const html3 = await this.#cache.getOrFetchText(url, catalog, () => this.#browser(url, "GET", null));
       const $ = load(html3);
       const links = $("#list dd a,#chapterlist a,.chapterlist a,.chapter-list a,.listmain dd a,#catalog a,.directoryArea a").toArray();
@@ -6811,7 +6907,7 @@ var BzSource = class {
     let url = decode(chapterId, "chapter");
     const lines = [];
     const seen = /* @__PURE__ */ new Set();
-    for (let page = 0; page < 15 && !seen.has(url.toString()); page += 1) {
+    for (let page = 0; page < contentLimits.catalogItems && !seen.has(url.toString()); page += 1) {
       seen.add(url.toString());
       const html3 = await this.#browser(url, "GET", null);
       const $ = load(html3);

@@ -12,7 +12,7 @@ final class _SourceResourceUrl {
   static final _identity = RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$');
   static final _hex = RegExp(r'^[a-f0-9]{64}$');
   static _SourceResourceUrl? parse(String value) {
-    if (value.length > 32768) return null;
+    if (value.length > RuntimeContentLimits.urlCharacters) return null;
     final uri = Uri.tryParse(value);
     if (uri == null ||
         uri.scheme != 'http' ||
@@ -28,7 +28,7 @@ final class _SourceResourceUrl {
     if (parts.length != 3 ||
         parts[0] != 'v1' ||
         parts[1] != 'source-resource' ||
-        parts[2].length > 24576)
+        parts[2].length > RuntimeContentLimits.resourceTokenCharacters)
       return null;
     try {
       final payload = jsonDecode(

@@ -77,7 +77,7 @@ test('keeps small results unchanged and compacts nested documents and append res
 test('rejects an irreducible payload instead of dropping rows or breaking opaque cover URLs', () => {
   const oversized = {
     kind: 'append', collectionId: 'books', continuation: null,
-    items: [{ ...items[0], content: { ...summary, coverUrl: `${coverUrl}${'x'.repeat(60000)}` } }],
+    items: [{ ...items[0], content: { ...summary, coverUrl: `${coverUrl}${'x'.repeat(discoveryPayloadMaximumBytes + 1)}` } }],
   };
   assert.throws(() => compactDiscoveryResult(oversized), /identity and cover fields exceed/u);
 });

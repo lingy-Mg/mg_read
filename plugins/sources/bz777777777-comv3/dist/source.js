@@ -5,6 +5,7 @@
  * page's same-origin fetch. The page stays hidden unless verification requires
  * user interaction, then hides again after success.
  */
+import { contentLimits } from './content-limits.js';
 import { Buffer } from 'node:buffer';
 import * as cheerio from 'cheerio/slim';
 import { PluginCache } from '@mgread/plugin-cache';
@@ -91,7 +92,7 @@ export class BzSource {
         const values = [];
         const seen = new Set();
         let url = first;
-        for (let page = 0; page < 60; page += 1) {
+        for (let page = 0; page < contentLimits.catalogItems; page += 1) {
             const html = await this.#cache.getOrFetchText(url, catalog, () => this.#browser(url, 'GET', null));
             const $ = cheerio.load(html);
             const links = $('#list dd a,#chapterlist a,.chapterlist a,.chapter-list a,.listmain dd a,#catalog a,.directoryArea a').toArray();
@@ -123,7 +124,7 @@ export class BzSource {
         let url = decode(chapterId, 'chapter');
         const lines = [];
         const seen = new Set();
-        for (let page = 0; page < 15 && !seen.has(url.toString()); page += 1) {
+        for (let page = 0; page < contentLimits.catalogItems && !seen.has(url.toString()); page += 1) {
             seen.add(url.toString());
             const html = await this.#browser(url, 'GET', null);
             const $ = cheerio.load(html);

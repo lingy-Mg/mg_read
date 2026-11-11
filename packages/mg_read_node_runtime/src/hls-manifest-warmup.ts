@@ -10,6 +10,7 @@
  * - Range requests always bypass this cache.
  * - Failures are deliberately invisible to callers, which use live forwarding.
  */
+import { contentLimits } from './content-limits.js';
 import type { JsonObject } from "./protocol.js";
 import {
   openSourceProxyResource,
@@ -18,7 +19,7 @@ import {
 } from "./source-resource-proxy.js";
 
 const maximumEntries = 8;
-const maximumManifestBytes = 1024 * 1024;
+const maximumManifestBytes = contentLimits.hlsBytes;
 const timeToLiveMs = 15_000;
 const fetchTimeoutMs = 5_000;
 const maximumDepth = 2;

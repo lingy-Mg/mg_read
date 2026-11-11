@@ -3,6 +3,7 @@
  * JPEG, WebP and PNG codecs are bundled with their WASM bytes in the single JS artifact.
  * Only one bounded image is decoded per request; no image bytes cross the content API.
  */
+import { contentLimits } from './content-limits.js';
 import decodeJpeg, { init as initJpeg } from '@jsquash/jpeg/decode.js';
 import decodePng, { init as initPngDecode } from '@jsquash/png/decode.js';
 import encodePng, { init as initPngEncode } from '@jsquash/png/encode.js';
@@ -34,7 +35,7 @@ export async function restoreImage(bytes: Uint8Array, segments: number): Promise
     : source.subarray(0, 4).toString('ascii') === 'RIFF' ? await decodeWebp(input)
       : source.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) ? await decodePng(input)
         : null;
-  if (image === null || image.width < 1 || image.height < segments || image.width * image.height > 25_000_000) {
+  if (image === null || image.width < 1 || image.height < segments || image.width * image.height > contentLimits.sourceDecodePixels) {
     throw new Error('Image format or dimensions are invalid.');
   }
   const width = image.width;

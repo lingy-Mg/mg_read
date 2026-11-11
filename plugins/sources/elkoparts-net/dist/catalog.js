@@ -1,3 +1,9 @@
+/**
+ * Source-local catalog pagination. Owns a bounded in-memory metadata cache for one activation.
+ * IO stays in the injected public HTTP reader. Deferred groups load only their real directory pages;
+ * chapter IDs remain source-owned and legacy responses fail explicitly instead of truncating 5000 items.
+ */
+import { contentLimits } from './content-limits.js';
 export class ElkopartsCatalog {
     read;
     pages;
@@ -15,7 +21,7 @@ export class ElkopartsCatalog {
         if (!pending) {
             pending = this.read(firstUrl).then(firstHtml => {
                 const pages = this.pages(firstHtml, firstUrl);
-                if (pages.length > 1024)
+                if (pages.length > contentLimits.catalogItems)
                     throw new Error('Catalog exceeds the supported page bound.');
                 return { firstHtml, pages, expires: Date.now() + 15 * 60_000 };
             }).catch(error => { if (this.#cache.get(request.id) === pending)
@@ -47,7 +53,7 @@ export class ElkopartsCatalog {
             const seen = new Set();
             const items = chunks.flat().filter(item => { if (seen.has(item.id))
                 return false; seen.add(item.id); return true; }).map((item, order) => ({ ...item, order }));
-            if (items.length > 5000)
+            if (items.length > contentLimits.catalogItems)
                 throw new Error('Catalog requires deferred chapter groups.');
             return items;
         };

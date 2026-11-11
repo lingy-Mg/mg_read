@@ -252,7 +252,7 @@ final class FileObjectStore {
     _ensureOpen();
     _validateOwnerId(itemId);
     final file = File('${_root.path}${Platform.pathSeparator}covers${Platform.pathSeparator}$itemId${Platform.pathSeparator}cover.asset');
-    if (!await file.exists() || await file.length() > 5 * 1024 * 1024) {
+    if (!await file.exists() || await file.length() > ContentLimits.coverBytes) {
       return null;
     }
     return file.readAsBytes();
@@ -262,7 +262,7 @@ final class FileObjectStore {
     _ensureOpen();
     _validateCoverKey(coverKey);
     final file = File('${_root.path}${Platform.pathSeparator}global${Platform.pathSeparator}$coverKey${Platform.pathSeparator}cover.asset');
-    if (!await file.exists() || await file.length() > 5 * 1024 * 1024) {
+    if (!await file.exists() || await file.length() > ContentLimits.coverBytes) {
       return null;
     }
     final bytes = await file.readAsBytes();
@@ -333,7 +333,7 @@ final class FileObjectStore {
     return globalBytes + await _directoryFileBytes(Directory('${_root.path}${Platform.pathSeparator}covers'));
   }
 
-  static const int _mangaImageMaxBytes = 8 * 1024 * 1024;
+  static const int _mangaImageMaxBytes = ContentLimits.imageBytes;
   Future<StoredFileObject> _commitMangaImage({
     required String itemId,
     required String chapterId,

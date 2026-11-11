@@ -4,7 +4,8 @@
 mod parsing;
 mod source;
 
-use mgread_native_abi::{InitResult, MAX_MESSAGE};
+use mgread_native_abi::InitResult;
+use mgread_native_sdk::limits;
 use mgread_native_sdk::{Call, PluginInstance};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -12,10 +13,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{future::Future, pin::Pin};
 
 const SOURCE_ID: &str = "org.mgread.aisishuwu.native";
-const SOURCE_VERSION: &str = "0.3.2";
-const BODY_LIMIT: usize = 4 * 1024 * 1024;
-const REQUEST_LIMIT: usize = 128;
-const STEPS_LIMIT: usize = 128;
+const SOURCE_VERSION: &str = "0.3.3";
+const BODY_LIMIT: usize = limits::SOURCE_HTML_BYTES;
+const REQUEST_LIMIT: usize = limits::CATALOG_ITEMS;
+const STEPS_LIMIT: usize = limits::CATALOG_ITEMS;
 const HTTP_BATCH_LIMIT: usize = 4;
 
 #[derive(Debug)]
@@ -170,7 +171,7 @@ fn store_result(host: &dyn SourceIo, method: &str, request: &Value, value: &Valu
     let Ok(text) = serde_json::to_string(&record) else {
         return;
     };
-    if text.len() > MAX_MESSAGE {
+    if text.len() > limits::CACHE_ENTRY_BYTES {
         return;
     }
     let _ = host.write(&path, &text);
@@ -260,7 +261,13 @@ async fn invoke_inner(host: &dyn SourceIo, input: Value) -> Result<Value, Native
                 let bytes = serde_json::to_vec(&value).map_err(|_| {
                     NativeError::new("result_invalid", "The source result could not be encoded.")
                 })?;
-                if bytes.len() > MAX_MESSAGE {
+                if bytes.len()
+                    > if method == "getContent" {
+                        6 * limits::NOVEL_BYTES + limits::NOVEL_METADATA_BYTES
+                    } else {
+                        limits::INLINE_BYTES
+                    }
+                {
                     return Err(NativeError::new(
                         "source_result_limit",
                         "The source result is too large.",

@@ -10,10 +10,10 @@
   "protocolVersion": "1.2",
   "runtimeVersion": "0.5.0-standard.0",
   "webSocket": {
-    "maxControlFrameBytes": 63045632,
+    "maxControlFrameBytes": 64028672,
     "maxInlineBytes": 10485760,
     "maxInFlightRequests": 256,
-    "maxOutboundQueueBytes": 126091284,
+    "maxOutboundQueueBytes": 128057364,
     "path": "/v1/rpc",
     "supportsCancellation": true,
     "runtimeMethods": [

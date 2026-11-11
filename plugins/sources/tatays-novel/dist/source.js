@@ -3,6 +3,7 @@
  * List/search pages derive the site's stable cover path from the book identity, avoiding per-book detail requests.
  * List/book projections are cached in memory according to the source policy.
  */
+import { contentLimits } from './content-limits.js';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import * as cheerio from 'cheerio/slim';
@@ -163,8 +164,8 @@ export class ThirtyFiveSource {
             });
             if (chapters.length === 0)
                 throw new Error('Catalog is empty.');
-            if (chapters.length > 5000)
-                throw new Error('Catalog exceeds the Runtime chapter limit.');
+            if (chapters.length > contentLimits.catalogItems)
+                throw new Error('Catalog exceeds the shared content budget.');
             return Object.freeze({ detail, chapters: Object.freeze({ items: Object.freeze(chapters) }) });
         });
     }

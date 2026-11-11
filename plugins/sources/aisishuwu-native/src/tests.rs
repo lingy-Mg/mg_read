@@ -35,7 +35,7 @@ impl SourceIo for FixtureHost {
             } else if parsed.path().starts_with("/book/") && self.long_content {
                 format!(
                     "<h1>长章节</h1><div class='read-content'><p>{}</p></div>",
-                    "长内容".repeat(180_000)
+                    "长内容".repeat(1_000_000)
                 )
             } else if parsed.path().starts_with("/book/") {
                 "<h1>测试章节</h1><div class='read-content'><p>第一段。</p><script>广告脚本</script><p>第二段。</p></div>".to_string()
@@ -214,13 +214,28 @@ fn incomplete_catalog_fails_and_long_chapter_text_is_not_truncated() {
     let result = call(
         &long_host,
         "getContent",
-        json!({"id":"novel:1","chapterId":chapter_id}),
+        json!({"id":"novel:1","chapterId":chapter_id.clone()}),
     );
     let text = result["value"]["text"].as_str().unwrap();
     assert_eq!(
         text.chars().filter(|character| *character == '长').count(),
-        180_000
+        1_000_000
     );
+    let fetches = long.http_calls.lock().unwrap().len();
+    assert!(
+        long.cache
+            .lock()
+            .unwrap()
+            .values()
+            .any(|value| value.len() > 8 * 1024 * 1024)
+    );
+    let cached = call(
+        &long_host,
+        "getContent",
+        json!({"id":"novel:1","chapterId":chapter_id}),
+    );
+    assert_eq!(cached, result);
+    assert_eq!(long.http_calls.lock().unwrap().len(), fetches);
 }
 
 #[test]

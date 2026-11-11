@@ -1,6 +1,8 @@
 part of mgread_plugin_runtime;
 
-const Duration _contentTimeout = Duration(minutes: 2);
+const Duration _contentTimeout = Duration(
+  seconds: RuntimeContentLimits.contentTimeoutSeconds,
+);
 
 enum PluginMangaPageResourcePolicy {
   sessionOnly('sessionOnly'),

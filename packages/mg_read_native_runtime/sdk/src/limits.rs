@@ -1,0 +1,34 @@
+//! GENERATED from tools/content_limits.json by tools/generate_content_limits.mjs. DO NOT EDIT.
+#![allow(dead_code)]
+pub const INLINE_BYTES: usize = 10485760;
+pub const NOVEL_BYTES: usize = 10485760;
+pub const NOVEL_METADATA_BYTES: usize = 1048576;
+pub const RPC_ENVELOPE_BYTES: usize = 65536;
+pub const CATALOG_ITEMS: usize = 100000;
+pub const MANGA_PAGES: usize = 100000;
+pub const LABEL_CHARACTERS: usize = 4096;
+pub const METADATA_CHARACTERS: usize = 1048576;
+pub const ID_CHARACTERS: usize = 65536;
+pub const CURSOR_CHARACTERS: usize = 65536;
+pub const RESOURCE_TOKEN_CHARACTERS: usize = 262144;
+pub const UPSTREAM_URL_CHARACTERS: usize = 65536;
+pub const URL_CHARACTERS: usize = 266240;
+pub const HTTP_HEADER_BYTES: usize = 294912;
+pub const HEADER_VALUE_CHARACTERS: usize = 65536;
+pub const IMAGE_BYTES: usize = 104857600;
+pub const COVER_BYTES: usize = 104857600;
+pub const HLS_BYTES: usize = 10485760;
+pub const SOURCE_HTML_BYTES: usize = 67108864;
+pub const CACHE_ENTRY_BYTES: usize = 67108864;
+pub const CACHE_TOTAL_BYTES: usize = 1073741824;
+pub const SOURCE_DECODE_PIXELS: usize = 100000000;
+pub const NOVEL_ATTEMPT_SECONDS: usize = 90;
+pub const CONTENT_TIMEOUT_SECONDS: usize = 300;
+pub const READER_WAIT_SECONDS: usize = 330;
+pub const SHELF_ITEMS: usize = 10000;
+pub const PLUGIN_ARTIFACT_BYTES: usize = 268435456;
+pub const PLUGIN_BATCH_BYTES: usize = 2147483648;
+pub const PLUGIN_ARCHIVE_BYTES: usize = 268435456;
+pub const PLUGIN_ARCHIVE_ENTRY_BYTES: usize = 268435456;
+pub const PLUGIN_ARCHIVE_EXPANDED_BYTES: usize = 536870912;
+pub const PLUGIN_ARCHIVE_ENTRIES: usize = 100000;

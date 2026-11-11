@@ -21,7 +21,11 @@ void main() {
             'version': 1,
             'engine': engine,
             'pluginId': owner,
-            'request': {'kind': 'image', 'url': 'https://upstream.example/image'},
+            'request': {
+              'kind': 'image',
+              'url': 'https://upstream.example/image',
+              'headers': {'referer': 'https://upstream.example/${'x' * 40000}'},
+            },
           }))).replaceAll('=', '')}';
       var resultUrl = url(pluginServer.port);
       void listenPlugin(HttpServer server) {
@@ -115,6 +119,7 @@ void main() {
       );
       final content = await runtime.invoke(invocation);
       final saved = content.media!.url.toString();
+      expect(saved.length, greaterThan(32768));
       expect(
         (await runtime.invoke(
           SourceResourceDecodeInvocation(url: saved),

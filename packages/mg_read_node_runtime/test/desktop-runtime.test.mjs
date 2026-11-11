@@ -391,7 +391,7 @@ test("desktop Runtime loads and searches an installed standard Node plugin", asy
 
 test("source resource URLs are reusable, bounded, and forward binary responses", async (t) => {
   const upstreamCalls = [];
-  const upstream = createServer((request, response) => {
+  const upstream = createServer({maxHeaderSize:65536},(request, response) => {
     upstreamCalls.push(request.headers);
     response.writeHead(206, { "content-type": "image/test" });
     response.end(Uint8Array.from([77, 71, 82, 69, 65, 68]));
@@ -414,6 +414,7 @@ test("source resource URLs are reusable, bounded, and forward binary responses",
   }));
   assert.equal(response.type, "response", JSON.stringify(response));
   const resourceUrl = response.result.items[0].coverUrl;
+  assert.ok(resourceUrl.length > 32768);
   assert.match(resourceUrl, new RegExp(`^http://${ready.host}:${ready.port}/v1/source-resource/[A-Za-z0-9_-]{64,}$`));
   const decoded = await sendRequest(socket, makeRequest(ready, "c:resource-decode", "runtime.sourceResource.decode.v1", {
     params: { url: resourceUrl },

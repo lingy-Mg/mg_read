@@ -3,6 +3,7 @@
  * If direct search is empty, the new-book list and first three catalog categories are inspected, with two requests at most in flight and early cancellation at 20 matches.
  * GET display projections are cached according to the source policy; POST search and page parsing remain source-owned.
  */
+import { contentLimits } from './content-limits.js';
 import * as cheerio from 'cheerio/slim';
 import type {ContentDetail,ContentSummary,MgReadPluginContext} from './contracts.js';
 import {ProjectionCache} from './projection-cache.js';
@@ -52,7 +53,7 @@ export class TianyueSource{
   async getChapters(id:string){
     const bookId=decodeBookId(id);return this.#chaptersCache.get(`chapters:${bookId}`,async()=>{const url=readUrl(bookId);const $=cheerio.load(await this.#fetch(url));const seen=new Set<string>();const chapters:Array<Readonly<Record<string,unknown>>>=[];
       $('.link_14 dl dd a[href]').each((_,element)=>{const href=$(element).attr('href');const title=clean($(element).text());if(href===undefined||title===null)return;const chapter=new URL(href,url);const chapterNumberValue=chapterNumber(chapter,bookId);if(chapterNumberValue===null||seen.has(chapterNumberValue))return;seen.add(chapterNumberValue);chapters.push(Object.freeze({id:`chapter:${bookId}:${chapterNumberValue}`,title,order:chapters.length,url:chapter.toString(),volumeTitle:null,wordCount:null,updatedAt:null,isLocked:false,attributes:Object.freeze([])}));});
-      if(chapters.length===0)throw new Error('Catalog is empty.');if(chapters.length>5000)throw new Error('Catalog exceeds the Runtime chapter limit.');return Object.freeze({items:Object.freeze(chapters)});});
+      if(chapters.length===0)throw new Error('Catalog is empty.');if(chapters.length>contentLimits.catalogItems)throw new Error('Catalog exceeds the shared content budget.');return Object.freeze({items:Object.freeze(chapters)});});
   }
   async getContent(id:string,chapterId:string){
     const bookId=decodeBookId(id);const chapterNumberValue=decodeChapterId(chapterId,bookId);let url=new URL(`/read/${bookId}/${chapterNumberValue}.html`,origin);const visited=new Set<string>();const paragraphs:string[]=[];let title:string|null=null;

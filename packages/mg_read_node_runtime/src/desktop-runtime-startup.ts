@@ -10,6 +10,7 @@
  * - plugin lifecycle state remains owned by InstalledPluginCatalog/PluginManager;
  * - these helpers project observations only and never mutate plugin state.
  */
+import { contentLimits } from './content-limits.js';
 import {
   createServer,
   type IncomingMessage,
@@ -162,7 +163,7 @@ export async function startLoopbackServer(options: {
   readonly onUpgrade: (request: IncomingMessage, socket: Duplex, head: Buffer) => void;
   readonly port: number;
 }): Promise<{ readonly port: number; readonly server: Server }> {
-  const server = createServer({ maxHeaderSize: 32 * 1024 }, options.onHttp);
+  const server = createServer({ maxHeaderSize: contentLimits.httpHeaderBytes }, options.onHttp);
   server.on("upgrade", options.onUpgrade);
   try {
     await listenOnLoopback(server, options.host, options.port);

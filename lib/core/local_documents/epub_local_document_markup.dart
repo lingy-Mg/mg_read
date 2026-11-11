@@ -717,16 +717,20 @@ final class _BlockBuilder {
 
   void _table(XmlElement e, _InheritedStyle s, int depth) {
     final rows = e.findAllElements('tr').toList(growable: false);
-    if (rows.length > 2000) throw const LocalDocumentException('epub_table_too_large');
+    if (rows.length > ContentLimits.epubTableRows) throw const LocalDocumentException('epub_table_too_large');
     var rowIndex = 0;
     for (final row in rows) {
       final cells = <Map<String, Object?>>[];
       var col = 0;
-      if (row.children.whereType<XmlElement>().where((c) => {'td', 'th'}.contains(c.name.local.toLowerCase())).length > 100) {
+      if (row.children.whereType<XmlElement>().where((c) => {'td', 'th'}.contains(c.name.local.toLowerCase())).length >
+          ContentLimits.epubTableColumns) {
         throw const LocalDocumentException('epub_table_too_large');
       }
       for (final cell
-          in row.children.whereType<XmlElement>().where((c) => const {'td', 'th'}.contains(c.name.local.toLowerCase())).take(100)) {
+          in row.children
+              .whereType<XmlElement>()
+              .where((c) => const {'td', 'th'}.contains(c.name.local.toLowerCase()))
+              .take(ContentLimits.epubTableColumns)) {
         final text = _inlineText(cell, s);
         cells.add({
           'id': _stableId('cell', '$path|${rowIndex}_$col'),

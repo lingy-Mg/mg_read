@@ -1,5 +1,6 @@
 /** Runtime data-plane source resource proxy. Plugin code never sees a body. */
 import { createDecipheriv } from "node:crypto";
+import { contentLimits } from './content-limits.js';
 
 import type { JsonObject } from "./protocol.js";
 import type { PluginRuntimeHttpClient } from "./plugin-manager-contract.js";
@@ -275,5 +276,5 @@ function isHttpUrl(value: string): boolean {
 function isHeaderRecord(value: unknown): value is Readonly<Record<string, string>> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
   const values = Object.entries(value);
-  return values.length <= 16 && values.every(([name, header]) => /^[A-Za-z0-9-]{1,64}$/.test(name) && typeof header === "string" && header.length <= 4096 && !/[\r\n]/.test(header));
+  return values.length <= 16 && values.every(([name, header]) => /^[A-Za-z0-9-]{1,64}$/.test(name) && typeof header === "string" && header.length <= contentLimits.headerValueCharacters && !/[\r\n]/.test(header));
 }

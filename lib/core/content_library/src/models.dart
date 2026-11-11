@@ -10,12 +10,14 @@
 /// - 可再生数据源详情只作为本地优先展示摘要，远端仍可在后台刷新。
 library;
 
+import 'package:mg_read/core/content_limits.dart';
+
 /// The single global capacity shared by shelf writes, statistics and sync.
-const int bookshelfMaxItemCount = 100;
+const int bookshelfMaxItemCount = ContentLimits.shelfItems;
 
 const String bookshelfCapacityExceededCode = 'bookshelf_capacity_exceeded';
 
-/// Stable business failure raised when a write would create item 101.
+/// Stable business failure raised when a write exceeds the shared shelf capacity.
 final class BookshelfCapacityExceededException implements Exception {
   const BookshelfCapacityExceededException({required this.currentCount, required this.requestedNewItems});
 

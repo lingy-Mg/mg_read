@@ -12,5 +12,5 @@ test('large catalogs expose bounded lazy groups and preserve their final chapter
  const last=await catalog.load({id:'novel:1:2',groupId:initial.groups.at(-1).id},pages[0]);
  assert.equal(last.items.at(-1).id,'/kanshu/1/2/130.html:49');assert.equal(last.groups.length,65);assert.equal(last.groups.at(-1).deferred,undefined);assert.equal(last.groups.at(-1).order,64);assert.equal(last.groups.at(-1).id,initial.groups.at(-1).id);assert.equal(calls.length,4);
  await assert.rejects(catalog.load({id:'novel:1:2',groupId:'unknown'},pages[0]),/unavailable/);
- await assert.rejects(catalog.load({id:'novel:1:2'},pages[0]),/requires deferred/);
+ const full=await catalog.load({id:'novel:1:2'},pages[0]);assert.equal(full.items.length,6500);assert.equal(full.items.at(-1).id,'/kanshu/1/2/130.html:49');
 });

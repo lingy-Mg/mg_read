@@ -3,6 +3,7 @@
  * IO stays in the injected public HTTP reader. Deferred groups load only their real directory pages;
  * chapter IDs remain source-owned and legacy responses fail explicitly instead of truncating 5000 items.
  */
+import { contentLimits } from './content-limits.js';
 import type { ChaptersRequest, ChaptersResult, ChapterSummary } from './mgread-api.js';
 
 type ParsedChapter = Omit<ChapterSummary, 'order'>;
@@ -21,7 +22,7 @@ export class ElkopartsCatalog {
     if (!pending) {
       pending = this.read(firstUrl).then(firstHtml => {
         const pages = this.pages(firstHtml, firstUrl);
-        if (pages.length > 1024) throw new Error('Catalog exceeds the supported page bound.');
+        if (pages.length > contentLimits.catalogItems) throw new Error('Catalog exceeds the supported page bound.');
         return { firstHtml, pages, expires: Date.now() + 15 * 60_000 };
       }).catch(error => { if (this.#cache.get(request.id) === pending) this.#cache.delete(request.id); throw error; });
       this.#cache.set(request.id, pending);
@@ -44,7 +45,7 @@ export class ElkopartsCatalog {
       await Promise.all(Array.from({ length: Math.min(8, pages.length) }, worker));
       const seen = new Set<string>();
       const items = chunks.flat().filter(item => { if (seen.has(item.id)) return false; seen.add(item.id); return true; }).map((item, order) => ({ ...item, order }));
-      if (items.length > 5000) throw new Error('Catalog requires deferred chapter groups.');
+      if (items.length > contentLimits.catalogItems) throw new Error('Catalog requires deferred chapter groups.');
       return items;
     };
     if (request.supportsDeferredGroups !== true && request.groupId === undefined) return { items: await read(0, catalog.pages.length) };

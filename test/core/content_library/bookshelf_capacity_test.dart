@@ -15,13 +15,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/profile/data/content_library_profile_reading_stats_loader.dart';
 
+const _testShelfCapacity = 100;
+
 void main() {
   late Directory root;
   late ContentLibrary library;
 
   setUp(() async {
     root = await Directory.systemTemp.createTemp('mg-read-bookshelf-capacity-');
-    library = await ContentLibrary.open(dataRoot: root);
+    library = await ContentLibrary.open(dataRoot: root, maximumShelfItems: _testShelfCapacity);
   });
 
   tearDown(() async {
@@ -30,26 +32,26 @@ void main() {
   });
 
   test('allows 99 to 100, rejects 100 to 101, and keeps duplicate updates idempotent', () async {
-    await _fillShelf(library, bookshelfMaxItemCount - 1);
+    await _fillShelf(library, _testShelfCapacity - 1);
 
     await library.addLibraryItem(_source('book-99', '第 100 本'));
-    final atCapacity = await library.listLibrary(const LibraryQuery(limit: bookshelfMaxItemCount));
-    expect(atCapacity.items, hasLength(bookshelfMaxItemCount));
-    expect((await ContentLibraryProfileReadingStatsLoader(library).load()).shelfBookCount, bookshelfMaxItemCount);
-    expect((await library.createSyncSnapshot()).items, hasLength(bookshelfMaxItemCount));
+    final atCapacity = await library.listLibrary(const LibraryQuery(limit: _testShelfCapacity));
+    expect(atCapacity.items, hasLength(_testShelfCapacity));
+    expect((await ContentLibraryProfileReadingStatsLoader(library).load()).shelfBookCount, _testShelfCapacity);
+    expect((await library.createSyncSnapshot()).items, hasLength(_testShelfCapacity));
 
     await expectLater(
       library.addLibraryItem(_source('book-100', '第 101 本')),
-      throwsA(_capacityFailure(currentCount: bookshelfMaxItemCount, requestedNewItems: 1)),
+      throwsA(_capacityFailure(currentCount: _testShelfCapacity, requestedNewItems: 1)),
     );
 
     final duplicate = await library.addLibraryItem(_source('book-0', '已更新标题'));
     expect(duplicate.title, '已更新标题');
-    expect((await library.listLibrary(const LibraryQuery(limit: bookshelfMaxItemCount))).items, hasLength(bookshelfMaxItemCount));
+    expect((await library.listLibrary(const LibraryQuery(limit: _testShelfCapacity))).items, hasLength(_testShelfCapacity));
   });
 
   test('serializes concurrent additions so only one final slot is committed', () async {
-    await _fillShelf(library, bookshelfMaxItemCount - 1);
+    await _fillShelf(library, _testShelfCapacity - 1);
 
     final outcomes = await Future.wait<Object>(<Future<Object>>[
       _capture(library.addLibraryItem(_source('concurrent-1', '并发一'))),
@@ -58,19 +60,19 @@ void main() {
 
     expect(outcomes.whereType<LibraryItem>(), hasLength(1));
     expect(outcomes.whereType<BookshelfCapacityExceededException>(), hasLength(1));
-    expect((await library.listLibrary(const LibraryQuery(limit: bookshelfMaxItemCount))).items, hasLength(bookshelfMaxItemCount));
+    expect((await library.listLibrary(const LibraryQuery(limit: _testShelfCapacity))).items, hasLength(_testShelfCapacity));
   });
 
   test('rejects an over-capacity LAN or local-import batch atomically', () async {
-    await _fillShelf(library, bookshelfMaxItemCount - 1);
+    await _fillShelf(library, _testShelfCapacity - 1);
     final snapshot = LibrarySyncSnapshot(items: <LibrarySyncItem>[_syncItem('incoming-1'), _syncItem('incoming-2')]);
     final preview = await library.previewSyncSnapshot(snapshot, availablePluginIds: const <String>{'fixture'});
 
     await expectLater(
       library.applySyncSnapshot(snapshot, preview: preview, choices: const <LibrarySyncIdentity, LibrarySyncConflictChoice>{}),
-      throwsA(_capacityFailure(currentCount: bookshelfMaxItemCount - 1, requestedNewItems: 2)),
+      throwsA(_capacityFailure(currentCount: _testShelfCapacity - 1, requestedNewItems: 2)),
     );
-    expect((await library.listLibrary(const LibraryQuery(limit: bookshelfMaxItemCount))).items, hasLength(bookshelfMaxItemCount - 1));
+    expect((await library.listLibrary(const LibraryQuery(limit: _testShelfCapacity))).items, hasLength(_testShelfCapacity - 1));
   });
 }
 

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
+import 'package:mg_read/core/content_limits.dart';
 import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/reader/data/novel_chapter_request.dart';
@@ -63,14 +64,14 @@ void main() {
       return request.future;
     }, gateway: gateway);
     final assertion = expectLater(result, throwsA(isA<TimeoutException>()));
-    await tester.pump(const Duration(seconds: 20));
+    await tester.pump(const Duration(seconds: ContentLimits.novelAttemptSeconds));
     expect(gateway.cancellations.single.isCancelled, isTrue);
     await tester.pump(const Duration(milliseconds: 500));
     expect(pending, hasLength(2));
-    await tester.pump(const Duration(seconds: 20));
+    await tester.pump(const Duration(seconds: ContentLimits.novelAttemptSeconds));
     await tester.pump(const Duration(seconds: 1));
     expect(pending, hasLength(3));
-    await tester.pump(const Duration(seconds: 20));
+    await tester.pump(const Duration(seconds: ContentLimits.novelAttemptSeconds));
     await assertion;
     expect(gateway.cancellations.every((value) => value.isCancelled), isTrue);
     for (final request in pending) {

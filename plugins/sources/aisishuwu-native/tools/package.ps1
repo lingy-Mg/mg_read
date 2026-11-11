@@ -4,7 +4,7 @@
 param(
   [string]$WindowsDll = (Join-Path $PSScriptRoot '..\target\x86_64-pc-windows-msvc\release\aisishuwu_native.dll'),
   [string]$AndroidArm64So = (Join-Path $PSScriptRoot '..\target\aarch64-linux-android\release\libaisishuwu_native.so'),
-  [string]$Output = (Join-Path $PSScriptRoot '..\dist\aisishuwu-native-0.3.2.mgplugin')
+  [string]$Output = (Join-Path $PSScriptRoot '..\dist\aisishuwu-native-0.3.3.mgplugin')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -38,7 +38,7 @@ function Write-Package([string]$Path, [string[]]$SelectedTargets) {
     abi = 3
     id = 'org.mgread.aisishuwu.native'
     name = '爱丽丝书屋 Native'
-    version = '0.3.2'
+    version = '0.3.3'
     description = '爱丽丝书屋 Rust 原生小说来源'
     sourceUrl = 'https://www.alicesw.com/'
     contentKinds = @('novel')

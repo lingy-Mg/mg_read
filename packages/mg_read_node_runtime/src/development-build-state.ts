@@ -6,13 +6,14 @@
  * deliberately excluded. A fingerprint is committed only after the matching
  * generation and transferable artifact have both succeeded.
  */
+import { contentLimits } from './content-limits.js';
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 const SCHEMA_VERSION = 1;
 const MAX_FILES = 4_096;
-const MAX_BYTES = 32 * 1024 * 1024;
+const MAX_BYTES = contentLimits.pluginArtifactBytes;
 
 export interface DevelopmentSourceState {
   readonly fingerprint: string;

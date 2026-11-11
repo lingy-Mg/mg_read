@@ -10,7 +10,7 @@
     "npm": "11.19.1"
   },
   "scripts": {
-    "check:toolchain": "node probes/assert-toolchain.mjs",
+    "check:toolchain": "node probes/assert-toolchain.mjs && node ../../tools/generate_content_limits.mjs --check",
     "build": "npm run check:toolchain && node tools/clean-dist.mjs && tsc -p tsconfig.json && node tools/bundle-plugin-http-client.mjs && node tools/copy-debug-ui-assets.mjs && node tools/stage-flutter-android-runtime.mjs",
     "stage:flutter-windows": "npm run build && node tools/stage-flutter-windows-runtime.mjs",
     "stage:flutter-macos": "npm run build && node tools/stage-flutter-macos-runtime.mjs",

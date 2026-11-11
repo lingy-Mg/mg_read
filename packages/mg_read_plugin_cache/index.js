@@ -10,14 +10,15 @@
  * - 调用方必须为 JSON 投影提供解码器；损坏或旧结构一律按未命中处理。
  *
  */
+import { contentLimits } from './content-limits.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { isAbsolute, resolve } from 'node:path';
 
 const schemaVersion = 2;
 const directoryName = 'plugin-cache-v2';
-const maximumCacheBytes = 100 * 1024 * 1024;
-const maximumEntryBytes = 1024 * 1024;
+const maximumCacheBytes = contentLimits.cacheTotalBytes;
+const maximumEntryBytes = contentLimits.cacheEntryBytes;
 const cacheFilePattern = /^[a-f0-9]{64}\.json$/u;
 
 /** Bounded, persistent cache for source HTML and decoded source projections. */

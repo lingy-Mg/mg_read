@@ -74,13 +74,7 @@ test('large catalogs load complete deferred groups without truncation', async ()
     http: { async fetch() { return new Response(catalog); } },
   });
   const result = await plugin.getChapters({ id: 'book:L2Jvb2svMTIzLw', supportsDeferredGroups: true });
-  assert.equal(result.items.length, 500);
-  assert.equal(result.groups.length, 11);
-  assert.equal(result.groups[0].deferred, undefined);
-  assert.equal(result.groups[1].deferred, true);
-  assert.equal(result.groups[10].episodes.length, 0);
-  const loaded = await plugin.getChapters({ id: 'book:L2Jvb2svMTIzLw', groupId: result.groups[10].id });
-  assert.equal(loaded.items.length, 1);
-  assert.equal(loaded.items[0].title, '第5001章');
-  assert.equal(loaded.groups[0].deferred, undefined);
+  assert.equal(result.items.length, 5001);
+  assert.equal(result.items.at(-1).title, '第5001章');
+  assert.equal(result.groups, undefined);
 });

@@ -10,6 +10,7 @@
 ///
 library mgread_plugin_runtime;
 
+import 'src/content_limits.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';

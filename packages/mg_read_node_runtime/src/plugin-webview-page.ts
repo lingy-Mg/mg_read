@@ -6,6 +6,7 @@
  * controls bypass that queue. It never filters script source or JSON fields.
  * Cookies, WebView handles and platform objects stay inside the host.
  */
+import { contentLimits } from './content-limits.js';
 import { PluginManagerError } from "./plugin-manager-contract.js";
 import type {
   PluginJsonObject,
@@ -228,7 +229,7 @@ function readString(value: unknown, key: string): string {
 
 function ignoreResult(): void {}
 function absoluteHttpUrl(value: unknown): string {
-  const raw = nonEmptyString(value, 4096);
+  const raw = nonEmptyString(value, contentLimits.upstreamUrlCharacters);
   try {
     const parsed = new URL(raw);
     if ((parsed.protocol !== "https:" && parsed.protocol !== "http:") || parsed.username || parsed.password) invalid();

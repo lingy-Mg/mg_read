@@ -485,6 +485,54 @@ var require_lz_string = __commonJS({
   }
 });
 
+// src/content-limits.ts
+var contentLimits = Object.freeze({
+  "inlineBytes": 10485760,
+  "novelBytes": 10485760,
+  "novelMetadataBytes": 1048576,
+  "rpcEnvelopeBytes": 65536,
+  "catalogItems": 1e5,
+  "mangaPages": 1e5,
+  "labelCharacters": 4096,
+  "metadataCharacters": 1048576,
+  "idCharacters": 65536,
+  "cursorCharacters": 65536,
+  "resourceTokenCharacters": 262144,
+  "upstreamUrlCharacters": 65536,
+  "urlCharacters": 266240,
+  "httpHeaderBytes": 294912,
+  "headerValueCharacters": 65536,
+  "imageBytes": 104857600,
+  "coverBytes": 104857600,
+  "hlsBytes": 10485760,
+  "sourceHtmlBytes": 67108864,
+  "cacheEntryBytes": 67108864,
+  "cacheTotalBytes": 1073741824,
+  "sourceDecodePixels": 1e8,
+  "novelAttemptSeconds": 90,
+  "contentTimeoutSeconds": 300,
+  "readerWaitSeconds": 330,
+  "localFileBytes": 2147483648,
+  "localExpandedBytes": 17179869184,
+  "localEntries": 2e5,
+  "epubContainerBytes": 67108864,
+  "epubXhtmlBytes": 134217728,
+  "epubMetadataBytes": 16777216,
+  "epubResourceBytes": 104857600,
+  "epubBlocks": 1e6,
+  "epubDepth": 512,
+  "epubNodes": 2e6,
+  "epubTableRows": 1e5,
+  "epubTableColumns": 1e4,
+  "shelfItems": 1e4,
+  "pluginArtifactBytes": 268435456,
+  "pluginBatchBytes": 2147483648,
+  "pluginArchiveBytes": 268435456,
+  "pluginArchiveEntryBytes": 268435456,
+  "pluginArchiveExpandedBytes": 536870912,
+  "pluginArchiveEntries": 1e5
+});
+
 // src/discovery-page.ts
 function position(cursor, target) {
   if (cursor === null) return { page: 1, offset: 0 };
@@ -506,8 +554,8 @@ var import_lz_string = __toESM(require_lz_string(), 1);
 var desktopOrigin = "https://www.manhuagui.com";
 var mobileOrigin = "https://m.manhuagui.com";
 var defaultImageOrigin = "https://i.hamreus.com";
-var packedLimit = 1024 * 1024;
-var unpackedLimit = 2 * 1024 * 1024;
+var packedLimit = contentLimits.inlineBytes;
+var unpackedLimit = contentLimits.inlineBytes;
 var categories = Object.freeze([
   { id: "update", title: "最新更新", path: "/update/" },
   { id: "rank", title: "排行榜", path: "/rank/" },
@@ -687,7 +735,7 @@ function parsePackedImageData(html) {
   }
   if (!isRecord(raw) || !Array.isArray(raw.files)) throw new Error("Source image data shape is invalid.");
   const files = raw.files.flatMap((value) => typeof value === "string" && value !== "" ? [value] : []);
-  if (files.length === 0 || files.length > 5e3) throw new Error("Source image count is invalid.");
+  if (files.length === 0 || files.length > contentLimits.mangaPages) throw new Error("Source image count is invalid.");
   const sl = isRecord(raw.sl) ? raw.sl : void 0;
   return {
     files,

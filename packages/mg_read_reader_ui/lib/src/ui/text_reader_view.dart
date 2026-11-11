@@ -34,6 +34,7 @@ import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/content_limits.dart';
 import '../api/contracts.dart';
 import '../api/controller.dart';
 import '../api/models.dart';

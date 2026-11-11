@@ -11,6 +11,7 @@
  * - 本模块不创建 listener，也不处理外部 Debug HTTP 请求；
  * - 数据源资源 payload 只做路径安全编码，不提供加密或认证。
  */
+import { contentLimits } from './content-limits.js';
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -120,9 +121,23 @@ function responseHeaders(headers: Headers): Record<string, string> {
 }
 
 async function readManifest(response: Response): Promise<string> {
-  const body = await response.arrayBuffer();
-  if (body.byteLength > 1024 * 1024) throw new Error("manifest_too_large");
-  return new TextDecoder().decode(body);
+  if (response.body === null) return "";
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    while (true) {
+      const {done,value} = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      if (length > contentLimits.hlsBytes) {
+        await reader.cancel();
+        throw new Error(`manifest_too_large: ${length} bytes exceeds ${contentLimits.hlsBytes} bytes`);
+      }
+      chunks.push(value);
+    }
+    return new TextDecoder().decode(Buffer.concat(chunks,length));
+  } finally { reader.releaseLock(); }
 }
 
 function rewriteHls(text: string, base: string, request: JsonObject, createProxy: (request: JsonObject) => string): string {

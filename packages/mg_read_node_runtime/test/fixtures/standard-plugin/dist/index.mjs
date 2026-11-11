@@ -27,7 +27,7 @@ function contentSummary(query) {
     contentKind: "novel",
     author: context.plugin.id,
     url: `https://example.invalid/books/${encodeURIComponent(id)}`,
-    coverUrl: proxyResourceUrl === null ? null : context.resource.proxy({ kind: "image", url: proxyResourceUrl, headers: { Accept: "image/test" } }),
+    coverUrl: proxyResourceUrl === null ? null : context.resource.proxy({ kind: "image", url: proxyResourceUrl, headers: { Accept: "image/test", Referer: `https://example.test/${'x'.repeat(40000)}` } }),
     description: "标准插件富字段测试内容。",
     language: "zh-CN",
     status: "ongoing",

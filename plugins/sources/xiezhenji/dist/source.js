@@ -5,6 +5,7 @@
  * display HTML is cached; each article pagination page is exposed as one
  * catalog chapter so opening one chapter does not fetch the whole gallery.
  */
+import { contentLimits } from './content-limits.js';
 import { Buffer } from 'node:buffer';
 import * as cheerio from 'cheerio/slim';
 import { PluginCache } from '@mgread/plugin-cache';
@@ -93,11 +94,12 @@ function chapterId(url, page) { return `gallery:${token(url)}:${page}`; }
 function galleryPageUrl(base, page) { return page === 1 ? base : new URL(`${base.pathname.replace(/\/?$/u, '/')}page/${page}/`, origin); }
 function chapterItems(url, total) { return Object.freeze(Array.from({ length: total }, (_, index) => { const page = index + 1; return Object.freeze({ id: chapterId(url, page), title: `第${page}页`, order: index, url: galleryPageUrl(url, page).toString(), volumeTitle: null, wordCount: null, updatedAt: null, isLocked: false, attributes: Object.freeze([]) }); })); }
 function parseChapterPage(base, value) { const legacy = `gallery:${token(base)}`; if (value === legacy)
-    return 1; const prefix = `${legacy}:`; const page = value.startsWith(prefix) ? Number(value.slice(prefix.length)) : NaN; if (!Number.isSafeInteger(page) || page < 1 || page > 80)
+    return 1; const prefix = `${legacy}:`; const page = value.startsWith(prefix) ? Number(value.slice(prefix.length)) : NaN; if (!Number.isSafeInteger(page) || page < 1 || page > contentLimits.catalogItems)
     throw new Error('Chapter ID is invalid.'); return page; }
 function clean(value) { const result = value?.replace(/\s+/gu, ' ').trim() ?? ''; return result === '' ? null : result; }
 function unique(values) { return Object.freeze([...new Set(values.map((value) => value.replace(/\s+/gu, ' ').trim()).filter(Boolean))]); }
-function parseTotalPages(html) { const declared = Number(/(?:["']?)(?:total_pages|totalPages)(?:["']?)\s*[:=]\s*["']?(\d+)/u.exec(html)?.[1]); const $ = cheerio.load(html); const linked = [...$('a').toArray().map((element) => clean($(element).text())), ...$('[data-page]').toArray().map((element) => $(element).attr('data-page'))].map((value) => Number(value)).filter((value) => Number.isSafeInteger(value) && value > 0 && value <= 80); const count = Math.max(1, Number.isSafeInteger(declared) ? declared : 1, ...linked); return Math.min(80, count); }
+function parseTotalPages(html) { const declared = Number(/(?:["']?)(?:total_pages|totalPages)(?:["']?)\s*[:=]\s*["']?(\d+)/u.exec(html)?.[1]); const $ = cheerio.load(html); const linked = [...$('a').toArray().map((element) => clean($(element).text())), ...$('[data-page]').toArray().map((element) => $(element).attr('data-page'))].map((value) => Number(value)).filter((value) => Number.isSafeInteger(value) && value > 0 && value <= 80); const count = Math.max(1, Number.isSafeInteger(declared) ? declared : 1, ...linked); if (count > contentLimits.catalogItems)
+    throw new Error(`Catalog has ${count} pages; maximum is ${contentLimits.catalogItems}.`); return count; }
 function parseImageCount(html, intro) { const count = Number(/"numberOfItems"\s*:\s*(\d+)/u.exec(html)?.[1] ?? /收录\s*(\d+)\s*P/iu.exec(intro ?? '')?.[1]); return Number.isSafeInteger(count) && count >= 0 ? count : null; }
 function parseImages(html, base) { const $ = cheerio.load(html); return uniqueUrls($('#image-gallery .image-container img, article.article-content img').toArray().flatMap((element) => { const raw = $(element).attr('data-src') ?? $(element).attr('data-original-src') ?? $(element).attr('src'); if (raw === undefined)
     return []; const url = new URL(raw, base); return url.origin === origin && /\/static\/images\//u.test(url.pathname) && /\.(?:jpe?g|png|webp|gif)$/iu.test(url.pathname) ? [url] : []; })); }

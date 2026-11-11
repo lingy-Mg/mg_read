@@ -61,7 +61,7 @@ pub fn headers(value: &Value) -> Result<HeaderMap> {
         }
         let value = value
             .as_str()
-            .filter(|s| s.len() <= 8192)
+            .filter(|s| s.len() <= crate::limits::HEADER_VALUE_CHARACTERS)
             .ok_or_else(|| invalid("Invalid header value"))?;
         headers.insert(
             name,

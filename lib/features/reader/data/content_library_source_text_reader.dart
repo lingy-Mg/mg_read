@@ -7,6 +7,7 @@
 /// cannot keep later page turns attached to the same Future indefinitely.
 library;
 
+import 'package:mg_read/core/content_limits.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -436,7 +437,7 @@ final class _SessionNovelChapterAccess
   Future<PluginChapterContent> _load(String chapterId) {
     final active = _loading[chapterId];
     if (active != null) return active;
-    final task = _loadAndCache(chapterId).timeout(const Duration(seconds: 65));
+    final task = _loadAndCache(chapterId).timeout(const Duration(seconds: ContentLimits.contentTimeoutSeconds));
     _loading[chapterId] = task;
     return task.whenComplete(() {
       if (identical(_loading[chapterId], task)) _loading.remove(chapterId);

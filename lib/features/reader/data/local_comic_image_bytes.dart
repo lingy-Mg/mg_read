@@ -3,13 +3,14 @@
 /// in memory without paths, network access, or persistent cache ownership.
 library;
 
+import 'package:mg_read/core/content_limits.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_svg/flutter_svg.dart';
 
-const int _maxSvgBytes = 8 * 1024 * 1024;
+const int _maxSvgBytes = ContentLimits.imageBytes;
 const int _maxRasterEdge = 4096;
 const int _maxRasterPixels = 4 * 1024 * 1024;
 
@@ -23,7 +24,7 @@ Future<Uint8List> prepareLocalComicImageBytes(Uint8List bytes, {required String?
   if (normalizedMime != 'image/svg+xml') return bytes;
   if (bytes.isEmpty) throw const FormatException('Local EPUB SVG is empty.');
   if (bytes.length > _maxSvgBytes) {
-    throw const FormatException('Local EPUB SVG exceeds the 8 MiB render limit.');
+    throw const FormatException('Local EPUB SVG exceeds the shared 100 MiB image budget.');
   }
 
   PictureInfo? pictureInfo;

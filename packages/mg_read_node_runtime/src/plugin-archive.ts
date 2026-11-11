@@ -3,6 +3,7 @@
  * 职责：确定性封装单个已打包 JS、元数据和图标，并在解包时校验路径、大小与校验和。
  * 不读取 lock、不管理 npm 依赖、不分析或执行 JS；构建工具负责内联第三方代码。
  */
+import { contentLimits } from './content-limits.js';
 import { deflateRawSync, inflateRawSync } from "node:zlib";
 import {
   mkdir,
@@ -17,11 +18,11 @@ import {
   resolveInside,
 } from "./plugin-package.js";
 
-const MAX_ARCHIVE_BYTES = 128 * 1024 * 1024;
-const MAX_ENTRY_BYTES = 64 * 1024 * 1024;
-const MAX_ENTRY_COUNT = 4_096;
-const MAX_TOTAL_UNCOMPRESSED_BYTES = 256 * 1024 * 1024;
-const MAX_COMPRESSION_RATIO = 200;
+const MAX_ARCHIVE_BYTES = contentLimits.pluginArchiveBytes;
+const MAX_ENTRY_BYTES = contentLimits.pluginArchiveEntryBytes;
+const MAX_ENTRY_COUNT = contentLimits.pluginArchiveEntries;
+const MAX_TOTAL_UNCOMPRESSED_BYTES = contentLimits.pluginArchiveExpandedBytes;
+const MAX_COMPRESSION_RATIO = Number.MAX_SAFE_INTEGER;
 const ZIP_EOCD_SIGNATURE = 0x06054b50;
 const ZIP_CENTRAL_SIGNATURE = 0x02014b50;
 const ZIP_LOCAL_SIGNATURE = 0x04034b50;

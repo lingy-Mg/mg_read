@@ -4,7 +4,7 @@
 [CmdletBinding()]
 param(
   [string]$NdkHome = "$env:LOCALAPPDATA/Android/Sdk/ndk/28.2.13676358",
-  [string]$Output = (Join-Path $PSScriptRoot '..\dist\aisishuwu-native-0.3.2.mgplugin')
+  [string]$Output = (Join-Path $PSScriptRoot '..\dist\aisishuwu-native-0.3.3.mgplugin')
 )
 
 $ErrorActionPreference = 'Stop'

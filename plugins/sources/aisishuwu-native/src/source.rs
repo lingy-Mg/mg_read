@@ -36,7 +36,7 @@ fn size(request: &Value) -> Result<usize> {
     if n == 0 {
         return Err("page_size_invalid");
     }
-    Ok(n.min(50) as usize)
+    Ok(n.min(1000) as usize)
 }
 
 pub fn dispatch(input: Value) -> Result<Value> {
@@ -168,7 +168,7 @@ fn catalog_response(mut state: Value, document: &scraper::Html) -> Result<Value>
             items.push(item);
         }
     }
-    if items.len() > 5000 {
+    if items.len() > mgread_native_sdk::limits::CATALOG_ITEMS {
         return Err("catalog_limit");
     }
     if let Some(total) = catalog_total(document) {
@@ -177,7 +177,7 @@ fn catalog_response(mut state: Value, document: &scraper::Html) -> Result<Value>
     let page = state["page"].as_u64().ok_or("state_invalid")?;
     if let Some(next) = next_page(document, string(&state, "url")?, page)? {
         let pages = state["pages"].as_u64().ok_or("state_invalid")? + 1;
-        if pages > 64 {
+        if pages > mgread_native_sdk::limits::CATALOG_ITEMS as u64 {
             return Err("catalog_page_limit");
         }
         let url = format!(

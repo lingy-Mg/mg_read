@@ -5,13 +5,14 @@
  * Catalog/manga JSON permits 10 MiB; search pages and discovery collections permit 1000 items.
  */
 
+import { contentLimits } from './content-limits.js';
 import type { JsonObject } from "./protocol.js";
 
-export const MAX_ID_CHARACTERS = 8_192;
-export const MAX_LABEL_CHARACTERS = 256;
-export const MAX_TEXT_METADATA_CHARACTERS = 32_768;
-export const MAX_URL_CHARACTERS = 8_192;
-export const MAX_CURSOR_CHARACTERS = 2_048;
+export const MAX_ID_CHARACTERS = contentLimits.idCharacters;
+export const MAX_LABEL_CHARACTERS = contentLimits.labelCharacters;
+export const MAX_TEXT_METADATA_CHARACTERS = contentLimits.metadataCharacters;
+export const MAX_URL_CHARACTERS = contentLimits.urlCharacters;
+export const MAX_CURSOR_CHARACTERS = contentLimits.cursorCharacters;
 export const MAX_PAGE_SIZE = 1_000;
 export const MAX_SEARCH_ITEMS = 1_000;
 export const MAX_SEARCH_SUGGESTIONS = 50;
@@ -24,8 +25,8 @@ export const MAX_DISCOVERY_ITEMS = 1_000;
 export const MAX_CATEGORIES = 32;
 export const MAX_TAGS = 64;
 export const MAX_ATTRIBUTES = 32;
-export const MAX_CHAPTER_ITEMS = 5_000;
-export const MAX_MANGA_PAGES = 500;
+export const MAX_CHAPTER_ITEMS = contentLimits.catalogItems;
+export const MAX_MANGA_PAGES = contentLimits.mangaPages;
 export { MAX_INLINE_RESULT_BYTES, MAX_INLINE_TEXT_BYTES, MAX_INLINE_NOVEL_RESULT_BYTES } from "./runtime-payload-limits.js";
 export const MAX_INLINE_CHAPTER_CATALOG_BYTES = 10 * 1_024 * 1_024;
 export const MAX_INLINE_MANGA_MANIFEST_BYTES = 10 * 1_024 * 1_024;

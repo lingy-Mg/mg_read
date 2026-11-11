@@ -47,6 +47,54 @@ var require_boolbase = __commonJS({
   }
 });
 
+// src/content-limits.ts
+var contentLimits = Object.freeze({
+  "inlineBytes": 10485760,
+  "novelBytes": 10485760,
+  "novelMetadataBytes": 1048576,
+  "rpcEnvelopeBytes": 65536,
+  "catalogItems": 1e5,
+  "mangaPages": 1e5,
+  "labelCharacters": 4096,
+  "metadataCharacters": 1048576,
+  "idCharacters": 65536,
+  "cursorCharacters": 65536,
+  "resourceTokenCharacters": 262144,
+  "upstreamUrlCharacters": 65536,
+  "urlCharacters": 266240,
+  "httpHeaderBytes": 294912,
+  "headerValueCharacters": 65536,
+  "imageBytes": 104857600,
+  "coverBytes": 104857600,
+  "hlsBytes": 10485760,
+  "sourceHtmlBytes": 67108864,
+  "cacheEntryBytes": 67108864,
+  "cacheTotalBytes": 1073741824,
+  "sourceDecodePixels": 1e8,
+  "novelAttemptSeconds": 90,
+  "contentTimeoutSeconds": 300,
+  "readerWaitSeconds": 330,
+  "localFileBytes": 2147483648,
+  "localExpandedBytes": 17179869184,
+  "localEntries": 2e5,
+  "epubContainerBytes": 67108864,
+  "epubXhtmlBytes": 134217728,
+  "epubMetadataBytes": 16777216,
+  "epubResourceBytes": 104857600,
+  "epubBlocks": 1e6,
+  "epubDepth": 512,
+  "epubNodes": 2e6,
+  "epubTableRows": 1e5,
+  "epubTableColumns": 1e4,
+  "shelfItems": 1e4,
+  "pluginArtifactBytes": 268435456,
+  "pluginBatchBytes": 2147483648,
+  "pluginArchiveBytes": 268435456,
+  "pluginArchiveEntryBytes": 268435456,
+  "pluginArchiveExpandedBytes": 536870912,
+  "pluginArchiveEntries": 1e5
+});
+
 // node_modules/cheerio/dist/esm/slim.js
 var slim_exports = {};
 __export(slim_exports, {
@@ -6500,14 +6548,62 @@ function isNode(obj) {
 // node_modules/cheerio/dist/esm/slim.js
 var load = getLoad(getParse(parseDocument), esm_default);
 
+// ../../../packages/mg_read_plugin_cache/content-limits.js
+var contentLimits2 = Object.freeze({
+  "inlineBytes": 10485760,
+  "novelBytes": 10485760,
+  "novelMetadataBytes": 1048576,
+  "rpcEnvelopeBytes": 65536,
+  "catalogItems": 1e5,
+  "mangaPages": 1e5,
+  "labelCharacters": 4096,
+  "metadataCharacters": 1048576,
+  "idCharacters": 65536,
+  "cursorCharacters": 65536,
+  "resourceTokenCharacters": 262144,
+  "upstreamUrlCharacters": 65536,
+  "urlCharacters": 266240,
+  "httpHeaderBytes": 294912,
+  "headerValueCharacters": 65536,
+  "imageBytes": 104857600,
+  "coverBytes": 104857600,
+  "hlsBytes": 10485760,
+  "sourceHtmlBytes": 67108864,
+  "cacheEntryBytes": 67108864,
+  "cacheTotalBytes": 1073741824,
+  "sourceDecodePixels": 1e8,
+  "novelAttemptSeconds": 90,
+  "contentTimeoutSeconds": 300,
+  "readerWaitSeconds": 330,
+  "localFileBytes": 2147483648,
+  "localExpandedBytes": 17179869184,
+  "localEntries": 2e5,
+  "epubContainerBytes": 67108864,
+  "epubXhtmlBytes": 134217728,
+  "epubMetadataBytes": 16777216,
+  "epubResourceBytes": 104857600,
+  "epubBlocks": 1e6,
+  "epubDepth": 512,
+  "epubNodes": 2e6,
+  "epubTableRows": 1e5,
+  "epubTableColumns": 1e4,
+  "shelfItems": 1e4,
+  "pluginArtifactBytes": 268435456,
+  "pluginBatchBytes": 2147483648,
+  "pluginArchiveBytes": 268435456,
+  "pluginArchiveEntryBytes": 268435456,
+  "pluginArchiveExpandedBytes": 536870912,
+  "pluginArchiveEntries": 1e5
+});
+
 // ../../../packages/mg_read_plugin_cache/index.js
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 var schemaVersion = 2;
 var directoryName = "plugin-cache-v2";
-var maximumCacheBytes = 100 * 1024 * 1024;
-var maximumEntryBytes = 1024 * 1024;
+var maximumCacheBytes = contentLimits2.cacheTotalBytes;
+var maximumEntryBytes = contentLimits2.cacheEntryBytes;
 var cacheFilePattern = /^[a-f0-9]{64}\.json$/u;
 var PluginCache = class {
   #root;
@@ -6945,7 +7041,7 @@ var ShuduguSource = class {
     const parts = [];
     let pageUrl = chapterUrl;
     let title = null;
-    for (let page = 1; page <= 120; page += 1) {
+    for (let page = 1; page <= contentLimits.catalogItems; page += 1) {
       if (visited.has(pageUrl.toString())) throw new Error("Chapter pagination loop detected.");
       visited.add(pageUrl.toString());
       const $ = cheerio.load(await this.#getHtml(pageUrl));
@@ -6959,7 +7055,7 @@ var ShuduguSource = class {
       if (pageText !== "") parts.push(pageText);
       if (nextPage === null) break;
       pageUrl = nextPage;
-      if (page === 120) throw new Error("Chapter pagination exceeds the safety limit.");
+      if (page === contentLimits.catalogItems) throw new Error("Chapter pagination exceeds the safety limit.");
     }
     const text3 = parts.join("\n\n").trim();
     return Object.freeze({ chapterId: request.chapterId, contentKind: "novel", title, updatedAt: null, text: text3, pages: Object.freeze([]) });
@@ -7128,7 +7224,7 @@ var ShuduguSource = class {
     const seen = /* @__PURE__ */ new Set();
     let pageUrl = base;
     let pageHtml = firstHtml;
-    for (let page = 1; page <= 120; page += 1) {
+    for (let page = 1; page <= contentLimits.catalogItems; page += 1) {
       const $ = cheerio.load(pageHtml);
       for (const chapter of this.#parseCatalog($, pageUrl)) {
         if (seen.has(chapter.id)) continue;
@@ -7137,7 +7233,7 @@ var ShuduguSource = class {
       }
       const nextPage = this.#nextCatalogPage($, pageUrl, bookId);
       if (nextPage === null) return Object.freeze(chapters);
-      if (page === 120) throw new Error("Catalog pagination exceeds the safety limit.");
+      if (page === contentLimits.catalogItems) throw new Error("Catalog pagination exceeds the safety limit.");
       pageUrl = nextPage;
       pageHtml = await this.#getHtml(pageUrl, policy);
     }

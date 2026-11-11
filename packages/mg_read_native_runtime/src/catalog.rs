@@ -13,7 +13,7 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-pub const MAX_ARCHIVE: usize = 64 * 1024 * 1024;
+pub const MAX_ARCHIVE: usize = crate::limits::PLUGIN_ARCHIVE_BYTES;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Target {
     pub path: String,
@@ -45,15 +45,26 @@ pub struct Manifest {
     pub source_state_reason: Option<String>,
 }
 
-fn available_source_state() -> String { "available".into() }
+fn available_source_state() -> String {
+    "available".into()
+}
 
 fn normalize_source_url(value: &str) -> Option<String> {
     let mut url = url::Url::parse(value.trim()).ok()?;
     if !["http", "https"].contains(&url.scheme())
-        || url.host_str().is_none_or(|host| host.is_empty() || host == "localhost" || host.ends_with(".localhost") || host.ends_with(".local"))
-        || !url.username().is_empty() || url.password().is_some()
-        || url.query().is_some() || url.fragment().is_some()
-    { return None; }
+        || url.host_str().is_none_or(|host| {
+            host.is_empty()
+                || host == "localhost"
+                || host.ends_with(".localhost")
+                || host.ends_with(".local")
+        })
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return None;
+    }
     if url.path() != "/" {
         let path = url.path().trim_end_matches('/').to_owned();
         url.set_path(&path);
@@ -226,9 +237,11 @@ impl Catalog {
             archive
                 .by_name(&t.path)
                 .map_err(|_| invalid("Stored package has no target binary"))?
-                .take(32 * 1024 * 1024 + 1)
+                .take(crate::limits::PLUGIN_ARCHIVE_ENTRY_BYTES as u64 + 1)
                 .read_to_end(&mut bytes)?;
-            if bytes.len() > 32 * 1024 * 1024 || hash(&bytes) != t.sha256.to_lowercase() {
+            if bytes.len() > crate::limits::PLUGIN_ARCHIVE_ENTRY_BYTES
+                || hash(&bytes) != t.sha256.to_lowercase()
+            {
                 return Err(invalid("Stored target checksum mismatch"));
             }
             atomic_write(&library, &bytes)?;
@@ -245,9 +258,13 @@ impl Catalog {
             || m.name.is_empty()
             || m.name.len() > 256
             || m.description.len() > 960
-            || m.source_url.as_deref().is_some_and(|value| normalize_source_url(value).as_deref() != Some(value))
+            || m.source_url
+                .as_deref()
+                .is_some_and(|value| normalize_source_url(value).as_deref() != Some(value))
             || !["available", "disabled", "invalid"].contains(&m.source_state.as_str())
-            || m.source_state_reason.as_ref().is_some_and(|reason| reason.trim().is_empty() || reason.chars().count() > 240)
+            || m.source_state_reason
+                .as_ref()
+                .is_some_and(|reason| reason.trim().is_empty() || reason.chars().count() > 240)
             || m.content_kinds.is_empty()
             || m.content_kinds.len() > 4
             || m.content_kinds
@@ -260,7 +277,13 @@ impl Catalog {
             return Err(invalid("Unsupported native manifest"));
         }
         for (name, t) in &m.targets {
-            if !["windows-x86_64", "android-arm64-v8a", "android-armeabi-v7a", "android-x86_64"].contains(&name.as_str())
+            if ![
+                "windows-x86_64",
+                "android-arm64-v8a",
+                "android-armeabi-v7a",
+                "android-x86_64",
+            ]
+            .contains(&name.as_str())
                 || !safe_relative(&t.path)
                 || t.sha256.len() != 64
                 || !t.sha256.bytes().all(|c| c.is_ascii_hexdigit())
@@ -325,9 +348,11 @@ impl Catalog {
             archive
                 .by_name(&t.path)
                 .map_err(|_| invalid("Missing target binary"))?
-                .take(32 * 1024 * 1024 + 1)
+                .take(crate::limits::PLUGIN_ARCHIVE_ENTRY_BYTES as u64 + 1)
                 .read_to_end(&mut data)?;
-            if data.len() > 32 * 1024 * 1024 || hash(&data) != t.sha256.to_lowercase() {
+            if data.len() > crate::limits::PLUGIN_ARCHIVE_ENTRY_BYTES
+                || hash(&data) != t.sha256.to_lowercase()
+            {
                 return Err(invalid("Native binary checksum mismatch"));
             }
             if t.path == selected.path {
@@ -466,7 +491,12 @@ mod tests {
     fn r18_defaults_false_for_older_manifests() {
         let without = r#"{"format":"mgread-native","engine":"native","abi":3,"id":"org.mgread.alice","name":"Alice","version":"0.1.0","description":"","contentKinds":["novel"],"capabilities":["search"],"targets":{}}"#;
         assert!(!serde_json::from_str::<Manifest>(without).unwrap().r18);
-        assert_eq!(serde_json::from_str::<Manifest>(without).unwrap().source_state, "available");
+        assert_eq!(
+            serde_json::from_str::<Manifest>(without)
+                .unwrap()
+                .source_state,
+            "available"
+        );
         let with = without.replace("\"targets\":{}", "\"targets\":{},\"r18\":true");
         assert!(serde_json::from_str::<Manifest>(&with).unwrap().r18);
     }
@@ -485,7 +515,8 @@ mod tests {
             "contentKinds":["novel"], "capabilities":["search"],
             "targets":{target():{"path":"native/source.dll", "sha256":"a".repeat(64)},
                 "android-armeabi-v7a":{"path":"native/armv7/source.so", "sha256":"b".repeat(64)}}
-        })).unwrap();
+        }))
+        .unwrap();
         assert!(Catalog::validate_manifest(&manifest).is_ok());
         for state in ["available", "disabled", "invalid"] {
             manifest.source_state = state.into();
@@ -499,7 +530,12 @@ mod tests {
         manifest.source_state_reason = None;
         manifest.source_url = Some("https://source.example/".into());
         assert!(Catalog::validate_manifest(&manifest).is_ok());
-        for invalid_url in ["", "javascript:alert(1)", "http://localhost/", "https://source.example/?q=x"] {
+        for invalid_url in [
+            "",
+            "javascript:alert(1)",
+            "http://localhost/",
+            "https://source.example/?q=x",
+        ] {
             manifest.source_url = Some(invalid_url.into());
             assert!(Catalog::validate_manifest(&manifest).is_err());
         }

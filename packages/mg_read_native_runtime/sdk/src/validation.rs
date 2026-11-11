@@ -5,9 +5,10 @@ use crate::error::{Result, invalid};
 use serde_json::Value;
 use std::collections::HashSet;
 
-pub(crate) const MAX_NOVEL_TEXT_BYTES: usize = 10 * 1024 * 1024;
-const MAX_CONTENT_RESULT_BYTES: usize = 10 * 1024 * 1024;
-const MAX_NOVEL_RESULT_BYTES: usize = 6 * MAX_NOVEL_TEXT_BYTES + 64 * 1024;
+pub(crate) const MAX_NOVEL_TEXT_BYTES: usize = crate::limits::NOVEL_BYTES;
+const MAX_CONTENT_RESULT_BYTES: usize = crate::limits::INLINE_BYTES;
+const MAX_NOVEL_RESULT_BYTES: usize =
+    6 * MAX_NOVEL_TEXT_BYTES + crate::limits::NOVEL_METADATA_BYTES;
 
 pub fn validate(method: &str, request: &Value, result: &Value) -> Result<()> {
     if !result.is_object() {
@@ -34,7 +35,7 @@ pub fn validate(method: &str, request: &Value, result: &Value) -> Result<()> {
             array(result, "aliases", 64)?;
         }
         "getChapters" => {
-            let items = array(result, "items", 5000)?;
+            let items = array(result, "items", crate::limits::CATALOG_ITEMS)?;
             unique(items, "id")?;
             for item in items {
                 required(item, "id")?;
@@ -48,7 +49,7 @@ pub fn validate(method: &str, request: &Value, result: &Value) -> Result<()> {
             if result["chapterId"] != request["chapterId"] {
                 return Err(invalid("Content identity mismatch"));
             }
-            let pages = array(result, "pages", 5000)?;
+            let pages = array(result, "pages", crate::limits::MANGA_PAGES)?;
             match result["contentKind"].as_str() {
                 Some("novel")
                     if result["text"].is_string()
@@ -127,7 +128,15 @@ pub fn validate(method: &str, request: &Value, result: &Value) -> Result<()> {
 }
 fn required<'a>(v: &'a Value, k: &str) -> Result<&'a str> {
     v[k].as_str()
-        .filter(|s| !s.trim().is_empty() && s.len() <= 8192)
+        .filter(|s| {
+            !s.trim().is_empty()
+                && s.chars().count()
+                    <= match k {
+                        "url" => crate::limits::URL_CHARACTERS,
+                        "id" => crate::limits::ID_CHARACTERS,
+                        _ => crate::limits::LABEL_CHARACTERS,
+                    }
+        })
         .ok_or_else(|| invalid("Missing source text field"))
 }
 fn nullable(v: &Value, k: &str) -> Result<()> {
@@ -164,7 +173,7 @@ fn tree(v: &Value, depth: usize) -> Result<()> {
     }
     match v {
         Value::Array(a) => {
-            if a.len() > 5000 {
+            if a.len() > crate::limits::CATALOG_ITEMS {
                 return Err(invalid("Source array exceeded"));
             }
             for v in a {

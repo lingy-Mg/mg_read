@@ -4,11 +4,12 @@
  * Must never import transfer managers or batch IO. Keep the static Core graph
  * acyclic for Android Javet; Node-only tests do not validate that boundary.
  */
+import { contentLimits } from './content-limits.js';
 import type { createReadStream } from "node:fs";
 import type { JsonObject } from "./protocol.js";
 import { MAX_PLUGIN_ARTIFACT_BYTES, type PluginArtifactFormat } from "./plugin-single-file.js";
 
-export const MAX_PLUGIN_ARTIFACT_TRANSFER_BATCH_BYTES = 512 * 1024 * 1024;
+export const MAX_PLUGIN_ARTIFACT_TRANSFER_BATCH_BYTES = contentLimits.pluginBatchBytes;
 
 export interface PluginTransferArtifact extends JsonObject {
   readonly bytes: number;

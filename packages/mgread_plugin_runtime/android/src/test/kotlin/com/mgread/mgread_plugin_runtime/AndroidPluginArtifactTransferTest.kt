@@ -68,7 +68,7 @@ class AndroidPluginArtifactTransferTest {
     }
 
     @Test fun rejectsOversizedBatchBeforeAllocatingAndReleasesCanceledBatch() = withTransfer { root, transfer ->
-        val large = (0 until 17).map { metadata(it, byteArrayOf(1)) + ("bytes" to 32L * 1024 * 1024) }
+        val large = (0 until 17).map { metadata(it, byteArrayOf(1)) + ("bytes" to ContentLimits.pluginArtifactBytes.toLong()) }
         assertEquals("transfer_batch_too_large", runCatching { transfer.beginImportBatch(large) }.exceptionOrNull()?.message)
         assertEquals(0, root.listFiles()!!.size)
         val next = transfer.beginImportBatch(listOf(metadata(0, byteArrayOf(1))))

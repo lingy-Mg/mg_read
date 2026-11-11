@@ -47,6 +47,54 @@ var require_boolbase = __commonJS({
   }
 });
 
+// src/content-limits.ts
+var contentLimits = Object.freeze({
+  "inlineBytes": 10485760,
+  "novelBytes": 10485760,
+  "novelMetadataBytes": 1048576,
+  "rpcEnvelopeBytes": 65536,
+  "catalogItems": 1e5,
+  "mangaPages": 1e5,
+  "labelCharacters": 4096,
+  "metadataCharacters": 1048576,
+  "idCharacters": 65536,
+  "cursorCharacters": 65536,
+  "resourceTokenCharacters": 262144,
+  "upstreamUrlCharacters": 65536,
+  "urlCharacters": 266240,
+  "httpHeaderBytes": 294912,
+  "headerValueCharacters": 65536,
+  "imageBytes": 104857600,
+  "coverBytes": 104857600,
+  "hlsBytes": 10485760,
+  "sourceHtmlBytes": 67108864,
+  "cacheEntryBytes": 67108864,
+  "cacheTotalBytes": 1073741824,
+  "sourceDecodePixels": 1e8,
+  "novelAttemptSeconds": 90,
+  "contentTimeoutSeconds": 300,
+  "readerWaitSeconds": 330,
+  "localFileBytes": 2147483648,
+  "localExpandedBytes": 17179869184,
+  "localEntries": 2e5,
+  "epubContainerBytes": 67108864,
+  "epubXhtmlBytes": 134217728,
+  "epubMetadataBytes": 16777216,
+  "epubResourceBytes": 104857600,
+  "epubBlocks": 1e6,
+  "epubDepth": 512,
+  "epubNodes": 2e6,
+  "epubTableRows": 1e5,
+  "epubTableColumns": 1e4,
+  "shelfItems": 1e4,
+  "pluginArtifactBytes": 268435456,
+  "pluginBatchBytes": 2147483648,
+  "pluginArchiveBytes": 268435456,
+  "pluginArchiveEntryBytes": 268435456,
+  "pluginArchiveExpandedBytes": 536870912,
+  "pluginArchiveEntries": 1e5
+});
+
 // src/source.ts
 import { Buffer as Buffer2 } from "node:buffer";
 
@@ -6495,14 +6543,62 @@ function isNode(obj) {
 // node_modules/cheerio/dist/esm/slim.js
 var load = getLoad(getParse(parseDocument), esm_default);
 
+// ../../../packages/mg_read_plugin_cache/content-limits.js
+var contentLimits2 = Object.freeze({
+  "inlineBytes": 10485760,
+  "novelBytes": 10485760,
+  "novelMetadataBytes": 1048576,
+  "rpcEnvelopeBytes": 65536,
+  "catalogItems": 1e5,
+  "mangaPages": 1e5,
+  "labelCharacters": 4096,
+  "metadataCharacters": 1048576,
+  "idCharacters": 65536,
+  "cursorCharacters": 65536,
+  "resourceTokenCharacters": 262144,
+  "upstreamUrlCharacters": 65536,
+  "urlCharacters": 266240,
+  "httpHeaderBytes": 294912,
+  "headerValueCharacters": 65536,
+  "imageBytes": 104857600,
+  "coverBytes": 104857600,
+  "hlsBytes": 10485760,
+  "sourceHtmlBytes": 67108864,
+  "cacheEntryBytes": 67108864,
+  "cacheTotalBytes": 1073741824,
+  "sourceDecodePixels": 1e8,
+  "novelAttemptSeconds": 90,
+  "contentTimeoutSeconds": 300,
+  "readerWaitSeconds": 330,
+  "localFileBytes": 2147483648,
+  "localExpandedBytes": 17179869184,
+  "localEntries": 2e5,
+  "epubContainerBytes": 67108864,
+  "epubXhtmlBytes": 134217728,
+  "epubMetadataBytes": 16777216,
+  "epubResourceBytes": 104857600,
+  "epubBlocks": 1e6,
+  "epubDepth": 512,
+  "epubNodes": 2e6,
+  "epubTableRows": 1e5,
+  "epubTableColumns": 1e4,
+  "shelfItems": 1e4,
+  "pluginArtifactBytes": 268435456,
+  "pluginBatchBytes": 2147483648,
+  "pluginArchiveBytes": 268435456,
+  "pluginArchiveEntryBytes": 268435456,
+  "pluginArchiveExpandedBytes": 536870912,
+  "pluginArchiveEntries": 1e5
+});
+
 // ../../../packages/mg_read_plugin_cache/index.js
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 var schemaVersion = 2;
 var directoryName = "plugin-cache-v2";
-var maximumCacheBytes = 100 * 1024 * 1024;
-var maximumEntryBytes = 1024 * 1024;
+var maximumCacheBytes = contentLimits2.cacheTotalBytes;
+var maximumEntryBytes = contentLimits2.cacheEntryBytes;
 var cacheFilePattern = /^[a-f0-9]{64}\.json$/u;
 var PluginCache = class {
   #root;
@@ -6883,7 +6979,7 @@ function parseChapterPage(base, value) {
   if (value === legacy) return 1;
   const prefix = `${legacy}:`;
   const page = value.startsWith(prefix) ? Number(value.slice(prefix.length)) : NaN;
-  if (!Number.isSafeInteger(page) || page < 1 || page > 80) throw new Error("Chapter ID is invalid.");
+  if (!Number.isSafeInteger(page) || page < 1 || page > contentLimits.catalogItems) throw new Error("Chapter ID is invalid.");
   return page;
 }
 function clean(value) {
@@ -6898,7 +6994,8 @@ function parseTotalPages(html3) {
   const $ = load(html3);
   const linked = [...$("a").toArray().map((element) => clean($(element).text())), ...$("[data-page]").toArray().map((element) => $(element).attr("data-page"))].map((value) => Number(value)).filter((value) => Number.isSafeInteger(value) && value > 0 && value <= 80);
   const count = Math.max(1, Number.isSafeInteger(declared) ? declared : 1, ...linked);
-  return Math.min(80, count);
+  if (count > contentLimits.catalogItems) throw new Error(`Catalog has ${count} pages; maximum is ${contentLimits.catalogItems}.`);
+  return count;
 }
 function parseImageCount(html3, intro) {
   const count = Number(/"numberOfItems"\s*:\s*(\d+)/u.exec(html3)?.[1] ?? /收录\s*(\d+)\s*P/iu.exec(intro ?? "")?.[1]);

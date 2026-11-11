@@ -8,10 +8,10 @@
  *   user-facing shell processes from the Job-managed Node child.
  *
  * Boundaries:
- * - paths in control responses are consumed only by the package Supervisor;
+ * - paths in control responses are consumed only by the package Supervisor; public Facade results remain typed.
  * - the optional LAN inspector owns its typed inspection surface;
- * - the public Flutter Facade exposes typed results.
  */
+import { contentLimits } from './content-limits.js';
 import { createHash, randomUUID } from "node:crypto";
 import {
   type IncomingMessage,
@@ -467,8 +467,8 @@ export class DesktopRuntime {
   #handleHttp(request: IncomingMessage, response: ServerResponse): void {
     const url = new URL(request.url ?? "/", `http://${LOOPBACK_HOST}`);
     const finish = (_statusCode: number, _downloadedBytes = 0): void => {};
-    const resourceMatch = /^\/v1\/source-resource\/([A-Za-z0-9_-]{16,24576})$/.exec(url.pathname);
-    if (resourceMatch !== null) {
+    const resourceMatch = /^\/v1\/source-resource\/([A-Za-z0-9_-]{16,})$/.exec(url.pathname);
+    if (resourceMatch !== null && resourceMatch[1]!.length <= contentLimits.resourceTokenCharacters) {
       if (request.method !== "GET") { response.writeHead(405, { Allow: "GET" }); response.end(); finish(405); return; }
       void serveSourceResource(this.#pluginManager, resourceMatch[1]!, response, finish, request);
       return;

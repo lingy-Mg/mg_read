@@ -3,6 +3,7 @@
 /// directory, and never executes scripts or follows external references.
 library;
 
+import 'package:mg_read/core/content_limits.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -19,13 +20,13 @@ import 'local_document_disk_space.dart';
 part 'epub_local_document_markup.dart';
 part 'epub_reading_mode.dart';
 
-const _maxContainer = 16 * 1024 * 1024;
-const _maxXhtml = 16 * 1024 * 1024;
-const _maxMetadata = 4 * 1024 * 1024;
-const _maxResource = 32 * 1024 * 1024;
-const _maxBlocks = 200000;
-const _maxDepth = 128;
-const _maxNodes = 500000;
+const _maxContainer = ContentLimits.epubContainerBytes;
+const _maxXhtml = ContentLimits.epubXhtmlBytes;
+const _maxMetadata = ContentLimits.epubMetadataBytes;
+const _maxResource = ContentLimits.epubResourceBytes;
+const _maxBlocks = ContentLimits.epubBlocks;
+const _maxDepth = ContentLimits.epubDepth;
+const _maxNodes = ContentLimits.epubNodes;
 
 final class EpubLocalDocumentParser implements LocalDocumentParser {
   const EpubLocalDocumentParser();
@@ -419,13 +420,32 @@ Future<Map<String, _ZipRecord>> _preflightZip(File file, int fileSize, LocalDocu
     }
     if (eocd < 0) throw const LocalDocumentException('epub_zip_eocd');
     final disk = _u16(tail, eocd + 4), cdDisk = _u16(tail, eocd + 6);
-    final countDisk = _u16(tail, eocd + 8), count = _u16(tail, eocd + 10);
-    final cdSize = _u32(tail, eocd + 12), cdOffset = _u32(tail, eocd + 16);
+    var countDisk = _u16(tail, eocd + 8), count = _u16(tail, eocd + 10);
+    var cdSize = _u32(tail, eocd + 12), cdOffset = _u32(tail, eocd + 16);
+    if (count == 0xffff || cdSize == 0xffffffff || cdOffset == 0xffffffff) {
+      if (eocd < 20 || _u32(tail, eocd - 20) != 0x07064b50 || _u32(tail, eocd - 16) != 0 || _u32(tail, eocd - 4) != 1) {
+        throw const LocalDocumentException('epub_zip64_directory');
+      }
+      final zip64Offset = _u64(tail, eocd - 12);
+      if (zip64Offset < 0 || zip64Offset + 56 > fileSize) throw const LocalDocumentException('epub_zip64_directory');
+      await raf.setPosition(zip64Offset);
+      final zip64 = await raf.read(56);
+      if (zip64.length != 56 || _u32(zip64, 0) != 0x06064b50 || _u32(zip64, 16) != 0 || _u32(zip64, 20) != 0) {
+        throw const LocalDocumentException('epub_zip64_directory');
+      }
+      countDisk = _u64(zip64, 24);
+      count = _u64(zip64, 32);
+      cdSize = _u64(zip64, 40);
+      cdOffset = _u64(zip64, 48);
+    }
     if (disk != 0 ||
         cdDisk != 0 ||
         countDisk != count ||
+        count < 0 ||
         count > localDocumentMaxEntries ||
+        cdSize < 0 ||
         cdSize > _maxContainer ||
+        cdOffset < 0 ||
         cdOffset + cdSize > fileSize) {
       throw const LocalDocumentException('epub_zip_directory_limit');
     }
@@ -434,21 +454,53 @@ Future<Map<String, _ZipRecord>> _preflightZip(File file, int fileSize, LocalDocu
     final data = await raf.read(cdSize);
     if (data.length != cdSize) throw const LocalDocumentException('epub_zip_directory_truncated');
     final records = <String, _ZipRecord>{};
+    var expandedBytes = 0;
     var p = 0;
     for (var i = 0; i < count; i++) {
       cancel.check();
       if (p + 46 > data.length || _u32(data, p) != 0x02014b50) throw const LocalDocumentException('epub_zip_directory_invalid');
       final madeBy = _u16(data, p + 4), flags = _u16(data, p + 8), crc = _u32(data, p + 16);
-      final compressed = _u32(data, p + 20), size = _u32(data, p + 24);
+      var compressed = _u32(data, p + 20), size = _u32(data, p + 24);
       final nameLen = _u16(data, p + 28), extraLen = _u16(data, p + 30), commentLen = _u16(data, p + 32);
       final diskStart = _u16(data, p + 34), attrs = _u32(data, p + 38);
       final end = p + 46 + nameLen + extraLen + commentLen;
-      if (end > data.length || diskStart != 0 || (flags & 1) != 0 || size == 0xffffffff || compressed == 0xffffffff) {
+      if (end > data.length || diskStart != 0 || (flags & 1) != 0) {
         throw const LocalDocumentException('epub_zip_entry_invalid');
+      }
+      if (size == 0xffffffff || compressed == 0xffffffff) {
+        var extra = p + 46 + nameLen;
+        final extraEnd = extra + extraLen;
+        var found = false;
+        while (extra + 4 <= extraEnd) {
+          final kind = _u16(data, extra), length = _u16(data, extra + 2), next = extra + 4 + _u16(data, extra + 2);
+          if (next > extraEnd) break;
+          if (kind == 1) {
+            var cursor = extra + 4;
+            if (size == 0xffffffff) {
+              if (cursor + 8 > next) throw const LocalDocumentException('epub_zip64_entry');
+              size = _u64(data, cursor);
+              cursor += 8;
+            }
+            if (compressed == 0xffffffff) {
+              if (cursor + 8 > next) throw const LocalDocumentException('epub_zip64_entry');
+              compressed = _u64(data, cursor);
+            }
+            found = true;
+            break;
+          }
+          extra += 4 + length;
+        }
+        if (!found) throw const LocalDocumentException('epub_zip64_entry');
       }
       final rawName = utf8.decode(data.sublist(p + 46, p + 46 + nameLen), allowMalformed: (flags & 0x800) == 0);
       final name = _normalizeZipPath(rawName);
       if (name == null) throw LocalDocumentException('epub_zip_path', rawName);
+      if (size < 0 || size > _entryLimit(name, _mediaType(name))) {
+        throw LocalDocumentException('epub_entry_size', name);
+      }
+      if (compressed < 0 || compressed > fileSize) throw const LocalDocumentException('epub_zip_entry_invalid');
+      expandedBytes += size;
+      if (expandedBytes > localDocumentMaxExpandedBytes) throw const LocalDocumentException('epub_expanded_size');
       final fileType = (madeBy >> 8) == 3 ? (attrs >> 16) & 0xf000 : 0;
       if (fileType == 0xa000) throw LocalDocumentException('epub_zip_symlink', rawName);
       if (records.containsKey(name)) throw LocalDocumentException('epub_zip_duplicate', rawName);
@@ -464,6 +516,7 @@ Future<Map<String, _ZipRecord>> _preflightZip(File file, int fileSize, LocalDocu
 
 int _u16(List<int> b, int p) => b[p] | (b[p + 1] << 8);
 int _u32(List<int> b, int p) => _u16(b, p) | (_u16(b, p + 2) << 16);
+int _u64(List<int> b, int p) => _u32(b, p) | (_u32(b, p + 4) << 32);
 
 String? _normalizeZipPath(String raw) {
   if (raw.isEmpty ||

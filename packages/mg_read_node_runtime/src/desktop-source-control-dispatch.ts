@@ -8,6 +8,7 @@
  *
  * Transport framing and PluginManager lifecycle remain owned by DesktopRuntime.
  */
+import { contentLimits } from './content-limits.js';
 import type {
   RuntimeDispatchResult,
   RuntimeRequestErrorFactory,
@@ -162,7 +163,7 @@ export function dispatchSourceResourceDecode(
   if (
     Object.keys(request.params).length !== 1 ||
     typeof request.params.url !== "string" ||
-    request.params.url.length > 32 * 1024
+    request.params.url.length > contentLimits.urlCharacters
   ) {
     return {
       error: requestError(

@@ -11,6 +11,7 @@
  * - platform providers keep one page per plugin for the new webview API;
  * - legacy v1 sessions continue to use their session key and origin boundary.
  */
+import { contentLimits } from './content-limits.js';
 import { Buffer } from "node:buffer";
 
 import { PluginManagerError } from "./plugin-manager-contract.js";
@@ -412,7 +413,7 @@ function validateResponseHeaders(value: unknown): Readonly<Record<string, string
 }
 
 function secureUrl(value: unknown): URL {
-  if (typeof value !== "string" || value.length > 4096) invalid();
+  if (typeof value !== "string" || value.length > contentLimits.upstreamUrlCharacters) invalid();
   try {
     const url = new URL(value);
     if (url.protocol !== "https:" || url.username !== "" || url.password !== "") invalid();
