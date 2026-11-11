@@ -16,6 +16,7 @@
 /// - 目录打开后分批补齐全部章节，并将当前章节定位到可视区域中部。
 /// - 将章节状态查询合并进阅读器会话缓存，目录重开只补查尚未覆盖的章节。
 /// - 显式跳章操作收起阅读 chrome，未就绪的章节统一在正文层显示加载态。
+/// - 首章和跳章失败均展示可复制的原始错误链；重试仍由会话持有。
 /// - 隔离工具栏和目录动作 Tooltip 的 OverlayPortal 语义，保持 Windows AXTree 稳定。
 ///
 /// 注意：
@@ -48,6 +49,7 @@ import 'chapter/reader_chapter_state_badge.dart';
 import 'effects/reader_page_effect.dart';
 import 'fonts/reader_font_controller.dart';
 import 'reader_accessible_tooltip.dart';
+import 'reader_failure_details.dart';
 import 'reader_source_strip.dart';
 import 'reader_strings.dart';
 import 'reader_theme.dart';

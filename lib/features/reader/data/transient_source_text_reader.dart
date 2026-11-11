@@ -1,9 +1,11 @@
 /// 临时小说会话适配；正文由宿主执行有界重试，目录与阅读状态只保留在路由内存。
+/// 正文失败保留来源、书籍和章节身份以及原始原因，供阅读器展示与复制。
 library;
 
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
+import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/reader/application/reader_launch_request.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/reader/data/novel_chapter_request.dart';
@@ -162,7 +164,9 @@ final class _TransientSourceTextReaderDataSource implements TextReaderDataSource
         '小说正文暂时无法加载，请检查数据源或网络后重试。',
         code: 'source_text_content_load_failed',
         location: '请求小说章节正文',
-        cause: error,
+        cause: AppError.fromUnknown(
+          error,
+        ).withContext(location: 'source=${detail.pluginId}; book=${detail.summary.id}; chapter=$chapterId'),
       );
     }
     if (content.contentKind != PluginContentKind.novel || content.text == null) {

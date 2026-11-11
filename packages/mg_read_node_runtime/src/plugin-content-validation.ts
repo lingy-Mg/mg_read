@@ -448,11 +448,10 @@ export function readNullableString(
 function readNullableText(raw: Record<string, unknown>, key: string): string | null {
   const value = readOwn(raw, key);
   if (value === null) return null;
-  if (
-    typeof value !== "string" ||
-    Buffer.byteLength(value, "utf8") > MAX_INLINE_TEXT_BYTES
-  ) {
-    fail();
+  if (typeof value !== "string") fail(`Response field "${key}" must be a string or null.`);
+  const bytes = Buffer.byteLength(value, "utf8");
+  if (bytes > MAX_INLINE_TEXT_BYTES) {
+    fail(`Response field "${key}" exceeds the novel text budget: ${bytes} bytes exceeds the ${MAX_INLINE_TEXT_BYTES}-byte limit.`);
   }
   return value;
 }

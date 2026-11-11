@@ -1,3 +1,4 @@
+/** 爱丽丝公开能力入口；延迟装配来源，原样保留错误及 cause，由 Runtime 统一归类与投影。 */
 import type {
   ChapterContent,
   ChaptersRequest,
@@ -109,19 +110,7 @@ function requireContext(): MgReadPluginContext {
 async function invoke<T>(
   action: (context: MgReadPluginContext) => Promise<T>,
 ): Promise<T> {
-  const activeContext = requireContext();
-  try {
-    return await action(activeContext);
-  } catch (error) {
-    if (isRuntimeRaisedError(error)) throw error;
-    throw new Error('Source operation failed.');
-  }
-}
-
-function isRuntimeRaisedError(error: unknown): boolean {
-  if (error === null || typeof error !== 'object') return false;
-  const candidate = error as { readonly code?: unknown; readonly name?: unknown };
-  return candidate.name === 'PluginManagerError' && typeof candidate.code === 'string';
+  return action(requireContext());
 }
 
 async function loadSource(activeContext: MgReadPluginContext): Promise<AliceBookHouseSource> {

@@ -7514,12 +7514,15 @@ var AliceBookHouseSource = class {
     const $ = cheerio2.load(await this.#getHtml(chapterUrl, chapterUrl));
     const content = $(".read-content, .j_readContent, #j_chapterBox").first();
     if (content.length === 0) {
-      throw new Error("Source chapter content was not found.");
+      throw new Error(`未找到章节正文区域（getContent）。章节地址：${chapterUrl}`);
     }
     content.find("script, style, iframe, #user_ad, .chapter-control, .text-head, .right-bar-list, .left-bar-list").remove();
     const title = textOrNull($("h1, .read-title, .book-title").first().text());
     const markup = (content.html() ?? "").replace(/<br\s*\/?>/giu, "\n").replace(/<\/(?:p|div)>/giu, "\n\n");
     const text3 = cheerio2.load(`<body>${markup}</body>`).text().replace(/\r/g, "").replace(/爱丽丝书屋[\s\S]*?Copyright\s*\d{4}/giu, "").replace(/[ \t]+\n/gu, "\n").replace(/\n[ \t]+/gu, "\n").replace(/\n{3,}/gu, "\n\n").trim();
+    if (text3.length === 0) {
+      throw new Error(`章节正文为空（getContent）：来源页面未提供可阅读的文字。章节地址：${chapterUrl}`);
+    }
     return Object.freeze({
       chapterId: request.chapterId,
       contentKind: "novel",
@@ -7542,7 +7545,7 @@ var AliceBookHouseSource = class {
         }
       });
       if (!response.ok) {
-        throw new Error(`Source request failed with HTTP ${response.status}.`);
+        throw new Error(`来源请求失败：HTTP ${response.status}。请求地址：${url}`);
       }
       const body = await response.text();
       if (body.includes("访问异常，请稍后再试")) {
@@ -8023,18 +8026,7 @@ function requireContext() {
   return globalThisContext;
 }
 async function invoke(action) {
-  const activeContext = requireContext();
-  try {
-    return await action(activeContext);
-  } catch (error) {
-    if (isRuntimeRaisedError(error)) throw error;
-    throw new Error("Source operation failed.");
-  }
-}
-function isRuntimeRaisedError(error) {
-  if (error === null || typeof error !== "object") return false;
-  const candidate = error;
-  return candidate.name === "PluginManagerError" && typeof candidate.code === "string";
+  return action(requireContext());
 }
 async function loadSource(activeContext) {
   if (source !== void 0) return source;

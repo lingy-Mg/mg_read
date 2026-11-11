@@ -1,6 +1,7 @@
 /**
  * Plugin content wire protocol types and immutable validation limits.
  * This module contains no request parsing or result-tree traversal.
+ * Novel chapters permit up to 1 MiB of UTF-8 text, including long source chapters.
  */
 
 import type { JsonObject } from "./protocol.js";
@@ -26,7 +27,7 @@ export const MAX_CHAPTER_ITEMS = 5_000;
 export const MAX_MANGA_PAGES = 500;
 export { MAX_INLINE_RESULT_BYTES } from "./runtime-payload-limits.js";
 export const MAX_INLINE_CHAPTER_CATALOG_BYTES = 2 * 1_024 * 1_024;
-export const MAX_INLINE_TEXT_BYTES = 48 * 1_024;
+export const MAX_INLINE_TEXT_BYTES = 1_024 * 1_024;
 export const MAX_INLINE_MANGA_MANIFEST_BYTES = 512 * 1_024;
 export const MAX_MEDIA_GROUPS = 128;
 export const MAX_MEDIA_HEADERS = 16;

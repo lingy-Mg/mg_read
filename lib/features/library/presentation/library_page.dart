@@ -217,6 +217,7 @@ class LibraryPage extends ConsumerWidget {
             final failure = ref.read(shelfReaderLaunchCoordinatorProvider).failure;
             showLibraryReaderLaunchError(
               context,
+              error: failure?.error,
               message: failure?.error.detail?.trim().isNotEmpty == true
                   ? failure!.error.detail!
                   : failure?.reason.userMessage ?? '阅读内容准备失败，请稍后重试。',

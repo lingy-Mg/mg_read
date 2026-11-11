@@ -3,6 +3,7 @@
  *
  * 职责：解析发现、搜索、详情、目录和正文，并复用插件私有的 HTML/投影缓存。
  * 注意：分类/首页封面补全有并发与时间预算；发现响应在封面代理后压缩，缓存仍保存完整详情与来源 URL。
+ * 正文缺失或为空必须报出章节地址，不能把空白阅读页当作加载成功。
  */
 import * as cheerio from 'cheerio/slim';
 import { PluginCache } from './html-cache.js';
@@ -246,7 +247,7 @@ export class AliceBookHouseSource {
         const $ = cheerio.load(await this.#getHtml(chapterUrl, chapterUrl));
         const content = $('.read-content, .j_readContent, #j_chapterBox').first();
         if (content.length === 0) {
-            throw new Error('Source chapter content was not found.');
+            throw new Error(`未找到章节正文区域（getContent）。章节地址：${chapterUrl}`);
         }
         content.find('script, style, iframe, #user_ad, .chapter-control, .text-head, .right-bar-list, .left-bar-list').remove();
         const title = textOrNull($('h1, .read-title, .book-title').first().text());
@@ -262,6 +263,9 @@ export class AliceBookHouseSource {
             .replace(/\n[ \t]+/gu, '\n')
             .replace(/\n{3,}/gu, '\n\n')
             .trim();
+        if (text.length === 0) {
+            throw new Error(`章节正文为空（getContent）：来源页面未提供可阅读的文字。章节地址：${chapterUrl}`);
+        }
         return Object.freeze({
             chapterId: request.chapterId,
             contentKind: 'novel',
@@ -284,7 +288,7 @@ export class AliceBookHouseSource {
                 },
             });
             if (!response.ok) {
-                throw new Error(`Source request failed with HTTP ${response.status}.`);
+                throw new Error(`来源请求失败：HTTP ${response.status}。请求地址：${url}`);
             }
             const body = await response.text();
             if (body.includes('访问异常，请稍后再试')) {

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
@@ -20,6 +21,9 @@ void main() {
         expect(controller.snapshot.progress?.paragraphId, before?.paragraphId);
         expect(find.text('章节加载失败'), findsOneWidget);
         expect(find.text('重试加载'), findsOneWidget);
+        expect(find.byKey(const Key('reader-failure-details')), findsOneWidget);
+        expect(find.textContaining('底层原因：Bad state: 网络波动'), findsOneWidget);
+        expect(find.text('复制错误详情'), findsOneWidget);
         source.failure = null;
         await tester.tap(find.text('重试加载'));
         await _until(tester, () => controller.snapshot.chapter?.id == 'c1');
@@ -139,6 +143,27 @@ void main() {
     final controller = TextReaderController();
     await _mount(tester, source, controller, expectReady: false);
     await _until(tester, () => find.text('重新加载').evaluate().isNotEmpty);
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData')
+          copied = (call.arguments as Map)['text'] as String?;
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    expect(find.textContaining('底层原因：Bad state: 首章加载失败'), findsOneWidget);
+    await tester.tap(find.text('复制错误详情'));
+    await tester.pump();
+    expect(copied, contains('首章加载失败'));
+    expect(copied, contains('书籍标识：book'));
+    expect(copied, contains('text_reader_initial_load_failed'));
     source.failInitial = false;
     await tester.tap(find.text('重新加载'));
     await _until(tester, () => controller.snapshot.chapter?.id == 'c0');

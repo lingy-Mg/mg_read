@@ -138,7 +138,13 @@ void main() {
         isA<ReaderFailure>()
             .having((failure) => failure.code, 'code', 'source_text_content_load_failed')
             .having((failure) => failure.location, 'location', '请求小说章节正文')
-            .having((failure) => failure.message, 'message', '小说正文暂时无法加载，请检查数据源或网络后重试。'),
+            .having((failure) => failure.message, 'message', '小说正文暂时无法加载，请检查数据源或网络后重试。')
+            .having((failure) => failure.cause.toString(), 'original cause', contains('https://private.example/signed-url'))
+            .having(
+              (failure) => failure.cause.toString(),
+              'source context',
+              contains('source=org.example.source; book=book-1; chapter=chapter-1'),
+            ),
       ),
     );
   });

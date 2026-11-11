@@ -94,40 +94,50 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
     if (_failure != null && _content == null) {
       return _CenteredStatus(
         color: _palette.secondaryText,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(Icons.refresh_rounded, size: 34, color: _palette.accent),
-            const SizedBox(height: 10),
-            Text(
-              _failure?.message ?? ReaderStrings.loadFailed,
-              key: const Key('text-reader-status-message'),
-              textAlign: TextAlign.center,
-            ),
-            if (_failure?.location case final String location) ...<Widget>[
-              const SizedBox(height: 6),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(Icons.refresh_rounded, size: 34, color: _palette.accent),
+              const SizedBox(height: 10),
               Text(
-                '发生位置：$location',
-                key: const Key('text-reader-status-location'),
+                _failure?.message ?? ReaderStrings.loadFailed,
+                key: const Key('text-reader-status-message'),
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: _palette.secondaryText),
+              ),
+              if (_failure?.location case final String location) ...<Widget>[
+                const SizedBox(height: 6),
+                Text(
+                  '发生位置：$location',
+                  key: const Key('text-reader-status-location'),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: _palette.secondaryText),
+                ),
+              ],
+              if (_failure?.code case final String code) ...<Widget>[
+                const SizedBox(height: 3),
+                Text(
+                  '诊断编号：$code',
+                  key: const Key('text-reader-status-code'),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: _palette.secondaryText),
+                ),
+              ],
+              const SizedBox(height: 12),
+              ReaderFailureDetails(
+                failure: _failure!,
+                bookId: widget.bookId,
+                bookTitle: _book?.title,
+                color: _palette.secondaryText,
+              ),
+              const SizedBox(height: 10),
+              FilledButton.tonal(
+                onPressed: _restart,
+                child: const Text(ReaderStrings.retry),
               ),
             ],
-            if (_failure?.code case final String code) ...<Widget>[
-              const SizedBox(height: 3),
-              Text(
-                '诊断编号：$code',
-                key: const Key('text-reader-status-code'),
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: _palette.secondaryText),
-              ),
-            ],
-            const SizedBox(height: 10),
-            FilledButton.tonal(
-              onPressed: _restart,
-              child: const Text(ReaderStrings.retry),
-            ),
-          ],
+          ),
         ),
       );
     }

@@ -100,7 +100,9 @@ extension _TextReaderRootWidgets on _TextReaderViewState {
                           if (_retryChapterLoad != null && !_changingChapter)
                             _ChapterLoadFailureMask(
                               palette: palette,
-                              message: _failure!.message,
+                              failure: _failure!,
+                              bookId: widget.bookId,
+                              bookTitle: _book?.title,
                               onRetry: _retryFailedChapter,
                               onDismiss: _dismissChapterLoadFailure,
                             ),

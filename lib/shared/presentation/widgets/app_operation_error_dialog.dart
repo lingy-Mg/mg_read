@@ -57,7 +57,13 @@ final class AppOperationErrorDetails {
   final AppError error;
   final String reason;
 
-  String get copyPayload => '操作：$operation\n错误码：${error.code.wireValue}\n错误原因：$reason';
+  String get copyPayload => <String>[
+    '操作：$operation',
+    '错误码：${error.code.wireValue}',
+    '错误原因：$reason',
+    if (error.location != null) '失败位置：${error.location}',
+    if (error.traceId != null) '跟踪 ID：${error.traceId}',
+  ].join('\n');
 }
 
 /// A selectable error reason and an explicit copy action for app operations.
@@ -72,6 +78,7 @@ final class AppOperationErrorDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return AlertDialog(
+      scrollable: true,
       title: Text('${details.operation}失败'),
       content: SelectionArea(
         child: Column(

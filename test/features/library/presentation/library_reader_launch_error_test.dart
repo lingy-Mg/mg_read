@@ -5,11 +5,29 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/core/errors/app_error.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_reader_launch_error.dart';
 
 import '../../../support/visual_evidence.dart';
 
 void main() {
+  testWidgets('reader preparation exposes the original error in a copyable dialog', (tester) async {
+    final context = await _mount(tester);
+    showLibraryReaderLaunchError(
+      context,
+      message: '正文准备失败',
+      error: AppError.fromCode(AppErrorCode.invalidFormat, detail: 'text exceeds novel budget'),
+      onRetry: () {},
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('错误详情'));
+    await tester.pumpAndSettle();
+    expect(find.text('text exceeds novel budget'), findsOneWidget);
+    expect(find.text('复制错误原因'), findsOneWidget);
+    await tester.tap(find.text('关闭'));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('retry error automatically disappears even with accessible navigation', (tester) async {
     final context = await _mount(tester, accessibleNavigation: true);
     var retries = 0;

@@ -82,13 +82,17 @@ class _ChapterLoadingMask extends StatelessWidget {
 class _ChapterLoadFailureMask extends StatelessWidget {
   const _ChapterLoadFailureMask({
     required this.palette,
-    required this.message,
+    required this.failure,
+    required this.bookId,
+    this.bookTitle,
     required this.onRetry,
     required this.onDismiss,
   });
 
   final ReaderPalette palette;
-  final String message;
+  final ReaderFailure failure;
+  final String bookId;
+  final String? bookTitle;
   final VoidCallback onRetry;
   final VoidCallback onDismiss;
 
@@ -119,9 +123,16 @@ class _ChapterLoadFailureMask extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      message,
+                      failure.message,
                       textAlign: TextAlign.center,
                       style: TextStyle(color: palette.secondaryText),
+                    ),
+                    const SizedBox(height: 12),
+                    ReaderFailureDetails(
+                      failure: failure,
+                      bookId: bookId,
+                      bookTitle: bookTitle,
+                      color: palette.secondaryText,
                     ),
                     const SizedBox(height: 16),
                     FilledButton.icon(

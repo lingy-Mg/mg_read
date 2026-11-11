@@ -17,7 +17,7 @@ test('live source completes category, search, detail, catalog, and content flow'
   const harness = await createSourceTestHarness({
     plugin,
     pluginId: 'org.mgread.aisishuwu',
-    version: '0.2.18',
+    version: '0.2.19',
     fetch,
     prefix: 'mgread-aisishuwu-live-',
     runtimeVersion: 'live-test',

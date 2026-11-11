@@ -140,7 +140,7 @@ plugins/sources/                    真实数据源及其他能力参考实现
 ## 插件内容 API
 
 - Node/Bun/Javet 共用 10 MiB 通用内容响应预算（发现、搜索、详情等）；内部控制帧另留 64 KiB RPC 信封空间，
-  Flutter Facade 与 Runtime 的握手限制必须一致。该预算不取代目录 2 MiB、小说正文 48 KiB、漫画清单 512 KiB
+  Flutter Facade 与 Runtime 的握手限制必须一致。该预算不取代目录 2 MiB、小说正文 1 MiB（UTF-8 字节）、漫画清单 512 KiB
   的专用限制，也不取代组件数量、集合项数和字段长度校验；媒体与图片主体仍走资源数据面。
 
 - 统一称“数据源”；只有项目、artifact、安装、启停和 Runtime 生命周期使用“数据源插件”。
