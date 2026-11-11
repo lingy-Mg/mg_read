@@ -5,6 +5,7 @@
 /// install-or-later choice.
 library;
 
+import 'package:mg_read/shared/presentation/motion/app_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -20,6 +21,7 @@ Future<bool?> showGitHubApkUpdatePrompt(
   Future<bool> Function(Uri uri)? openReleasePage,
 }) => showDialog<bool>(
   context: context,
+  animationStyle: AppMotion.overlayStyle(context),
   requestFocus: true,
   barrierDismissible: false,
   builder: (context) => TvModeScope.isEnabled(context)
@@ -91,6 +93,7 @@ Future<void> showGitHubApkUpdateInstallProgress(
 ) async {
   final result = await showDialog<_ApkUpdateProgressResult>(
     context: context,
+    animationStyle: AppMotion.overlayStyle(context),
     barrierDismissible: false,
     builder: (_) => _GitHubApkUpdateProgressDialog(install: install),
   );

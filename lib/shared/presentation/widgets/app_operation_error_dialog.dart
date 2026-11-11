@@ -9,6 +9,7 @@
 /// - 复制能力失败不得覆盖原始业务错误或阻止用户关闭弹窗。
 library;
 
+import 'package:mg_read/shared/presentation/motion/app_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -29,6 +30,7 @@ Future<void> showAppOperationErrorDialog(
   final details = AppOperationErrorDetails.fromError(operation: operation, error: error);
   return showDialog<void>(
     context: context,
+    animationStyle: AppMotion.overlayStyle(context),
     useRootNavigator: true,
     builder: (BuildContext dialogContext) =>
         AppOperationErrorDialog(details: details, guidance: guidance, onCopy: () => copyError(details.copyPayload)),

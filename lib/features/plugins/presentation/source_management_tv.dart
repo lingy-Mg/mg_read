@@ -12,10 +12,17 @@ export 'source_management_tv_layout.dart';
 
 Future<T?> showSourceManagementSheet<T>({required BuildContext context, required WidgetBuilder builder}) {
   if (!TvModeScope.isEnabled(context)) {
-    return showModalBottomSheet<T>(context: context, isScrollControlled: true, showDragHandle: true, builder: builder);
+    return showModalBottomSheet<T>(
+      context: context,
+      sheetAnimationStyle: AppMotion.overlayStyle(context),
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: builder,
+    );
   }
   return showDialog<T>(
     context: context,
+    animationStyle: AppMotion.overlayStyle(context),
     builder: (context) => Dialog.fullscreen(
       child: TvFocusRegion(
         child: SafeArea(
@@ -31,6 +38,7 @@ Future<T?> showSourceManagementSheet<T>({required BuildContext context, required
 
 Future<T?> showSourceManagementDialog<T>({required BuildContext context, required WidgetBuilder builder}) => showDialog<T>(
   context: context,
+  animationStyle: AppMotion.overlayStyle(context),
   builder: (context) => TvFocusRegion(child: Builder(builder: builder)),
 );
 

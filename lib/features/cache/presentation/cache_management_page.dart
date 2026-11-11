@@ -177,6 +177,7 @@ class CacheManagementPage extends ConsumerWidget {
   }) async =>
       await showDialog<bool>(
         context: context,
+        animationStyle: AppMotion.overlayStyle(context),
         builder: (dialogContext) => AlertDialog(
           title: Text(title),
           content: Text(content),

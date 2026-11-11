@@ -3,6 +3,7 @@
 根 `AGENTS.md` 始终适用；本文件只补充独立视频 package 的边界。
 
 - 仅负责视频会话、MediaKit 适配、视频画面与控制层；不得依赖小说阅读器或音频 package。
+- 控制栏与所有弹层消费 `MediaQuery.disableAnimations`，关闭动效不改变播放、焦点与返回语义。
 - 唯一公共入口是 `lib/mg_read_video_player.dart`，宿主不得深层导入 `lib/src/`。
 - 网络解析、持久化实现、全屏、方向、PiP 和系统常亮由宿主通过公开契约提供；未传 Observer 时
   仅允许播放器对最近 Navigator 执行保存后的默认返回。

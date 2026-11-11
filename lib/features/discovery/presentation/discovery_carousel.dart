@@ -97,7 +97,7 @@ class _DiscoveryCarouselBooksState extends State<DiscoveryCarouselBooks> with Wi
     _autoPlayTimer = null;
     if (!mounted || !_canAutoPlay || !_pageController.hasClients) return;
     final int nextIndex = (_currentIndex + 1) % widget.books.length;
-    _pageController.animateToPage(nextIndex, duration: const Duration(milliseconds: 360), curve: Curves.easeOut);
+    _pageController.animateToPage(nextIndex, duration: AppMotion.carouselTravel, curve: AppMotion.navigationCurve);
     _syncAutoPlay();
   }
 
@@ -308,7 +308,7 @@ class _DiscoveryCarouselIndicator extends StatelessWidget {
           children: <Widget>[
             for (var index = 0; index < count; index++) ...<Widget>[
               AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
+                duration: AppMotion.effectiveDuration(context, AppMotion.short),
                 width: index == activeIndex ? 12 : 5,
                 height: 5,
                 decoration: BoxDecoration(

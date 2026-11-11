@@ -232,6 +232,7 @@ class DeviceSettingsSheet extends ConsumerWidget {
   Future<void> _confirmRemove(BuildContext context, DeviceSyncController controller, PairedDevice device) async {
     final confirmed = await showDialog<bool>(
       context: context,
+      animationStyle: AppMotion.overlayStyle(context),
       builder: (context) => AlertDialog(
         title: const Text('解除配对？'),
         content: Text('将删除 ${device.label} 的本机信任密钥。另一台设备也需要单独解除配对。'),

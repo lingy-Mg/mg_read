@@ -230,6 +230,9 @@ class VideoPlayerTvChrome extends StatelessWidget {
   Future<void> _chooseRate(BuildContext context) async {
     final rate = await showDialog<double>(
       context: context,
+      animationStyle: MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : null,
       builder: (context) => VideoTvShortcuts(
         child: Theme(
           data: videoPlayerTheme(),

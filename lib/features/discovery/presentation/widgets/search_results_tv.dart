@@ -25,6 +25,7 @@ class _TvSearchResults extends StatelessWidget {
               key: const Key('search-result-sort'),
               onPressed: () => showDialog<void>(
                 context: context,
+                animationStyle: AppMotion.overlayStyle(context),
                 builder: (dialogContext) => TvDiscoveryDialog(
                   title: '结果排序',
                   actions: [TvFocusable(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消'))],

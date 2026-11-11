@@ -25,6 +25,8 @@ import 'package:mg_read/app/app_runtime_fatal_error_observer.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_tv_theme.dart';
 import 'app_tv_source_navigation.dart';
+import 'app_page_transitions.dart';
+import '../shared/presentation/motion/app_motion_scope.dart';
 import 'package:mg_read/app/app_tv_back_navigation.dart';
 import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/app/data_source_system_error_dialog_host.dart';
@@ -157,6 +159,9 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
     }
   }
 
+  @override
+  void didChangeAccessibilityFeatures() => setState(() {});
+
   void _toggleTheme(Brightness currentBrightness) {
     final AppSettingsManager settings = ref.read(appSettingsProvider);
     unawaited(settings.set(AppSettingKeys.themeMode, currentBrightness == Brightness.dark ? 'light' : 'dark'));
@@ -277,50 +282,71 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
       next.whenData(_handleDevelopmentChanges);
     });
     final router = ref.watch(appRouterProvider);
+    final noAnimations = settings.get(AppSettingKeys.noAnimations);
+    final disableMotion = noAnimations || WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
+    ThemeData motionTheme(ThemeData theme) => theme.copyWith(
+      pageTransitionsTheme: AppPageTransitionsBuilder.theme(disabled: disableMotion),
+      expansionTileTheme: theme.expansionTileTheme.copyWith(expansionAnimationStyle: disableMotion ? AnimationStyle.noAnimation : null),
+      splashFactory: disableMotion ? NoSplash.splashFactory : theme.splashFactory,
+      filledButtonTheme: disableMotion
+          ? FilledButtonThemeData(style: theme.filledButtonTheme.style?.copyWith(animationDuration: Duration.zero))
+          : theme.filledButtonTheme,
+      outlinedButtonTheme: disableMotion
+          ? OutlinedButtonThemeData(style: theme.outlinedButtonTheme.style?.copyWith(animationDuration: Duration.zero))
+          : theme.outlinedButtonTheme,
+      textButtonTheme: disableMotion
+          ? TextButtonThemeData(style: theme.textButtonTheme.style?.copyWith(animationDuration: Duration.zero))
+          : theme.textButtonTheme,
+    );
     return MaterialApp.router(
       title: 'MgRead',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(color: themeColor),
-      darkTheme: tvMode ? appTvTheme(AppTheme.dark(color: darkThemeColor)) : AppTheme.dark(color: darkThemeColor),
+      theme: motionTheme(AppTheme.light(color: themeColor)),
+      themeAnimationDuration: disableMotion ? Duration.zero : AppMotion.themeTransition,
+      themeAnimationCurve: AppMotion.standardCurve,
+      darkTheme: motionTheme(tvMode ? appTvTheme(AppTheme.dark(color: darkThemeColor)) : AppTheme.dark(color: darkThemeColor)),
       themeMode: tvMode ? ThemeMode.dark : themeMode,
       routerConfig: router,
       onNavigationNotification: _handleNavigationNotification,
       builder: (BuildContext context, Widget? child) {
         final pageBackground = AppThemeTokens.of(context).pageBackground;
-        return AnnotatedRegion<SystemUiOverlayStyle>(
-          value: (Theme.of(context).brightness == Brightness.dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark).copyWith(
-            // Android 15 draws the status bar edge-to-edge. Declare its
-            // contrast here so a platform default color cannot flash above a
-            // loading destination before that page supplies its own chrome.
-            statusBarColor: Colors.transparent,
-            systemNavigationBarColor: pageBackground,
-            systemNavigationBarDividerColor: pageBackground,
-          ),
-          child: Stack(
-            fit: StackFit.expand,
-            children: <Widget>[
-              AppStartupGate(
-                child: DataSourceSystemErrorDialogHost(
-                  reporter: ref.watch(dataSourceSystemErrorReporterProvider),
-                  child: AppFatalErrorDialogHost(
-                    reporter: ref.watch(fatalErrorReporterProvider),
-                    child: AppBottomNavigationMotionScope(
-                      child: AppTvBackNavigation(
-                        router: router,
-                        enabled: tvMode,
-                        child: AppThemeModeScope(
-                          themeMode: themeMode,
-                          onToggleTheme: _toggleTheme,
-                          child: TvModeScope(
-                            enabled: tvMode,
-                            onChanged: (value) => unawaited(settings.set(AppSettingKeys.tvMode, value)),
-                            child: TvNavigationHandoff(
-                              child: AppTvSourceNavigation(
-                                enabled: tvMode,
-                                router: router,
-                                child: Listener(
-                                  onPointerDown: tvMode ? (_) => ref.read(companionControllerProvider).localInteraction() : null,
-                                  child: TvRemoteShortcuts(enabled: tvMode, child: child ?? const SizedBox.shrink()),
+        return AppMotionScope(
+          disabled: noAnimations,
+          child: AnnotatedRegion<SystemUiOverlayStyle>(
+            value: (Theme.of(context).brightness == Brightness.dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark).copyWith(
+              // Android 15 draws the status bar edge-to-edge. Declare its
+              // contrast here so a platform default color cannot flash above a
+              // loading destination before that page supplies its own chrome.
+              statusBarColor: Colors.transparent,
+              systemNavigationBarColor: pageBackground,
+              systemNavigationBarDividerColor: pageBackground,
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: <Widget>[
+                AppStartupGate(
+                  child: DataSourceSystemErrorDialogHost(
+                    reporter: ref.watch(dataSourceSystemErrorReporterProvider),
+                    child: AppFatalErrorDialogHost(
+                      reporter: ref.watch(fatalErrorReporterProvider),
+                      child: AppBottomNavigationMotionScope(
+                        child: AppTvBackNavigation(
+                          router: router,
+                          enabled: tvMode,
+                          child: AppThemeModeScope(
+                            themeMode: themeMode,
+                            onToggleTheme: _toggleTheme,
+                            child: TvModeScope(
+                              enabled: tvMode,
+                              onChanged: (value) => unawaited(settings.set(AppSettingKeys.tvMode, value)),
+                              child: TvNavigationHandoff(
+                                child: AppTvSourceNavigation(
+                                  enabled: tvMode,
+                                  router: router,
+                                  child: Listener(
+                                    onPointerDown: tvMode ? (_) => ref.read(companionControllerProvider).localInteraction() : null,
+                                    child: TvRemoteShortcuts(enabled: tvMode, child: child ?? const SizedBox.shrink()),
+                                  ),
                                 ),
                               ),
                             ),
@@ -330,11 +356,11 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
                     ),
                   ),
                 ),
-              ),
-              const AppBackgroundTasks(),
-              const ChapterCacheTaskBar(),
-              SourceAudioPlaybackNavigator(backButtonDispatcher: router.backButtonDispatcher),
-            ],
+                const AppBackgroundTasks(),
+                const ChapterCacheTaskBar(),
+                SourceAudioPlaybackNavigator(backButtonDispatcher: router.backButtonDispatcher),
+              ],
+            ),
           ),
         );
       },

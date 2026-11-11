@@ -9,6 +9,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:mg_read/shared/presentation/motion/app_content_transition.dart';
 import 'package:mg_read/features/profile/presentation/profile_video_settings.dart';
 import 'package:mg_read/features/profile/presentation/profile_view_data.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
@@ -120,7 +121,6 @@ class _TvProfilePageState extends State<TvProfilePage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final duration = MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 220);
     return TvFocusRegion(
       child: Scaffold(
         key: const Key('tv-settings-page'),
@@ -179,16 +179,7 @@ class _TvProfilePageState extends State<TvProfilePage> {
                       Expanded(
                         child: Focus(
                           focusNode: _panelFocus,
-                          child: AnimatedSwitcher(
-                            duration: duration,
-                            switchInCurve: Curves.easeOutCubic,
-                            layoutBuilder: (current, previous) => Stack(
-                              alignment: Alignment.topLeft,
-                              children: [
-                                for (final child in previous) ExcludeFocus(child: IgnorePointer(child: child)),
-                                ?current,
-                              ],
-                            ),
+                          child: AppContentTransition(
                             child: ListView(
                               key: ValueKey('tv-settings-panel-$_section'),
                               padding: const EdgeInsets.fromLTRB(8, 8, 12, 24),

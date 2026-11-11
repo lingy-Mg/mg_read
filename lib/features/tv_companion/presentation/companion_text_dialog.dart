@@ -2,6 +2,7 @@
 /// local. Cancel restores the original TV draft; local TV edits fence this token.
 library;
 
+import 'package:mg_read/shared/presentation/motion/app_motion.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../application/companion_controller.dart';
@@ -25,6 +26,7 @@ Future<void> showCompanionTextDialog(BuildContext context, CompanionController s
   }
   await showDialog<void>(
     context: context,
+    animationStyle: AppMotion.overlayStyle(context),
     barrierDismissible: false,
     builder: (_) => _CompanionTextDialog(service: service, interaction: interaction, session: receipt.details),
   );

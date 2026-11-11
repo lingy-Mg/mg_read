@@ -7,12 +7,14 @@
 /// - 只负责收集用户确认，不执行持久化或修改页面状态。
 library;
 
+import 'package:mg_read/shared/presentation/motion/app_motion.dart';
 import 'package:flutter/material.dart';
 
 Future<bool> showBookshelfRemovalConfirmation(BuildContext context, {String? title}) async {
   final normalizedTitle = title?.trim();
   return await showDialog<bool>(
         context: context,
+        animationStyle: AppMotion.overlayStyle(context),
         builder: (dialogContext) => AlertDialog(
           key: const Key('bookshelf-removal-confirmation'),
           title: const Text('删除书籍'),

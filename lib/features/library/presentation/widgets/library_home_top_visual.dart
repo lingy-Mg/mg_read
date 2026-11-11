@@ -209,7 +209,7 @@ class _LibraryHomeTopVisualState extends State<LibraryHomeTopVisual> {
         borderRadius: BorderRadius.circular(20),
         onTap: () => setState(() => _style = style),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
+          duration: AppMotion.effectiveDuration(context, AppMotion.navigationSelection),
           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
           decoration: BoxDecoration(
             color: selected ? tokens.accent.withValues(alpha: 0.18) : Colors.transparent,

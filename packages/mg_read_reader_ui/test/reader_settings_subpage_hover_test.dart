@@ -8,6 +8,27 @@ import 'package:novel_reader_ui/src/ui/reader_theme.dart';
 import 'package:novel_reader_ui/src/ui/settings/reader_settings_sheet.dart';
 
 void main() {
+  testWidgets(
+    'reduced motion switches settings pages and controls immediately',
+    (tester) async {
+      await tester.pumpWidget(_host(disableAnimations: true));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(ReaderStrings.moreSettings));
+      await tester.pump();
+      expect(find.byType(SwitchListTile), findsWidgets);
+      for (final animated in tester.widgetList<AnimatedSwitcher>(
+        find.byType(AnimatedSwitcher),
+      )) {
+        expect(animated.duration, Duration.zero);
+      }
+      for (final animated in tester.widgetList<AnimatedContainer>(
+        find.byType(AnimatedContainer),
+      )) {
+        expect(animated.duration, Duration.zero);
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('more settings switch rows clip hover feedback to their shape', (
     WidgetTester tester,
   ) async {
@@ -26,8 +47,14 @@ void main() {
   });
 }
 
-Widget _host() {
+Widget _host({bool disableAnimations = false}) {
   return MaterialApp(
+    builder: (context, child) => MediaQuery(
+      data: MediaQuery.of(
+        context,
+      ).copyWith(disableAnimations: disableAnimations),
+      child: child!,
+    ),
     home: ReaderSettingsSheet(
       preferences: TextReaderPreferences.defaults,
       palette: ReaderPalette.fromPreset(ReaderThemePreset.day),

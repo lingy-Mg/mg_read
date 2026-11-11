@@ -56,7 +56,7 @@ class _GitHubApkUpdateTvPromptState extends State<GitHubApkUpdateTvPrompt> {
     if (MediaQuery.disableAnimationsOf(context)) {
       _scroll.jumpTo(next);
     } else {
-      _scroll.animateTo(next, duration: const Duration(milliseconds: 160), curve: Curves.easeOutCubic);
+      _scroll.animateTo(next, duration: AppMotion.short, curve: AppMotion.navigationCurve);
     }
     return KeyEventResult.handled;
   }
@@ -85,7 +85,7 @@ class _GitHubApkUpdateTvPromptState extends State<GitHubApkUpdateTvPrompt> {
                     onFocusChange: (value) => setState(() => _notesFocused = value),
                     onKeyEvent: _scrollNotes,
                     child: AnimatedContainer(
-                      duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 160),
+                      duration: AppMotion.effectiveDuration(context, AppMotion.short),
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: tokens.pageBackground,

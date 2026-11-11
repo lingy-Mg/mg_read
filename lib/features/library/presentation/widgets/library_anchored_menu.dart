@@ -83,6 +83,14 @@ class _LibraryAnchoredMenuState extends State<LibraryAnchoredMenu> with SingleTi
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (AppMotion.disablesAnimations(context) && _controller.isAnimating) {
+      _controller.value = _isOpen ? 1 : 0;
+      if (!_isOpen) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _hideIfStillClosed();
+        });
+      }
+    }
     final ScrollPosition? position = Scrollable.maybeOf(context)?.position;
     if (position == _scrollPosition) return;
     _scrollPosition?.removeListener(_dismiss);

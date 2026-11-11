@@ -291,6 +291,7 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
   Future<void> _showTemporaryDataSheet({required bool receiving}) async {
     await showModalBottomSheet<void>(
       context: context,
+      sheetAnimationStyle: AppMotion.overlayStyle(context),
       showDragHandle: true,
       isScrollControlled: true,
       builder: (sheetContext) => Consumer(

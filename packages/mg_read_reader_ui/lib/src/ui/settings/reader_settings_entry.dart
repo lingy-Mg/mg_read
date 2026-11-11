@@ -29,6 +29,9 @@ Future<void> showReaderSettingsSheet({
   bool hasPendingPreview = false;
   return showModalBottomSheet<void>(
     context: context,
+    sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
+        ? AnimationStyle.noAnimation
+        : null,
     isScrollControlled: true,
     isDismissible: true,
     // Settings are dismissed by tapping the modal barrier or using the

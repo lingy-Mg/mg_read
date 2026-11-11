@@ -169,6 +169,7 @@ Future<void> _showChapterContent(
   final contentFuture = gateway.getContent(pluginId: pluginId, id: id, chapterId: chapter.id);
   return showModalBottomSheet<void>(
     context: context,
+    sheetAnimationStyle: AppMotion.overlayStyle(context),
     isScrollControlled: true,
     showDragHandle: true,
     builder: (context) => FractionallySizedBox(

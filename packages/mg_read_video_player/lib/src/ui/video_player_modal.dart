@@ -24,6 +24,9 @@ Future<T?> showVideoPlayerModal<T>({
   if (videoPlayerUsesPointerControls(context)) {
     return showDialog<T>(
       context: context,
+      animationStyle: MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : null,
       barrierColor: const Color(0x80000000),
       builder: (context) => Dialog(
         backgroundColor: Colors.transparent,
@@ -41,6 +44,9 @@ Future<T?> showVideoPlayerModal<T>({
   }
   return showModalBottomSheet<T>(
     context: context,
+    sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
+        ? AnimationStyle.noAnimation
+        : null,
     backgroundColor: Colors.transparent,
     barrierColor: const Color(0x80000000),
     elevation: 0,

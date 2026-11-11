@@ -47,6 +47,9 @@ final class _AppTopLevelTransitionState extends State<AppTopLevelTransition> {
   }
 
   @override
-  Widget build(BuildContext context) =>
-      FadeTransition(key: const Key('top-level-destination-transition'), opacity: _opacity, child: widget.child);
+  Widget build(BuildContext context) => FadeTransition(
+    key: const Key('top-level-destination-transition'),
+    opacity: AppMotion.disablesAnimations(context) ? const AlwaysStoppedAnimation(1) : _opacity,
+    child: widget.child,
+  );
 }

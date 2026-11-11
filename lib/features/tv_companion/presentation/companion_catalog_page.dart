@@ -256,6 +256,7 @@ class _CompanionCatalogPageState extends State<CompanionCatalogPage> {
       while (mounted) {
         final choice = await showDialog<Object>(
           context: context,
+          animationStyle: AppMotion.overlayStyle(context),
           builder: (context) => SimpleDialog(
             title: const Text('选择来源'),
             children: [

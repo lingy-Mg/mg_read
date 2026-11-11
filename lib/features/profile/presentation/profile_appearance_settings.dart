@@ -33,6 +33,20 @@ class _AppearanceSettings extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppSpacing.section),
+          _AppearanceSection(
+            icon: Icons.animation_outlined,
+            title: '动画与过渡',
+            description: '统一控制界面动效，开启后立即生效',
+            child: SwitchListTile.adaptive(
+              key: const Key('appearance-no-animations'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('无动画模式'),
+              subtitle: const Text('关闭页面、弹层、内容切换与装饰动效；也会遵循系统减少动态效果设置'),
+              value: settings.get(AppSettingKeys.noAnimations),
+              onChanged: (value) => settings.set(AppSettingKeys.noAnimations, value),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.section),
           const ProfileTvModeCard(),
         ],
         if (settingId == 'theme-colors') ...[

@@ -20,31 +20,44 @@ class _AppearanceChoiceGroup extends StatelessWidget {
           Expanded(
             child: Semantics(
               selected: value == options[i].$1,
-              child: Material(
-                color: value == options[i].$1 ? tokens.accentSoft : tokens.mutedSurface,
-                shape: RoundedRectangleBorder(
-                  borderRadius: AppRadii.detailControl,
-                  side: BorderSide(color: value == options[i].$1 ? tokens.accent : tokens.divider),
+              child: AnimatedContainer(
+                duration: AppMotion.effectiveDuration(context, AppMotion.navigationSelection),
+                curve: AppMotion.navigationCurve,
+                decoration: ShapeDecoration(
+                  color: value == options[i].$1 ? tokens.accentSoft : tokens.mutedSurface,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: AppRadii.detailControl,
+                    side: BorderSide(color: value == options[i].$1 ? tokens.accent : tokens.divider),
+                  ),
                 ),
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  key: Key('$keyPrefix-${options[i].$1}'),
-                  onTap: () => onChanged(options[i].$1),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.unit, vertical: AppSpacing.regular),
-                    child: Column(
-                      children: [
-                        Icon(options[i].$3, color: value == options[i].$1 ? tokens.accent : tokens.mutedText),
-                        const SizedBox(height: AppSpacing.compact),
-                        Text(
-                          options[i].$2,
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: value == options[i].$1 ? tokens.accent : null,
-                            fontWeight: value == options[i].$1 ? FontWeight.w700 : FontWeight.w500,
+                child: Material(
+                  color: Colors.transparent,
+                  borderRadius: AppRadii.detailControl,
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    key: Key('$keyPrefix-${options[i].$1}'),
+                    onTap: () => onChanged(options[i].$1),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.unit, vertical: AppSpacing.regular),
+                      child: Column(
+                        children: [
+                          AnimatedScale(
+                            scale: value == options[i].$1 ? 1.08 : 1,
+                            duration: AppMotion.effectiveDuration(context, AppMotion.micro),
+                            curve: AppMotion.navigationCurve,
+                            child: Icon(options[i].$3, color: value == options[i].$1 ? tokens.accent : tokens.mutedText),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: AppSpacing.compact),
+                          Text(
+                            options[i].$2,
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: value == options[i].$1 ? tokens.accent : null,
+                              fontWeight: value == options[i].$1 ? FontWeight.w700 : FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

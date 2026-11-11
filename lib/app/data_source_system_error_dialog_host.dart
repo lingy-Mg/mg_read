@@ -72,6 +72,7 @@ final class _DataSourceSystemErrorDialogHostState extends State<DataSourceSystem
     try {
       await showDialog<void>(
         context: navigator.context,
+        animationStyle: AppMotion.overlayStyle(navigator.context),
         barrierDismissible: false,
         builder: (BuildContext context) =>
             _DataSourceSystemErrorDialog(report: report, onCopy: () => widget.copyReport(report.copyPayload)),

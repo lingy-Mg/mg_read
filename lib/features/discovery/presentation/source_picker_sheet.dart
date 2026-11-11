@@ -85,6 +85,7 @@ Future<DiscoverySourcePickerResult?> showDiscoverySourcePicker(
   }
   return showModalBottomSheet<DiscoverySourcePickerResult>(
     context: context,
+    sheetAnimationStyle: AppMotion.overlayStyle(context),
     isScrollControlled: true,
     isDismissible: true,
     enableDrag: !TvModeScope.isEnabled(context),

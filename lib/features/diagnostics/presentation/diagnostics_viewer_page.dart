@@ -287,6 +287,7 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
     if (file == null || file.isCurrent) return;
     final confirmed = await showDialog<bool>(
       context: context,
+      animationStyle: AppMotion.overlayStyle(context),
       builder: (context) => AlertDialog(
         title: const Text('删除这份记录？'),
         content: Text('${_formatFileDate(file.startedAtUtcMicros)}\n删除后无法恢复。'),

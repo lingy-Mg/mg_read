@@ -4,6 +4,7 @@
 /// combined targets after another condition loads. No IO runs in this widget.
 library;
 
+import 'package:mg_read/shared/presentation/motion/app_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -39,6 +40,7 @@ class DiscoveryFilters extends StatelessWidget {
                   key: const Key('tv-open-filters'),
                   onPressed: () => showDialog<void>(
                     context: context,
+                    animationStyle: AppMotion.overlayStyle(context),
                     builder: (_) => _FilterDialog(initial: component, pluginId: pluginId, onSelected: onSelected),
                   ),
                   child: const Text('筛选'),

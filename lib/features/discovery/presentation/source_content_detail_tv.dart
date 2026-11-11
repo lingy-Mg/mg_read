@@ -5,6 +5,7 @@ part of 'source_content_detail_sheet.dart';
 Future<bool> _confirmTvFavoriteRemoval(BuildContext context, String title) async =>
     await showDialog<bool>(
       context: context,
+      animationStyle: AppMotion.overlayStyle(context),
       builder: (context) => TvDiscoveryDialog(
         key: const Key('tv-favorite-removal-confirmation'),
         title: '移出收藏',

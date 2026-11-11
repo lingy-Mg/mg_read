@@ -63,7 +63,7 @@ class _PrivateLibraryReveal extends StatefulWidget {
 
 class _PrivateLibraryRevealState extends State<_PrivateLibraryReveal> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
-  late final Animation<double> _progress;
+  late final CurvedAnimation _progress;
   bool _completed = false;
 
   @override
@@ -78,12 +78,24 @@ class _PrivateLibraryRevealState extends State<_PrivateLibraryReveal> with Singl
     if (_completed) return;
     _completed = true;
     widget.onCovered();
-    await Future<void>.delayed(AppMotion.destinationTransition);
+    await Future<void>.delayed(AppMotion.effectiveDuration(context, AppMotion.destinationTransition));
     widget.onFinished();
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (AppMotion.disablesAnimations(context) && !_completed) {
+      _controller.value = 1;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_complete());
+      });
+    }
+  }
+
+  @override
   void dispose() {
+    _progress.dispose();
     _controller.dispose();
     super.dispose();
   }

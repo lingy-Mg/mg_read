@@ -127,7 +127,7 @@ class _TvFocusableState extends State<TvFocusable> with AutomaticKeepAliveClient
   Widget build(BuildContext context) {
     super.build(context);
     final tokens = AppThemeTokens.of(context);
-    final duration = MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 180);
+    final duration = AppMotion.effectiveDuration(context, AppMotion.short);
     return Actions(
       actions: <Type, Action<Intent>>{
         ActivateIntent: CallbackAction<ActivateIntent>(

@@ -398,7 +398,9 @@ extension _TextReaderPagination on _TextReaderViewState {
           (_verticalController.offset +
                   _verticalController.position.viewportDimension * 0.85)
               .clamp(0, _verticalController.position.maxScrollExtent),
-          duration: const Duration(milliseconds: 220),
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 220),
           curve: Curves.easeOut,
         );
       }
@@ -427,7 +429,9 @@ extension _TextReaderPagination on _TextReaderViewState {
           (_verticalController.offset -
                   _verticalController.position.viewportDimension * 0.85)
               .clamp(0, _verticalController.position.maxScrollExtent),
-          duration: const Duration(milliseconds: 220),
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 220),
           curve: Curves.easeOut,
         );
       }

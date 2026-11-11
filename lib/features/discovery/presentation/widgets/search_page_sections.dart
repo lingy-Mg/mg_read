@@ -4,6 +4,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:mg_read/shared/presentation/motion/app_content_transition.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -197,6 +198,16 @@ class _SearchResultsSectionState extends State<SearchResultsSection> {
 
   @override
   Widget build(BuildContext context) {
+    final result = widget.result;
+    return AppContentTransition(
+      child: KeyedSubtree(
+        key: ValueKey(result == null ? 'search-feedback-${widget.status}-${widget.error?.code}' : 'search-results'),
+        child: _buildContent(context),
+      ),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     final SearchResultsSection(
       :result,
       :status,
@@ -214,7 +225,7 @@ class _SearchResultsSectionState extends State<SearchResultsSection> {
     final isSearching = status == SearchPageStatus.searching;
     if (result == null) {
       return AnimatedSwitcher(
-        duration: AppMotion.navigationSelection,
+        duration: AppMotion.effectiveDuration(context, AppMotion.navigationSelection),
         switchInCurve: AppMotion.navigationCurve,
         switchOutCurve: AppMotion.navigationReverseCurve,
         transitionBuilder: (child, animation) => FadeTransition(
@@ -266,7 +277,7 @@ class _SearchResultsSectionState extends State<SearchResultsSection> {
         const SizedBox(height: AppSpacing.comfortable),
         _ResultHeader(result: searchResult, sortOrder: sortOrder, onSortOrderChanged: onSortOrderChanged),
         AnimatedSize(
-          duration: AppMotion.navigationSelection,
+          duration: AppMotion.effectiveDuration(context, AppMotion.navigationSelection),
           curve: AppMotion.navigationCurve,
           child: isSearching && searchResult.items.isNotEmpty
               ? Padding(

@@ -83,6 +83,9 @@ extension _ComicReaderSheets on _ComicReaderViewState {
     _setControlsVisible(false);
     final Future<void> sheet = showModalBottomSheet<void>(
       context: context,
+      sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : null,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF202326),
       builder: (BuildContext context) {
@@ -186,6 +189,9 @@ extension _ComicReaderSheets on _ComicReaderViewState {
     _setControlsVisible(false);
     final Future<void> sheet = showModalBottomSheet<void>(
       context: context,
+      sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : null,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF202326),
       builder: (BuildContext context) {

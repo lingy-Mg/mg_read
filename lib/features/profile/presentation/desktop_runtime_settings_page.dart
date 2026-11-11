@@ -40,6 +40,7 @@ class _DesktopRuntimeSettingsPageState extends ConsumerState<DesktopRuntimeSetti
       if (!settings.restartRequired) return;
       final restart = await showDialog<bool>(
         context: context,
+        animationStyle: AppMotion.overlayStyle(context),
         builder: (context) => AlertDialog(
           title: const Text('重启后生效'),
           content: Text('已选择 ${_label(backend)}。重启后启用，已安装的数据源保留。当前阅读、播放和下载会中断。'),

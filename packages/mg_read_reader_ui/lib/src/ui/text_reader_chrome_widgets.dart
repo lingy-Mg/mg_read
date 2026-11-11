@@ -8,7 +8,9 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
       ignoring: !_controlsVisible,
       child: AnimatedOpacity(
         opacity: _controlsVisible ? 1 : 0,
-        duration: const Duration(milliseconds: 180),
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 180),
         child: Stack(
           children: <Widget>[
             Align(alignment: Alignment.topCenter, child: _buildTopBar()),

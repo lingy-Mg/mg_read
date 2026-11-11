@@ -114,7 +114,9 @@ class _ThemePaletteCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: AppSpacing.regular),
-            Theme(
+            AnimatedTheme(
+              duration: AppMotion.effectiveDuration(context, AppMotion.themeTransition),
+              curve: AppMotion.standardCurve,
               data: preview,
               child: _ThemeMiniature(key: Key('$keyPrefix-preview')),
             ),

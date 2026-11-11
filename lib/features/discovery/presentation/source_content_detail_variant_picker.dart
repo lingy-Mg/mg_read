@@ -2,6 +2,7 @@
 /// 不拥有搜索或详情状态，退出和选择当前版本都不会启动新的请求。
 library;
 
+import 'package:mg_read/shared/presentation/motion/app_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
@@ -60,6 +61,7 @@ Future<void> showSourceContentVariantPicker(
         )
       : await showModalBottomSheet<SourceSearchHit>(
           context: context,
+          sheetAnimationStyle: AppMotion.overlayStyle(context),
           showDragHandle: true,
           builder: (context) => SafeArea(
             child: ListView.builder(

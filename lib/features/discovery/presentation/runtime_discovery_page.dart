@@ -27,6 +27,7 @@ import 'widgets/discovery_filters.dart';
 import 'widgets/discovery_tv_pagination.dart';
 
 import 'package:flutter/material.dart';
+import 'package:mg_read/shared/presentation/motion/app_content_transition.dart';
 import 'package:flutter/services.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
@@ -121,7 +122,6 @@ class RuntimeDiscoveryPage extends StatelessWidget {
     final outer = TvSourceNavigationScope.maybeOf(context);
     final tvContent = tv && outer?.showContent == true;
     final activeTvTitle = outer?.entries.where((entry) => entry.target == outer.target).firstOrNull?.label;
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return BookCoverSourceScope(
       pluginId: result?.pluginId ?? 'unavailable',
       child: TvFocusRegion(
@@ -195,26 +195,7 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                                       ? AppSpacing.discoveryListMaxWidth
                                       : AppSpacing.contentMaxWidth,
                                 ),
-                                child: AnimatedSwitcher(
-                                  duration: reduceMotion ? Duration.zero : const Duration(milliseconds: 180),
-                                  reverseDuration: reduceMotion ? Duration.zero : const Duration(milliseconds: 150),
-                                  switchInCurve: Curves.easeOutCubic,
-                                  switchOutCurve: Curves.easeInCubic,
-                                  layoutBuilder: (current, previous) => Stack(
-                                    alignment: Alignment.topCenter,
-                                    children: [
-                                      for (final child in previous)
-                                        TickerMode(
-                                          enabled: false,
-                                          child: ExcludeFocus(child: IgnorePointer(child: child)),
-                                        ),
-                                      ?current,
-                                    ],
-                                  ),
-                                  transitionBuilder: (child, animation) => SlideTransition(
-                                    position: Tween<Offset>(begin: const Offset(0.07, 0), end: Offset.zero).animate(animation),
-                                    child: FadeTransition(opacity: animation, child: child),
-                                  ),
+                                child: AppContentTransition(
                                   child: KeyedSubtree(
                                     key: ValueKey<String>('runtime-discovery-page-$navigationDepth'),
                                     child: DiscoveryTvPaginationHost(

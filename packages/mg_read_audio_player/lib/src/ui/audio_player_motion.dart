@@ -216,6 +216,16 @@ class _AudioAnimatedSeekButtonState extends State<AudioAnimatedSeekButton> {
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(AudioAnimatedSeekButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.disableAnimations && !oldWidget.disableAnimations) {
+      _returnTimer?.cancel();
+      _turns = 0;
+      _compressed = false;
+    }
+  }
+
   void _activate() {
     if (!widget.disableAnimations) {
       _returnTimer?.cancel();
@@ -252,11 +262,15 @@ class _AudioAnimatedSeekButtonState extends State<AudioAnimatedSeekButton> {
               : 'audio-seek-back-motion',
         ),
         turns: _turns,
-        duration: const Duration(milliseconds: 130),
+        duration: widget.disableAnimations
+            ? Duration.zero
+            : const Duration(milliseconds: 130),
         curve: Curves.easeOutCubic,
         child: AnimatedScale(
           scale: _compressed ? 0.92 : 1,
-          duration: const Duration(milliseconds: 130),
+          duration: widget.disableAnimations
+              ? Duration.zero
+              : const Duration(milliseconds: 130),
           curve: Curves.easeOutCubic,
           child: _SeekFifteenIcon(forward: widget.forward),
         ),

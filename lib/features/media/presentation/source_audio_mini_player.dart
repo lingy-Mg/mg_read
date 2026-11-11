@@ -186,7 +186,7 @@ final class _SourceAudioPlayingIndicator extends StatefulWidget {
 }
 
 final class _SourceAudioPlayingIndicatorState extends State<_SourceAudioPlayingIndicator> with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 820));
+  late final AnimationController _controller = AnimationController(vsync: this, duration: AppMotion.playingIndicatorCycle);
 
   @override
   void initState() {

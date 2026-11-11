@@ -4,6 +4,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../motion/app_motion.dart';
 import 'tv_destination_action.dart';
 
 TvDestinationAction? _destination(FocusNode node) => node.context?.findAncestorWidgetOfExactType<TvDestinationAction>();
@@ -51,7 +52,7 @@ void requestTvFocus(FocusNode node, {ScrollPositionAlignmentPolicy? alignmentPol
       target,
       alignmentPolicy: alignmentPolicy ?? ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
       alignment: alignment ?? 1,
-      duration: MediaQuery.disableAnimationsOf(target) ? Duration.zero : const Duration(milliseconds: 220),
+      duration: AppMotion.effectiveDuration(target, AppMotion.contentChange),
       curve: Curves.easeOutCubic,
     );
   });

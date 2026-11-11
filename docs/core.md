@@ -215,8 +215,31 @@ plugins/sources/                    真实数据源及其他能力参考实现
   进入 shared。
 - 全局视觉通过 `AppTheme`、`AppThemeTokens`、`TextTheme`、`AppSpacing`、`AppRadii` 和既有组件扩展，
   页面不建立平行 token 系统。
+- 动效统一使用 `AppMotion`；无动画偏好与系统减少动态效果合并到 `MediaQuery`，独立阅读器/播放器只消费
+  该公开策略，不反向依赖宿主。
 - 组件接收不可变数据和显式回调。异步刷新保留稳定可见数据，过期或 dispose 后结果不得覆盖当前状态。
 - 来源字段缺失时显示 `--` 或隐藏，不伪造数据、热门词或能力。
+
+### 动画与过渡治理
+
+- `shared/presentation/motion/app_motion.dart` 是宿主唯一动效 token 入口；业务超时、长按、网络等待与
+  播放进度不属于动效，不为视觉效果推迟业务完成。
+- 点击反馈 120ms，选中反馈 140ms，局部内容 220ms；顶层导航 180/140ms，二级页面和底部面板 260/200ms，
+  主题变化 240ms。只支持单时长的框架对话框沿用 260ms。入场用 `navigationCurve`，离场用
+  `navigationReverseCurve`，往返用 `standardCurve`。
+  专用动效保留命名 token；iOS 常规二级页面保留原生交互式返回。
+- 二级页面经 `AppPageTransitionsBuilder`；弹窗、底部面板与菜单显式传入 `AppMotion.overlayStyle(context)`。
+  局部内容通过 `AppContentTransition` 与稳定 key 淡入，位移不超过 12px；同一内容刷新不重复入场，
+  不给滚动列表逐行添加入场或长期控制器。
+- 无动画入口为“我的 → 主题与外观 → 显示模式”；`AppSettingKeys.noAnimations` 默认关闭、持久化并即时生效。
+  `AppMotionScope` 合并应用与系统偏好，应用不能覆盖系统减少动态效果。隐式过渡和程序滚动解析
+  `effectiveDuration`；自有控制器在策略变化时同步落到目标值，Hero 随策略关闭。
+- 不以整树 `TickerMode(false)` 实现无动画，避免动画冻结和状态丢失。播放、下载、加载与真实进度继续工作。
+  package 只读取 `MediaQuery.disableAnimations`，弹层解析 `AnimationStyle.noAnimation`，不导入宿主类型。
+- 退出内容不可点击、不可取焦点或产生重复语义播报；快速往返不残留遮罩。控制器、曲线、Timer 和监听
+  成对释放；装饰循环同时遵守动效策略、TickerMode、路由可见性和前后台生命周期。
+- 验证入口为 `test/app/app_motion_test.dart`、`app_motion_policy_test.dart`、`app_top_level_navigation_test.dart`
+  及设置、阅读器和播放器的直接 widget/golden 测试；不把 Flutter 测试当作设备帧率与物理遥控器验收。
 
 ## 诊断
 

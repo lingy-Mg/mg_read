@@ -7,6 +7,7 @@ extension _LanSyncPairedDeviceActions on _LanSyncPageState {
   Future<void> _manageDevice(PairedDevice device) async {
     await showModalBottomSheet<void>(
       context: context,
+      sheetAnimationStyle: AppMotion.overlayStyle(context),
       showDragHandle: true,
       isScrollControlled: true,
       builder: (context) => DeviceSettingsSheet(deviceId: device.deviceId),
@@ -19,6 +20,7 @@ extension _LanSyncPairedDeviceActions on _LanSyncPageState {
     if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
+      sheetAnimationStyle: AppMotion.overlayStyle(context),
       showDragHandle: true,
       isScrollControlled: true,
       builder: (context) => Consumer(
@@ -38,6 +40,7 @@ extension _LanSyncPairedDeviceActions on _LanSyncPageState {
 
   Future<void> _showAllDevicesSheet() => showModalBottomSheet<void>(
     context: context,
+    sheetAnimationStyle: AppMotion.overlayStyle(context),
     showDragHandle: true,
     builder: (sheetContext) {
       return Consumer(

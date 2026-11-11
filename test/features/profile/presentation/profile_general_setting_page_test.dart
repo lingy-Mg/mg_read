@@ -16,6 +16,21 @@ import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import '../../../core/settings/settings_testkit.dart';
 
 void main() {
+  testWidgets('display settings exposes and persists no-animation mode', (tester) async {
+    final settings = await _settings();
+    addTearDown(settings.close);
+    await tester.pumpWidget(_host(settings, settingId: 'display-settings'));
+    await tester.pumpAndSettle();
+    final toggle = find.byKey(const Key('appearance-no-animations'));
+    await tester.ensureVisible(toggle);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(settings.get(AppSettingKeys.noAnimations), isTrue);
+    expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(settings.get(AppSettingKeys.noAnimations), isFalse);
+  });
   testWidgets('TV remote opens a category child and restores focus on return', (tester) async {
     await tester.binding.setSurfaceSize(const Size(640, 360));
     addTearDown(() => tester.binding.setSurfaceSize(null));

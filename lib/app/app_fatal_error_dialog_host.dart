@@ -11,27 +11,19 @@ typedef FatalDiagnosticCopy = Future<void> Function(String payload);
 
 /// Displays queued fatal reports after the root Navigator becomes available.
 final class AppFatalErrorDialogHost extends StatefulWidget {
-  const AppFatalErrorDialogHost({
-    required this.reporter,
-    required this.child,
-    this.copyReport = _copyToClipboard,
-    super.key,
-  });
+  const AppFatalErrorDialogHost({required this.reporter, required this.child, this.copyReport = _copyToClipboard, super.key});
 
   final AppFatalErrorReporter reporter;
   final Widget child;
   final FatalDiagnosticCopy copyReport;
 
-  static Future<void> _copyToClipboard(String payload) =>
-      Clipboard.setData(ClipboardData(text: payload));
+  static Future<void> _copyToClipboard(String payload) => Clipboard.setData(ClipboardData(text: payload));
 
   @override
-  State<AppFatalErrorDialogHost> createState() =>
-      _AppFatalErrorDialogHostState();
+  State<AppFatalErrorDialogHost> createState() => _AppFatalErrorDialogHostState();
 }
 
-final class _AppFatalErrorDialogHostState
-    extends State<AppFatalErrorDialogHost> {
+final class _AppFatalErrorDialogHostState extends State<AppFatalErrorDialogHost> {
   StreamSubscription<AppFatalDiagnosticReport>? _subscription;
   bool _displaying = false;
   bool _scheduled = false;
@@ -82,11 +74,9 @@ final class _AppFatalErrorDialogHostState
     try {
       await showDialog<void>(
         context: navigator.context,
+        animationStyle: AppMotion.overlayStyle(navigator.context),
         barrierDismissible: false,
-        builder: (BuildContext context) => _FatalErrorDialog(
-          report: report,
-          onCopy: () => widget.copyReport(report.copyPayload),
-        ),
+        builder: (BuildContext context) => _FatalErrorDialog(report: report, onCopy: () => widget.copyReport(report.copyPayload)),
       );
     } catch (_) {
       // A broken overlay must not replace the original application failure.
@@ -126,16 +116,8 @@ final class _FatalErrorDialog extends StatelessWidget {
         ),
       ),
       actions: <Widget>[
-        TextButton(
-          key: const Key('fatal-error-copy'),
-          onPressed: () => unawaited(_copySafely()),
-          child: const Text('复制诊断信息'),
-        ),
-        FilledButton(
-          key: const Key('fatal-error-close'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('关闭'),
-        ),
+        TextButton(key: const Key('fatal-error-copy'), onPressed: () => unawaited(_copySafely()), child: const Text('复制诊断信息')),
+        FilledButton(key: const Key('fatal-error-close'), onPressed: () => Navigator.of(context).pop(), child: const Text('关闭')),
       ],
     );
   }

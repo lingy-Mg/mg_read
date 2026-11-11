@@ -9,8 +9,11 @@ import 'package:mg_read/features/lan_sync/domain/lan_endpoint_policy.dart';
 
 typedef ManualTvAddress = ({String address, int port});
 
-Future<ManualTvAddress?> showManualTvAddressDialog(BuildContext context) =>
-    showDialog<ManualTvAddress>(context: context, builder: (_) => const _ManualTvAddressDialog());
+Future<ManualTvAddress?> showManualTvAddressDialog(BuildContext context) => showDialog<ManualTvAddress>(
+  context: context,
+  animationStyle: AppMotion.overlayStyle(context),
+  builder: (_) => const _ManualTvAddressDialog(),
+);
 
 final class _ManualTvAddressDialog extends StatefulWidget {
   const _ManualTvAddressDialog();

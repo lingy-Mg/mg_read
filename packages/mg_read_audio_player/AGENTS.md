@@ -8,6 +8,7 @@
   Controller；受控 View 只能监听和发指令，销毁时不得关闭 Engine、后端或数据源。
 - UI 不访问宿主数据库、Service Locator 或路由；内容、进度、后台音频服务、通知、音频焦点策略及
   下载均由宿主通过公开契约提供。
+- UI 动效消费 `MediaQuery.disableAnimations`；弹层关闭动画、装饰控制器停到终态，切换偏好不重建播放会话。
 - `AudioPlayerView` 的 `rememberPosition` 与 `onRememberPositionChanged` 只投影宿主续播偏好；
   没有回调时隐藏开关。宿主控制持久进度读写，关闭后保留旧记录和当前会话恢复，不重建 Engine。
 - 默认后端固定使用 `media_kit: 1.2.6`，本 package 不依赖任何 `media_kit_libs_*`。原生库由最终宿主

@@ -8,6 +8,28 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read_audio_player/mg_read_audio_player.dart';
 
 void main() {
+  testWidgets(
+    'disabling motion interrupts seek feedback without changing playback',
+    (tester) async {
+      final backend = _MotionBackend();
+      await tester.pumpWidget(
+        _motionHost(backend: backend, disableAnimations: false),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('audio-seek-forward')));
+      await tester.pump(const Duration(milliseconds: 30));
+      final motion = find.byKey(const Key('audio-seek-forward-motion'));
+      expect(tester.widget<AnimatedRotation>(motion).turns, greaterThan(0));
+      await tester.pumpWidget(
+        _motionHost(backend: backend, disableAnimations: true),
+      );
+      expect(tester.widget<AnimatedRotation>(motion).turns, 0);
+      expect(tester.widget<AnimatedRotation>(motion).duration, Duration.zero);
+      expect(backend.snapshot.position, const Duration(seconds: 15));
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
   testWidgets('active playback keeps backdrop and cover static', (
     tester,
   ) async {

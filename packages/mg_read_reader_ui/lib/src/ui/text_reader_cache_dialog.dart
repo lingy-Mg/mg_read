@@ -102,6 +102,9 @@ extension _TextReaderCacheDialog on _TextReaderViewState {
     final ReaderChapterCacheRequest?
     request = await showDialog<ReaderChapterCacheRequest>(
       context: context,
+      animationStyle: MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : null,
       builder: (BuildContext dialogContext) => Theme(
         data: readerTheme,
         child: StatefulBuilder(

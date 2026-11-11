@@ -18,6 +18,14 @@ ThemeData _appComponentTheme(ThemeData theme, AppThemeTokens tokens) {
   );
   const buttonSize = Size(64, AppSpacing.minimumTouchTarget);
   return theme.copyWith(
+    pageTransitionsTheme: AppPageTransitionsBuilder.theme(),
+    expansionTileTheme: const ExpansionTileThemeData(
+      expansionAnimationStyle: AnimationStyle(
+        duration: AppMotion.contentChange,
+        reverseDuration: AppMotion.shortReverse,
+        curve: AppMotion.navigationCurve,
+      ),
+    ),
     cardTheme: CardThemeData(
       color: tokens.surface,
       surfaceTintColor: Colors.transparent,

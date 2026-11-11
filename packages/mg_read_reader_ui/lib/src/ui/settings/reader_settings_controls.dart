@@ -289,8 +289,10 @@ class ReaderSettingsSegmentedControl<T> extends StatelessWidget {
                                       onTap: () => onSelected(value),
                                       child: Center(
                                         child: AnimatedContainer(
-                                          duration: ReaderSettingsTokens
-                                              .transitionDuration,
+                                          duration:
+                                              ReaderSettingsTokens.effectiveDuration(
+                                                context,
+                                              ),
                                           height:
                                               ReaderSettingsTokens
                                                   .controlHeight -
@@ -376,7 +378,7 @@ class ReaderThemeSwatch extends StatelessWidget {
             dimension: ReaderSettingsTokens.touchTarget,
             child: Center(
               child: AnimatedContainer(
-                duration: ReaderSettingsTokens.transitionDuration,
+                duration: ReaderSettingsTokens.effectiveDuration(context),
                 width: ReaderSettingsTokens.swatchSize,
                 height: ReaderSettingsTokens.swatchSize,
                 decoration: BoxDecoration(
@@ -444,7 +446,7 @@ class ReaderBackgroundChoice extends StatelessWidget {
             height: ReaderSettingsTokens.touchTarget,
             child: Center(
               child: AnimatedContainer(
-                duration: ReaderSettingsTokens.transitionDuration,
+                duration: ReaderSettingsTokens.effectiveDuration(context),
                 width: ReaderSettingsTokens.backgroundPreviewWidth,
                 height: ReaderSettingsTokens.backgroundPreviewHeight,
                 clipBehavior: Clip.antiAlias,

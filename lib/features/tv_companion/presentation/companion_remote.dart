@@ -415,6 +415,7 @@ class _CompanionRemoteState extends State<CompanionRemote> {
   Future<void> _exit() async {
     final confirmed = await showDialog<bool>(
       context: context,
+      animationStyle: AppMotion.overlayStyle(context),
       builder: (context) => AlertDialog(
         title: const Text('退出 TV 播放？'),
         content: const Text('TV 会保存进度并退出当前视频。仅断开遥控不会停止播放。'),
@@ -452,6 +453,7 @@ class _CompanionRemoteState extends State<CompanionRemote> {
         if (!mounted) return;
         final choice = await showDialog<Object>(
           context: context,
+          animationStyle: AppMotion.overlayStyle(context),
           builder: (context) => SimpleDialog(
             title: const Text('选择分组'),
             children: [
@@ -483,6 +485,7 @@ class _CompanionRemoteState extends State<CompanionRemote> {
         if (!mounted) return;
         final selected = await showDialog<String>(
           context: context,
+          animationStyle: AppMotion.overlayStyle(context),
           builder: (context) => SimpleDialog(
             title: Text(selectedGroup['title'] as String),
             children: [

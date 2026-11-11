@@ -33,7 +33,7 @@ class LibraryBookSwipeActions extends StatefulWidget {
 
 class _LibraryBookSwipeActionsState extends State<LibraryBookSwipeActions> with SingleTickerProviderStateMixin {
   static const double _buttonWidth = 84;
-  static const Duration _animationDuration = Duration(milliseconds: 220);
+  static const Duration _animationDuration = AppMotion.contentChange;
 
   late final AnimationController _animationController;
   Animation<double>? _animation;
@@ -49,6 +49,12 @@ class _LibraryBookSwipeActionsState extends State<LibraryBookSwipeActions> with 
         if (!mounted || _animation == null) return;
         setState(() => _offset = _animation!.value);
       });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (AppMotion.disablesAnimations(context) && _animationController.isAnimating) _animationController.value = 1;
   }
 
   @override

@@ -6,6 +6,7 @@
 /// Pointer hosts use a bounded dialog; touch hosts use a sheet in the same theme.
 library;
 
+import 'package:mg_read/shared/presentation/motion/app_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -46,6 +47,7 @@ Future<_TvTarget?> _showTvTargetPicker(BuildContext context, CompanionController
       defaultTargetPlatform == TargetPlatform.linux) {
     return showDialog<_TvTarget>(
       context: context,
+      animationStyle: AppMotion.overlayStyle(context),
       barrierColor: Colors.black54,
       builder: (context) => Dialog(
         backgroundColor: VideoTvPickerSheet.backgroundColor,
@@ -58,6 +60,7 @@ Future<_TvTarget?> _showTvTargetPicker(BuildContext context, CompanionController
   }
   return showModalBottomSheet<_TvTarget>(
     context: context,
+    sheetAnimationStyle: AppMotion.overlayStyle(context),
     isScrollControlled: true,
     useSafeArea: true,
     showDragHandle: false,

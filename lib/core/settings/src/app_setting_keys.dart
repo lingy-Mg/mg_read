@@ -27,6 +27,15 @@ final class AppSettingKeys {
     validator: _validateThemeMode,
   );
 
+  /// Presentation only; disabling motion never pauses playback or async work.
+  static const noAnimations = SettingKey<bool>(
+    id: 'appearance.noAnimations',
+    documentKind: 'settings.appearance',
+    defaultValue: false,
+    codec: SettingCodec<bool>(_boolEncode, _boolDecode),
+    validator: _validateBool,
+  );
+
   /// Accent palette for host application light surfaces.
   ///
   /// Reader packages own their own appearance settings and do not consume
@@ -334,6 +343,7 @@ final class AppSettingKeys {
     sourceUpdateCheckState,
     bookshelfCatalogCheckState,
     themeMode,
+    noAnimations,
     themeColor,
     darkThemeColor,
     homeLayoutMode,

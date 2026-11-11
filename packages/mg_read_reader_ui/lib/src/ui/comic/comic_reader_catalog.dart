@@ -29,6 +29,9 @@ extension _ComicReaderCatalog on _ComicReaderViewState {
     _setControlsVisible(false);
     final Future<void> sheet = showModalBottomSheet<void>(
       context: context,
+      sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : null,
       isScrollControlled: true,
       isDismissible: true,
       enableDrag: true,

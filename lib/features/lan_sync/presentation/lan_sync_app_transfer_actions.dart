@@ -10,6 +10,7 @@ extension _LanSyncAppTransferActions on _LanSyncPageState {
     unawaited(offer == null ? controller.startSending() : controller.connectOffer(offer));
     await showModalBottomSheet<void>(
       context: context,
+      sheetAnimationStyle: AppMotion.overlayStyle(context),
       showDragHandle: true,
       isScrollControlled: true,
       builder: (sheetContext) => Consumer(
@@ -63,6 +64,7 @@ extension _LanSyncAppTransferActions on _LanSyncPageState {
     if (offer == null || local == null) return;
     final accepted = await showDialog<bool>(
       context: context,
+      animationStyle: AppMotion.overlayStyle(context),
       builder: (context) => AlertDialog(
         title: Text(force ? '强制安装此版本？' : '从在线设备升级 App？'),
         content: AppVersionComparisonCard(local: local, remote: offer.version, pairingCode: null),

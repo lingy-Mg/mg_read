@@ -69,7 +69,7 @@ class _SectionButton extends StatelessWidget {
           onTap: () => onSelected(section),
           borderRadius: AppRadii.pill,
           child: AnimatedContainer(
-            duration: kThemeAnimationDuration,
+            duration: AppMotion.effectiveDuration(context, AppMotion.navigationSelection),
             height: AppSpacing.sectionControlHeight - AppSpacing.unit,
             constraints: const BoxConstraints(minWidth: 48),
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.compact),
@@ -94,7 +94,7 @@ class _SectionButton extends StatelessWidget {
                 Positioned(
                   bottom: 2,
                   child: AnimatedContainer(
-                    duration: kThemeAnimationDuration,
+                    duration: AppMotion.effectiveDuration(context, AppMotion.navigationSelection),
                     width: isSelected ? AppSpacing.comfortable : 0,
                     height: 2,
                     decoration: BoxDecoration(color: tokens.accent, borderRadius: AppRadii.pill),

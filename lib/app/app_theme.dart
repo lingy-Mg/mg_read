@@ -13,6 +13,11 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../shared/presentation/motion/app_motion.dart';
+import 'app_page_transitions.dart';
+
+export '../shared/presentation/motion/app_motion.dart';
+
 part 'app_component_theme.dart';
 
 /// Preset accent palettes for host application surfaces.
@@ -699,63 +704,4 @@ abstract final class AppRadii {
   static const BorderRadius detailControl = control;
   static const BorderRadius detailAppIcon = BorderRadius.all(Radius.circular(22));
   static const BorderRadius pill = BorderRadius.all(Radius.circular(999));
-}
-
-/// 全局、克制且可打断的动效语义。
-///
-/// 时长只描述视觉过渡，异步请求必须独立维持 loading/错误/内容状态。
-abstract final class AppMotion {
-  static const Duration micro = Duration(milliseconds: 120);
-  static const Duration navigationSelection = Duration(milliseconds: 140);
-  static const Duration short = Duration(milliseconds: 180);
-  static const Duration shortReverse = Duration(milliseconds: 140);
-  static const Duration loadingSettle = Duration(milliseconds: 120);
-  static const Duration loadingShimmer = Duration(milliseconds: 980);
-  static const Duration bottomNavigationIconResponse = Duration(milliseconds: 220);
-  static const Duration bottomNavigationLabelResponse = Duration(milliseconds: 190);
-  static const Duration bottomNavigationPillMinimumTravel = Duration(milliseconds: 180);
-  static const Duration bottomNavigationPillTravel = Duration(milliseconds: 300);
-  static const Duration privacyModeReveal = Duration(milliseconds: 520);
-  static const Duration destinationTransition = short;
-  static const Duration destinationReverseTransition = shortReverse;
-  static const double bottomNavigationPillOvershoot = 0.045;
-  static const double bottomNavigationPillTravelWidthScale = 0.72;
-  static const double bottomNavigationPillTravelHeightScale = 0.8;
-  static const double bottomNavigationPillArrivalWidthScale = 1.08;
-  static const double bottomNavigationPillArrivalHeightScale = 1.06;
-  static const double bottomNavigationSelectionHandoff = 0.64;
-  static const double bottomNavigationSelectedIconScale = 1.12;
-  static const double bottomNavigationUnselectedIconAlignmentY = -0.38;
-  static const double bottomNavigationLabelAlignmentY = 0.58;
-  static const Curve navigationCurve = Curves.easeOutCubic;
-  static const Curve navigationReverseCurve = Curves.easeInCubic;
-  static const Curve standardCurve = Curves.easeInOutCubic;
-
-  /// Returns whether the platform asks the app to avoid non-essential motion.
-  static bool disablesAnimations(BuildContext context) {
-    return MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-  }
-
-  /// Resolves an implicit or route transition duration for the current policy.
-  static Duration effectiveDuration(BuildContext context, Duration duration) {
-    return disablesAnimations(context) ? Duration.zero : duration;
-  }
-
-  /// Keeps a retargeted controller's remaining travel proportional to distance.
-  ///
-  /// A zero result is deliberately synchronous for reduced-motion users.
-  static Duration interruptedDuration({
-    required Duration fullDuration,
-    required double from,
-    required double to,
-    required bool disableAnimations,
-    Duration minimumDuration = Duration.zero,
-  }) {
-    if (disableAnimations) return Duration.zero;
-    final double distance = (to - from).abs().clamp(0, 1);
-    final int scaledMicroseconds = (fullDuration.inMicroseconds * distance).round();
-    return Duration(
-      microseconds: scaledMicroseconds < minimumDuration.inMicroseconds ? minimumDuration.inMicroseconds : scaledMicroseconds,
-    );
-  }
 }

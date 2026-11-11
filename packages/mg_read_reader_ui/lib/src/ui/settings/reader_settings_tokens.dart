@@ -34,6 +34,12 @@ abstract final class ReaderSettingsTokens {
   static const Duration transitionDuration = Duration(milliseconds: 160);
   static const Duration sheetDuration = Duration(milliseconds: 220);
 
+  /// Host and platform reduced-motion preferences share the MediaQuery contract.
+  static Duration effectiveDuration(BuildContext context) =>
+      MediaQuery.disableAnimationsOf(context)
+      ? Duration.zero
+      : transitionDuration;
+
   static Color mutedControl(ReaderPalette palette) => Color.lerp(
     palette.panel,
     palette.text,

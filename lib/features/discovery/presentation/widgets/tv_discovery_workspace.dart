@@ -37,6 +37,7 @@ class TvDiscoveryWorkspace extends StatelessWidget {
 /// Full text remains available without sending directional keys into selection.
 Future<void> showTvDiscoveryText(BuildContext context, {required String title, required String text}) => showDialog<void>(
   context: context,
+  animationStyle: AppMotion.overlayStyle(context),
   builder: (context) => TvDiscoveryDialog(
     title: title,
     actions: [TvFocusable(autofocus: true, onPressed: () => Navigator.pop(context), child: const Text('关闭'))],

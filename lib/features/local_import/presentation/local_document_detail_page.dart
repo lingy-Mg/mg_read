@@ -2,6 +2,7 @@
 /// export and cover reads go through ContentLibrary streams, never disk paths.
 library;
 
+import 'package:mg_read/shared/presentation/motion/app_motion.dart';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -139,6 +140,7 @@ class _LocalDocumentDetailPageState extends ConsumerState<LocalDocumentDetailPag
     final author = TextEditingController(text: detail.item.author ?? '');
     final save = await showDialog<bool>(
       context: context,
+      animationStyle: AppMotion.overlayStyle(context),
       builder: (context) => AlertDialog(
         title: const Text('编辑书籍信息'),
         content: Column(
@@ -301,6 +303,7 @@ class _LocalDocumentDetailPageState extends ConsumerState<LocalDocumentDetailPag
   Future<void> _remove(LibraryRemovalPolicy policy, String message) async {
     final yes = await showDialog<bool>(
       context: context,
+      animationStyle: AppMotion.overlayStyle(context),
       builder: (context) => AlertDialog(
         title: const Text('确认删除？'),
         content: Text(policy == LibraryRemovalPolicy.removeFromShelfKeepContent ? '书籍会从当前书架隐藏，原文件和阅读数据会保留。' : '书籍会从书架移除，未被其他内容引用的本地数据会清理。'),

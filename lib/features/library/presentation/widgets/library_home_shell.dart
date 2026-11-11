@@ -216,7 +216,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                         if (!widget.showLoading && !_isFirstRunEmpty)
                           AnimatedOpacity(
                             opacity: _contentOpacity,
-                            duration: const Duration(milliseconds: 220),
+                            duration: AppMotion.effectiveDuration(context, AppMotion.contentChange),
                             curve: Curves.easeOut,
                             child: KeyedSubtree(
                               key: const Key('library-mobile-layout'),
@@ -289,13 +289,13 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                 slivers: <Widget>[
                   SliverAnimatedOpacity(
                     opacity: _contentOpacity,
-                    duration: const Duration(milliseconds: 220),
+                    duration: AppMotion.effectiveDuration(context, AppMotion.contentChange),
                     curve: Curves.easeOut,
                     sliver: SliverToBoxAdapter(child: _buildLibraryListHeader(selection)),
                   ),
                   SliverAnimatedOpacity(
                     opacity: _contentOpacity,
-                    duration: const Duration(milliseconds: 220),
+                    duration: AppMotion.effectiveDuration(context, AppMotion.contentChange),
                     curve: Curves.easeOut,
                     sliver: books.isEmpty
                         ? SliverToBoxAdapter(

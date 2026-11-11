@@ -4,6 +4,7 @@
 /// 详情复用本轮已检查的快照，不重复请求，也不修改主发现页选择或阅读记录。
 library;
 
+import 'package:mg_read/shared/presentation/motion/app_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -119,6 +120,7 @@ class _SourceDebugPageState extends State<SourceDebugPage> {
                       ? null
                       : () => showModalBottomSheet<void>(
                           context: context,
+                          sheetAnimationStyle: AppMotion.overlayStyle(context),
                           isScrollControlled: true,
                           useSafeArea: true,
                           builder: (_) => FractionallySizedBox(heightFactor: .7, child: _DebugResults(results: results)),

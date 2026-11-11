@@ -447,7 +447,7 @@ class _SearchTopBar extends StatelessWidget {
                     hintText: TvModeScope.isEnabled(context) ? '影片、演员或关键词' : '书名、作者或关键词',
                     prefixIcon: const Icon(Icons.search_rounded),
                     suffixIcon: AnimatedSwitcher(
-                      duration: AppMotion.navigationSelection,
+                      duration: AppMotion.effectiveDuration(context, AppMotion.navigationSelection),
                       switchInCurve: AppMotion.navigationCurve,
                       switchOutCurve: AppMotion.navigationReverseCurve,
                       child: isSearching

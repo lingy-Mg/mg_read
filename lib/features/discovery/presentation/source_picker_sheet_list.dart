@@ -498,6 +498,7 @@ Future<void> _showSourcePickerActions(
   final returnFocus = FocusManager.instance.primaryFocus;
   final action = await showMenu<_SourcePickerAction>(
     context: context,
+    popUpAnimationStyle: AppMotion.overlayStyle(context),
     position: RelativeRect.fromRect(Rect.fromLTWH(globalPosition.dx, globalPosition.dy, 1, 1), Offset.zero & overlay.size),
     items: _sourcePickerActionItems(pinned),
   );

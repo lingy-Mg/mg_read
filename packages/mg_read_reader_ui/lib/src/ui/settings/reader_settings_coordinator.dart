@@ -93,7 +93,9 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
                       children: <Widget>[
                         Expanded(
                           child: AnimatedSwitcher(
-                            duration: ReaderSettingsTokens.transitionDuration,
+                            duration: ReaderSettingsTokens.effectiveDuration(
+                              context,
+                            ),
                             layoutBuilder:
                                 (
                                   Widget? currentChild,

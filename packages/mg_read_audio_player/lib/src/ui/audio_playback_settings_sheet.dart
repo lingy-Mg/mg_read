@@ -36,6 +36,9 @@ Future<void> showAudioPlaybackSettingsSheet(
   Future<void> Function(bool enabled)? onRememberPositionChanged,
 }) => showModalBottomSheet<void>(
   context: context,
+  sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
+      ? AnimationStyle.noAnimation
+      : null,
   isScrollControlled: true,
   backgroundColor: Colors.transparent,
   barrierColor: AudioPlayerColors.scrim,

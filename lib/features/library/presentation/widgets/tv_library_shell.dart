@@ -76,6 +76,7 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
     try {
       final action = await showDialog<String>(
         context: context,
+        animationStyle: AppMotion.overlayStyle(context),
         builder: (context) => AlertDialog(
           scrollable: true,
           title: Text(book.title),
@@ -106,6 +107,7 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
         case 'remove':
           final confirmed = await showDialog<bool>(
             context: context,
+            animationStyle: AppMotion.overlayStyle(context),
             builder: (context) => AlertDialog(
               scrollable: true,
               title: const Text('移除收藏？'),
@@ -315,7 +317,7 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
 
   Widget _transitionContent(Widget child) => TweenAnimationBuilder<double>(
     tween: Tween(begin: 0, end: 1),
-    duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 220),
+    duration: AppMotion.effectiveDuration(context, AppMotion.contentChange),
     curve: Curves.easeOutCubic,
     child: child,
     builder: (_, value, child) => Opacity(

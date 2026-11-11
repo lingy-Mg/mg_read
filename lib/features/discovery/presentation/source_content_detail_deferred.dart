@@ -46,6 +46,7 @@ Future<void> showDeferredSourceContentDetailSheet(
 }) {
   return showModalBottomSheet<void>(
     context: context,
+    sheetAnimationStyle: AppMotion.overlayStyle(context),
     isScrollControlled: true,
     enableDrag: !TvModeScope.isEnabled(context),
     constraints: TvModeScope.isEnabled(context) ? const BoxConstraints(maxWidth: 1200) : null,

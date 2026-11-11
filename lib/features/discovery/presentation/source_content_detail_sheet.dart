@@ -21,6 +21,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:mg_read/shared/presentation/motion/app_content_transition.dart';
 import 'package:flutter/services.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -169,6 +170,7 @@ Future<void> showSourceContentDetailSheet(
   if (useModalBottomSheet && !TvModeScope.isEnabled(context)) {
     return showModalBottomSheet<void>(
       context: context,
+      sheetAnimationStyle: AppMotion.overlayStyle(context),
       isScrollControlled: true,
       enableDrag: !TvModeScope.isEnabled(context),
       constraints: TvModeScope.isEnabled(context) ? const BoxConstraints(maxWidth: 1200) : null,
@@ -442,10 +444,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                         if (snapshot.connectionState != ConnectionState.done) {
                           final loadingBundle = previewBundle;
                           if (loadingBundle != null) {
-                            return AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 260),
-                              switchInCurve: Curves.easeOutCubic,
-                              switchOutCurve: Curves.easeInCubic,
+                            return AppContentTransition(
                               child: _SourceDetailView(
                                 key: const ValueKey<String>('source-detail-preview'),
                                 bundle: loadingBundle,
@@ -545,10 +544,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
                             onRetry: _retryDetail,
                           );
                         }
-                        return AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 260),
-                          switchInCurve: Curves.easeOutCubic,
-                          switchOutCurve: Curves.easeInCubic,
+                        return AppContentTransition(
                           child: _SourceDetailView(
                             key: const ValueKey<String>('source-detail-loaded'),
                             bundle: snapshot.requireData,
