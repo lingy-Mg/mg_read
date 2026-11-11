@@ -17,6 +17,60 @@ import 'package:mg_read/shared/presentation/widgets/default_content_cover_artwor
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
 
 void main() {
+  testWidgets('provided bytes skip the remote request and still expose decode loading', (tester) async {
+    final requests = <BookCoverRequest>[];
+    final completion = Completer<List<int>?>();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [bookCoverBytesLoaderProvider.overrideWithValue(_RecordingBookCoverLoader(requests, completion))],
+        child: _host(
+          BookCoverSourceScope(
+            pluginId: 'provided-cover',
+            child: DiscoveryBookCover(
+              title: '本地已有封面',
+              variant: DiscoveryCoverVariant.gothic,
+              width: 112,
+              height: 174,
+              remoteContentId: 'provided-cover-book',
+              coverUrl: Uri.parse('https://covers.example/provided-cover.png'),
+              coverBytes: base64Decode(_onePixelPngBase64),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(requests, isEmpty);
+    await _settleCoverImages(tester);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('failed remote covers finish loading with a visible failure fallback', (tester) async {
+    final completion = Completer<List<int>?>();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [bookCoverBytesLoaderProvider.overrideWithValue(_CompletingBookCoverLoader(completion))],
+        child: _host(
+          BookCoverSourceScope(
+            pluginId: 'failed-cover',
+            child: DiscoveryBookCover(
+              title: '失败封面',
+              variant: DiscoveryCoverVariant.gothic,
+              width: 112,
+              height: 174,
+              remoteContentId: 'failed-cover-book',
+              coverUrl: Uri.parse('https://covers.example/failed-cover.png'),
+            ),
+          ),
+        ),
+      ),
+    );
+    completion.completeError(StateError('cover request failed'));
+    await _settleCoverImages(tester);
+    expect(find.byKey(const Key('cover-load-failed')), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('uses the compact novel artwork when discovery cover is missing', (WidgetTester tester) async {
     await tester.pumpWidget(
       _host(const DiscoveryBookCover(title: '没有封面的书', variant: DiscoveryCoverVariant.gothic, width: 112, height: 174)),
@@ -41,7 +95,7 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await _settleCoverImages(tester);
 
     expect(find.byType(DefaultContentCoverArtwork), findsOneWidget);
     expect(find.byIcon(Icons.photo_library_rounded), findsOneWidget);
@@ -169,7 +223,7 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await _settleCoverImages(tester);
 
     expect(tester.getSize(find.byType(DiscoveryBookCover)), const Size(112, 112));
     expect(tester.widget<Image>(find.byType(Image)).fit, BoxFit.cover);
@@ -186,7 +240,7 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await _settleCoverImages(tester);
 
     expect(tester.getSize(find.byType(DiscoveryBookCover)), const Size(174, 174));
   });
@@ -242,6 +296,17 @@ void main() {
     expect(BookCoverMemoryCache.peek(_request(0)), isNull);
     expect(BookCoverMemoryCache.peek(_request(4)), isNotNull);
   });
+}
+
+// Engine image decoding runs outside FakeAsync. Await actual decode before
+// settling the intentionally indeterminate loading indicator.
+Future<void> _settleCoverImages(WidgetTester tester) async {
+  final images = tester.widgetList<Image>(find.byType(Image)).toList();
+  if (images.isNotEmpty) {
+    final context = tester.element(find.byType(Image).first);
+    await tester.runAsync(() => Future.wait(images.map((image) => precacheImage(image.image, context, onError: (_, _) {}))));
+  }
+  await tester.pumpAndSettle();
 }
 
 Widget _host(Widget child) => MaterialApp(

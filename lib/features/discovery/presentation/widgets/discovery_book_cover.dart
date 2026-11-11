@@ -1,12 +1,12 @@
 /// 数据源内容的异步封面组件。
 ///
 /// 职责：
-/// - 先渲染书籍主体可见的加载占位，再独立解析封面字节。
+/// - 取图和解码期间保留加载占位，缺图与失败明确结束等待。
 /// - 复用共享请求键，避免相同封面在同一页面重复加载。
 ///
 /// 注意：
 /// - 加载或失败不得延迟父列表、发现页或详情页的首次显示。
-/// - 无字节时保留默认封面插画作为可访问降级。
+/// - 默认插画、失败标记与首次显示过渡由共享封面状态组件提供。
 ///
 library;
 
@@ -18,6 +18,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/shared/presentation/widgets/app_cover_image.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_view_data.dart';
 import 'package:mg_read/shared/presentation/widgets/default_content_cover_artwork.dart';
 import 'package:mg_read/shared/presentation/widgets/async_book_cover_loader.dart';
@@ -71,64 +72,51 @@ class DiscoveryBookCover extends ConsumerWidget {
     final request = scope == null || remoteContentId == null || coverUrl == null
         ? null
         : scope.requestFor(remoteContentId: remoteContentId!, coverUrl: coverUrl!);
-    final asyncBytes = request == null ? null : ref.watch(bookCoverBytesProvider(request));
-    final List<int>? loadedBytes = switch (asyncBytes) {
+    final suppliedBytes = coverBytes?.isNotEmpty == true ? coverBytes : null;
+    final cachedBytes = suppliedBytes == null && request != null ? BookCoverMemoryCache.peek(request) : null;
+    final asyncBytes = request == null || suppliedBytes != null || cachedBytes != null ? null : ref.watch(bookCoverBytesProvider(request));
+    final loadedBytes = switch (asyncBytes) {
       AsyncData<List<int>?>(:final value) => value,
       _ => null,
     };
-    final bytes = coverBytes?.isNotEmpty ?? false ? coverBytes : loadedBytes;
-    final bool hasCoverBytes = bytes?.isNotEmpty ?? false;
-    final Uint8List? normalizedBytes = hasCoverBytes ? normalizeBookCoverBytes(bytes!) : null;
-    final bool isLoading = !hasCoverBytes && asyncBytes?.isLoading == true;
-    final Color foreground = tokens.surface;
-    return Semantics(
-      image: true,
-      label: hasCoverBytes
-          ? '$title 的封面'
-          : isLoading
-          ? '$title 的封面加载中'
-          : '$title 的封面占位图',
-      child: ExcludeSemantics(
-        child: SizedBox(
-          width: width,
-          height: height,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: _borderRadius,
-              boxShadow: <BoxShadow>[
-                BoxShadow(color: tokens.shadow, blurRadius: _visualWidth >= 80 ? 8 : 3, offset: Offset(0, _visualWidth >= 80 ? 4 : 1.5)),
-              ],
-              gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: <Color>[start, end]),
-            ),
-            child: ClipRRect(
-              borderRadius: _borderRadius,
-              child: !hasCoverBytes
-                  ? SizedBox(
-                      width: _placeholderWidth,
-                      height: _placeholderHeight,
-                      child: _placeholder(foreground, start, end, isLoading: isLoading),
-                    )
-                  : width == null || height == null
-                  ? _IntrinsicCoverImage(
-                      bytes: normalizedBytes!,
-                      fallbackAspectRatio: _fallbackAspectRatio,
-                      errorBuilder: (_, _, _) => SizedBox(
-                        width: _placeholderWidth,
-                        height: _placeholderHeight,
-                        child: _placeholder(foreground, start, end, isLoading: false),
-                      ),
-                    )
-                  : Image.memory(
-                      normalizedBytes!,
-                      width: width,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => SizedBox(
-                        width: _placeholderWidth,
-                        height: _placeholderHeight,
-                        child: _placeholder(foreground, start, end, isLoading: false),
-                      ),
-                    ),
-            ),
+    final bytes = suppliedBytes ?? cachedBytes ?? loadedBytes;
+    final hasCoverBytes = bytes?.isNotEmpty == true;
+    final isLoading = !hasCoverBytes && asyncBytes?.isLoading == true;
+    final failed =
+        asyncBytes?.hasError == true ||
+        (asyncBytes is AsyncData<List<int>?> && !hasCoverBytes && ref.watch(bookCoverBytesLoaderProvider) is! EmptyBookCoverBytesLoader);
+    final placeholder = SizedBox(width: _placeholderWidth, height: _placeholderHeight, child: _placeholder(tokens.surface, start, end));
+    final label = '$title 的封面';
+    return MergeSemantics(
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: _borderRadius,
+            boxShadow: [
+              BoxShadow(color: tokens.shadow, blurRadius: _visualWidth >= 80 ? 8 : 3, offset: Offset(0, _visualWidth >= 80 ? 4 : 1.5)),
+            ],
+            gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [start, end]),
+          ),
+          child: ClipRRect(
+            borderRadius: _borderRadius,
+            child: hasCoverBytes && (width == null || height == null)
+                ? _IntrinsicCoverImage(
+                    bytes: normalizeBookCoverBytes(bytes!),
+                    fallbackAspectRatio: _fallbackAspectRatio,
+                    placeholder: placeholder,
+                    label: label,
+                  )
+                : AppCoverImage(
+                    image: hasCoverBytes ? MemoryImage(normalizeBookCoverBytes(bytes!)) : null,
+                    placeholder: placeholder,
+                    label: label,
+                    loading: isLoading,
+                    failed: failed,
+                    width: width,
+                    height: height,
+                  ),
           ),
         ),
       ),
@@ -147,34 +135,16 @@ class DiscoveryBookCover extends ConsumerWidget {
     DiscoveryCoverPresentation.landscape => 9 / 16,
   };
 
-  Widget _placeholder(Color foreground, Color start, Color end, {required bool isLoading}) {
-    return Stack(
-      fit: StackFit.expand,
-      children: <Widget>[
-        DefaultContentCoverArtwork(
-          kind: _defaultCoverKind(contentKind),
-          title: title,
-          width: _visualWidth,
-          height: _placeholderHeight,
-          startColor: start,
-          endColor: end,
-          foregroundColor: foreground,
-          borderRadius: _borderRadius,
-        ),
-        if (isLoading)
-          ColoredBox(
-            color: Colors.black.withValues(alpha: 0.16),
-            child: Center(
-              child: SizedBox(
-                width: _visualWidth >= 80 ? 22 : 16,
-                height: _visualWidth >= 80 ? 22 : 16,
-                child: CircularProgressIndicator(strokeWidth: 2, color: foreground),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
+  Widget _placeholder(Color foreground, Color start, Color end) => DefaultContentCoverArtwork(
+    kind: _defaultCoverKind(contentKind),
+    title: title,
+    width: _visualWidth,
+    height: _placeholderHeight,
+    startColor: start,
+    endColor: end,
+    foregroundColor: foreground,
+    borderRadius: _borderRadius,
+  );
 
   (Color, Color) _gradient(AppThemeTokens tokens) {
     return switch (variant) {
@@ -200,11 +170,12 @@ DefaultCoverKind _defaultCoverKind(PluginContentKind kind) => switch (kind) {
 
 /// Renders a decoded cover at its intrinsic ratio after reserving fallback space.
 class _IntrinsicCoverImage extends StatefulWidget {
-  const _IntrinsicCoverImage({required this.bytes, required this.fallbackAspectRatio, required this.errorBuilder});
+  const _IntrinsicCoverImage({required this.bytes, required this.fallbackAspectRatio, required this.placeholder, required this.label});
 
   final Uint8List bytes;
   final double fallbackAspectRatio;
-  final ImageErrorWidgetBuilder errorBuilder;
+  final Widget placeholder;
+  final String label;
 
   @override
   State<_IntrinsicCoverImage> createState() => _IntrinsicCoverImageState();
@@ -240,7 +211,7 @@ class _IntrinsicCoverImageState extends State<_IntrinsicCoverImage> {
         setState(() => _aspectRatio = aspectRatio);
       }
     } catch (_) {
-      // Image.memory renders the existing visual fallback for invalid bytes.
+      // AppCoverImage owns the decode-failure presentation.
     } finally {
       descriptor?.dispose();
       buffer?.dispose();
@@ -252,7 +223,7 @@ class _IntrinsicCoverImageState extends State<_IntrinsicCoverImage> {
     final aspectRatio = _aspectRatio ?? 1 / widget.fallbackAspectRatio;
     return AspectRatio(
       aspectRatio: aspectRatio,
-      child: Image.memory(widget.bytes, fit: BoxFit.cover, errorBuilder: widget.errorBuilder),
+      child: AppCoverImage(image: MemoryImage(widget.bytes), label: widget.label, placeholder: widget.placeholder),
     );
   }
 }

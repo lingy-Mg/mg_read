@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../../support/visual_evidence.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
@@ -19,9 +20,7 @@ void main() {
   testWidgets('matches the compact light home visual baseline', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(_host(themeMode: ThemeMode.light));
-    await tester.pumpAndSettle();
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
-    await tester.pump();
+    await settleWidgetImages(tester);
     expect(find.byType(Image), findsAtLeastNWidgets(7));
 
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/library_home_compact_light.png'));
@@ -54,9 +53,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
-      await tester.pump();
+      await settleWidgetImages(tester);
 
       expect(find.byType(LibraryBookSliverGrid), findsOneWidget);
       expect(find.text('99+'), findsOneWidget);
@@ -72,9 +69,7 @@ void main() {
     testWidgets('home contrast and layout $name', (tester) async {
       await _setViewport(tester, size);
       await tester.pumpWidget(_host(themeMode: mode));
-      await tester.pumpAndSettle();
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
-      await tester.pump();
+      await settleWidgetImages(tester);
       expect(tester.takeException(), isNull);
       await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/$name'));
     });

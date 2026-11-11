@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_theme.dart';
@@ -8,9 +9,37 @@ import 'package:mg_read/features/library/presentation/widgets/library_book_cover
 import 'package:mg_read/features/library/presentation/widgets/library_book_grid.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_book_list.dart';
 
+import '../../../support/visual_evidence.dart';
+
 void main() {
+  testWidgets('privacy blur preserves a clear refresh indicator over existing artwork', (tester) async {
+    Widget cover(bool refreshing) => _host(
+      LibraryBookCover(
+        title: '刷新中的封面',
+        variant: LibraryCoverVariant.dusk,
+        width: 100,
+        height: 150,
+        assetPath: 'assets/branding/mg_read_logo.png',
+        isRefreshing: refreshing,
+        isBlurred: true,
+      ),
+    );
+    await tester.pumpWidget(cover(true));
+    await tester.runAsync(() async {
+      final image = tester.widget<Image>(find.byType(Image));
+      await precacheImage(image.image, tester.element(find.byType(LibraryBookCover)));
+    });
+    await tester.pump(const Duration(milliseconds: 220));
+    final loading = find.byKey(const Key('cover-load-progress'));
+    expect(loading, findsOneWidget);
+    expect(find.ancestor(of: loading, matching: find.byType(ImageFiltered)), findsNothing);
+    await tester.pumpWidget(cover(false));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('cover-load-progress')), findsNothing);
+  });
   testWidgets('intrinsic cover reserves its placeholder height before image decode', (tester) async {
     PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
     await tester.pumpWidget(
       _host(
         const Align(
@@ -52,7 +81,7 @@ void main() {
 
   testWidgets('list keeps the primary portrait cover size for every source shape', (tester) async {
     await tester.pumpWidget(_host(LibraryBookList(books: _books, onOpenBook: (_) {})));
-    await tester.pumpAndSettle();
+    await settleVisualEvidenceImages(tester);
 
     final covers = tester.widgetList<LibraryBookCover>(find.byType(LibraryBookCover)).toList();
     expect(
@@ -127,9 +156,11 @@ String _coverAssetPath(CoverOrientation orientation) => switch (orientation) {
   CoverOrientation.landscape => 'assets/illustrations/home/continue_reading_backdrop.png',
 };
 
-Widget _host(Widget child, {double width = 390}) => MaterialApp(
-  theme: AppTheme.light(),
-  home: Scaffold(
-    body: SizedBox(width: width, height: 700, child: child),
+Widget _host(Widget child, {double width = 390}) => ProviderScope(
+  child: MaterialApp(
+    theme: AppTheme.light(),
+    home: Scaffold(
+      body: SizedBox(width: width, height: 700, child: child),
+    ),
   ),
 );

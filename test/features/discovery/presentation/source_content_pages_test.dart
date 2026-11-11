@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/shared/presentation/motion/app_content_transition.dart';
 import 'package:mg_read/features/discovery/presentation/discovery_page.dart';
 import 'package:mg_read/features/discovery/presentation/runtime_discovery_page.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -180,34 +181,32 @@ void main() {
   });
 
   testWidgets('removes page movement when reduce motion is enabled', (tester) async {
-    await tester.pumpWidget(
-      MediaQuery(
-        data: const MediaQueryData(disableAnimations: true),
-        child: MaterialApp(
-          theme: AppTheme.light(),
-          home: RuntimeDiscoveryPage(
-            result: _documentResult(),
-            onDestinationRequested: (_) {},
-            onSourcePressed: () {},
-            onTabSelected: (_) {},
-            onCategorySelected: (_) {},
-            onContentPressed: (_) {},
-            onRefreshRequested: () {},
-            onLoadMore: (_) {},
-            canNavigateBack: true,
-            navigationDepth: 1,
-            onBackRequested: () {},
-            loadingCollectionId: null,
-          ),
-        ),
+    Widget host(int depth) => MaterialApp(
+      theme: AppTheme.light(),
+      builder: (context, child) => MediaQuery(data: MediaQuery.of(context).copyWith(disableAnimations: true), child: child!),
+      home: RuntimeDiscoveryPage(
+        result: _documentResult(),
+        onDestinationRequested: (_) {},
+        onSourcePressed: () {},
+        onTabSelected: (_) {},
+        onCategorySelected: (_) {},
+        onContentPressed: (_) {},
+        onRefreshRequested: () {},
+        onLoadMore: (_) {},
+        canNavigateBack: true,
+        navigationDepth: depth,
+        onBackRequested: () {},
+        loadingCollectionId: null,
       ),
     );
-
-    final switcher = tester
-        .widgetList<AnimatedSwitcher>(find.byType(AnimatedSwitcher))
-        .singleWhere((value) => value.reverseDuration == Duration.zero);
-    expect(switcher.duration, Duration.zero);
-    expect(switcher.reverseDuration, Duration.zero);
+    await tester.pumpWidget(host(1));
+    final before = tester.getTopLeft(find.byKey(const ValueKey('runtime-discovery-item-book:1')));
+    await tester.pumpWidget(host(2));
+    final fade = tester.widget<FadeTransition>(
+      find.descendant(of: find.byType(AppContentTransition).first, matching: find.byType(FadeTransition)).first,
+    );
+    expect(fade.opacity.value, 1);
+    expect(tester.getTopLeft(find.byKey(const ValueKey('runtime-discovery-item-book:1'))), before);
   });
 
   testWidgets('allows a locally routed child page to commit Android predictive back', (tester) async {

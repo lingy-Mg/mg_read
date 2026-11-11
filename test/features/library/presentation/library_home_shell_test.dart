@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../../support/visual_evidence.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
@@ -65,13 +66,13 @@ Future<void> _openHomeBookMenu(WidgetTester tester) async {
   final Finder content = find.byKey(const Key('library-home-content'));
   for (int attempt = 0; attempt < 8 && book.evaluate().isEmpty; attempt++) {
     await tester.drag(content, const Offset(0, -240));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
   }
   expect(book, findsOneWidget);
   await tester.ensureVisible(book);
-  await tester.pumpAndSettle();
+  await settleWidgetImages(tester);
   await tester.tap(find.descendant(of: book, matching: find.byTooltip('书籍更多操作')));
-  await tester.pumpAndSettle();
+  await settleWidgetImages(tester);
 }
 
 LibraryHomeViewData _asyncCoverLibraryHomeData() {

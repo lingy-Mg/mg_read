@@ -4,7 +4,7 @@ part of 'library_home_shell_test.dart';
 void _registerLibraryHomeShellBasics() {
   testWidgets('extends the home artwork behind the system inset while keeping the header below it', (WidgetTester tester) async {
     await tester.pumpWidget(_host(topInset: 24));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(tester.getRect(find.byKey(const Key('library-home-top-backdrop'))).top, 0);
     final Rect topBar = tester.getRect(find.byType(LibraryHomeTopBar));
@@ -15,7 +15,7 @@ void _registerLibraryHomeShellBasics() {
 
   testWidgets('renders the home hierarchy with progress and book semantics', (WidgetTester tester) async {
     await tester.pumpWidget(_host());
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(find.descendant(of: find.byType(LibraryHomeTopBar), matching: find.text('首页')), findsNothing);
     expect(find.textContaining('界面预览'), findsNothing);
@@ -35,7 +35,7 @@ void _registerLibraryHomeShellBasics() {
   testWidgets('uses the current cover behind the complete top area', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 844));
     await tester.pumpWidget(_host());
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     final Rect backdrop = tester.getRect(find.byKey(const Key('library-home-top-backdrop')));
     final Rect topBar = tester.getRect(find.byType(LibraryHomeTopBar));
@@ -81,7 +81,7 @@ void _registerLibraryHomeShellBasics() {
   testWidgets('opens the book-detail intent from a long press', (WidgetTester tester) async {
     LibraryBookListItemViewData? selectedBook;
     await tester.pumpWidget(_host(callbacks: LibraryHomeCallbacks(onBookLongPress: (book) => selectedBook = book)));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     await tester.longPress(find.byType(LibraryBookListItem).first);
 
@@ -90,10 +90,10 @@ void _registerLibraryHomeShellBasics() {
 
   testWidgets('exposes data-source management from the top-right menu', (WidgetTester tester) async {
     await tester.pumpWidget(_host());
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     await tester.tap(find.byTooltip('更多操作'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(find.text('管理数据源'), findsOneWidget);
   });
@@ -107,23 +107,23 @@ void _registerLibraryHomeShellBasics() {
         },
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(find.byType(LibraryBookSliverList), findsOneWidget);
     expect(find.byType(LibraryBookSliverGrid), findsNothing);
 
     await tester.tap(find.byTooltip('更多操作'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     expect(find.text('切换为卡片模式'), findsOneWidget);
     await tester.tap(find.text('切换为卡片模式'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(savedModes, <LibraryHomeLayoutMode>[LibraryHomeLayoutMode.card]);
     expect(find.byType(LibraryBookSliverGrid), findsOneWidget);
     expect(find.byType(LibraryBookSliverList), findsNothing);
 
     await tester.tap(find.byTooltip('更多操作'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     expect(find.text('切换为列表模式'), findsOneWidget);
   });
 
@@ -135,12 +135,12 @@ void _registerLibraryHomeShellBasics() {
         },
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     await tester.tap(find.byTooltip('更多操作'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     await tester.tap(find.text('切换为卡片模式'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(find.byType(LibraryBookSliverList), findsOneWidget);
     expect(find.byType(LibraryBookSliverGrid), findsNothing);
@@ -163,7 +163,7 @@ void _registerLibraryHomeShellBasics() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     final Finder firstCard = find.byType(LibraryBookGridItem).first;
     await tester.tap(firstCard);
@@ -173,11 +173,11 @@ void _registerLibraryHomeShellBasics() {
 
     final Finder cardMenu = find.byKey(const Key('library-grid-book-overflow-menu-fixture-lord-of-mysteries'));
     await tester.tap(cardMenu);
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     final Finder gridPrivacy = find.byKey(const Key('library-grid-book-action-fixture-lord-of-mysteries-set-private'));
     await tester.tap(gridPrivacy);
     await tester.pump(AppMotion.destinationTransition);
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     expect(privateBook?.id, 'fixture-lord-of-mysteries');
   });
 
@@ -185,7 +185,7 @@ void _registerLibraryHomeShellBasics() {
     await tester.pumpWidget(
       _host(initialLayoutMode: LibraryHomeLayoutMode.card, initialCoverMetadataMode: LibraryHomeCoverMetadataMode.insideCover),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(find.byKey(const Key('library-grid-book-overlay-title-fixture-lord-of-mysteries')), findsOneWidget);
     expect(find.byKey(const Key('library-grid-book-overlay-subtitle-fixture-lord-of-mysteries')), findsOneWidget);
@@ -197,12 +197,12 @@ void _registerLibraryHomeShellBasics() {
     );
     addTearDown(metadataMode.dispose);
     await tester.pumpWidget(_host(initialLayoutMode: LibraryHomeLayoutMode.card, coverMetadataModeListenable: metadataMode));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(tester.widget<LibraryBookSliverGrid>(find.byType(LibraryBookSliverGrid)).metadataMode, LibraryHomeCoverMetadataMode.insideCover);
 
     metadataMode.value = LibraryHomeCoverMetadataMode.belowCover;
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(tester.widget<LibraryBookSliverGrid>(find.byType(LibraryBookSliverGrid)).metadataMode, LibraryHomeCoverMetadataMode.belowCover);
   });
@@ -214,7 +214,7 @@ void _registerLibraryHomeShellBasics() {
         callbacks: LibraryHomeCallbacks(onSetBookPrivate: (_) async {}),
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     final Finder surface = find.byKey(const Key('library-grid-book-menu-surface-fixture-lord-of-mysteries'));
     BoxDecoration decoration() => tester.widget<AnimatedContainer>(surface).decoration! as BoxDecoration;
@@ -235,7 +235,7 @@ void _registerLibraryHomeShellBasics() {
     expect(iconOpacity(), 1);
 
     await tester.tap(surface);
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     await mouse.moveTo(Offset.zero);
     await tester.pump(AppMotion.micro);
 
@@ -269,7 +269,7 @@ void _registerLibraryHomeShellBasics() {
     );
 
     await tester.tap(find.byKey(const Key('library-filter-completed')));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     expect(
       find.byWidgetPredicate((Widget widget) => widget is LibraryBookGridItem && widget.data.status == LibraryBookStatus.ongoing),
       findsNothing,
@@ -278,13 +278,13 @@ void _registerLibraryHomeShellBasics() {
     final LibraryBookGridItem completedCard = tester.widget<LibraryBookGridItem>(find.byType(LibraryBookGridItem).first);
     await tester.ensureVisible(find.byKey(Key('library-grid-book-overflow-menu-${completedCard.data.id}')));
     await tester.tap(find.byKey(Key('library-grid-book-overflow-menu-${completedCard.data.id}')));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     await tester.tap(find.byKey(Key('library-grid-book-action-${completedCard.data.id}-delete')));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     expect(find.byType(AlertDialog), findsOneWidget);
     await tester.tap(find.widgetWithText(FilledButton, '删除'));
     await tester.pump(AppMotion.destinationTransition);
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     expect(deletedBook?.id, completedCard.data.id);
   });
 
@@ -299,14 +299,14 @@ void _registerLibraryHomeShellBasics() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     await tester.drag(find.byType(LibraryBookListItem).first, const Offset(-220, 0));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(find.text('删除'), findsOneWidget);
     await tester.tap(find.text('删除'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(find.text('删除书籍'), findsOneWidget);
     expect(find.textContaining('确定要从书架移除'), findsOneWidget);
@@ -335,15 +335,15 @@ void _registerLibraryHomeShellBasics() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     await tester.drag(find.byType(LibraryBookListItem).first, const Offset(-220, 0));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     await tester.tap(find.text('删除'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     await tester.tap(find.widgetWithText(FilledButton, '删除'));
     await tester.pump(AppMotion.destinationTransition);
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(find.text('诡秘之主'), findsAtLeastNWidgets(1));
     expect(find.text('删除操作未能完成，请稍后刷新。'), findsOneWidget);
@@ -352,7 +352,7 @@ void _registerLibraryHomeShellBasics() {
 
   testWidgets('top menu closes cleanly when interrupted', (WidgetTester tester) async {
     await tester.pumpWidget(_host());
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     await tester.tap(find.byTooltip('更多操作'));
     await tester.pump(const Duration(milliseconds: 40));
@@ -373,7 +373,7 @@ void _registerLibraryHomeShellBasics() {
 
   testWidgets('menus honor reduce motion without retaining an overlay', (WidgetTester tester) async {
     await tester.pumpWidget(_host(disableAnimations: true));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     await tester.tap(find.byTooltip('更多操作'));
     await tester.pump();
@@ -395,13 +395,13 @@ void _registerLibraryHomeShellBasics() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     await tester.tap(find.text('书架'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     await _openHomeBookMenu(tester);
     await tester.tap(find.text('刷新'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(refreshedBook?.id, 'fixture-lord-of-mysteries');
     expect(find.text('《诡秘之主》已刷新'), findsOneWidget);
@@ -416,12 +416,12 @@ void _registerLibraryHomeShellBasics() {
         },
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     await tester.tap(find.byTooltip('更多操作'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     await tester.tap(find.text('刷新书架'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(refreshCount, 1);
   });
@@ -435,10 +435,10 @@ void _registerLibraryHomeShellBasics() {
         },
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     await tester.drag(find.byKey(const Key('library-home-content')), const Offset(0, 420));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(refreshCount, 1);
   });
@@ -451,10 +451,10 @@ void _registerLibraryHomeShellBasics() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     await tester.tap(find.text('书架'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     await _openHomeBookMenu(tester);
     await tester.tap(find.text('刷新'));
     await tester.pump();
@@ -478,17 +478,17 @@ void _registerLibraryHomeShellBasics() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     await tester.tap(find.text('书架'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     final LibraryBookSliverList shelfList = tester.widget<LibraryBookSliverList>(find.byType(LibraryBookSliverList));
     expect(shelfList.presentation, same(LibraryBookListPresentation.shelf));
     expect(shelfList.actions.map((action) => action.id), contains('toggle-cover-blur'));
     await _openHomeBookMenu(tester);
     expect(find.text('模糊封面'), findsOneWidget);
     await tester.tap(find.text('模糊封面'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(toggledBook?.id, 'fixture-lord-of-mysteries');
     expect(find.text('已模糊《诡秘之主》的封面'), findsOneWidget);
@@ -510,7 +510,7 @@ void _registerLibraryHomeShellBasics() {
       ],
     );
     await tester.pumpWidget(_host(data: data));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     final Finder cover = find.byType(LibraryBookCover);
     expect(find.descendant(of: cover, matching: find.byType(ImageFiltered)), findsOneWidget);
@@ -529,10 +529,10 @@ void _registerLibraryHomeShellBasics() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     await tester.tap(find.text('书架'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     await _openHomeBookMenu(tester);
     await tester.tap(find.text('刷新'));
     await tester.pump(AppMotion.destinationTransition);
@@ -544,7 +544,7 @@ void _registerLibraryHomeShellBasics() {
     expect(find.byType(CircularProgressIndicator), findsWidgets);
 
     refreshCompleter.complete();
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(refreshLabel, findsNothing);
   });

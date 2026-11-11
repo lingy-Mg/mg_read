@@ -233,9 +233,9 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                                               showSearchAction: !tvContent,
                                               showThemeToggle: false,
                                             ),
-                                          if (result != null && isContentLoading)
+                                          if (result != null && components.isNotEmpty && isContentLoading)
                                             const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: LinearProgressIndicator()),
-                                          if (result != null && contentFailureMessage != null)
+                                          if (result != null && components.isNotEmpty && contentFailureMessage != null)
                                             DiscoveryContentState(
                                               isLoading: false,
                                               isEmpty: false,
@@ -246,12 +246,14 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                                               onCopy: onCopyFailure,
                                               onRetry: onRefreshRequested,
                                             ),
-                                          if (result == null)
+                                          if (result == null || components.isEmpty)
                                             Padding(
                                               padding: const EdgeInsets.only(top: AppSpacing.section),
                                               child: DiscoveryContentState(
                                                 isLoading: isContentLoading,
-                                                isEmpty: contentIsEmpty,
+                                                isEmpty:
+                                                    contentIsEmpty ||
+                                                    (!isContentLoading && contentFailureMessage == null && components.isEmpty),
                                                 failureMessage: contentFailureMessage,
                                                 failureDetail: contentFailureDetail,
                                                 failureCode: contentFailureCode,
@@ -689,7 +691,17 @@ class _ContentCollection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        body,
+        if (component.items.isEmpty)
+          Padding(
+            key: ValueKey('runtime-discovery-empty-collection-${component.id}'),
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.regular),
+            child: Text(
+              component.continuation == null ? '当前列表暂无内容' : '当前页暂无内容，可以继续加载',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppThemeTokens.of(context).mutedText),
+            ),
+          )
+        else
+          body,
         if (component.continuation != null) ...<Widget>[
           const SizedBox(height: AppSpacing.discoveryComponentGap),
           if (TvModeScope.isEnabled(context))

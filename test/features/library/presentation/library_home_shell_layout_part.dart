@@ -5,7 +5,7 @@ void _registerLibraryHomeShellLayout() {
   testWidgets('uses the compact reference font-size and weight hierarchy', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(_host());
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     final Text updateTitle = tester.widget<Text>(
       find.descendant(of: find.byType(LibraryBookListItem).first, matching: find.text('诡秘之主')).last,
@@ -28,14 +28,14 @@ void _registerLibraryHomeShellLayout() {
 
   testWidgets('unbound actions show and dismiss local presentation feedback', (WidgetTester tester) async {
     await tester.pumpWidget(_host());
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     await tester.tap(find.byKey(const Key('continue-reading-cta')));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     expect(find.text('此操作尚未接入真实数据，可由后续功能替换。'), findsOneWidget);
 
     await tester.tap(find.byTooltip('关闭提示'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     expect(find.text('此操作尚未接入真实数据，可由后续功能替换。'), findsNothing);
   });
 
@@ -43,12 +43,12 @@ void _registerLibraryHomeShellLayout() {
     final SemanticsHandle semantics = tester.ensureSemantics();
     await _setViewport(tester, const Size(390, 844));
     await tester.pumpWidget(_host());
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     final Finder completedFilter = find.byKey(const Key('library-filter-completed'));
     await tester.ensureVisible(completedFilter);
     await tester.tap(completedFilter);
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(find.text('大道朝天'), findsNothing);
     expect(find.text('我在精神病院学斩神'), findsAtLeastNWidgets(1));
@@ -74,7 +74,7 @@ void _registerLibraryHomeShellLayout() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(loader.loadCounts.values, everyElement(1));
     expect(loader.loadCounts.length, 3);
@@ -99,16 +99,16 @@ void _registerLibraryHomeShellLayout() {
 
   testWidgets('section and filter switching keep the stable header widgets mounted', (WidgetTester tester) async {
     await tester.pumpWidget(_host());
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     final headerBefore = tester.widget<LibraryHomeTopBar>(find.byType(LibraryHomeTopBar));
     final readingBefore = tester.widget<LibraryContinueReadingCard>(find.byType(LibraryContinueReadingCard));
     final navigationRectBefore = tester.getRect(find.byType(LibrarySectionNavigation));
     final filterRectBefore = tester.getRect(find.byKey(const Key('library-status-filter-bar')));
 
     await tester.tap(find.text('书架'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     await tester.tap(find.byKey(const Key('library-filter-completed')));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(tester.widget<LibraryHomeTopBar>(find.byType(LibraryHomeTopBar)), same(headerBefore));
     expect(tester.widget<LibraryContinueReadingCard>(find.byType(LibraryContinueReadingCard)), same(readingBefore));
@@ -120,7 +120,7 @@ void _registerLibraryHomeShellLayout() {
     final SemanticsHandle semantics = tester.ensureSemantics();
     await _setViewport(tester, const Size(390, 844));
     await tester.pumpWidget(_host());
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(
       tester.widget<LibraryBookSliverList>(find.byType(LibraryBookSliverList)).presentation,
@@ -129,7 +129,7 @@ void _registerLibraryHomeShellLayout() {
     expect(find.byWidgetPredicate((Widget widget) => widget is Semantics && widget.properties.label == '有更新'), findsAtLeastNWidgets(1));
 
     await tester.tap(find.text('书架'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(tester.widget<LibraryBookSliverList>(find.byType(LibraryBookSliverList)).presentation, same(LibraryBookListPresentation.shelf));
     expect(find.byWidgetPredicate((Widget widget) => widget is Semantics && widget.properties.label == '有更新'), findsNothing);
@@ -139,7 +139,7 @@ void _registerLibraryHomeShellLayout() {
   testWidgets('adapts the home content to the full available viewport width', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 844));
     await tester.pumpWidget(_host());
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     expect(find.byKey(const Key('library-mobile-layout')), findsOneWidget);
 
     final Rect compactLayout = tester.getRect(find.byKey(const Key('library-mobile-layout')));
@@ -147,14 +147,14 @@ void _registerLibraryHomeShellLayout() {
 
     await _setViewport(tester, const Size(720, 900));
     await tester.pump();
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     final Rect tabletLayout = tester.getRect(find.byKey(const Key('library-mobile-layout')));
     expect(tabletLayout.width, 720 - AppSpacing.widePagePadding * 2);
     expect(tabletLayout.center.dx, closeTo(360, 0.1));
 
     await _setViewport(tester, const Size(1600, 900));
     await tester.pump();
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     expect(find.byKey(const Key('library-mobile-layout')), findsOneWidget);
     final Rect wideLayout = tester.getRect(find.byKey(const Key('library-mobile-layout')));
     expect(wideLayout.width, AppSpacing.readableContentMaxWidth - AppSpacing.widePagePadding * 2);
@@ -170,7 +170,7 @@ void _registerLibraryHomeShellLayout() {
         home: LibraryHomeShell(data: LibraryHomeViewData.empty(), isRefreshing: false, onRefresh: () async {}),
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     final double expectedWidth = 489 - AppSpacing.compactPagePadding * 2;
     final Finder welcomeCard = find.byKey(const Key('library-first-run-welcome'));
@@ -184,7 +184,7 @@ void _registerLibraryHomeShellLayout() {
   ) async {
     await _setViewport(tester, const Size(390, 844));
     await tester.pumpWidget(_host());
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     final Rect headingRow = tester.getRect(find.byKey(const Key('library-list-heading-row')));
     final Rect filters = tester.getRect(find.byKey(const Key('library-status-filter-bar')));
@@ -226,7 +226,7 @@ void _registerLibraryHomeShellLayout() {
       books: const <LibraryBookListItemViewData>[],
     );
     await tester.pumpWidget(_host(data: data));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     final Rect surface = tester.getRect(find.byKey(const Key('continue-reading-surface')));
     final Finder flatCover = find.byKey(const Key('continue-reading-flat-cover'));
@@ -257,7 +257,7 @@ void _registerLibraryHomeShellLayout() {
   testWidgets('keeps the hero and one-line controls overflow-free with enlarged text', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 844));
     await tester.pumpWidget(_host(textScaler: const TextScaler.linear(1.5)));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     final Rect heading = tester.getRect(find.byKey(const Key('library-list-heading-row')));
     final Rect sections = tester.getRect(find.byType(LibrarySectionNavigation));
@@ -275,7 +275,7 @@ void _registerLibraryHomeShellLayout() {
   testWidgets('aligns compact row metadata with the cover and stacks the trailing controls', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 844));
     await tester.pumpWidget(_host(callbacks: LibraryHomeCallbacks(onDeleteBook: (_) async {})));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     final Finder firstTile = find.byType(LibraryBookListItem).first;
     final Finder firstCover = find.descendant(of: firstTile, matching: find.byType(LibraryBookCover));
@@ -302,7 +302,7 @@ void _registerLibraryHomeShellLayout() {
 
   testWidgets('renders the hierarchy with the shared light theme', (WidgetTester tester) async {
     await tester.pumpWidget(_host(themeMode: ThemeMode.light));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     BuildContext context = tester.element(find.byType(LibraryHomeShell));
     expect(Theme.of(context).brightness, Brightness.light);
     expect(Theme.of(context).textTheme.bodyMedium?.fontFamily, 'packages/novel_reader_ui/MiSans');
@@ -311,12 +311,12 @@ void _registerLibraryHomeShellLayout() {
 
   testWidgets('keyboard traversal activates the first top-bar action', (WidgetTester tester) async {
     await tester.pumpWidget(_host());
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(find.byKey(const Key('library-top-overflow-menu')), findsOneWidget);
     expect(find.text('刷新书架'), findsOneWidget);
@@ -325,7 +325,7 @@ void _registerLibraryHomeShellLayout() {
   testWidgets('desktop scrollbar shares the attached list controller during mouse hover', (WidgetTester tester) async {
     await _setViewport(tester, const Size(656, 1129));
     await tester.pumpWidget(_host());
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     final Scrollbar scrollbar = tester.widget<Scrollbar>(find.byType(Scrollbar));
     final CustomScrollView list = tester.widget<CustomScrollView>(find.byKey(const Key('library-home-content')));
@@ -345,7 +345,7 @@ void _registerLibraryHomeShellLayout() {
     await _setViewport(tester, const Size(390, 844));
     final data = _largeLibraryHomeData(100);
     await tester.pumpWidget(_host(data: data));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(find.byType(LibraryBookListItem).evaluate().length, lessThan(data.books.length));
     final lastBook = find.byWidgetPredicate((Widget widget) => widget is LibraryBookListItem && widget.data.id == 'performance-book-99');

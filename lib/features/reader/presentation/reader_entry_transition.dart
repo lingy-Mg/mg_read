@@ -16,6 +16,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:mg_read/shared/presentation/widgets/app_cover_image.dart';
 import 'package:flutter/services.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
@@ -525,14 +526,14 @@ class _ReaderEntryArtwork extends StatelessWidget {
     }
     return ColoredBox(
       color: Colors.black,
-      child: Image(
+      child: AppCoverImage(
         image: coverImage!,
+        label: '阅读器封面',
+        placeholder: _entryFallback(tokens),
         fit: BoxFit.contain,
         alignment: Alignment.center,
         width: width,
         height: height,
-        gaplessPlayback: true,
-        errorBuilder: (_, _, _) => _entryFallback(tokens),
       ),
     );
   }

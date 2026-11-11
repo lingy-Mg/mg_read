@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../../support/visual_evidence.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -17,7 +18,7 @@ void main() {
   testWidgets('matches the compact light discovery list reference', (tester) async {
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(const _GoldenHost());
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(find.text('科幻'), findsOneWidget);
     expect(find.byIcon(Icons.add_rounded), findsNothing);
@@ -29,7 +30,7 @@ void main() {
   testWidgets('matches the wide discovery list proportions', (tester) async {
     await _setViewport(tester, const Size(723, 1080));
     await tester.pumpWidget(const _GoldenHost());
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/runtime_discovery_list_wide_light.png'));
   });

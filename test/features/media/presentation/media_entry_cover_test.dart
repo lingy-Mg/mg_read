@@ -16,6 +16,22 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/media/presentation/media_entry_cover.dart';
 
 void main() {
+  testWidgets('corrupt artwork keeps a visible fallback and cover failure state', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(),
+        home: MediaEntryCoverSurface(kind: MediaEntryKind.audio, title: '坏封面', coverBytes: const [0], onExit: () {}),
+      ),
+    );
+    await tester.runAsync(() async {
+      final image = tester.widget<Image>(find.byKey(const Key('media-entry-cover-image')));
+      await precacheImage(image.image, tester.element(find.byType(MediaEntryCoverSurface)), onError: (_, _) {});
+    });
+    await tester.pump();
+    expect(find.byKey(const Key('cover-load-failed')), findsOneWidget);
+    expect(find.byKey(const ValueKey('default-cover-kind-audio')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('shows the local novel cover immediately while audio prepares', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -25,7 +41,10 @@ void main() {
     );
 
     expect(find.byKey(const Key('media-entry-cover-image')), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(
+      find.descendant(of: find.byKey(const Key('media-entry-status')), matching: find.byType(CircularProgressIndicator)),
+      findsOneWidget,
+    );
     expect(find.text('正在准备音频'), findsOneWidget);
     expect(tester.getSemantics(find.byKey(const Key('media-entry-status'))).label, contains('正在准备音频'));
     final region = tester.widget<AnnotatedRegion<SystemUiOverlayStyle>>(find.byType(AnnotatedRegion<SystemUiOverlayStyle>));
@@ -118,7 +137,10 @@ void main() {
       expect(image.fit, BoxFit.contain);
       expect(tester.getRect(find.byKey(const Key('media-entry-cover-image'))), const Rect.fromLTWH(0, 0, 800, 600));
       expect(tester.getTopLeft(find.byKey(const Key('media-entry-back'))).dy, 48);
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(
+        find.descendant(of: find.byKey(const Key('media-entry-status')), matching: find.byType(CircularProgressIndicator)),
+        findsOneWidget,
+      );
     });
   }
 

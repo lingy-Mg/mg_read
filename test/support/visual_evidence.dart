@@ -30,6 +30,26 @@ Future<void> loadVisualEvidenceFonts() async {
 
 Widget visualEvidenceHost(Widget child) => RepaintBoundary(key: visualEvidenceBoundaryKey, child: child);
 
+/// Await real engine decoding before settling widgets that deliberately show
+/// indeterminate cover feedback. Safe for scenes with no mounted images.
+Future<void> settleWidgetImages(WidgetTester tester) async {
+  // Let immediate byte providers build Image widgets before awaiting codecs.
+  // Intrinsic sizes can then reveal another row in a lazy grid after decode.
+  for (var pass = 0; pass < 4; pass++) {
+    await tester.pump();
+    // Sliver cache rows remain mounted outside the viewport.
+    final images = find.byType(Image, skipOffstage: false).evaluate().toList();
+    final providers = images.map((element) => (element.widget as Image).image).toSet();
+    await tester.runAsync(
+      () => Future.wait(images.map((element) => precacheImage((element.widget as Image).image, element, onError: (_, _) {}))),
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+    final next = tester.widgetList<Image>(find.byType(Image, skipOffstage: false)).map((image) => image.image).toSet();
+    if (images.isNotEmpty && next.every(providers.contains)) break;
+  }
+  await tester.pumpAndSettle();
+}
+
 Future<void> settleVisualEvidenceImages(WidgetTester tester) async {
   final context = tester.element(find.byType(MaterialApp));
   final providers = tester.widgetList<Image>(find.byType(Image)).map((image) => image.image).toSet();

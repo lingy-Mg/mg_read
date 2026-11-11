@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/shared/presentation/motion/app_content_transition.dart';
 import 'package:mg_read/shared/presentation/widgets/app_loading_state.dart';
 
 typedef DiscoveryFailureCopy = Future<void> Function(String payload);
@@ -45,6 +46,10 @@ class DiscoveryContentState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return AppContentTransition(child: _buildState(context));
+  }
+
+  Widget _buildState(BuildContext context) {
     if (isLoading) {
       return const AppLoadingState(key: Key('discovery-loading-content'), label: '正在加载发现内容', message: '插件正在生成分区、榜单和分类。');
     }
@@ -55,6 +60,7 @@ class DiscoveryContentState extends StatelessWidget {
     final copyPayload = failureCopyPayload ?? copyPayloadParts.join('\n');
 
     return SelectionArea(
+      key: ValueKey(isEmpty ? 'discovery-content-empty' : 'discovery-content-failure'),
       child: Column(
         key: Key(isEmpty ? 'discovery-empty' : 'discovery-failure'),
         mainAxisSize: MainAxisSize.min,

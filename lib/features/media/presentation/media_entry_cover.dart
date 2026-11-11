@@ -15,6 +15,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:mg_read/shared/presentation/widgets/app_cover_image.dart';
 import 'package:flutter/services.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -198,7 +199,9 @@ final class MediaEntryCoverSurface extends StatelessWidget {
           fit: StackFit.expand,
           children: <Widget>[
             if (hasCoverArtwork)
-              Positioned.fill(child: _MediaEntryCoverArtwork(bytes: bytes))
+              Positioned.fill(
+                child: _MediaEntryCoverArtwork(bytes: bytes, kind: kind, title: title),
+              )
             else
               DecoratedBox(
                 decoration: BoxDecoration(
@@ -279,9 +282,11 @@ final class MediaEntryCoverSurface extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: <Widget>[
                               if (!hasFailure)
-                                const SizedBox.square(
+                                SizedBox.square(
                                   dimension: 22,
-                                  child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white),
+                                  child: AppMotion.disablesAnimations(context)
+                                      ? const Icon(Icons.hourglass_empty_rounded, color: Colors.white, size: 22)
+                                      : const CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white),
                                 )
                               else
                                 const Icon(Icons.refresh_rounded, color: Colors.white),
@@ -360,20 +365,39 @@ DefaultCoverKind _defaultCoverKind(MediaEntryKind kind) => switch (kind) {
 /// its intrinsic aspect ratio. A black background naturally creates the
 /// required letterbox bars for landscape and square artwork.
 final class _MediaEntryCoverArtwork extends StatelessWidget {
-  const _MediaEntryCoverArtwork({required this.bytes});
+  const _MediaEntryCoverArtwork({required this.bytes, required this.kind, required this.title});
 
   final List<int> bytes;
+  final MediaEntryKind kind;
+  final String title;
 
   @override
   Widget build(BuildContext context) => ColoredBox(
     color: Colors.black,
-    child: Image.memory(
-      Uint8List.fromList(bytes),
-      key: const Key('media-entry-cover-image'),
+    child: AppCoverImage(
+      image: MemoryImage(Uint8List.fromList(bytes)),
+      imageKey: const Key('media-entry-cover-image'),
+      label: '$title 的封面',
+      placeholder: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = (constraints.maxWidth * .58).clamp(168.0, 268.0);
+          final tokens = AppThemeTokens.of(context);
+          return Center(
+            child: DefaultContentCoverArtwork(
+              kind: _defaultCoverKind(kind),
+              title: title,
+              width: width,
+              height: width / .68,
+              startColor: tokens.coverIndigoStart,
+              endColor: tokens.coverOceanEnd,
+              foregroundColor: Colors.white,
+              borderRadius: BorderRadius.circular(22),
+            ),
+          );
+        },
+      ),
       fit: BoxFit.contain,
       alignment: Alignment.center,
-      gaplessPlayback: true,
-      errorBuilder: (_, _, _) => const ColoredBox(color: Colors.black),
     ),
   );
 }

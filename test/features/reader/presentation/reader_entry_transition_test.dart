@@ -265,6 +265,11 @@ void main() {
     final source = _FailThenSucceedComicDataSource();
     final observer = _RecordingComicObserver();
     await tester.pumpWidget(_readerApp(_comicRequest(dataSource: source, observer: observer, coverBytes: _onePixelPng)));
+    await tester.runAsync(() async {
+      final cover = find.byWidgetPredicate((widget) => widget is Image && widget.image is MemoryImage);
+      final image = tester.widget<Image>(cover);
+      await precacheImage(image.image, tester.element(cover));
+    });
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('reader-entry-retry')), findsOneWidget);

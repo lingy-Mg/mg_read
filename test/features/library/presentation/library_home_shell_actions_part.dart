@@ -17,22 +17,22 @@ void _registerLibraryHomeShellActions() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     await tester.drag(find.byType(LibraryBookListItem).first, const Offset(-220, 0));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     expect(find.text('隐私'), findsOneWidget);
     await tester.tap(find.text('隐私'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     expect(privateBook?.id, 'fixture-lord-of-mysteries');
     expect(find.textContaining('设为隐私书籍'), findsOneWidget);
     expect(tester.widget<SnackBar>(find.byType(SnackBar)).behavior, SnackBarBehavior.floating);
 
     await tester.tap(find.byTooltip('更多操作'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     expect(find.text('隐私书架'), findsOneWidget);
     await tester.tap(find.text('隐私书架'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     expect(privateShelfOpenCount, 1);
   });
 
@@ -47,7 +47,7 @@ void _registerLibraryHomeShellActions() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     await tester.longPress(find.byKey(const Key('app-nav-home')));
     await tester.pump();
@@ -73,7 +73,7 @@ void _registerLibraryHomeShellActions() {
     await tester.pumpWidget(
       _host(disableAnimations: true, callbacks: LibraryHomeCallbacks(onPrivacyLibraryRequested: () => privateShelfOpenCount++)),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     await tester.longPress(find.byKey(const Key('app-nav-home')));
     await tester.pump();
@@ -98,13 +98,13 @@ void _registerLibraryHomeShellActions() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     await tester.tap(find.byKey(const Key('continue-reading-cta')));
     expect(continueReadingCount, 1);
 
     await tester.tap(find.text('搜索'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     expect(selectedDestination, AppNavigationDestination.search);
   });
 
@@ -118,7 +118,7 @@ void _registerLibraryHomeShellActions() {
         callbacks: LibraryHomeCallbacks(onImportLocal: () => importCount++),
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(find.byTooltip('搜索书籍'), findsNothing);
     expect(find.byTooltip('更多操作'), findsOneWidget);
@@ -127,11 +127,11 @@ void _registerLibraryHomeShellActions() {
     expect(find.text('导入本地书籍'), findsNothing);
 
     await tester.tap(find.byTooltip('更多操作'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     expect(tester.getRect(find.byType(BottomSheet)).bottom, 900);
     expect(find.text('导入本地书籍'), findsOneWidget);
     await tester.tap(find.text('导入本地书籍'));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
     expect(importCount, 1);
     expect(find.byType(BottomSheet), findsNothing);
     semantics.dispose();
@@ -149,7 +149,7 @@ void _registerLibraryHomeShellActions() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(find.text('开始你的阅读旅程'), findsNothing);
     expect(find.text('当前还没有阅读记录'), findsNothing);
@@ -169,7 +169,7 @@ void _registerLibraryHomeShellActions() {
   testWidgets('keeps the first-run section close to the top actions', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     await tester.pumpWidget(_host(data: LibraryHomeViewData.empty(), topInset: 24));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     final Rect topBar = tester.getRect(find.byType(LibraryHomeTopBar));
     final Rect heading = tester.getRect(find.byKey(const Key('library-list-heading-row')));

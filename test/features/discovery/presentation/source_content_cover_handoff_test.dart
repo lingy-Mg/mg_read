@@ -14,6 +14,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../../support/visual_evidence.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -32,16 +33,16 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await settleWidgetImages(tester);
 
       await tester.tap(find.byKey(const Key('source-detail-start-reading')));
-      await tester.pumpAndSettle();
+      await settleWidgetImages(tester);
 
       expect(receivedCoverBytes, _onePixelPng);
       expect(find.byKey(const Key('source-content-playback-placeholder')), findsOneWidget);
 
       await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
+      await settleWidgetImages(tester);
 
       expect(find.byKey(const Key('source-content-detail-sheet')), findsOneWidget);
     });
@@ -57,10 +58,10 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     await tester.tap(find.byKey(const Key('source-detail-start-reading')));
-    await tester.pumpAndSettle();
+    await settleWidgetImages(tester);
 
     expect(receivedCoverBytes, _onePixelPng);
   });

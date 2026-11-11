@@ -8,6 +8,7 @@
 /// - 书架概览不得等待封面读取完成。
 /// - 本地资源和已提供的封面字节优先于异步请求。
 /// - 首次可见封面向首页就绪边界报告解码状态，图片按显示宽度限制解码尺寸。
+/// - 取图和解码共用状态反馈；刷新保留旧图，刷新反馈层不参与隐私模糊。
 ///
 library;
 
@@ -17,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/shared/presentation/widgets/app_cover_image.dart';
 import 'package:mg_read/core/content_library/content_library.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
 import 'package:mg_read/features/library/presentation/widgets/library_first_frame.dart';
@@ -105,57 +107,52 @@ class LibraryBookCover extends ConsumerWidget {
     final decodeWidth = width.isFinite && width > 0 ? (width * MediaQuery.devicePixelRatioOf(context)).ceil().clamp(1, 1024) : null;
     final image = originalImage == null ? null : ResizeImage.resizeIfNeeded(decodeWidth, null, originalImage);
 
+    final failed =
+        asyncBytes?.hasError == true ||
+        (asyncBytes is AsyncData<List<int>?> && !hasImage && ref.watch(bookCoverBytesLoaderProvider) is! EmptyBookCoverBytesLoader);
+    final label = isBlurred ? '$title 的模糊封面' : '$title 的封面';
+    final placeholder = _sizedPlaceholder(tokens, start, end);
+    final svg = isSvg
+        ? LocalDocumentImage(
+            bytes,
+            width: imageWidth,
+            height: imageHeight,
+            fit: imageFit,
+            semanticLabel: label,
+            loadingPlaceholder: AppCoverFeedback(state: AppCoverState.loading, label: label, child: placeholder),
+            fallback: AppCoverFeedback(state: AppCoverState.failed, label: label, child: placeholder),
+          )
+        : null;
+    final background = useIntrinsicAspectRatio || !showLetterboxBackground ? null : letterboxColor;
+    final Widget rendered;
+    if (svg != null) {
+      final content = _imageFrame(svg, backgroundColor: background);
+      rendered = isRefreshing ? AppCoverFeedback(state: AppCoverState.refreshing, label: label, child: content) : content;
+    } else {
+      rendered = AppCoverImage(
+        image: image,
+        label: label,
+        placeholder: placeholder,
+        loading: isLoading || isRefreshing,
+        failed: failed,
+        width: imageWidth,
+        height: imageHeight,
+        fit: imageFit,
+        alignment: alignment,
+        frameBuilder: (context, child, frame, synchronous) => _imageFrame(
+          transparentContainedImage ? _buildTransparentContainedFrame(context, child, frame, synchronous) : child,
+          backgroundColor: background,
+        ),
+      );
+    }
     return LibraryCoverFirstFrame(
       loading: isLoading,
       image: image,
-      child: Semantics(
-        image: true,
-        label: isRefreshing || isLoading
-            ? '$title 的封面刷新中'
-            : isBlurred
-            ? '$title 的模糊封面'
-            : '$title 的封面',
-        child: ExcludeSemantics(
-          child: SizedBox(
-            width: width,
-            height: useIntrinsicAspectRatio && hasImage ? null : height,
-            child: Stack(
-              fit: useIntrinsicAspectRatio && hasImage ? StackFit.loose : StackFit.expand,
-              children: <Widget>[
-                isSvg
-                    ? _imageFrame(
-                        LocalDocumentImage(
-                          bytes,
-                          width: imageWidth,
-                          height: imageHeight,
-                          fit: imageFit,
-                          fallback: _sizedPlaceholder(tokens, start, end),
-                        ),
-                        backgroundColor: showLetterboxBackground ? letterboxColor : null,
-                      )
-                    : image != null
-                    ? _imageFrame(
-                        Image(
-                          image: image,
-                          width: imageWidth,
-                          height: imageHeight,
-                          fit: imageFit,
-                          alignment: alignment,
-                          gaplessPlayback: true,
-                          excludeFromSemantics: true,
-                          frameBuilder: (context, child, frame, synchronous) {
-                            if (frame == null) return _sizedPlaceholder(tokens, start, end);
-                            return transparentContainedImage ? _buildTransparentContainedFrame(context, child, frame, synchronous) : child;
-                          },
-                          errorBuilder: (context, error, stackTrace) => _sizedPlaceholder(tokens, start, end),
-                        ),
-                        backgroundColor: useIntrinsicAspectRatio || !showLetterboxBackground ? null : letterboxColor,
-                      )
-                    : _placeholder(tokens, start, end, isLoading: isLoading),
-                if (isRefreshing && ((bytes?.isNotEmpty ?? false) || assetPath != null)) _refreshOverlay(),
-              ],
-            ),
-          ),
+      child: MergeSemantics(
+        child: SizedBox(
+          width: width,
+          height: useIntrinsicAspectRatio && hasImage ? null : height,
+          child: clipToBounds ? ClipRRect(borderRadius: AppRadii.bookCover, child: rendered) : rendered,
         ),
       ),
     );
@@ -164,7 +161,7 @@ class LibraryBookCover extends ConsumerWidget {
   Widget _imageFrame(Widget image, {Color? backgroundColor}) {
     final content = backgroundColor == null ? image : ColoredBox(color: backgroundColor, child: image);
     if (!isBlurred) {
-      return clipToBounds ? ClipRRect(borderRadius: AppRadii.bookCover, child: content) : content;
+      return content;
     }
 
     // Standard book cards overscan before clipping to keep privacy-blur edges
@@ -174,7 +171,7 @@ class LibraryBookCover extends ConsumerWidget {
       imageFilter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
       child: clipToBounds ? Transform.scale(scale: 1.18, child: content) : content,
     );
-    return clipToBounds ? ClipRRect(borderRadius: AppRadii.bookCover, child: filtered) : filtered;
+    return filtered;
   }
 
   Widget _buildTransparentContainedFrame(BuildContext context, Widget child, int? frame, bool wasSynchronouslyLoaded) {
@@ -189,47 +186,18 @@ class LibraryBookCover extends ConsumerWidget {
     );
   }
 
-  Widget _sizedPlaceholder(AppThemeTokens tokens, Color start, Color end) =>
-      SizedBox(width: width, height: height, child: _placeholder(tokens, start, end, isLoading: false));
-
-  Widget _placeholder(AppThemeTokens tokens, Color start, Color end, {required bool isLoading}) {
-    final foreground = tokens.featureSurface.withValues(alpha: 0.96);
-    return Stack(
-      fit: StackFit.expand,
-      children: <Widget>[
-        DefaultContentCoverArtwork(
-          kind: _defaultCoverKind(contentKind),
-          title: title,
-          width: width,
-          height: height,
-          startColor: start,
-          endColor: end,
-          foregroundColor: foreground,
-          borderRadius: AppRadii.bookCover,
-        ),
-        if (isLoading)
-          ColoredBox(
-            color: Colors.black.withValues(alpha: 0.16),
-            child: Center(
-              child: SizedBox(
-                width: width >= 80 ? 22 : 16,
-                height: width >= 80 ? 22 : 16,
-                child: CircularProgressIndicator(strokeWidth: 2, color: foreground),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _refreshOverlay() => ColoredBox(
-    color: Colors.black.withValues(alpha: 0.22),
-    child: Center(
-      child: SizedBox(
-        width: width >= 80 ? 22 : 16,
-        height: width >= 80 ? 22 : 16,
-        child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-      ),
+  Widget _sizedPlaceholder(AppThemeTokens tokens, Color start, Color end) => SizedBox(
+    width: width,
+    height: height,
+    child: DefaultContentCoverArtwork(
+      kind: _defaultCoverKind(contentKind),
+      title: title,
+      width: width,
+      height: height,
+      startColor: start,
+      endColor: end,
+      foregroundColor: tokens.featureSurface.withValues(alpha: .96),
+      borderRadius: clipToBounds ? BorderRadius.zero : AppRadii.bookCover,
     ),
   );
 

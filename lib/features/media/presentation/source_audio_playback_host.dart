@@ -25,6 +25,7 @@ import 'package:flutter/services.dart';
 import 'package:mg_read_audio_player/mg_read_audio_player.dart';
 
 import 'package:mg_read/app/app_theme.dart';
+import 'package:mg_read/shared/presentation/widgets/app_cover_image.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/media/application/source_audio_playback_service.dart';
 import 'package:mg_read/features/plugins/application/plugin_runtime_connection.dart';
@@ -653,12 +654,16 @@ Widget _sourceAudioArtworkFor(
   required SourceAudioPlaybackRequest request,
   required Key imageKey,
 }) {
-  if (localBytes != null && localBytes.isNotEmpty) {
-    return Image.memory(Uint8List.fromList(localBytes), key: imageKey, fit: BoxFit.cover, gaplessPlayback: true);
-  }
-  if (artwork == null || (artwork.scheme != 'http' && artwork.scheme != 'https')) {
-    return const _SourceAudioArtworkFallback();
-  }
+  Widget cover(List<int>? bytes, {bool loading = false, bool failed = false}) => AppCoverImage(
+    image: bytes?.isNotEmpty == true ? MemoryImage(normalizeBookCoverBytes(bytes!)) : null,
+    imageKey: imageKey,
+    label: '${request.detail.summary.title} 的封面',
+    placeholder: const _SourceAudioArtworkFallback(),
+    loading: loading,
+    failed: failed,
+  );
+  if (localBytes?.isNotEmpty == true) return cover(localBytes);
+  if (artwork == null || (artwork.scheme != 'http' && artwork.scheme != 'https')) return cover(null);
   final coverRequest = BookCoverRequest(
     pluginId: request.detail.pluginId,
     pluginVersion: request.pluginVersion,
@@ -666,15 +671,17 @@ Widget _sourceAudioArtworkFor(
     coverUrl: artwork,
   );
   return Consumer(
-    builder: (context, ref, _) => ref
-        .watch(bookCoverBytesProvider(coverRequest))
-        .when(
-          data: (bytes) => bytes == null || bytes.isEmpty
-              ? const _SourceAudioArtworkFallback()
-              : Image.memory(Uint8List.fromList(bytes), key: imageKey, fit: BoxFit.cover, gaplessPlayback: true),
-          error: (_, _) => const _SourceAudioArtworkFallback(),
-          loading: () => const _SourceAudioArtworkFallback(),
-        ),
+    builder: (context, ref, _) {
+      final cached = BookCoverMemoryCache.peek(coverRequest);
+      if (cached != null) return cover(cached);
+      final state = ref.watch(bookCoverBytesProvider(coverRequest));
+      return state.when(
+        data: (bytes) =>
+            cover(bytes, failed: bytes?.isNotEmpty != true && ref.watch(bookCoverBytesLoaderProvider) is! EmptyBookCoverBytesLoader),
+        error: (_, _) => cover(null, failed: true),
+        loading: () => cover(null, loading: true),
+      );
+    },
   );
 }
 
