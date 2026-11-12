@@ -43,6 +43,8 @@ void main() {
     expect(source, contains('packageInstallerFile(apk)'));
     expect(source, contains('File(cacheDir, APP_UPDATE_CACHE_DIRECTORY)'));
     expect(source, contains('File.createTempFile("mgread-update-", ".apk", cacheRoot)'));
+    expect(source, contains('if (!apk.renameTo(staged))'));
+    expect(source, contains('if (apk.path.startsWith(downloadCachePrefix))'));
     expect(source, isNot(contains('installer.resolveActivity(packageManager)')));
     expect(source, contains('catch (error: ActivityNotFoundException)'));
     expect(source, contains('packageManager.canRequestPackageInstalls()'));

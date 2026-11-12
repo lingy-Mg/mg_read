@@ -1,4 +1,4 @@
-/// Verifies APK-only update cadence and bounded, SHA-256 verified downloads.
+/// Verifies APK-only update cadence, worker-verified downloads, and stage order.
 library;
 
 import 'dart:io';
@@ -8,6 +8,7 @@ import 'dart:async';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read/features/app_update/application/github_apk_update.dart';
+import 'package:mg_read/features/lan_sync/data/lan_sync_checksum.dart';
 import 'package:mg_read/features/lan_sync/domain/app_update_models.dart';
 
 GitHubApkRelease _release({required Uri apkUrl, required String apkName, required String sha256}) => GitHubApkRelease(
@@ -26,6 +27,31 @@ GitHubApkRelease _release({required Uri apkUrl, required String apkName, require
   releaseNotes: '',
   assets: const <GitHubApkReleaseAsset>[],
 );
+
+// Download writes are allowed on the caller isolate, but whole-file reads must
+// happen in the verification worker, which does not inherit these IO overrides.
+final class _DownloadOnlyIO extends IOOverrides {
+  @override
+  File createFile(String path) => _DownloadOnlyFile(super.createFile(path));
+}
+
+final class _DownloadOnlyFile implements File {
+  _DownloadOnlyFile(this._file);
+
+  final File _file;
+
+  @override
+  String get path => _file.path;
+
+  @override
+  Future<RandomAccessFile> open({FileMode mode = FileMode.read}) => _file.open(mode: mode);
+
+  @override
+  Stream<List<int>> openRead([int? start, int? end]) => throw StateError('APK verification ran on the caller isolate');
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 void main() {
   test('malformed manifests fail explicitly and a forced retry finds an upgrade without installing', () async {
@@ -188,7 +214,7 @@ void main() {
     expect(await File('${support.path}${Platform.pathSeparator}github-apk-update-state.json').exists(), isTrue);
   });
 
-  test('APK download verifies release SHA-256 and exposes a bounded installer package', () async {
+  test('APK verification reads off the caller isolate and exposes a bounded installer package', () async {
     final bytes = <int>[1, 2, 3, 4, 5];
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final served = server.forEach((request) async {
@@ -209,12 +235,23 @@ void main() {
       sha256: sha256.convert(bytes).toString(),
     );
 
-    final prepared = await release.download(temporaryDirectory: () async => temporary);
-    expect(await prepared.file.readAsBytes(), bytes);
+    final stages = <GitHubApkUpdateStage>[];
+    final prepared = await IOOverrides.runWithIOOverrides(
+      () => release.download(temporaryDirectory: () async => temporary, onProgress: (progress) => stages.add(progress.stage)),
+      _DownloadOnlyIO(),
+    );
+    final downloadedFile = File(prepared.file.path);
+    expect(await downloadedFile.readAsBytes(), bytes);
     expect(prepared.descriptor.version.buildNumber, 4);
     expect(prepared.descriptor.bytes, bytes.length);
+    expect(prepared.descriptor.checksum, lanSyncChecksum(bytes));
+    expect(stages.first, GitHubApkUpdateStage.downloading);
+    expect(stages.last, GitHubApkUpdateStage.verifying);
+    expect(stages.where((stage) => stage == GitHubApkUpdateStage.verifying), hasLength(1));
+    final downloadDirectory = downloadedFile.parent;
     await prepared.close();
-    expect(await File('${temporary.path}${Platform.pathSeparator}${prepared.descriptor.fileName}').exists(), isFalse);
+    expect(await downloadedFile.exists(), isFalse);
+    expect(await downloadDirectory.exists(), isFalse);
   });
 
   test('APK download uses concurrent byte ranges and reports monotonic progress', () async {
@@ -267,6 +304,9 @@ void main() {
     expect(ranges, hasLength(5));
     expect(progress, isNotEmpty);
     expect(progress.last.receivedBytes, bytes.length);
+    expect(progress.last.stage, GitHubApkUpdateStage.verifying);
+    expect(progress.take(progress.length - 1).every((item) => item.stage == GitHubApkUpdateStage.downloading), isTrue);
+    expect(prepared.descriptor.checksum, lanSyncChecksum(bytes));
     expect(progress.every((item) => item.totalBytes == bytes.length), isTrue);
     expect(progress.map((item) => item.receivedBytes), orderedEquals(progress.map((item) => item.receivedBytes).toList()..sort()));
     await prepared.close();
@@ -290,7 +330,12 @@ void main() {
       sha256: '0' * 64,
     );
 
-    await expectLater(release.download(temporaryDirectory: () async => temporary), throwsFormatException);
+    final stages = <GitHubApkUpdateStage>[];
+    await expectLater(
+      release.download(temporaryDirectory: () async => temporary, onProgress: (progress) => stages.add(progress.stage)),
+      throwsA(isA<FormatException>().having((error) => error.message, 'reason', 'github_apk_hash_mismatch')),
+    );
+    expect(stages.last, GitHubApkUpdateStage.verifying);
     expect(await temporary.list().isEmpty, isTrue);
   });
 }

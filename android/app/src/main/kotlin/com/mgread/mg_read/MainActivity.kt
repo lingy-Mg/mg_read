@@ -26,6 +26,8 @@ import java.io.File
  * The App-update channel exposes our installed base APK for LAN transfer and hands an
  * already verified received APK to Android's Package Installer. It never attempts a
  * silent install: Android owns the confirmation and the update-signature validation.
+ * Cached downloads are renamed into installer-owned staging so Dart can clean its
+ * download directory without deleting the APK while the installer is reading it.
  * Device-profile queries also identify the verified MT5893 TV direct-video-surface
  * quirk; presentation mode alone must not change the decoder on other hardware.
  * The rendering-settings channel delegates to native pre-engine launch storage;
@@ -289,9 +291,10 @@ class MainActivity : AudioServiceActivity() {
     }
 
     /**
-     * FileProvider only exposes files below its configured cache root. The
-     * Dart receiver normally downloads there, but stage an older or alternate
-     * temporary path here as a final host-side guarantee before installation.
+     * Transfer ownership before Dart removes its download directory. Cached
+     * downloads stay on the same filesystem and are renamed, avoiding a full
+     * APK copy on the UI thread. Alternate paths outside cache retain the copy
+     * fallback for compatibility. Staging must outlive the installer Intent.
      */
     private fun packageInstallerFile(apk: File): File {
         val directory = File(cacheDir, APP_UPDATE_CACHE_DIRECTORY)
@@ -302,12 +305,15 @@ class MainActivity : AudioServiceActivity() {
         if (!cacheRoot.isDirectory) {
             throw IllegalStateException("The App-update cache path is not a directory.")
         }
-        val cachePrefix = "${cacheRoot.path}${File.separator}"
-        if (apk.path.startsWith(cachePrefix)) return apk
-
         val staged = File.createTempFile("mgread-update-", ".apk", cacheRoot)
         try {
-            apk.copyTo(staged, overwrite = true)
+            if (!apk.renameTo(staged)) {
+                val downloadCachePrefix = "${cacheDir.canonicalPath}${File.separator}"
+                if (apk.path.startsWith(downloadCachePrefix)) {
+                    throw IllegalStateException("Cannot move the downloaded APK into installer staging.")
+                }
+                apk.copyTo(staged, overwrite = true)
+            }
             return staged.canonicalFile
         } catch (error: Exception) {
             staged.delete()

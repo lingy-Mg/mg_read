@@ -2,7 +2,8 @@
 ///
 /// The app shell owns when this prompt is shown; this file owns only the
 /// release notes, link to this version's GitHub Release, and the user's
-/// install-or-later choice.
+/// install-or-later choice. Its progress route shows download, verification,
+/// and installer handoff; it owns and disposes the progress paint throttle.
 library;
 
 import 'package:mg_read/shared/presentation/motion/app_motion.dart';
@@ -160,7 +161,8 @@ class _GitHubApkUpdateProgressDialogState extends State<_GitHubApkUpdateProgress
     _pendingProgress = progress;
     final now = DateTime.now();
     final isComplete = progress.totalBytes > 0 && progress.receivedBytes >= progress.totalBytes;
-    if (_lastPaintAt == null || isComplete || now.difference(_lastPaintAt!) >= const Duration(milliseconds: 120)) {
+    final stageChanged = progress.stage != _progress?.stage;
+    if (_lastPaintAt == null || stageChanged || isComplete || now.difference(_lastPaintAt!) >= const Duration(milliseconds: 120)) {
       _progressTimer?.cancel();
       _progressTimer = null;
       setState(() {
@@ -185,6 +187,23 @@ class _GitHubApkUpdateProgressDialogState extends State<_GitHubApkUpdateProgress
   Widget build(BuildContext context) {
     final progress = _progress;
     final fraction = progress?.fraction;
+    final stage = progress?.stage ?? GitHubApkUpdateStage.downloading;
+    final downloading = stage == GitHubApkUpdateStage.downloading;
+    final title = switch (stage) {
+      GitHubApkUpdateStage.downloading => '正在下载更新',
+      GitHubApkUpdateStage.verifying => '正在校验',
+      GitHubApkUpdateStage.openingInstaller => '正在打开安装器',
+    };
+    final detail = switch (stage) {
+      GitHubApkUpdateStage.verifying => '下载完成，正在检查安装包完整性…',
+      GitHubApkUpdateStage.openingInstaller => '校验完成，正在打开系统安装器…',
+      GitHubApkUpdateStage.downloading =>
+        progress == null
+            ? '正在连接 GitHub…'
+            : fraction == null
+            ? '已下载 ${_formatApkBytes(progress.receivedBytes)}'
+            : '${(fraction * 100).round()}%  ·  ${_formatApkBytes(progress.receivedBytes)} / ${_formatApkBytes(progress.totalBytes)}',
+    };
     return PopScope(
       canPop: false,
       child: Dialog.fullscreen(
@@ -198,23 +217,19 @@ class _GitHubApkUpdateProgressDialogState extends State<_GitHubApkUpdateProgress
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
-                    const Icon(Icons.downloading_rounded, size: 48),
+                    Icon(switch (stage) {
+                      GitHubApkUpdateStage.downloading => Icons.downloading_rounded,
+                      GitHubApkUpdateStage.verifying => Icons.verified_user_outlined,
+                      GitHubApkUpdateStage.openingInstaller => Icons.install_mobile_rounded,
+                    }, size: 48),
                     const SizedBox(height: 20),
-                    Text('正在下载更新', style: Theme.of(context).textTheme.titleLarge, textAlign: TextAlign.center),
+                    Text(title, style: Theme.of(context).textTheme.titleLarge, textAlign: TextAlign.center),
                     const SizedBox(height: 24),
-                    LinearProgressIndicator(value: fraction),
+                    LinearProgressIndicator(value: downloading ? fraction : null),
                     const SizedBox(height: 12),
-                    Text(
-                      progress == null
-                          ? '正在连接 GitHub…'
-                          : fraction == null
-                          ? '已下载 ${_formatApkBytes(progress.receivedBytes)}'
-                          : '${(fraction * 100).round()}%  ·  ${_formatApkBytes(progress.receivedBytes)} / ${_formatApkBytes(progress.totalBytes)}',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
+                    Text(detail, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium),
                     const SizedBox(height: 16),
-                    Text('下载完成后将打开系统安装器，请稍候。', textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
+                    Text('校验完成后将在系统安装器中确认安装。', textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
                   ],
                 ),
               ),

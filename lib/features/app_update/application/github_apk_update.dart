@@ -6,6 +6,8 @@
 /// redirect can otherwise serve stale release metadata. Release assets are
 /// bounded, SHA-256 verified, and passed to Android's Package Installer; the
 /// system remains responsible for signing and user confirmation.
+/// Whole-file verification runs in a worker isolate. Progress distinguishes
+/// downloading, verification, and handing the verified APK to the installer.
 library;
 
 import 'update_check_result.dart';
@@ -31,17 +33,28 @@ const int _maxReleaseMetadataBytes = 256 * 1024;
 const Duration _requestTimeout = Duration(seconds: 12);
 const int _parallelApkDownloadCount = 4;
 
+enum GitHubApkUpdateStage { downloading, verifying, openingInstaller }
+
 @immutable
 final class GitHubApkDownloadProgress {
-  const GitHubApkDownloadProgress({required this.receivedBytes, required this.totalBytes});
+  const GitHubApkDownloadProgress({required this.receivedBytes, required this.totalBytes, this.stage = GitHubApkUpdateStage.downloading});
 
   final int receivedBytes;
   final int totalBytes;
+  final GitHubApkUpdateStage stage;
 
   double? get fraction => totalBytes > 0 ? (receivedBytes / totalBytes).clamp(0, 1).toDouble() : null;
 }
 
 typedef GitHubApkDownloadProgressCallback = void Function(GitHubApkDownloadProgress progress);
+
+void _reportApkProgress(GitHubApkDownloadProgressCallback? onProgress, GitHubApkDownloadProgress progress) {
+  try {
+    onProgress?.call(progress);
+  } on Object {
+    // A progress surface must never interrupt a verified package download.
+  }
+}
 
 bool isGitHubApkUpdateCheckDue(DateTime? lastCheck, DateTime now) =>
     lastCheck == null || now.isBefore(lastCheck) || now.difference(lastCheck) >= githubApkUpdateCheckInterval;
@@ -57,6 +70,14 @@ final githubApkUpdateCoordinatorProvider = Provider<GitHubApkUpdateCoordinator>(
       await service.ensureInstallPermission();
       final prepared = await release.download(onProgress: onProgress);
       try {
+        _reportApkProgress(
+          onProgress,
+          GitHubApkDownloadProgress(
+            receivedBytes: prepared.descriptor.bytes,
+            totalBytes: prepared.descriptor.bytes,
+            stage: GitHubApkUpdateStage.openingInstaller,
+          ),
+        );
         await service.launchInstaller(prepared.file, prepared.descriptor);
       } finally {
         await prepared.close();
@@ -190,36 +211,24 @@ final class GitHubApkRelease {
     final apkAssets = assets.where((asset) => asset.name == apkName);
     final expectedSize = apkAssets.isEmpty ? 0 : apkAssets.first.size;
     void reportProgress(int receivedBytes, int totalBytes) {
-      try {
-        onProgress?.call(GitHubApkDownloadProgress(receivedBytes: receivedBytes, totalBytes: totalBytes));
-      } on Object {
-        // A progress surface must never interrupt a verified package download.
-      }
+      _reportApkProgress(onProgress, GitHubApkDownloadProgress(receivedBytes: receivedBytes, totalBytes: totalBytes));
     }
 
     try {
       if (expectedSize > 0) reportProgress(0, expectedSize);
       final downloadedBytes = await _downloadApkToFile(http, file, expectedSize, reportProgress);
-      final digestSink = _DigestSink();
-      final hashSink = crypto.sha256.startChunkedConversion(digestSink);
-      var verifiedBytes = 0;
-      final checksum = LanSyncChecksumSink();
-      try {
-        await for (final chunk in file.openRead()) {
-          verifiedBytes += chunk.length;
-          if (verifiedBytes > appUpdateMaxPackageBytes) throw const FormatException('github_apk_size_invalid');
-          hashSink.add(chunk);
-          checksum.add(chunk);
-        }
-      } finally {
-        hashSink.close();
-      }
-      if (verifiedBytes != downloadedBytes || (expectedSize > 0 && verifiedBytes != expectedSize) || digestSink.value != sha256) {
-        throw const FormatException('github_apk_hash_mismatch');
-      }
-      reportProgress(verifiedBytes, verifiedBytes);
+      _reportApkProgress(
+        onProgress,
+        GitHubApkDownloadProgress(receivedBytes: downloadedBytes, totalBytes: downloadedBytes, stage: GitHubApkUpdateStage.verifying),
+      );
+      final verified = await compute(_verifyGitHubApk, (
+        path: file.path,
+        downloadedBytes: downloadedBytes,
+        expectedSize: expectedSize,
+        sha256: sha256,
+      ), debugLabel: 'github-apk-verification');
       return PreparedAppPackage(
-        descriptor: AppPackageDescriptor(version: version, bytes: verifiedBytes, checksum: checksum.close(), fileName: apkName),
+        descriptor: AppPackageDescriptor(version: version, bytes: verified.bytes, checksum: verified.checksum, fileName: apkName),
         file: file,
         onClose: () async {
           if (await directory.exists()) await directory.delete(recursive: true);
@@ -340,6 +349,33 @@ final class GitHubApkRelease {
       await output.close();
     }
   }
+}
+
+/// Only paths and immutable metadata cross the isolate boundary, never APK bytes
+/// or the downloader's HTTP client, progress callback, and temporary-file owner.
+Future<({int bytes, String checksum})> _verifyGitHubApk(
+  ({String path, int downloadedBytes, int expectedSize, String sha256}) request,
+) async {
+  final digestSink = _DigestSink();
+  final hashSink = crypto.sha256.startChunkedConversion(digestSink);
+  final checksum = LanSyncChecksumSink();
+  var verifiedBytes = 0;
+  try {
+    await for (final chunk in File(request.path).openRead()) {
+      verifiedBytes += chunk.length;
+      if (verifiedBytes > appUpdateMaxPackageBytes) throw const FormatException('github_apk_size_invalid');
+      hashSink.add(chunk);
+      checksum.add(chunk);
+    }
+  } finally {
+    hashSink.close();
+  }
+  if (verifiedBytes != request.downloadedBytes ||
+      (request.expectedSize > 0 && verifiedBytes != request.expectedSize) ||
+      digestSink.value != request.sha256) {
+    throw const FormatException('github_apk_hash_mismatch');
+  }
+  return (bytes: verifiedBytes, checksum: checksum.close());
 }
 
 Future<HttpClientResponse> _openApkResponse(HttpClient http, Uri url, {String? range}) async {

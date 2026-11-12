@@ -1,4 +1,4 @@
-/// Covers the user-facing content and GitHub link in the APK update prompt.
+/// Covers release notes, remote navigation, and each APK installation stage.
 library;
 
 import 'dart:async';
@@ -180,6 +180,7 @@ void main() {
 
   testWidgets('download progress is full-screen, reports progress, and blocks back dismissal', (tester) async {
     final finishDownload = Completer<void>();
+    late GitHubApkDownloadProgressCallback reportProgress;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -188,6 +189,7 @@ void main() {
             body: TextButton(
               key: const Key('start-update-install'),
               onPressed: () => showGitHubApkUpdateInstallProgress(context, (onProgress) async {
+                reportProgress = onProgress;
                 onProgress(const GitHubApkDownloadProgress(receivedBytes: 25, totalBytes: 100));
                 await finishDownload.future;
               }),
@@ -212,8 +214,27 @@ void main() {
     await tester.pump();
     expect(find.text('正在下载更新'), findsOneWidget);
 
+    // A pending throttled download paint must not overwrite a stage change.
+    reportProgress(const GitHubApkDownloadProgress(receivedBytes: 50, totalBytes: 100));
+    reportProgress(const GitHubApkDownloadProgress(receivedBytes: 100, totalBytes: 100, stage: GitHubApkUpdateStage.verifying));
+    await tester.pump();
+    expect(find.text('正在校验'), findsOneWidget);
+    expect(find.text('正在下载更新'), findsNothing);
+    expect(find.textContaining('100%'), findsNothing);
+    expect(tester.widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator)).value, isNull);
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(find.text('正在校验'), findsOneWidget);
+
+    reportProgress(const GitHubApkDownloadProgress(receivedBytes: 100, totalBytes: 100, stage: GitHubApkUpdateStage.openingInstaller));
+    await tester.pump();
+    expect(find.text('正在打开安装器'), findsOneWidget);
+    expect(find.text('正在校验'), findsNothing);
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    expect(find.text('正在打开安装器'), findsOneWidget);
+
     finishDownload.complete();
     await tester.pumpAndSettle();
-    expect(find.text('正在下载更新'), findsNothing);
+    expect(find.text('正在打开安装器'), findsNothing);
   });
 }
