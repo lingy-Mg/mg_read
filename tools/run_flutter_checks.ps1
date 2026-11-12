@@ -108,7 +108,8 @@ try {
   $nodeProgram = if ($IsWindows) {
     Join-Path $repositoryRoot 'packages/mg_read_node_runtime/tools/node-v26.10.0-win-x64/node.exe'
   } else {
-    (Get-Command node -CommandType Application -ErrorAction Stop).Source
+    # Application lookup can return multiple PATH matches; setup-node's first match wins.
+    (Get-Command node -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
   }
   Invoke-NativeCheck -Label 'Shared content capacity policy' -Program $nodeProgram -Arguments @(
     (Join-Path $PSScriptRoot 'generate_content_limits.mjs')
