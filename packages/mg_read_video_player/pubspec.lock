@@ -224,6 +224,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.19.0"
+  mg_read_motion:
+    dependency: "direct main"
+    description:
+      path: "../mg_read_motion"
+      relative: true
+    source: path
+    version: "0.1.0"
   package_info_plus:
     dependency: transitive
     description:

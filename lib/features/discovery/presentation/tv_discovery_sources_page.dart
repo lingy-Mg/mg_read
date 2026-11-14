@@ -2,6 +2,7 @@
 /// navigation while keeping this chooser mounted and its remote focus stable.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import '../application/discovery_page_state.dart';
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
@@ -26,7 +27,7 @@ class TvDiscoverySourcesPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => TvFocusRegion(
-    child: Scaffold(
+    child: MotionScaffold(
       key: const Key('tv-discovery-sources'),
       appBar: AppBottomNavigation(selected: AppNavigationDestination.discover, onSelected: onDestinationRequested),
       body: SafeArea(
@@ -36,7 +37,7 @@ class TvDiscoverySourcesPage extends StatelessWidget {
             Text('选择数据源', style: Theme.of(context).textTheme.headlineMedium),
             const SizedBox(height: 16),
             if (state.status == DiscoveryPageStatus.loadingSources || state.status == DiscoveryPageStatus.loadingContent)
-              const LinearProgressIndicator(),
+              const MotionLinearProgressIndicator(),
             if (state.error != null) ...[const Text('数据源加载失败，请重试。'), TvFocusable(onPressed: onRefresh, child: const Text('重试'))],
             const SizedBox(height: 16),
             LayoutBuilder(

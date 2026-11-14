@@ -11,6 +11,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -96,7 +97,7 @@ class _ReadingHistoryPageState extends ConsumerState<ReadingHistoryPage> {
     } on Object catch (error) {
       if (mounted && ModalRoute.of(context)?.isCurrent != false) {
         final failure = AppError.fromUnknown(error);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(failure.detail ?? '无法打开历史内容，请检查数据源后重试。')));
+        ScaffoldMessenger.of(context).showMotionSnackBar(context, SnackBar(content: Text(failure.detail ?? '无法打开历史内容，请检查数据源后重试。')));
       }
     } finally {
       _opening = false;
@@ -108,7 +109,7 @@ class _ReadingHistoryPageState extends ConsumerState<ReadingHistoryPage> {
     final LibraryPageState state = ref.watch(libraryPageControllerProvider);
     final LibraryPageController controller = ref.read(libraryPageControllerProvider.notifier);
     return TvFocusRegion(
-      child: Scaffold(
+      child: MotionScaffold(
         body: SafeArea(
           bottom: false,
           child: AppSecondaryPageContent(
@@ -149,7 +150,7 @@ class _ReadingHistoryBody extends StatelessWidget {
     }
 
     final books = LibraryHomeViewData.fromReadingHistory(state.overview!).books;
-    return RefreshIndicator(
+    return MotionRefreshIndicator(
       onRefresh: onRefresh,
       child: ListView(
         key: const Key('reading-history-content'),

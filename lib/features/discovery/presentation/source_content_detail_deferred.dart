@@ -52,24 +52,27 @@ Future<void> showDeferredSourceContentDetailSheet(
     constraints: TvModeScope.isEnabled(context) ? const BoxConstraints(maxWidth: 1200) : null,
     useSafeArea: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => FractionallySizedBox(
-      heightFactor: 0.92,
-      child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        child: _DeferredSourceDetailScreen(
-          seed: seed,
-          previewDetail: previewDetail,
-          previewPluginVersion: previewPluginVersion,
-          gateway: gateway,
-          shelfState: shelfState,
-          onShelfAction: onShelfAction,
-          onStartReading: onStartReading,
-          isCoverBlurred: isCoverBlurred,
-          onTextChapterRequested: onTextChapterRequested,
-          onComicChapterRequested: onComicChapterRequested,
-          onAudioChapterRequested: onAudioChapterRequested,
-          onVideoEpisodeRequested: onVideoEpisodeRequested,
-          onExternalUrlRequested: onExternalUrlRequested ?? _launchSystemBrowser,
+    builder: motionOverlayBuilder(
+      context,
+      (_) => FractionallySizedBox(
+        heightFactor: 0.92,
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          child: _DeferredSourceDetailScreen(
+            seed: seed,
+            previewDetail: previewDetail,
+            previewPluginVersion: previewPluginVersion,
+            gateway: gateway,
+            shelfState: shelfState,
+            onShelfAction: onShelfAction,
+            onStartReading: onStartReading,
+            isCoverBlurred: isCoverBlurred,
+            onTextChapterRequested: onTextChapterRequested,
+            onComicChapterRequested: onComicChapterRequested,
+            onAudioChapterRequested: onAudioChapterRequested,
+            onVideoEpisodeRequested: onVideoEpisodeRequested,
+            onExternalUrlRequested: onExternalUrlRequested ?? _launchSystemBrowser,
+          ),
         ),
       ),
     ),
@@ -156,7 +159,7 @@ class _DeferredSourceDetailScreen extends StatelessWidget {
         return BookCoverSourceScope(
           pluginId: previewDetail.pluginId,
           pluginVersion: previewPluginVersion,
-          child: Scaffold(
+          child: MotionScaffold(
             body: SafeArea(
               child: Column(
                 children: <Widget>[

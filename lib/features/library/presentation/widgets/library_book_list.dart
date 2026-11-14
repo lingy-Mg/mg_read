@@ -11,6 +11,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -301,7 +302,7 @@ class LibraryBookListItem extends StatelessWidget {
       container: true,
       liveRegion: isPreparing,
       label: isPreparing ? '正在准备阅读内容' : null,
-      child: Material(
+      child: MotionMaterial(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: AppRadii.surface,
@@ -493,7 +494,7 @@ class _BookListTrailing extends StatelessWidget {
           if (isPreparing)
             const Align(
               alignment: Alignment.centerRight,
-              child: SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+              child: SizedBox.square(dimension: 18, child: MotionCircularProgressIndicator(strokeWidth: 2)),
             ),
           if (!isPreparing && activityLabel != null)
             Positioned(
@@ -521,20 +522,24 @@ class _BookListTrailing extends StatelessWidget {
                         actions: <LibraryAnchoredMenuAction>[
                           for (final action in actions) action.toMenuAction(data, onSelected: () => onAction!(action)),
                         ],
-                        triggerBuilder: (BuildContext context, VoidCallback onPressed) => IconButton(
+                        triggerBuilder: (BuildContext context, VoidCallback onPressed) => MotionIconButtonSurface(
+                          child: IconButton(
+                            tooltip: '书籍更多操作',
+                            onPressed: onPressed,
+                            padding: EdgeInsets.zero,
+                            iconSize: 16,
+                            icon: const Icon(Icons.more_vert_rounded),
+                          ),
+                        ),
+                      )
+                    : MotionIconButtonSurface(
+                        child: IconButton(
                           tooltip: '书籍更多操作',
-                          onPressed: onPressed,
+                          onPressed: onMore,
                           padding: EdgeInsets.zero,
                           iconSize: 16,
                           icon: const Icon(Icons.more_vert_rounded),
                         ),
-                      )
-                    : IconButton(
-                        tooltip: '书籍更多操作',
-                        onPressed: onMore,
-                        padding: EdgeInsets.zero,
-                        iconSize: 16,
-                        icon: const Icon(Icons.more_vert_rounded),
                       ),
               ),
             ),
@@ -545,7 +550,7 @@ class _BookListTrailing extends StatelessWidget {
               right: AppSpacing.compact,
               child: Semantics(
                 label: data.unreadChapterCount > 0 ? data.unreadCountLabel : '有更新',
-                child: Tooltip(
+                child: MotionTooltip(
                   message: data.unreadChapterCount > 0 ? data.unreadCountLabel : '有更新',
                   excludeFromSemantics: true,
                   child: ExcludeSemantics(

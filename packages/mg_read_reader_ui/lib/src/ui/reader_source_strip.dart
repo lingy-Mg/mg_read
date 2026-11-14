@@ -9,6 +9,7 @@
 /// - 小说与漫画只复用结构和交互语义，不共享各自的顶栏颜色。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 
 import 'reader_accessible_tooltip.dart';
@@ -117,7 +118,7 @@ class ReaderSourceStrip extends StatelessWidget {
           )
         : label;
 
-    return Material(
+    return MotionMaterial(
       color: style.surface,
       elevation: 0,
       child: Container(

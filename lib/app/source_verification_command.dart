@@ -5,6 +5,7 @@
 /// CLI 阶段结果写到当前控制台；指定报告路径时，同时写入稳定 JSON 报告。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -203,7 +204,7 @@ class _SourceVerificationCommandScreenState extends ConsumerState<_SourceVerific
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => MotionScaffold(
     body: Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 360),
@@ -212,7 +213,7 @@ class _SourceVerificationCommandScreenState extends ConsumerState<_SourceVerific
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              const CircularProgressIndicator(key: Key('source-verification-command-progress')),
+              const MotionCircularProgressIndicator(key: Key('source-verification-command-progress')),
               const SizedBox(height: AppSpacing.comfortable),
               Text('MgRead 数据源自检', style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: AppSpacing.regular),

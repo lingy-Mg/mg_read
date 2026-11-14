@@ -12,6 +12,7 @@ import 'dart:io';
 import 'package:mg_read/features/tv_companion/application/companion_controller.dart';
 
 import 'package:flutter/material.dart';
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -284,19 +285,9 @@ class _MgReadAppState extends ConsumerState<MgReadApp> with WidgetsBindingObserv
     final router = ref.watch(appRouterProvider);
     final noAnimations = settings.get(AppSettingKeys.noAnimations);
     final disableMotion = noAnimations || WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
-    ThemeData motionTheme(ThemeData theme) => theme.copyWith(
-      pageTransitionsTheme: AppPageTransitionsBuilder.theme(disabled: disableMotion),
-      expansionTileTheme: theme.expansionTileTheme.copyWith(expansionAnimationStyle: disableMotion ? AnimationStyle.noAnimation : null),
-      splashFactory: disableMotion ? NoSplash.splashFactory : theme.splashFactory,
-      filledButtonTheme: disableMotion
-          ? FilledButtonThemeData(style: theme.filledButtonTheme.style?.copyWith(animationDuration: Duration.zero))
-          : theme.filledButtonTheme,
-      outlinedButtonTheme: disableMotion
-          ? OutlinedButtonThemeData(style: theme.outlinedButtonTheme.style?.copyWith(animationDuration: Duration.zero))
-          : theme.outlinedButtonTheme,
-      textButtonTheme: disableMotion
-          ? TextButtonThemeData(style: theme.textButtonTheme.style?.copyWith(animationDuration: Duration.zero))
-          : theme.textButtonTheme,
+    ThemeData motionTheme(ThemeData theme) => motionThemeData(
+      theme.copyWith(pageTransitionsTheme: AppPageTransitionsBuilder.theme(disabled: disableMotion)),
+      disabled: disableMotion,
     );
     return MaterialApp.router(
       title: 'MgRead',

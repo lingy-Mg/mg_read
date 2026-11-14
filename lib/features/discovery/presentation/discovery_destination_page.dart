@@ -11,6 +11,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'tv_discovery_sources_page.dart';
 import 'package:mg_read/shared/presentation/tv_source_navigation_scope.dart';
@@ -69,7 +70,8 @@ class DiscoveryDestinationPage extends ConsumerWidget {
     final controller = ref.read(discoveryPageControllerProvider.notifier);
     ref.listen(discoveryPageControllerProvider, (previous, next) {
       if (next.result != null && next.error != null && next.error != previous?.error) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(context).showMotionSnackBar(
+          context,
           SnackBar(
             content: const Text('刷新失败，已保留原有内容。'),
             action: SnackBarAction(label: '重试', onPressed: () => unawaited(controller.refresh())),
@@ -156,13 +158,15 @@ class DiscoveryDestinationPage extends ConsumerWidget {
 
     return _TvDiscoveryLifecycle(
       child: TvFocusRegion(
-        child: Scaffold(
+        child: MotionScaffold(
           extendBody: !TvModeScope.isEnabled(context),
           appBar: TvModeScope.isEnabled(context) && !SourcePreviewScope.active(context)
               ? AppBottomNavigation(selected: AppNavigationDestination.discover, onSelected: onDestinationRequested)
-              : AppBar(
-                  toolbarHeight: AppSpacing.pageHeaderHeight,
-                  title: const AppPageTitle(title: '发现'),
+              : MotionAppBarSurface(
+                  child: AppBar(
+                    toolbarHeight: AppSpacing.pageHeaderHeight,
+                    title: const AppPageTitle(title: '发现'),
+                  ),
                 ),
           body: SafeArea(
             child: Center(
@@ -432,7 +436,9 @@ Future<void> _selectDiscoverySource(
               },
             );
       } on AppError {
-        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('WebView 调试窗口打开失败，请稍后重试。')));
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('WebView 调试窗口打开失败，请稍后重试。')));
+        }
       }
     case null:
       return;
@@ -499,7 +505,7 @@ class _DiscoveryStateContent extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          if (loading) CircularProgressIndicator(color: tokens.accent) else Icon(icon, size: 48, color: tokens.mutedText),
+          if (loading) MotionCircularProgressIndicator(color: tokens.accent) else Icon(icon, size: 48, color: tokens.mutedText),
           const SizedBox(height: AppSpacing.comfortable),
           Text(title, style: theme.textTheme.titleMedium),
           const SizedBox(height: AppSpacing.compact),

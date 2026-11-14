@@ -122,7 +122,7 @@ Widget _buildSourceAudioPlaybackIndicator(
     ),
     child: SizedBox.square(
       dimension: 44,
-      child: Tooltip(
+      child: MotionTooltip(
         message: message,
         child: Center(
           child: failure == null
@@ -140,28 +140,32 @@ Widget _buildSourceAudioPlaybackIndicator(
 }
 
 Widget _buildSourceAudioToggle(AudioPlayerSnapshot snapshot, Color foreground, AudioPlayerController controller, {bool compact = false}) {
-  return IconButton(
-    key: const Key('source-audio-mini-toggle'),
-    tooltip: snapshot.playing ? '暂停' : '播放',
-    constraints: compact ? const BoxConstraints.tightFor(width: 44, height: 44) : null,
-    style: compact ? IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap, visualDensity: VisualDensity.standard) : null,
-    padding: compact ? EdgeInsets.zero : null,
-    onPressed: () => unawaited(controller.toggle()),
-    color: foreground,
-    icon: Icon(snapshot.playing ? Icons.pause_rounded : Icons.play_arrow_rounded, size: compact ? 20 : null),
+  return MotionIconButtonSurface(
+    child: IconButton(
+      key: const Key('source-audio-mini-toggle'),
+      tooltip: snapshot.playing ? '暂停' : '播放',
+      constraints: compact ? const BoxConstraints.tightFor(width: 44, height: 44) : null,
+      style: compact ? IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap, visualDensity: VisualDensity.standard) : null,
+      padding: compact ? EdgeInsets.zero : null,
+      onPressed: () => unawaited(controller.toggle()),
+      color: foreground,
+      icon: Icon(snapshot.playing ? Icons.pause_rounded : Icons.play_arrow_rounded, size: compact ? 20 : null),
+    ),
   );
 }
 
 Widget _buildSourceAudioStop(AppThemeTokens tokens, VoidCallback onStop, {bool compact = false}) {
-  return IconButton(
-    key: const Key('source-audio-mini-stop'),
-    tooltip: '停止并关闭',
-    constraints: compact ? const BoxConstraints.tightFor(width: 44, height: 44) : null,
-    style: compact ? IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap, visualDensity: VisualDensity.standard) : null,
-    padding: compact ? EdgeInsets.zero : null,
-    onPressed: onStop,
-    color: tokens.mutedText,
-    icon: Icon(Icons.close_rounded, size: compact ? 20 : null),
+  return MotionIconButtonSurface(
+    child: IconButton(
+      key: const Key('source-audio-mini-stop'),
+      tooltip: '停止并关闭',
+      constraints: compact ? const BoxConstraints.tightFor(width: 44, height: 44) : null,
+      style: compact ? IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap, visualDensity: VisualDensity.standard) : null,
+      padding: compact ? EdgeInsets.zero : null,
+      onPressed: onStop,
+      color: tokens.mutedText,
+      icon: Icon(Icons.close_rounded, size: compact ? 20 : null),
+    ),
   );
 }
 

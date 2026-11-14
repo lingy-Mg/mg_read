@@ -2,6 +2,7 @@
 /// 不拥有搜索或详情状态，退出和选择当前版本都不会启动新的请求。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:mg_read/shared/presentation/motion/app_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
@@ -23,8 +24,8 @@ Future<void> showSourceContentVariantPicker(
       ? await Navigator.of(context).push<SourceSearchHit>(
           MaterialPageRoute(
             builder: (context) => TvFocusRegion(
-              child: Scaffold(
-                appBar: AppBar(title: const Text('切换来源')),
+              child: MotionScaffold(
+                appBar: MotionAppBarSurface(child: AppBar(title: const Text('切换来源'))),
                 body: SafeArea(
                   child: Center(
                     child: ConstrainedBox(
@@ -60,25 +61,29 @@ Future<void> showSourceContentVariantPicker(
           ),
         )
       : await showModalBottomSheet<SourceSearchHit>(
+          enableDrag: !motionDisabled(context),
           context: context,
           sheetAnimationStyle: AppMotion.overlayStyle(context),
           showDragHandle: true,
-          builder: (context) => SafeArea(
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: variants.length,
-              itemBuilder: (context, index) {
-                final variant = variants[index];
-                return ListTile(
-                  leading: Icon(index == 0 ? Icons.star_rounded : Icons.source_outlined),
-                  title: Text(variant.source.displayName),
-                  subtitle: Text(variant.content.title),
-                  trailing: variant.content.id == selectedContentId && variant.pluginId == selectedPluginId
-                      ? const Icon(Icons.check_rounded)
-                      : null,
-                  onTap: () => Navigator.of(context).pop(variant),
-                );
-              },
+          builder: motionOverlayBuilder(
+            context,
+            (context) => SafeArea(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: variants.length,
+                itemBuilder: (context, index) {
+                  final variant = variants[index];
+                  return MotionListTile(
+                    leading: Icon(index == 0 ? Icons.star_rounded : Icons.source_outlined),
+                    title: Text(variant.source.displayName),
+                    subtitle: Text(variant.content.title),
+                    trailing: variant.content.id == selectedContentId && variant.pluginId == selectedPluginId
+                        ? const Icon(Icons.check_rounded)
+                        : null,
+                    onTap: () => Navigator.of(context).pop(variant),
+                  );
+                },
+              ),
             ),
           ),
         );

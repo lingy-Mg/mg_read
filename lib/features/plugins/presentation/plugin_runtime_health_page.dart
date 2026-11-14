@@ -3,6 +3,7 @@
 /// TV makes each value and source row a remote-readable scroll stop.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -26,7 +27,7 @@ class PluginRuntimeHealthPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final status = ref.watch(pluginRuntimeStatusProvider);
-    return Scaffold(
+    return MotionScaffold(
       body: SafeArea(
         bottom: false,
         child: AppSecondaryPageContent(

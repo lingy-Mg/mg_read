@@ -7,6 +7,7 @@
 /// - 只负责收集用户确认，不执行持久化或修改页面状态。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:mg_read/shared/presentation/motion/app_motion.dart';
 import 'package:flutter/material.dart';
 
@@ -15,14 +16,17 @@ Future<bool> showBookshelfRemovalConfirmation(BuildContext context, {String? tit
   return await showDialog<bool>(
         context: context,
         animationStyle: AppMotion.overlayStyle(context),
-        builder: (dialogContext) => AlertDialog(
-          key: const Key('bookshelf-removal-confirmation'),
-          title: const Text('删除书籍'),
-          content: Text(normalizedTitle == null || normalizedTitle.isEmpty ? '确定要从书架移除这本书吗？' : '确定要从书架移除《$normalizedTitle》吗？'),
-          actions: <Widget>[
-            TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
-            FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('删除')),
-          ],
+        builder: motionOverlayBuilder(
+          context,
+          (dialogContext) => MotionAlertDialog(
+            key: const Key('bookshelf-removal-confirmation'),
+            title: const Text('删除书籍'),
+            content: Text(normalizedTitle == null || normalizedTitle.isEmpty ? '确定要从书架移除这本书吗？' : '确定要从书架移除《$normalizedTitle》吗？'),
+            actions: <Widget>[
+              TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
+              FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('删除')),
+            ],
+          ),
         ),
       ) ??
       false;

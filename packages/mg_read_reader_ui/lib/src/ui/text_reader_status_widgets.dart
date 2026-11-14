@@ -44,7 +44,7 @@ class _ReaderLoadingIndicator extends StatelessWidget {
       children: <Widget>[
         SizedBox.square(
           dimension: 30,
-          child: CircularProgressIndicator(
+          child: MotionCircularProgressIndicator(
             strokeWidth: 2,
             color: indicatorColor,
           ),

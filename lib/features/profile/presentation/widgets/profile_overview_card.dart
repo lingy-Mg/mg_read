@@ -1,3 +1,4 @@
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -186,7 +187,7 @@ class _ProfileEditButton extends StatelessWidget {
     return Semantics(
       button: true,
       label: '编辑资料',
-      child: Material(
+      child: MotionMaterial(
         color: Colors.transparent,
         child: Ink(
           height: AppSpacing.profileEditHeight,
@@ -277,7 +278,7 @@ class _ProfileSyncRow extends StatelessWidget {
     return Semantics(
       button: true,
       label: '${data.syncLabel}，${data.lastSyncLabel}',
-      child: Material(
+      child: MotionMaterial(
         color: Colors.transparent,
         child: InkWell(
           onTap: onPressed,

@@ -35,7 +35,9 @@ void main() {
 
         await tester.tap(find.text('打开确认弹窗'));
         await tester.pumpAndSettle();
-        final dialog = tester.getRect(find.descendant(of: find.byType(AlertDialog), matching: find.byType(Material)).first);
+        final dialog = tester.getRect(
+          find.descendant(of: find.byWidgetPredicate((widget) => widget is AlertDialog), matching: find.byType(Material)).first,
+        );
         expect(dialog.width, lessThanOrEqualTo(560));
         expect(dialog.left, greaterThanOrEqualTo(0));
         expect(dialog.right, lessThanOrEqualTo(wide ? 1280 : 320));

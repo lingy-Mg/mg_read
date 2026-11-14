@@ -6,11 +6,12 @@ part of 'lan_sync_page.dart';
 extension _LanSyncPairedDeviceActions on _LanSyncPageState {
   Future<void> _manageDevice(PairedDevice device) async {
     await showModalBottomSheet<void>(
+      enableDrag: !motionDisabled(context),
       context: context,
       sheetAnimationStyle: AppMotion.overlayStyle(context),
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (context) => DeviceSettingsSheet(deviceId: device.deviceId),
+      builder: motionOverlayBuilder(context, (context) => DeviceSettingsSheet(deviceId: device.deviceId)),
     );
   }
 
@@ -19,30 +20,35 @@ extension _LanSyncPairedDeviceActions on _LanSyncPageState {
     if (beginPairing && !ref.read(deviceSyncControllerProvider).pairingBusy) unawaited(controller.beginPairing());
     if (!mounted) return;
     await showModalBottomSheet<void>(
+      enableDrag: !motionDisabled(context),
       context: context,
       sheetAnimationStyle: AppMotion.overlayStyle(context),
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (context) => Consumer(
-        builder: (context, ref, _) => DevicePairingSheet(
-          state: ref.watch(deviceSyncControllerProvider),
-          onBeginPairing: () => unawaited(ref.read(deviceSyncControllerProvider.notifier).beginPairing()),
-          onApprovePairing: () => unawaited(ref.read(deviceSyncControllerProvider.notifier).approvePairing()),
-          onRejectPairing: () => unawaited(ref.read(deviceSyncControllerProvider.notifier).rejectPairing()),
-          onCancelPairing: () {
-            unawaited(ref.read(deviceSyncControllerProvider.notifier).cancelPairing());
-            Navigator.of(context).pop();
-          },
+      builder: motionOverlayBuilder(
+        context,
+        (context) => Consumer(
+          builder: (context, ref, _) => DevicePairingSheet(
+            state: ref.watch(deviceSyncControllerProvider),
+            onBeginPairing: () => unawaited(ref.read(deviceSyncControllerProvider.notifier).beginPairing()),
+            onApprovePairing: () => unawaited(ref.read(deviceSyncControllerProvider.notifier).approvePairing()),
+            onRejectPairing: () => unawaited(ref.read(deviceSyncControllerProvider.notifier).rejectPairing()),
+            onCancelPairing: () {
+              unawaited(ref.read(deviceSyncControllerProvider.notifier).cancelPairing());
+              Navigator.of(context).pop();
+            },
+          ),
         ),
       ),
     );
   }
 
   Future<void> _showAllDevicesSheet() => showModalBottomSheet<void>(
+    enableDrag: !motionDisabled(context),
     context: context,
     sheetAnimationStyle: AppMotion.overlayStyle(context),
     showDragHandle: true,
-    builder: (sheetContext) {
+    builder: motionOverlayBuilder(context, (sheetContext) {
       return Consumer(
         builder: (context, ref, _) => _AllDevicesSheet(
           state: ref.watch(deviceSyncControllerProvider),
@@ -55,6 +61,6 @@ extension _LanSyncPairedDeviceActions on _LanSyncPageState {
           onAppUpdate: (deviceId, force) => unawaited(_confirmPairedAppUpdate(deviceId, force)),
         ),
       );
-    },
+    }),
   );
 }

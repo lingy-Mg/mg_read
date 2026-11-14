@@ -4,6 +4,7 @@
 /// 详细错误通过显式入口展示，用户可选择或复制后反馈。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -12,7 +13,8 @@ import 'package:mg_read/shared/presentation/widgets/app_operation_error_dialog.d
 void showLibraryReaderLaunchError(BuildContext context, {required String message, Object? error, required VoidCallback onRetry}) {
   ScaffoldMessenger.of(context)
     ..clearSnackBars()
-    ..showSnackBar(
+    ..showMotionSnackBar(
+      context,
       SnackBar(
         content: Column(
           mainAxisSize: MainAxisSize.min,

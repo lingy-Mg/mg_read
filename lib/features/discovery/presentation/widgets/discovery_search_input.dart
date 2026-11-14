@@ -4,6 +4,7 @@
 /// Clipboard is read only after the explicit paste action; stale reads are ignored.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -74,11 +75,11 @@ class _DiscoverySearchInputState extends ConsumerState<DiscoverySearchInput> {
       if (!mounted || widget.pluginId != source || widget.component.id != component || _input.text != previousText) return;
       final text = clipboard?.text?.trim() ?? '';
       if (text.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('剪贴板中没有可粘贴的文字')));
+        ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('剪贴板中没有可粘贴的文字')));
         return;
       }
       if (text.characters.length > 2000) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('内容过长，请只粘贴链接或关键词')));
+        ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('内容过长，请只粘贴链接或关键词')));
         return;
       }
       setState(() {
@@ -89,7 +90,7 @@ class _DiscoverySearchInputState extends ConsumerState<DiscoverySearchInput> {
         );
       });
     } on PlatformException {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('暂时无法读取剪贴板，可长按输入框粘贴')));
+      if (mounted) ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('暂时无法读取剪贴板，可长按输入框粘贴')));
     }
   }
 
@@ -127,7 +128,7 @@ class _DiscoverySearchInputState extends ConsumerState<DiscoverySearchInput> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TvTextInputNavigation(
-          child: TextField(
+          child: MotionTextField(
             key: ValueKey('discovery-input-${component.id}'),
             controller: _input,
             textInputAction: TextInputAction.search,
@@ -151,7 +152,7 @@ class _DiscoverySearchInputState extends ConsumerState<DiscoverySearchInput> {
               key: ValueKey('discovery-input-submit-${component.id}'),
               onPressed: _loading || _input.text.trim().isEmpty ? null : _submit,
               icon: _loading
-                  ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox.square(dimension: 18, child: MotionCircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.search_rounded),
               label: Text(_loading ? '正在读取…' : component.submitLabel),
             ),
@@ -162,13 +163,15 @@ class _DiscoverySearchInputState extends ConsumerState<DiscoverySearchInput> {
               label: const Text('粘贴内容'),
             ),
             if (_input.text.isNotEmpty)
-              IconButton(
-                tooltip: '清空输入',
-                onPressed: () => setState(() {
-                  _clear();
-                  _input.clear();
-                }),
-                icon: const Icon(Icons.clear_rounded),
+              MotionIconButtonSurface(
+                child: IconButton(
+                  tooltip: '清空输入',
+                  onPressed: () => setState(() {
+                    _clear();
+                    _input.clear();
+                  }),
+                  icon: const Icon(Icons.clear_rounded),
+                ),
               ),
           ],
         ),

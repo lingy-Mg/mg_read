@@ -12,6 +12,7 @@ library;
 // library-level public naming rules.
 // ignore_for_file: public_member_api_docs
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 
 import '../api/models.dart';
@@ -31,7 +32,7 @@ Future<void> showVideoPlayerSettingsSheet({
 }) => showVideoPlayerModal<void>(
   context: context,
   maxWidth: 360,
-  builder: (_) => Theme(
+  builder: (_) => MotionTheme(
     data: videoPlayerTheme(),
     child: _VideoPlayerSettingsSheet(
       snapshot: snapshot,
@@ -132,7 +133,8 @@ final class _VideoPlayerSettingsSheetState
               runSpacing: 4,
               children: [
                 for (final rate in _rates)
-                  ChoiceChip(
+                  MotionChoiceChip(
+                    chipAnimationStyle: motionChipAnimationStyle(context),
                     key: Key('video-player-rate-${_rateKey(rate)}'),
                     label: Text('${_trimRate(rate)}×'),
                     selected: _rate == rate,
@@ -254,7 +256,7 @@ Widget _smallSwitch(
   height: videoPlayerUsesPointerControls(context) ? 36 : 44,
   child: Transform.scale(
     scale: .76,
-    child: Switch.adaptive(
+    child: MotionSwitch.adaptive(
       key: key,
       value: value,
       activeTrackColor: videoPlayerAccent,
@@ -320,7 +322,7 @@ final class _SettingsRow extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Material(
+  Widget build(BuildContext context) => MotionMaterial(
     color: Colors.transparent,
     child: InkWell(
       onTap: onTap,

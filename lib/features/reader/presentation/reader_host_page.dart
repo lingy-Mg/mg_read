@@ -10,6 +10,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:novel_reader_ui/novel_reader_ui.dart';
 
@@ -28,7 +29,7 @@ class ReaderHostPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final request = this.request;
     return ScaffoldMessenger(
-      child: Scaffold(
+      child: MotionScaffold(
         body: switch (request) {
           NovelReaderLaunchRequest request => TextReaderView(
             bookId: request.bookId,

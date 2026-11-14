@@ -1,3 +1,4 @@
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -93,7 +94,7 @@ class _ReaderFontCatalogState extends State<ReaderFontCatalog> {
         palette: widget.palette,
         icon: const SizedBox.square(
           dimension: 28,
-          child: CircularProgressIndicator(strokeWidth: 2),
+          child: MotionCircularProgressIndicator(strokeWidth: 2),
         ),
         label: ReaderFontStrings.loading,
       );
@@ -239,7 +240,7 @@ class _ReaderFontTile extends StatelessWidget {
     return Semantics(
       container: true,
       selected: selected,
-      child: Material(
+      child: MotionMaterial(
         color: selected
             ? ReaderSettingsTokens.selectedControl(palette)
             : ReaderSettingsTokens.mutedControl(palette),
@@ -380,7 +381,7 @@ class _FontActions extends StatelessWidget {
           dimension: ReaderSettingsTokens.touchTarget,
           child: Padding(
             padding: EdgeInsets.all(13),
-            child: CircularProgressIndicator(strokeWidth: 2),
+            child: MotionCircularProgressIndicator(strokeWidth: 2),
           ),
         ),
       );
@@ -398,10 +399,12 @@ class _FontActions extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         _action(ReaderFontStrings.use, enabled ? onSelect : null),
-        IconButton(
-          tooltip: ReaderFontStrings.delete,
-          onPressed: enabled ? onRemove : null,
-          icon: const Icon(Icons.delete_outline_rounded, size: 19),
+        MotionIconButtonSurface(
+          child: IconButton(
+            tooltip: ReaderFontStrings.delete,
+            onPressed: enabled ? onRemove : null,
+            icon: const Icon(Icons.delete_outline_rounded, size: 19),
+          ),
         ),
       ],
     );

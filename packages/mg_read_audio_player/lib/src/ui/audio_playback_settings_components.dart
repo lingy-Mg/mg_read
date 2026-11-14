@@ -66,15 +66,17 @@ final class _SettingsHeader extends StatelessWidget {
             ],
           ),
         ),
-        IconButton.filledTonal(
-          key: const Key('audio-settings-close'),
-          tooltip: '关闭音乐播放设置',
-          onPressed: onClose,
-          style: IconButton.styleFrom(
-            backgroundColor: _SettingsTokens.neutralControl,
-            foregroundColor: AudioPlayerColors.ink,
+        MotionIconButtonSurface(
+          child: IconButton.filledTonal(
+            key: const Key('audio-settings-close'),
+            tooltip: '关闭音乐播放设置',
+            onPressed: onClose,
+            style: IconButton.styleFrom(
+              backgroundColor: _SettingsTokens.neutralControl,
+              foregroundColor: AudioPlayerColors.ink,
+            ),
+            icon: const Icon(Icons.close_rounded, size: 21),
           ),
-          icon: const Icon(Icons.close_rounded, size: 21),
         ),
       ],
     ),
@@ -283,7 +285,7 @@ final class _RememberPositionControl extends StatelessWidget {
         ),
       ),
       const SizedBox(width: 12),
-      Switch(
+      MotionSwitch(
         key: const Key('audio-remember-position-switch'),
         value: enabled,
         onChanged: onChanged,
@@ -311,7 +313,7 @@ final class _KeepScreenOnControl extends StatelessWidget {
         ),
       ),
       const SizedBox(width: 12),
-      Switch(
+      MotionSwitch(
         key: const Key('audio-keep-screen-on-switch'),
         value: enabled,
         onChanged: onChanged,
@@ -379,18 +381,20 @@ final class _VolumeControl extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(
     children: <Widget>[
-      IconButton.filledTonal(
-        key: const Key('audio-volume-mute'),
-        tooltip: volume > 0 ? '静音' : '恢复音量',
-        onPressed: onToggleMute,
-        style: IconButton.styleFrom(
-          minimumSize: const Size.square(AudioPlayerMetrics.minimumTapTarget),
-          backgroundColor: _SettingsTokens.neutralControl,
-          foregroundColor: AudioPlayerColors.ink,
-        ),
-        icon: Icon(
-          volume > 0 ? Icons.volume_up_rounded : Icons.volume_off_rounded,
-          size: 21,
+      MotionIconButtonSurface(
+        child: IconButton.filledTonal(
+          key: const Key('audio-volume-mute'),
+          tooltip: volume > 0 ? '静音' : '恢复音量',
+          onPressed: onToggleMute,
+          style: IconButton.styleFrom(
+            minimumSize: const Size.square(AudioPlayerMetrics.minimumTapTarget),
+            backgroundColor: _SettingsTokens.neutralControl,
+            foregroundColor: AudioPlayerColors.ink,
+          ),
+          icon: Icon(
+            volume > 0 ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+            size: 21,
+          ),
         ),
       ),
       const SizedBox(width: 8),
@@ -406,7 +410,7 @@ final class _VolumeControl extends StatelessWidget {
                 trackHeight: 5,
                 thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
               ),
-              child: Slider(
+              child: MotionSlider(
                 key: const Key('audio-volume-slider'),
                 value: volume,
                 semanticFormatterCallback: formatAudioVolume,
@@ -502,7 +506,7 @@ final class _TimerOption extends StatelessWidget {
     button: true,
     selected: selected,
     label: semanticLabel ?? '定时停止 $label',
-    child: Material(
+    child: MotionMaterial(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,

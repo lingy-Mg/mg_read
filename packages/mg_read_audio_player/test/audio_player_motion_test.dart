@@ -9,6 +9,38 @@ import 'package:mg_read_audio_player/mg_read_audio_player.dart';
 
 void main() {
   testWidgets(
+    'reduced motion settings modal resolves framework button animations locally',
+    (tester) async {
+      final backend = _MotionBackend();
+      await tester.pumpWidget(
+        _motionHost(backend: backend, disableAnimations: true),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('audio-settings')));
+      await tester.pump();
+      await tester.pump();
+      final context = tester.element(
+        find.byKey(const Key('audio-settings-sheet')),
+      );
+      expect(MediaQuery.disableAnimationsOf(context), isTrue);
+      expect(ModalRoute.of(context)!.animation!.value, 1);
+      expect(
+        (ModalRoute.of(context)! as ModalBottomSheetRoute).enableDrag,
+        isFalse,
+      );
+      expect(
+        Theme.of(context).textButtonTheme.style!.animationDuration,
+        Duration.zero,
+      );
+      expect(tester.binding.transientCallbackCount, 0);
+      Navigator.of(context).pop();
+      await tester.pump();
+      expect(find.byKey(const Key('audio-settings-sheet')), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+  testWidgets(
     'disabling motion interrupts seek feedback without changing playback',
     (tester) async {
       final backend = _MotionBackend();
@@ -136,6 +168,9 @@ void main() {
     await tester.pump();
     expect(find.text('正在缓冲'), findsOneWidget);
     expect(find.byKey(const Key('audio-buffering')), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(tester.binding.transientCallbackCount, 0);
   });
 
   testWidgets('seek and chapter controls expose directional feedback', (

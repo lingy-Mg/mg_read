@@ -3,6 +3,7 @@
 /// 只投影视图状态和点击意图；HTTP 会话、包校验与安装生命周期由控制器持有。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -118,7 +119,7 @@ class AppTransferPanel extends StatelessWidget {
           state.phase == AppTransferPhase.downloading ||
           state.phase == AppTransferPhase.verifying ||
           state.phase == AppTransferPhase.launchingInstaller) ...<Widget>[
-        LinearProgressIndicator(
+        MotionLinearProgressIndicator(
           value: state.phase == AppTransferPhase.downloading ? state.progress : null,
           key: const Key('app-transfer-progress'),
         ),
@@ -151,7 +152,7 @@ class AppVersionComparisonCard extends StatelessWidget {
   final String remoteLabel;
 
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) => MotionCard(
     key: const Key('app-transfer-version-comparison'),
     child: Padding(
       padding: const EdgeInsets.all(AppSpacing.regular),
@@ -200,10 +201,10 @@ class _AppStatusCard extends StatelessWidget {
   final AppTransferState state;
 
   @override
-  Widget build(BuildContext context) => Card(
-    child: ListTile(
+  Widget build(BuildContext context) => MotionCard(
+    child: MotionListTile(
       leading: state.active
-          ? const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2))
+          ? const SizedBox.square(dimension: 24, child: MotionCircularProgressIndicator(strokeWidth: 2))
           : Icon(state.phase == AppTransferPhase.failed ? Icons.error_outline_rounded : Icons.mobile_friendly_rounded),
       title: Text(state.message),
       subtitle: state.errorCode == null ? null : Text('错误码：${state.errorCode}'),
@@ -217,7 +218,7 @@ class _AppQrCard extends StatelessWidget {
   final AppVersionInfo? version;
 
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) => MotionCard(
     child: Padding(
       padding: const EdgeInsets.all(AppSpacing.regular),
       child: Column(
@@ -241,8 +242,8 @@ class _AppHint extends StatelessWidget {
   const _AppHint(this.message);
   final String message;
   @override
-  Widget build(BuildContext context) => Card(
-    child: ListTile(leading: const Icon(Icons.info_outline_rounded), title: Text(message)),
+  Widget build(BuildContext context) => MotionCard(
+    child: MotionListTile(leading: const Icon(Icons.info_outline_rounded), title: Text(message)),
   );
 }
 
@@ -254,7 +255,7 @@ class _AppRoleCard extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) => MotionCard(
     color: AppThemeTokens.of(context).featureSurface,
     child: InkWell(
       borderRadius: AppRadii.detailControl,

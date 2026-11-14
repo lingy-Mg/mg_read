@@ -5,6 +5,7 @@
 /// projections and callbacks; only this route coordinates discovery and IO.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -120,21 +121,29 @@ final class _CompanionPageState extends ConsumerState<CompanionPage> {
     final tv = TvModeScope.isEnabled(context);
     return AnimatedBuilder(
       animation: service,
-      builder: (context, _) => Scaffold(
-        appBar: AppBar(
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('局域网 TV 播放', maxLines: 1, overflow: TextOverflow.ellipsis),
-              Text(
-                tv ? '电视接收端' : '手机连接电视，选片与遥控',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-              ),
-            ],
+      builder: (context, _) => MotionScaffold(
+        appBar: MotionAppBarSurface(
+          child: AppBar(
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('局域网 TV 播放', maxLines: 1, overflow: TextOverflow.ellipsis),
+                Text(
+                  tv ? '电视接收端' : '手机连接电视，选片与遥控',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+            actions: tv
+                ? [
+                    MotionIconButtonSurface(
+                      child: IconButton(tooltip: '刷新状态', onPressed: _busy ? null : _start, icon: const Icon(Icons.refresh_rounded)),
+                    ),
+                  ]
+                : null,
           ),
-          actions: tv ? [IconButton(tooltip: '刷新状态', onPressed: _busy ? null : _start, icon: const Icon(Icons.refresh_rounded))] : null,
         ),
         body: SafeArea(
           top: false,
@@ -143,7 +152,7 @@ final class _CompanionPageState extends ConsumerState<CompanionPage> {
               constraints: const BoxConstraints(maxWidth: 800),
               child: Column(
                 children: [
-                  SizedBox(height: 3, child: _busy ? const LinearProgressIndicator() : null),
+                  SizedBox(height: 3, child: _busy ? const MotionLinearProgressIndicator() : null),
                   if (!tv)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(

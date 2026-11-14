@@ -4,7 +4,7 @@ part of 'search_page.dart';
 
 extension _TvSearchLayout on _SearchPageState {
   Widget _buildTvSearch(SearchPageState state, SearchPageController controller, Widget results) => TvFocusRegion(
-    child: Scaffold(
+    child: MotionScaffold(
       appBar: SourcePreviewScope.active(context)
           ? null
           : AppBottomNavigation(selected: AppNavigationDestination.search, onSelected: widget.onDestinationRequested),

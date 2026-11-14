@@ -2,6 +2,7 @@
 /// mobile keeps bottom sheets. Callers retain all selection and IO ownership.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
@@ -13,22 +14,26 @@ export 'source_management_tv_layout.dart';
 Future<T?> showSourceManagementSheet<T>({required BuildContext context, required WidgetBuilder builder}) {
   if (!TvModeScope.isEnabled(context)) {
     return showModalBottomSheet<T>(
+      enableDrag: !motionDisabled(context),
       context: context,
       sheetAnimationStyle: AppMotion.overlayStyle(context),
       isScrollControlled: true,
       showDragHandle: true,
-      builder: builder,
+      builder: motionOverlayBuilder(context, builder),
     );
   }
   return showDialog<T>(
     context: context,
     animationStyle: AppMotion.overlayStyle(context),
-    builder: (context) => Dialog.fullscreen(
-      child: TvFocusRegion(
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            child: Builder(builder: builder),
+    builder: motionOverlayBuilder(
+      context,
+      (context) => MotionDialog.fullscreen(
+        child: TvFocusRegion(
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              child: Builder(builder: builder),
+            ),
           ),
         ),
       ),
@@ -39,7 +44,7 @@ Future<T?> showSourceManagementSheet<T>({required BuildContext context, required
 Future<T?> showSourceManagementDialog<T>({required BuildContext context, required WidgetBuilder builder}) => showDialog<T>(
   context: context,
   animationStyle: AppMotion.overlayStyle(context),
-  builder: (context) => TvFocusRegion(child: Builder(builder: builder)),
+  builder: motionOverlayBuilder(context, (context) => TvFocusRegion(child: Builder(builder: builder))),
 );
 
 /// TV confirmations keep actions outside the reading viewport. The caller still
@@ -53,8 +58,8 @@ class SourceManagementDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!TvModeScope.isEnabled(context)) return AlertDialog(title: title, content: content, actions: actions);
-    return Dialog(
+    if (!TvModeScope.isEnabled(context)) return MotionAlertDialog(title: title, content: content, actions: actions);
+    return MotionDialog(
       backgroundColor: AppThemeTokens.of(context).surface,
       insetPadding: const EdgeInsets.all(16),
       child: ConstrainedBox(

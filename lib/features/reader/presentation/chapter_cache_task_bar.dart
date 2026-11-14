@@ -8,6 +8,7 @@
 /// - 不创建 OverlayEntry，不依赖当前路由或阅读器 BuildContext。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -32,7 +33,7 @@ class ChapterCacheTaskBar extends ConsumerWidget {
         alignment: Alignment.bottomCenter,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
-          child: Material(
+          child: MotionMaterial(
             key: const ValueKey<String>('global-chapter-cache-task-bar'),
             elevation: 10,
             color: colors.surfaceContainerHigh,
@@ -57,7 +58,7 @@ class ChapterCacheTaskBar extends ConsumerWidget {
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                         const SizedBox(height: 8),
-                        LinearProgressIndicator(
+                        MotionLinearProgressIndicator(
                           key: const ValueKey<String>('global-chapter-cache-progress'),
                           value: task.progress,
                           minHeight: 5,
@@ -69,10 +70,12 @@ class ChapterCacheTaskBar extends ConsumerWidget {
                   Semantics(
                     button: true,
                     label: completed ? '关闭缓存任务栏' : '停止并关闭缓存任务',
-                    child: IconButton(
-                      key: const ValueKey<String>('global-chapter-cache-close'),
-                      onPressed: () => ref.read(chapterCacheTaskControllerProvider.notifier).cancelAndDismiss(),
-                      icon: const Icon(Icons.close_rounded),
+                    child: MotionIconButtonSurface(
+                      child: IconButton(
+                        key: const ValueKey<String>('global-chapter-cache-close'),
+                        onPressed: () => ref.read(chapterCacheTaskControllerProvider.notifier).cancelAndDismiss(),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
                     ),
                   ),
                 ],

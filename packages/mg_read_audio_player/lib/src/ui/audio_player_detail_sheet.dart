@@ -8,6 +8,7 @@
 /// - The sheet owns no media state and performs no host or network I/O.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -28,6 +29,7 @@ Future<void> showAudioDetailsSheet(
   required AudioArtworkBuilder? artworkBuilder,
   AudioResourceUrlDecoder? resourceUrlDecoder,
 }) => showModalBottomSheet<void>(
+  enableDrag: !motionDisabled(context),
   context: context,
   sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
       ? AnimationStyle.noAnimation
@@ -35,18 +37,24 @@ Future<void> showAudioDetailsSheet(
   isScrollControlled: true,
   backgroundColor: Colors.transparent,
   barrierColor: AudioPlayerColors.scrim,
-  builder: (sheetContext) => ListenableBuilder(
-    listenable: controller,
-    builder: (context, child) {
-      final liveSnapshot = controller.snapshot;
-      return _AudioDetailsSheet(
-        snapshot: liveSnapshot.status == AudioPlayerStatus.ready
-            ? liveSnapshot
-            : snapshot,
-        artworkBuilder: artworkBuilder,
-        resourceUrlDecoder: resourceUrlDecoder,
-      );
-    },
+  builder: motionOverlayBuilder(
+    context,
+    (sheetContext) => MotionTheme(
+      data: Theme.of(sheetContext),
+      child: ListenableBuilder(
+        listenable: controller,
+        builder: (context, child) {
+          final liveSnapshot = controller.snapshot;
+          return _AudioDetailsSheet(
+            snapshot: liveSnapshot.status == AudioPlayerStatus.ready
+                ? liveSnapshot
+                : snapshot,
+            artworkBuilder: artworkBuilder,
+            resourceUrlDecoder: resourceUrlDecoder,
+          );
+        },
+      ),
+    ),
   ),
 );
 
@@ -92,7 +100,7 @@ class _AudioDetailsSheet extends StatelessWidget {
             top: Radius.circular(AudioPlayerMetrics.sheetRadius),
           ),
           tone: AudioSurfaceTone.strong,
-          child: Material(
+          child: MotionMaterial(
             color: Colors.transparent,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -111,11 +119,13 @@ class _AudioDetailsSheet extends StatelessWidget {
                           ),
                         ),
                       ),
-                      IconButton(
-                        key: const Key('audio-details-close'),
-                        tooltip: '关闭音频详情',
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close_rounded),
+                      MotionIconButtonSurface(
+                        child: IconButton(
+                          key: const Key('audio-details-close'),
+                          tooltip: '关闭音频详情',
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
                       ),
                     ],
                   ),
@@ -394,17 +404,19 @@ class _ResourceUrlRow extends StatelessWidget {
                       ),
                     ),
                   ),
-                  IconButton(
-                    key: copyKey,
-                    tooltip: copyMessage,
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: 32,
-                      height: 32,
+                  MotionIconButtonSurface(
+                    child: IconButton(
+                      key: copyKey,
+                      tooltip: copyMessage,
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 32,
+                        height: 32,
+                      ),
+                      onPressed: () => _copyValue(context, value, copyMessage),
+                      icon: const Icon(Icons.copy_rounded, size: 18),
                     ),
-                    onPressed: () => _copyValue(context, value, copyMessage),
-                    icon: const Icon(Icons.copy_rounded, size: 18),
                   ),
                 ],
               ),
@@ -493,17 +505,20 @@ class _DecodedResourceRowState extends State<_DecodedResourceRow> {
                     ),
                   ),
                   if (!_loading && result != null)
-                    IconButton(
-                      key: const Key('audio-details-resource-decoded-copy'),
-                      tooltip: '复制解码参数',
-                      visualDensity: VisualDensity.compact,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints.tightFor(
-                        width: 32,
-                        height: 32,
+                    MotionIconButtonSurface(
+                      child: IconButton(
+                        key: const Key('audio-details-resource-decoded-copy'),
+                        tooltip: '复制解码参数',
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 32,
+                          height: 32,
+                        ),
+                        onPressed: () =>
+                            _copyValue(context, decoded, '解码参数已复制'),
+                        icon: const Icon(Icons.copy_rounded, size: 18),
                       ),
-                      onPressed: () => _copyValue(context, decoded, '解码参数已复制'),
-                      icon: const Icon(Icons.copy_rounded, size: 18),
                     ),
                 ],
               ),
@@ -512,7 +527,7 @@ class _DecodedResourceRowState extends State<_DecodedResourceRow> {
                 const SizedBox(
                   width: 18,
                   height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: MotionCircularProgressIndicator(strokeWidth: 2),
                 )
               else
                 SelectableText(
@@ -535,7 +550,7 @@ void _copyValue(BuildContext context, String value, String message) {
   unawaited(Clipboard.setData(ClipboardData(text: value)));
   final messenger = ScaffoldMessenger.maybeOf(context);
   messenger?.hideCurrentSnackBar();
-  messenger?.showSnackBar(SnackBar(content: Text(message)));
+  messenger?.showMotionSnackBar(context, SnackBar(content: Text(message)));
 }
 
 class _DetailStatDivider extends StatelessWidget {

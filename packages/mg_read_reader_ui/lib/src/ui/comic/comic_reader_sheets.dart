@@ -82,13 +82,14 @@ extension _ComicReaderSheets on _ComicReaderViewState {
     final int sheetGeneration = _beginSheet();
     _setControlsVisible(false);
     final Future<void> sheet = showModalBottomSheet<void>(
+      enableDrag: !motionDisabled(context),
       context: context,
       sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
           ? AnimationStyle.noAnimation
           : null,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF202326),
-      builder: (BuildContext context) {
+      builder: motionOverlayBuilder(context, (BuildContext context) {
         _captureSheetContext(context, sheetGeneration);
         return _darkSheet(
           SafeArea(
@@ -107,7 +108,7 @@ extension _ComicReaderSheets on _ComicReaderViewState {
                             itemBuilder: (BuildContext context, int index) {
                               final ComicReaderBookmark bookmark =
                                   _bookmarks[index];
-                              return ListTile(
+                              return MotionListTile(
                                 minTileHeight: 56,
                                 title: Text(bookmark.chapterTitle),
                                 subtitle: Text(
@@ -116,19 +117,21 @@ extension _ComicReaderSheets on _ComicReaderViewState {
                                     (bookmark.imageFraction * 100).round(),
                                   ),
                                 ),
-                                trailing: IconButton(
-                                  tooltip: ComicReaderStrings.removeBookmark,
-                                  icon: const Icon(
-                                    Icons.delete_outline_rounded,
-                                  ),
-                                  onPressed: () {
-                                    if (!isCurrent()) {
+                                trailing: MotionIconButtonSurface(
+                                  child: IconButton(
+                                    tooltip: ComicReaderStrings.removeBookmark,
+                                    icon: const Icon(
+                                      Icons.delete_outline_rounded,
+                                    ),
+                                    onPressed: () {
+                                      if (!isCurrent()) {
+                                        Navigator.of(context).pop();
+                                        return;
+                                      }
                                       Navigator.of(context).pop();
-                                      return;
-                                    }
-                                    Navigator.of(context).pop();
-                                    unawaited(_removeBookmark(bookmark));
-                                  },
+                                      unawaited(_removeBookmark(bookmark));
+                                    },
+                                  ),
                                 ),
                                 onTap: () {
                                   if (!isCurrent()) {
@@ -147,7 +150,7 @@ extension _ComicReaderSheets on _ComicReaderViewState {
             ),
           ),
         );
-      },
+      }),
     );
     unawaited(sheet.whenComplete(() => _finishSheet(sheetGeneration)));
   }
@@ -188,13 +191,14 @@ extension _ComicReaderSheets on _ComicReaderViewState {
     }
     _setControlsVisible(false);
     final Future<void> sheet = showModalBottomSheet<void>(
+      enableDrag: !motionDisabled(context),
       context: context,
       sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
           ? AnimationStyle.noAnimation
           : null,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF202326),
-      builder: (BuildContext context) {
+      builder: motionOverlayBuilder(context, (BuildContext context) {
         _captureSheetContext(context, sheetGeneration);
         return StatefulBuilder(
           builder:
@@ -268,7 +272,7 @@ extension _ComicReaderSheets on _ComicReaderViewState {
                                     ),
                                   ],
                                 ),
-                                Slider(
+                                MotionSlider(
                                   key: const ValueKey<String>(
                                     'comic-reader-content-width',
                                   ),
@@ -298,7 +302,7 @@ extension _ComicReaderSheets on _ComicReaderViewState {
                                   onChangeEnd: (double value) => commit(),
                                 ),
                                 if (_platformCapabilities.keepScreenOn)
-                                  SwitchListTile.adaptive(
+                                  MotionSwitchListTile.adaptive(
                                     contentPadding: EdgeInsets.zero,
                                     title: const Text(
                                       ComicReaderStrings.keepAwake,
@@ -310,7 +314,7 @@ extension _ComicReaderSheets on _ComicReaderViewState {
                                       ),
                                     ),
                                   ),
-                                SwitchListTile.adaptive(
+                                MotionSwitchListTile.adaptive(
                                   contentPadding: EdgeInsets.zero,
                                   title: const Text(
                                     ComicReaderStrings.pageTurnShortcuts,
@@ -322,7 +326,7 @@ extension _ComicReaderSheets on _ComicReaderViewState {
                                     ),
                                   ),
                                 ),
-                                DropdownButtonFormField<double>(
+                                MotionDropdownButtonFormField<double>(
                                   key: const ValueKey<String>(
                                     'comic-reader-page-turn-fraction',
                                   ),
@@ -353,7 +357,9 @@ extension _ComicReaderSheets on _ComicReaderViewState {
                                     }
                                   },
                                 ),
-                                DropdownButtonFormField<ComicPageTurnLayout>(
+                                MotionDropdownButtonFormField<
+                                  ComicPageTurnLayout
+                                >(
                                   key: const ValueKey<String>(
                                     'comic-reader-page-turn-layout',
                                   ),
@@ -390,7 +396,7 @@ extension _ComicReaderSheets on _ComicReaderViewState {
                                     }
                                   },
                                 ),
-                                SwitchListTile.adaptive(
+                                MotionSwitchListTile.adaptive(
                                   contentPadding: EdgeInsets.zero,
                                   title: const Text(
                                     ComicReaderStrings.singleHandMode,
@@ -403,7 +409,7 @@ extension _ComicReaderSheets on _ComicReaderViewState {
                                   ),
                                 ),
                                 if (_platformCapabilities.immersiveMode)
-                                  SwitchListTile.adaptive(
+                                  MotionSwitchListTile.adaptive(
                                     contentPadding: EdgeInsets.zero,
                                     title: const Text(
                                       ComicReaderStrings.immersive,
@@ -425,7 +431,7 @@ extension _ComicReaderSheets on _ComicReaderViewState {
                 );
               },
         );
-      },
+      }),
     );
     unawaited(
       sheet.whenComplete(() {
@@ -454,7 +460,7 @@ extension _ComicReaderSheets on _ComicReaderViewState {
         children: <Widget>[
           SizedBox(width: 76, child: Text(label)),
           Expanded(
-            child: Slider(
+            child: MotionSlider(
               value: value,
               min: min,
               max: max,
@@ -472,7 +478,7 @@ extension _ComicReaderSheets on _ComicReaderViewState {
     final ReaderPalette palette = ReaderPalette.fromPreset(
       ReaderThemePreset.deepNight,
     );
-    return Theme(
+    return MotionTheme(
       data: ThemeData(
         brightness: Brightness.dark,
         colorScheme: ColorScheme.fromSeed(

@@ -6,6 +6,7 @@
 /// and installer handoff; it owns and disposes the progress paint throttle.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:mg_read/shared/presentation/motion/app_motion.dart';
 import 'dart:async';
 
@@ -25,57 +26,60 @@ Future<bool?> showGitHubApkUpdatePrompt(
   animationStyle: AppMotion.overlayStyle(context),
   requestFocus: true,
   barrierDismissible: false,
-  builder: (context) => TvModeScope.isEnabled(context)
-      ? GitHubApkUpdateTvPrompt(
-          notes: _releaseNotesForPrompt(release.releaseNotes),
-          onOpenRelease: () => unawaited((openReleasePage ?? _openReleasePage)(release.releaseUrl)),
-          onLater: () => Navigator.of(context).pop(false),
-          onInstall: () => Navigator.of(context).pop(true),
-        )
-      : AlertDialog(
-          key: const Key('github-apk-update-prompt'),
-          title: const Text('发现新版本'),
-          content: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560, maxHeight: 520),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text('更新内容', style: Theme.of(context).textTheme.titleSmall),
-                  const SizedBox(height: 8),
-                  SelectableText(
-                    _releaseNotesForPrompt(release.releaseNotes),
-                    key: const Key('github-apk-update-release-notes'),
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.5),
-                  ),
-                  const SizedBox(height: 12),
-                  TextButton.icon(
-                    key: const Key('github-apk-update-release-link'),
-                    onPressed: () async {
-                      final open = openReleasePage ?? _openReleasePage;
-                      await open(release.releaseUrl);
-                    },
-                    icon: const Icon(Icons.open_in_new),
-                    label: const Text('在 GitHub 查看此版本'),
-                  ),
-                ],
+  builder: motionOverlayBuilder(
+    context,
+    (context) => TvModeScope.isEnabled(context)
+        ? GitHubApkUpdateTvPrompt(
+            notes: _releaseNotesForPrompt(release.releaseNotes),
+            onOpenRelease: () => unawaited((openReleasePage ?? _openReleasePage)(release.releaseUrl)),
+            onLater: () => Navigator.of(context).pop(false),
+            onInstall: () => Navigator.of(context).pop(true),
+          )
+        : MotionAlertDialog(
+            key: const Key('github-apk-update-prompt'),
+            title: const Text('发现新版本'),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560, maxHeight: 520),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text('更新内容', style: Theme.of(context).textTheme.titleSmall),
+                    const SizedBox(height: 8),
+                    SelectableText(
+                      _releaseNotesForPrompt(release.releaseNotes),
+                      key: const Key('github-apk-update-release-notes'),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.5),
+                    ),
+                    const SizedBox(height: 12),
+                    TextButton.icon(
+                      key: const Key('github-apk-update-release-link'),
+                      onPressed: () async {
+                        final open = openReleasePage ?? _openReleasePage;
+                        await open(release.releaseUrl);
+                      },
+                      icon: const Icon(Icons.open_in_new),
+                      label: const Text('在 GitHub 查看此版本'),
+                    ),
+                  ],
+                ),
               ),
             ),
+            actions: <Widget>[
+              TextButton(
+                key: const Key('github-apk-update-later'),
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('稍后'),
+              ),
+              FilledButton(
+                key: const Key('github-apk-update-install'),
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('下载安装'),
+              ),
+            ],
           ),
-          actions: <Widget>[
-            TextButton(
-              key: const Key('github-apk-update-later'),
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('稍后'),
-            ),
-            FilledButton(
-              key: const Key('github-apk-update-install'),
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('下载安装'),
-            ),
-          ],
-        ),
+  ),
 );
 
 String _releaseNotesForPrompt(String releaseNotes) {
@@ -96,7 +100,7 @@ Future<void> showGitHubApkUpdateInstallProgress(
     context: context,
     animationStyle: AppMotion.overlayStyle(context),
     barrierDismissible: false,
-    builder: (_) => _GitHubApkUpdateProgressDialog(install: install),
+    builder: motionOverlayBuilder(context, (_) => _GitHubApkUpdateProgressDialog(install: install)),
   );
   if (result case _ApkUpdateProgressFailure(:final error, :final stackTrace)) {
     Error.throwWithStackTrace(error, stackTrace);
@@ -206,7 +210,7 @@ class _GitHubApkUpdateProgressDialogState extends State<_GitHubApkUpdateProgress
     };
     return PopScope(
       canPop: false,
-      child: Dialog.fullscreen(
+      child: MotionDialog.fullscreen(
         child: SafeArea(
           child: Center(
             child: ConstrainedBox(
@@ -225,7 +229,7 @@ class _GitHubApkUpdateProgressDialogState extends State<_GitHubApkUpdateProgress
                     const SizedBox(height: 20),
                     Text(title, style: Theme.of(context).textTheme.titleLarge, textAlign: TextAlign.center),
                     const SizedBox(height: 24),
-                    LinearProgressIndicator(value: downloading ? fraction : null),
+                    MotionLinearProgressIndicator(value: downloading ? fraction : null),
                     const SizedBox(height: 12),
                     Text(detail, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium),
                     const SizedBox(height: 16),

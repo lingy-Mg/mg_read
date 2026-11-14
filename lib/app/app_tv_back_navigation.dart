@@ -4,6 +4,7 @@
 /// At any root tab, back first restores its top and focus, then offers exit.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -82,7 +83,7 @@ class _AppTvBackNavigationState extends State<AppTvBackNavigation> with WidgetsB
     final navigatorContext = appRootNavigatorKey.currentContext;
     if (navigatorContext == null || !navigatorContext.mounted) return false;
     final messenger = ScaffoldMessenger.of(navigatorContext)..clearSnackBars();
-    _exitPrompt = messenger.showSnackBar(const SnackBar(content: Text('再按一次返回键退出应用'), duration: _exitWindow));
+    _exitPrompt = messenger.showMotionSnackBar(context, const SnackBar(content: Text('再按一次返回键退出应用'), duration: _exitWindow));
     _exitTimer = Timer(_exitWindow, _clearExit);
     return true;
   }

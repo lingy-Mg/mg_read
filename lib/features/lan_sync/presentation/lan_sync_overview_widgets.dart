@@ -3,6 +3,7 @@
 /// 仅负责视觉和点击意图；网络状态与操作生命周期仍由页面控制器持有。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -170,7 +171,7 @@ class _RoleCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final AppThemeTokens tokens = AppThemeTokens.of(context);
-    return Material(
+    return MotionMaterial(
       color: background,
       shape: RoundedRectangleBorder(
         borderRadius: AppRadii.card,

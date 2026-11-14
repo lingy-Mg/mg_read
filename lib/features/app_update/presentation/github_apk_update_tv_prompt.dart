@@ -4,6 +4,7 @@
 /// Reduced motion scrolls immediately; animateTo requires a nonzero duration.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mg_read/app/app_theme.dart';
@@ -67,7 +68,7 @@ class _GitHubApkUpdateTvPromptState extends State<GitHubApkUpdateTvPrompt> {
     final tokens = AppThemeTokens.of(context);
     return FocusTraversalGroup(
       policy: _policy,
-      child: Dialog(
+      child: MotionDialog(
         key: const Key('github-apk-update-prompt'),
         insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         child: SizedBox(

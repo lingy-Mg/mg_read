@@ -11,6 +11,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -45,7 +46,7 @@ class AboutPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final AppThemeTokens tokens = AppThemeTokens.of(context);
-    return Scaffold(
+    return MotionScaffold(
       body: SafeArea(
         bottom: false,
         child: AppSecondaryPageContent(
@@ -165,7 +166,7 @@ class AboutPage extends StatelessWidget {
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     messenger
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('相关内容尚未接入，当前不会打开网络或外部页面。')));
+      ..showMotionSnackBar(context, const SnackBar(content: Text('相关内容尚未接入，当前不会打开网络或外部页面。')));
   }
 
   Future<void> _openRepository(BuildContext context) async {
@@ -177,7 +178,7 @@ class AboutPage extends StatelessWidget {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('无法调用系统浏览器打开 GitHub 仓库地址。')));
+      ..showMotionSnackBar(context, const SnackBar(content: Text('无法调用系统浏览器打开 GitHub 仓库地址。')));
   }
 }
 
@@ -266,7 +267,7 @@ class _AboutSettingsCardState extends State<_AboutSettingsCard> {
     final messenger = ScaffoldMessenger.of(context);
     messenger
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+      ..showMotionSnackBar(context, SnackBar(content: Text(message)));
   }
 
   @override
@@ -300,7 +301,7 @@ class _AboutSettingsCardState extends State<_AboutSettingsCard> {
                     ? (_checkingForUpdate ? null : _checkForUpdate)
                     : () => widget.onItemPressed(items[index].id),
                 trailing: items[index].id == 'update' && _checkingForUpdate
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(width: 18, height: 18, child: MotionCircularProgressIndicator(strokeWidth: 2))
                     : null,
               );
             }),
@@ -328,7 +329,7 @@ class _AboutSettingsRow extends StatelessWidget {
       child: Stack(
         children: <Widget>[
           Positioned.fill(
-            child: Material(
+            child: MotionMaterial(
               color: Colors.transparent,
               child: InkWell(
                 key: ValueKey<String>('about-action-${item.id}'),

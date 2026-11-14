@@ -2,6 +2,7 @@
 /// explicit confirmation and uses Runtime's existing exclusive import lifecycle.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mg_read/features/app_update/application/update_check_result.dart';
@@ -27,7 +28,7 @@ Future<void> _runSourceUpdates(BuildContext context, WidgetRef ref, {List<Source
         final result = await ref.read(sourceUpdateCoordinatorProvider).check(force: true);
         if (!context.mounted) return null;
         if (result.status != UpdateCheckStatus.available) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.message)));
+          ScaffoldMessenger.of(context).showMotionSnackBar(context, SnackBar(content: Text(result.message)));
           return null;
         }
         updates = result.value!;
@@ -53,6 +54,6 @@ Future<void> _runSourceUpdates(BuildContext context, WidgetRef ref, {List<Source
       );
     }
   } on Object {
-    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据源更新失败，请稍后重试。')));
+    if (context.mounted) ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('数据源更新失败，请稍后重试。')));
   }
 }

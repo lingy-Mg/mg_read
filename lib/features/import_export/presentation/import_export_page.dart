@@ -10,6 +10,7 @@
 /// - 开发数据源提示必须明确“先打包、仅导出 artifact”。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -47,7 +48,7 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return MotionScaffold(
       body: SafeArea(
         bottom: false,
         child: AppSecondaryPageContent(
@@ -71,7 +72,7 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
                       const SizedBox(height: AppSpacing.regular),
                     ],
                     if (_busy) ...<Widget>[
-                      const LinearProgressIndicator(key: Key('import-export-progress')),
+                      const MotionLinearProgressIndicator(key: Key('import-export-progress')),
                       const SizedBox(height: AppSpacing.regular),
                     ],
                     if (_exportPlan == null && _importPlan == null) ...<Widget>[
@@ -109,7 +110,7 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
       description: '未勾选的项目不会写入文件。不可打包的数据源不会导出。',
       pluginRows: <Widget>[
         for (final plugin in plan.manifest.plugins)
-          CheckboxListTile(
+          MotionCheckboxListTile(
             key: Key('export-plugin-${plugin.id}'),
             value: _selectedPluginIds.contains(plugin.id),
             onChanged: !plugin.transferable || _busy ? null : (value) => _togglePlugin(plugin.id, value),
@@ -123,7 +124,7 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
       ],
       shelfRows: <Widget>[
         for (final item in plan.manifest.shelfItems)
-          CheckboxListTile(
+          MotionCheckboxListTile(
             key: Key('export-shelf-${item.identity}'),
             value: _selectedShelfItemIds.contains(item.identity),
             onChanged: _busy ? null : (value) => _toggleShelf(item.identity, value),
@@ -133,7 +134,7 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
       ],
       localDocumentRows: <Widget>[
         for (final document in plan.manifest.localDocuments) ...<Widget>[
-          CheckboxListTile(
+          MotionCheckboxListTile(
             key: Key('export-local-document-${document.documentId}'),
             value: _selectedLocalDocumentIds.contains(document.documentId),
             onChanged: _busy ? null : (value) => _toggleLocalDocument(document.documentId, value),
@@ -166,7 +167,7 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
       description: '相同或更高版本的数据源会保留本机版本；书架冲突默认智能合并。',
       pluginRows: <Widget>[
         for (final plugin in plan.manifest.plugins)
-          CheckboxListTile(
+          MotionCheckboxListTile(
             key: Key('import-plugin-${plugin.id}'),
             value: _selectedPluginIds.contains(plugin.id),
             onChanged: !_canImportPlugin(plan, plugin.id) || _busy ? null : (value) => _togglePlugin(plugin.id, value),
@@ -176,7 +177,7 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
       ],
       shelfRows: <Widget>[
         for (final item in plan.manifest.shelfItems) ...<Widget>[
-          CheckboxListTile(
+          MotionCheckboxListTile(
             key: Key('import-shelf-${item.identity}'),
             value: _selectedShelfItemIds.contains(item.identity),
             onChanged: _busy ? null : (value) => _toggleShelf(item.identity, value),
@@ -187,7 +188,7 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
             if (_conflictFor(plan, item.identity) case final conflict?)
               Padding(
                 padding: const EdgeInsets.fromLTRB(AppSpacing.section, 0, AppSpacing.section, AppSpacing.compact),
-                child: DropdownButtonFormField<LanSyncConflictChoice>(
+                child: MotionDropdownButtonFormField<LanSyncConflictChoice>(
                   key: Key('import-conflict-${item.identity}'),
                   initialValue: _conflictChoices[item.identity] ?? LanSyncConflictChoice.smartMerge,
                   decoration: const InputDecoration(labelText: '书架冲突处理'),
@@ -203,7 +204,7 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
       ],
       localDocumentRows: <Widget>[
         for (final document in plan.manifest.localDocuments) ...<Widget>[
-          CheckboxListTile(
+          MotionCheckboxListTile(
             key: Key('import-local-document-${document.documentId}'),
             value: _selectedLocalDocumentIds.contains(document.documentId),
             onChanged: _busy ? null : (value) => _toggleLocalDocument(document.documentId, value),
@@ -214,7 +215,7 @@ class _ImportExportPageState extends ConsumerState<ImportExportPage> {
             if (_localConflictFor(plan, document.documentId) case final conflict?)
               Padding(
                 padding: const EdgeInsets.fromLTRB(AppSpacing.section, 0, AppSpacing.section, AppSpacing.compact),
-                child: DropdownButtonFormField<LanSyncConflictChoice>(
+                child: MotionDropdownButtonFormField<LanSyncConflictChoice>(
                   key: Key('import-local-document-conflict-${document.documentId}'),
                   initialValue: _conflictChoices[document.documentId] ?? LanSyncConflictChoice.keepLocal,
                   decoration: const InputDecoration(labelText: '本地书籍版本冲突'),
@@ -464,7 +465,7 @@ class _ActionCard extends StatelessWidget {
         border: Border.all(color: tokens.divider),
         boxShadow: <BoxShadow>[BoxShadow(color: tokens.shadow.withValues(alpha: 0.07), blurRadius: 14, offset: const Offset(0, 4))],
       ),
-      child: Material(
+      child: MotionMaterial(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
@@ -570,11 +571,11 @@ class _GroupCard extends StatelessWidget {
   final ValueChanged<bool>? onSelectAll;
 
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) => MotionCard(
     clipBehavior: Clip.antiAlias,
     child: Column(
       children: <Widget>[
-        ListTile(
+        MotionListTile(
           title: Text(title, style: Theme.of(context).textTheme.titleMedium),
           subtitle: Text('已选择 $count 项'),
           trailing: TextButton(
@@ -635,9 +636,12 @@ class _FeedbackCard extends StatelessWidget {
     final tokens = AppThemeTokens.of(context);
     return Semantics(
       liveRegion: true,
-      child: Card(
+      child: MotionCard(
         color: isError ? tokens.warning.withValues(alpha: 0.12) : tokens.accentSoft,
-        child: ListTile(leading: Icon(isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded), title: Text(message)),
+        child: MotionListTile(
+          leading: Icon(isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded),
+          title: Text(message),
+        ),
       ),
     );
   }

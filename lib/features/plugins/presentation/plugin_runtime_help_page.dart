@@ -11,6 +11,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -45,12 +46,13 @@ class _PluginRuntimeHelpPageState extends ConsumerState<PluginRuntimeHelpPage> {
       final connection = await ref.read(pluginRuntimeConnectionProvider.future);
       if (!mounted) return;
       final developmentCount = connection.plugins.where((PluginRuntimePlugin source) => source.status == 'development').length;
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context).showMotionSnackBar(
+        context,
         SnackBar(content: Text(developmentCount > 0 ? '已识别 $developmentCount 个开发数据源插件，即时生效。' : '未识别开发数据源插件。请选择包含数据源插件子目录的集合目录。')),
       );
     } on Object {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('开发目录添加失败，请检查目录后重试。')));
+      ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('开发目录添加失败，请检查目录后重试。')));
     }
   }
 
@@ -58,10 +60,10 @@ class _PluginRuntimeHelpPageState extends ConsumerState<PluginRuntimeHelpPage> {
     try {
       await ref.read(pluginRuntimePrivateDirectoryProvider.notifier).open();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已打开 Runtime 私有目录。')));
+      ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('已打开 Runtime 私有目录。')));
     } on Object {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Runtime 私有目录打开失败，请稍后重试。')));
+      ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('Runtime 私有目录打开失败，请稍后重试。')));
     }
   }
 
@@ -69,7 +71,7 @@ class _PluginRuntimeHelpPageState extends ConsumerState<PluginRuntimeHelpPage> {
   Widget build(BuildContext context) {
     final bool canSelectDevelopmentDirectory = Platform.isWindows || Platform.isMacOS;
     final bool canOpenPrivateDirectory = Platform.isWindows || Platform.isMacOS;
-    return Scaffold(
+    return MotionScaffold(
       body: SafeArea(
         bottom: false,
         child: AppSecondaryPageContent(
@@ -259,7 +261,7 @@ class _DevelopmentDirectorySection extends StatelessWidget {
             key: const Key('data-source-add-development-directory'),
             onPressed: isSelecting ? null : onPressed,
             icon: isSelecting
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const SizedBox(width: 18, height: 18, child: MotionCircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.folder_open_outlined),
             label: Text(isSelecting ? '正在识别开发数据源插件…' : '选择数据源插件集合目录'),
           ),
@@ -287,7 +289,7 @@ class _RuntimePrivateDirectorySection extends StatelessWidget {
             key: const Key('data-source-open-runtime-directory'),
             onPressed: isOpening ? null : onPressed,
             icon: isOpening
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const SizedBox(width: 18, height: 18, child: MotionCircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.folder_open_outlined),
             label: Text(isOpening ? '正在打开…' : '打开 Runtime 私有目录'),
           ),

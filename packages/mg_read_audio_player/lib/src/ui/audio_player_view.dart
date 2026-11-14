@@ -11,6 +11,7 @@
 /// - Essential state changes stay immediate when animations are disabled.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -238,7 +239,7 @@ class _AudioViewState extends State<AudioPlayerView>
   @override
   Widget build(BuildContext context) {
     final snapshot = _surfaceSnapshot;
-    return Theme(
+    return MotionTheme(
       data: audioPlayerTheme(Theme.of(context)),
       child: AnnotatedRegion<SystemUiOverlayStyle>(
         value: _audioPlayerSystemUiStyle,
@@ -255,7 +256,7 @@ class _AudioViewState extends State<AudioPlayerView>
             child: Focus(
               focusNode: _focusNode,
               autofocus: true,
-              child: Scaffold(
+              child: MotionScaffold(
                 backgroundColor: AudioPlayerColors.backgroundBottom,
                 // Modal routes must capture the player theme, including when
                 // the host uses a light theme or custom IconButton defaults.

@@ -30,7 +30,7 @@ class _AppearanceChoiceGroup extends StatelessWidget {
                     side: BorderSide(color: value == options[i].$1 ? tokens.accent : tokens.divider),
                   ),
                 ),
-                child: Material(
+                child: MotionMaterial(
                   color: Colors.transparent,
                   borderRadius: AppRadii.detailControl,
                   clipBehavior: Clip.antiAlias,

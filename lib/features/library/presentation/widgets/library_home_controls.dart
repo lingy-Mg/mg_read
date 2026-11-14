@@ -9,6 +9,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -63,7 +64,7 @@ class _SectionButton extends StatelessWidget {
       button: true,
       selected: isSelected,
       label: label,
-      child: Material(
+      child: MotionMaterial(
         color: Colors.transparent,
         child: InkWell(
           onTap: () => onSelected(section),
@@ -177,7 +178,7 @@ class _FilterChip extends StatelessWidget {
       selected: selected,
       label: label,
       key: ValueKey<String>('library-filter-${filter.name}'),
-      child: Material(
+      child: MotionMaterial(
         color: Colors.transparent,
         child: Ink(
           height: AppSpacing.sectionControlHeight - AppSpacing.unit,

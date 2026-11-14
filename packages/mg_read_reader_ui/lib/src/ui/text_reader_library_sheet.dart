@@ -28,11 +28,11 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
           : null,
       isScrollControlled: true,
       isDismissible: true,
-      enableDrag: true,
+      enableDrag: !motionDisabled(context),
       backgroundColor: Colors.transparent,
       barrierColor: ReaderSettingsTokens.sheetBarrier(_palette),
-      builder: (BuildContext sheetContext) {
-        return Theme(
+      builder: motionOverlayBuilder(context, (BuildContext sheetContext) {
+        return MotionTheme(
           data: readerTheme,
           child: StatefulBuilder(
             builder: (BuildContext context, StateSetter setSheetState) {
@@ -80,12 +80,16 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
                           borderRadius: const BorderRadius.vertical(
                             top: Radius.circular(20),
                           ),
-                          child: Material(
+                          child: MotionMaterial(
                             color: _palette.panel,
                             child: SafeArea(
                               top: false,
                               child: DefaultTabController(
                                 length: 3,
+                                animationDuration:
+                                    MediaQuery.disableAnimationsOf(context)
+                                    ? Duration.zero
+                                    : null,
                                 initialIndex: initialIndex,
                                 child: Column(
                                   children: <Widget>[
@@ -115,6 +119,12 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
                                       child: PageStorage(
                                         bucket: _catalogPageStorageBucket,
                                         child: TabBarView(
+                                          physics:
+                                              MediaQuery.disableAnimationsOf(
+                                                context,
+                                              )
+                                              ? const NeverScrollableScrollPhysics()
+                                              : null,
                                           children: <Widget>[
                                             _buildBookDetailTab(
                                               routeSession,
@@ -150,7 +160,7 @@ extension _TextReaderLibrarySheet on _TextReaderViewState {
             },
           ),
         );
-      },
+      }),
     );
   }
 }

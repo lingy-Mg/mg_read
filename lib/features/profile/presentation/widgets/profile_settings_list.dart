@@ -2,6 +2,7 @@
 /// 触屏行使用统一间距与命中区域；TV 行使用可见遥控焦点，不持有业务状态或执行 IO。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -112,7 +113,7 @@ class ProfileSettingsRow extends StatelessWidget {
     return Semantics(
       button: true,
       label: accessibilityLabel,
-      child: Material(
+      child: MotionMaterial(
         color: Colors.transparent,
         child: InkWell(
           key: ValueKey<String>('profile-setting-${item.id}'),

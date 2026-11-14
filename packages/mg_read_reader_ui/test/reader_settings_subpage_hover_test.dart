@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:novel_reader_ui/src/api/models.dart';
 import 'package:novel_reader_ui/src/core/auto_reading_coordinator.dart';
 import 'package:novel_reader_ui/src/platform/reader_platform.dart';
@@ -15,7 +16,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text(ReaderStrings.moreSettings));
       await tester.pump();
-      expect(find.byType(SwitchListTile), findsWidgets);
+      expect(find.byType(MotionSwitchListTile), findsWidgets);
       for (final animated in tester.widgetList<AnimatedSwitcher>(
         find.byType(AnimatedSwitcher),
       )) {

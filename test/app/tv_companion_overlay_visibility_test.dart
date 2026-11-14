@@ -44,7 +44,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byWidgetPredicate((widget) => widget is AlertDialog), findsOneWidget);
       _expectNoFloatingEntry();
       navigator.pop();
       await tester.pumpAndSettle();
@@ -67,6 +67,9 @@ void main() {
         await tester.tap(find.byKey(const Key('tv-settings-section-3')));
       } else {
         await tester.drag(find.byKey(const Key('profile-page-content')), const Offset(0, -450));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byKey(const Key('profile-setting-connection-devices')));
+        await tester.tap(find.byKey(const Key('profile-setting-connection-devices')));
       }
       await tester.pumpAndSettle();
       await tester.ensureVisible(entry);
@@ -75,7 +78,7 @@ void main() {
       await tester.tap(entry);
       await tester.pumpAndSettle();
       expect(find.byType(CompanionPage), findsOneWidget);
-      expect(find.text(tvMode ? 'TV 接收状态' : '发现 TV'), findsOneWidget);
+      expect(find.text(tvMode ? '电视接收端' : '手机连接电视，选片与遥控'), findsOneWidget);
       _expectNoFloatingEntry();
       navigator.pop();
       await tester.pumpAndSettle();

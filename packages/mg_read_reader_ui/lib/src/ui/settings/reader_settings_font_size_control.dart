@@ -1,3 +1,4 @@
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 
 import '../reader_strings.dart';
@@ -55,7 +56,7 @@ class ReaderSettingsFontSizeControl extends StatelessWidget {
             ),
             if (showProgress)
               Expanded(
-                child: Slider(
+                child: MotionSlider(
                   value: value,
                   min: min,
                   max: max,
@@ -99,14 +100,16 @@ class ReaderSettingsFontSizeControl extends StatelessWidget {
     return SizedBox(
       width: 32,
       height: ReaderSettingsTokens.controlHeight,
-      child: IconButton(
-        key: key,
-        tooltip: tooltip,
-        onPressed: onPressed,
-        padding: EdgeInsets.zero,
-        visualDensity: VisualDensity.compact,
-        iconSize: 18,
-        icon: Icon(icon),
+      child: MotionIconButtonSurface(
+        child: IconButton(
+          key: key,
+          tooltip: tooltip,
+          onPressed: onPressed,
+          padding: EdgeInsets.zero,
+          visualDensity: VisualDensity.compact,
+          iconSize: 18,
+          icon: Icon(icon),
+        ),
       ),
     );
   }

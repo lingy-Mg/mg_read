@@ -4,8 +4,8 @@ part of 'source_picker_sheet.dart';
 
 extension _TvSourcePickerLayout on _DiscoverySourcePickerSheetState {
   Widget _buildTvPicker(Widget list) => TvFocusRegion(
-    child: Scaffold(
-      appBar: AppBar(title: const Text('选择数据源')),
+    child: MotionScaffold(
+      appBar: MotionAppBarSurface(child: AppBar(title: const Text('选择数据源'))),
       body: SafeArea(
         child: TvDiscoveryWorkspace(
           key: const Key('discovery-source-picker-panel'),
@@ -22,7 +22,7 @@ extension _TvSourcePickerLayout on _DiscoverySourcePickerSheetState {
               if (_searchExpanded) ...[
                 const SizedBox(height: 12),
                 TvTextInputNavigation(
-                  child: TextField(
+                  child: MotionTextField(
                     key: const Key('discovery-source-picker-search'),
                     controller: _searchController,
                     autofocus: true,

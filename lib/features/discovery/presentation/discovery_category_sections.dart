@@ -82,7 +82,7 @@ class DiscoveryCategoryTile extends StatelessWidget {
     return Semantics(
       button: true,
       label: data.count == null ? data.title : '${data.title}，${data.count}',
-      child: Material(
+      child: MotionMaterial(
         color: Colors.transparent,
         child: InkWell(
           onTap: onPressed,

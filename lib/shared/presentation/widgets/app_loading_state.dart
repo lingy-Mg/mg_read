@@ -1,6 +1,7 @@
 /// 页面加载反馈；无动画模式保留静态等待图标，不伪造进度或阻塞真实任务。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -28,7 +29,7 @@ class AppLoadingState extends StatelessWidget {
               children: <Widget>[
                 AppMotion.disablesAnimations(context)
                     ? Icon(Icons.hourglass_empty_rounded, key: progressKey, color: tokens.accent, size: 36)
-                    : CircularProgressIndicator(key: progressKey, color: tokens.accent),
+                    : MotionCircularProgressIndicator(key: progressKey, color: tokens.accent),
                 const SizedBox(height: AppSpacing.regular),
                 Text(
                   message,

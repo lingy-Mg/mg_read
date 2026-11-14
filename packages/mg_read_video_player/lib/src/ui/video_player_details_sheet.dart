@@ -13,6 +13,7 @@ library;
 // package entry point.
 // ignore_for_file: public_member_api_docs
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -153,7 +154,7 @@ final class _VideoDetailsSheet extends StatelessWidget {
                 value: _failureLabel(snapshot.failure!),
               ),
             const _DetailsDivider(),
-            Theme(
+            MotionTheme(
               data: Theme.of(
                 context,
               ).copyWith(dividerColor: Colors.transparent),
@@ -273,21 +274,23 @@ final class _DetailValueRow extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 4),
-        IconButton(
-          key: copyKey,
-          tooltip: copyLabel,
-          style: IconButton.styleFrom(
-            foregroundColor: videoPlayerSecondary,
-            minimumSize: Size.square(pointer ? 28 : 44),
-            tapTargetSize: pointer
-                ? MaterialTapTargetSize.shrinkWrap
-                : MaterialTapTargetSize.padded,
-            padding: const EdgeInsets.all(6),
+        MotionIconButtonSurface(
+          child: IconButton(
+            key: copyKey,
+            tooltip: copyLabel,
+            style: IconButton.styleFrom(
+              foregroundColor: videoPlayerSecondary,
+              minimumSize: Size.square(pointer ? 28 : 44),
+              tapTargetSize: pointer
+                  ? MaterialTapTargetSize.shrinkWrap
+                  : MaterialTapTargetSize.padded,
+              padding: const EdgeInsets.all(6),
+            ),
+            onPressed: value.startsWith('尚未')
+                ? null
+                : () => _copyValue(context, value, '$label已复制'),
+            icon: const Icon(Icons.copy_outlined, size: 14),
           ),
-          onPressed: value.startsWith('尚未')
-              ? null
-              : () => _copyValue(context, value, '$label已复制'),
-          icon: const Icon(Icons.copy_outlined, size: 14),
         ),
       ],
     );
@@ -344,7 +347,8 @@ final class _DetailsDivider extends StatelessWidget {
 
 void _copyValue(BuildContext context, String value, String message) {
   Clipboard.setData(ClipboardData(text: value));
-  ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+  ScaffoldMessenger.maybeOf(context)?.showMotionSnackBar(
+    context,
     SnackBar(content: Text(message), duration: const Duration(seconds: 1)),
   );
 }

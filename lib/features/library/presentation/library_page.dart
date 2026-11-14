@@ -11,6 +11,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'package:mg_read/app/app_navigation_activity.dart';
 
@@ -192,7 +193,7 @@ class LibraryPage extends ConsumerWidget {
         if (context.mounted) {
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(SnackBar(content: Text('刷新完成：成功 ${report.succeeded}，失败 ${report.failed}，跳过 ${report.skipped}')));
+          ).showMotionSnackBar(context, SnackBar(content: Text('刷新完成：成功 ${report.succeeded}，失败 ${report.failed}，跳过 ${report.skipped}')));
         }
       }
       await controller.refresh();
@@ -267,7 +268,7 @@ class LibraryPage extends ConsumerWidget {
         return;
       }
       if (detailLauncher == null) {
-        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('书籍详情暂不可用。')));
+        if (context.mounted) ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('书籍详情暂不可用。')));
         return;
       }
       final LibraryItemSummary? summary = state.overview!.items.cast<LibraryItemSummary?>().firstWhere(
@@ -318,7 +319,7 @@ class LibraryPage extends ConsumerWidget {
             case SourceShelfAction.refresh:
               await refreshBook(book);
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('《${book.title}》已刷新')));
+                ScaffoldMessenger.of(context).showMotionSnackBar(context, SnackBar(content: Text('《${book.title}》已刷新')));
               }
             case SourceShelfAction.setPrivate:
               await resolvedCallbacks.onSetBookPrivate?.call(book);
@@ -389,7 +390,9 @@ class LibraryPage extends ConsumerWidget {
         );
       } on Object catch (error) {
         if (context.mounted && current()) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_shelfMediaFailureMessage('无法打开上次的听书进度，请检查网络后重试。', error))));
+          ScaffoldMessenger.of(
+            context,
+          ).showMotionSnackBar(context, SnackBar(content: Text(_shelfMediaFailureMessage('无法打开上次的听书进度，请检查网络后重试。', error))));
         }
       }
     }
@@ -427,7 +430,9 @@ class LibraryPage extends ConsumerWidget {
         await callback(detail: entry.detail, firstCatalogPage: entry.catalog, chapter: entry.chapter, libraryItemId: book.id);
       } on Object catch (error) {
         if (context.mounted && current()) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_shelfMediaFailureMessage('无法打开上次的视频进度，请检查网络后重试。', error))));
+          ScaffoldMessenger.of(
+            context,
+          ).showMotionSnackBar(context, SnackBar(content: Text(_shelfMediaFailureMessage('无法打开上次的视频进度，请检查网络后重试。', error))));
         }
       }
     }
@@ -682,7 +687,7 @@ class _LibraryLoadingState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return MotionScaffold(
       body: SafeArea(
         child: showAnimation
             ? const AppLoadingState(label: '正在加载书架', message: '正在加载书架')
@@ -700,7 +705,7 @@ class _LibraryFailureState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return MotionScaffold(
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(

@@ -31,28 +31,31 @@ class _LogFilePicker extends StatelessWidget {
           children: [
             Expanded(child: Text(live ? '最近记录' : '已保存的记录', style: Theme.of(context).textTheme.titleMedium)),
             if (history.isNotEmpty)
-              PopupMenuButton<DiagnosticsViewerLogFile>(
-                key: const Key('diagnostics-history'),
-                tooltip: '查看历史记录',
-                onSelected: onSelected,
-                itemBuilder: (context) => files
-                    .map(
-                      (file) => PopupMenuItem(
-                        key: Key('diagnostics-log-${file.fileId}'),
-                        value: file,
-                        child: Text(
-                          file.isLive
-                              ? '本次运行'
-                              : '${_formatFileDate(file.startedAtUtcMicros)} · ${_formatBytes(file.storedBytes)}${file.isCurrent ? ' · 当前' : ''}',
+              MotionPopupMenuSurface(
+                child: PopupMenuButton<DiagnosticsViewerLogFile>(
+                  popUpAnimationStyle: motionDisabled(context) ? AnimationStyle.noAnimation : null,
+                  key: const Key('diagnostics-history'),
+                  tooltip: '查看历史记录',
+                  onSelected: onSelected,
+                  itemBuilder: (context) => files
+                      .map(
+                        (file) => PopupMenuItem(
+                          key: Key('diagnostics-log-${file.fileId}'),
+                          value: file,
+                          child: Text(
+                            file.isLive
+                                ? '本次运行'
+                                : '${_formatFileDate(file.startedAtUtcMicros)} · ${_formatBytes(file.storedBytes)}${file.isCurrent ? ' · 当前' : ''}',
+                          ),
                         ),
-                      ),
-                    )
-                    .toList(),
-                child: const Padding(
-                  padding: EdgeInsets.all(AppSpacing.compact),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [Icon(Icons.history_rounded, size: 20), SizedBox(width: 6), Text('历史记录')],
+                      )
+                      .toList(),
+                  child: const Padding(
+                    padding: EdgeInsets.all(AppSpacing.compact),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [Icon(Icons.history_rounded, size: 20), SizedBox(width: 6), Text('历史记录')],
+                    ),
                   ),
                 ),
               ),
@@ -226,7 +229,7 @@ class _EventDetails extends StatelessWidget {
     final theme = Theme.of(context);
     final tokens = AppThemeTokens.of(context);
     if (loading) {
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+      return const Center(child: MotionCircularProgressIndicator(strokeWidth: 2));
     }
     if (errorCode != null) return Text('详情读取失败：$errorCode');
     final value = details;
@@ -272,7 +275,7 @@ class _EventDetails extends StatelessWidget {
                       OutlinedButton.icon(
                         onPressed: loadingPreview || attachment.storedByteLength == 0 ? null : () => onPreview(attachment),
                         icon: loadingPreview
-                            ? const SizedBox.square(dimension: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                            ? const SizedBox.square(dimension: 14, child: MotionCircularProgressIndicator(strokeWidth: 2))
                             : const Icon(Icons.visibility_outlined),
                         label: const Text('纯文本预览前 32 KiB'),
                       ),

@@ -251,7 +251,7 @@ class _GroupedDetailCatalogState extends State<_GroupedDetailCatalog> {
           Padding(
             padding: const EdgeInsets.all(AppSpacing.regular),
             child: _loading.contains(group!.id)
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(child: MotionCircularProgressIndicator())
                 : TextButton(onPressed: () => _loadGroup(group.id), child: Text(_failed.contains(group.id) ? '加载失败，点击重试' : '加载该线路')),
           )
         else if (group == null || episodes.isEmpty)
@@ -282,7 +282,7 @@ class _GroupedDetailCatalogState extends State<_GroupedDetailCatalog> {
               final episode = visibleEpisodes[index];
               final tokens = AppThemeTokens.of(context);
               final theme = Theme.of(context);
-              return ListTile(
+              return MotionListTile(
                 key: ValueKey<String>('source-detail-episode-${group.id}-${episode.id}'),
                 contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.unit),
                 minLeadingWidth: 34,
@@ -348,7 +348,7 @@ class _DetailGroupTab extends StatelessWidget {
       label: '${group.title}，${group.episodes.length} 集',
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: AppSpacing.minimumTouchTarget),
-        child: Material(
+        child: MotionMaterial(
           key: ValueKey<String>('source-detail-group-${group.id}'),
           color: selected ? tokens.accentSoft : tokens.surface,
           shape: RoundedRectangleBorder(

@@ -4,6 +4,7 @@
 /// Stable source/target identities retain focus and scrolling on revalidation.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -117,7 +118,7 @@ class _AppTvSourceNavigationState extends ConsumerState<AppTvSourceNavigation> {
     if (!_showContent) return;
     TvNavigationHandoff.request(context, (live?.sourceId, null));
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text('分类已更新，已返回数据源首页。')));
+      if (mounted) ScaffoldMessenger.maybeOf(context)?.showMotionSnackBar(context, const SnackBar(content: Text('分类已更新，已返回数据源首页。')));
     });
   }
 

@@ -241,7 +241,7 @@ class _CapabilityCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AppThemeTokens.of(context);
-    return Material(
+    return MotionMaterial(
       color: tokens.surface,
       shape: RoundedRectangleBorder(
         borderRadius: AppRadii.card,
@@ -355,7 +355,7 @@ class _TemporaryDataSheet extends StatelessWidget {
       children: <Widget>[
         if (state.phase == LanSyncPhase.idle || state.phase == LanSyncPhase.cancelled)
           const Center(
-            child: Padding(padding: EdgeInsets.all(AppSpacing.regular), child: CircularProgressIndicator()),
+            child: Padding(padding: EdgeInsets.all(AppSpacing.regular), child: MotionCircularProgressIndicator()),
           )
         else ...<Widget>[_StatusCard(state: state), const SizedBox(height: AppSpacing.regular), ...phaseContent(state)],
         if (state.phase == LanSyncPhase.completed || state.phase == LanSyncPhase.failed) ...<Widget>[

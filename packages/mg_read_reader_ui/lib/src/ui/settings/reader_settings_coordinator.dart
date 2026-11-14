@@ -70,7 +70,7 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
       data: mediaQuery.copyWith(
         textScaler: mediaQuery.textScaler.clamp(maxScaleFactor: 1.3),
       ),
-      child: Theme(
+      child: MotionTheme(
         data: theme,
         child: Align(
           alignment: Alignment.bottomCenter,
@@ -85,7 +85,7 @@ class _ReaderSettingsSheetState extends State<ReaderSettingsSheet> {
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(ReaderSettingsTokens.sheetRadius),
                 ),
-                child: Material(
+                child: MotionMaterial(
                   color: palette.panel,
                   child: SafeArea(
                     top: false,

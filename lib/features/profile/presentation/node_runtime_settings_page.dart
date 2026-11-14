@@ -2,6 +2,7 @@
 /// keep the active host unchanged until the user restarts the app process.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -44,13 +45,16 @@ class _NodeRuntimeSettingsPageState extends ConsumerState<NodeRuntimeSettingsPag
       final restart = await showDialog<bool>(
         context: context,
         animationStyle: AppMotion.overlayStyle(context),
-        builder: (context) => AlertDialog(
-          title: const Text('重启后生效'),
-          content: Text('已选择${_label(backend)}。重启 App 后启用，当前阅读、播放和下载会中断。'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('稍后重启')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('立即重启')),
-          ],
+        builder: motionOverlayBuilder(
+          context,
+          (context) => MotionAlertDialog(
+            title: const Text('重启后生效'),
+            content: Text('已选择${_label(backend)}。重启 App 后启用，当前阅读、播放和下载会中断。'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('稍后重启')),
+              FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('立即重启')),
+            ],
+          ),
         ),
       );
       if (restart == true && mounted) await _restart();
@@ -84,7 +88,7 @@ class _NodeRuntimeSettingsPageState extends ConsumerState<NodeRuntimeSettingsPag
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(androidNodeRuntimeSettingsProvider);
-    return Scaffold(
+    return MotionScaffold(
       body: SafeArea(
         child: AppSecondaryPageContent(
           child: Column(
@@ -99,8 +103,8 @@ class _NodeRuntimeSettingsPageState extends ConsumerState<NodeRuntimeSettingsPag
                     Text(settings.supportsJavet ? '可选择当前设备支持的运行时。切换将在重启后生效，已安装的数据源保留。' : '当前设备使用 Node.js 独立进程运行数据源。'),
                     const SizedBox(height: AppSpacing.regular),
                     for (final backend in AndroidNodeBackend.values)
-                      Card(
-                        child: ListTile(
+                      MotionCard(
+                        child: MotionListTile(
                           key: Key('node-runtime-${backend.name}'),
                           title: Text(_label(backend)),
                           subtitle: Text(
@@ -123,7 +127,7 @@ class _NodeRuntimeSettingsPageState extends ConsumerState<NodeRuntimeSettingsPag
                       const SizedBox(height: AppSpacing.regular),
                       FilledButton(onPressed: _busy ? null : _restart, child: const Text('立即重启')),
                     ],
-                    if (_busy) const LinearProgressIndicator(),
+                    if (_busy) const MotionLinearProgressIndicator(),
                     if (_error != null) Text(_error!, key: const Key('node-runtime-error')),
                   ],
                 ),

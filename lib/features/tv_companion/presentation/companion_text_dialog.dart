@@ -2,6 +2,7 @@
 /// local. Cancel restores the original TV draft; local TV edits fence this token.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:mg_read/shared/presentation/motion/app_motion.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -28,7 +29,10 @@ Future<void> showCompanionTextDialog(BuildContext context, CompanionController s
     context: context,
     animationStyle: AppMotion.overlayStyle(context),
     barrierDismissible: false,
-    builder: (_) => _CompanionTextDialog(service: service, interaction: interaction, session: receipt.details),
+    builder: motionOverlayBuilder(
+      context,
+      (_) => _CompanionTextDialog(service: service, interaction: interaction, session: receipt.details),
+    ),
   );
 }
 
@@ -129,7 +133,7 @@ class _CompanionTextDialogState extends State<_CompanionTextDialog> {
     onPopInvokedWithResult: (didPop, _) {
       if (!didPop) unawaited(_cancel());
     },
-    child: AlertDialog(
+    child: MotionAlertDialog(
       scrollable: true,
       title: const Text('输入 TV 搜索词'),
       content: SizedBox(
@@ -139,7 +143,7 @@ class _CompanionTextDialogState extends State<_CompanionTextDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('中文输入法组词留在手机，完成的文字会显示在 TV。提交前不会搜索。'),
-            TextField(
+            MotionTextField(
               controller: _editor,
               autofocus: true,
               maxLength: 256,
@@ -149,7 +153,7 @@ class _CompanionTextDialogState extends State<_CompanionTextDialog> {
               onSubmitted: (_) => _submit(),
             ),
             if (_error != null) Text(_error!),
-            if (_busy) const LinearProgressIndicator(),
+            if (_busy) const MotionLinearProgressIndicator(),
           ],
         ),
       ),

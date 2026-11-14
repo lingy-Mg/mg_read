@@ -3,6 +3,7 @@
 /// Returning from details reloads the library after metadata or removal changes.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,8 +21,8 @@ class LocalImportPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.watch(localImportControllerProvider);
     final colors = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(title: const Text('本地书籍')),
+    return MotionScaffold(
+      appBar: MotionAppBarSurface(child: AppBar(title: const Text('本地书籍'))),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 920),
@@ -60,12 +61,15 @@ class LocalImportPage extends ConsumerWidget {
                         try {
                           final added = await LocalImportIngress.instance.registerOpenWith();
                           if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            ScaffoldMessenger.of(context).showMotionSnackBar(
+                              context,
                               SnackBar(content: Text(added ? 'MgRead 已添加到 TXT 和 EPUB 的“打开方式”。' : '无法更新当前 Windows 用户的“打开方式”。')),
                             );
                           }
                         } on Object catch (error) {
-                          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('注册失败：$error')));
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showMotionSnackBar(context, SnackBar(content: Text('注册失败：$error')));
+                          }
                         }
                       },
                       icon: const Icon(Icons.open_in_new),
@@ -75,7 +79,7 @@ class LocalImportPage extends ConsumerWidget {
               ),
               if (controller.batchTotal > 0) ...<Widget>[
                 const SizedBox(height: 12),
-                LinearProgressIndicator(value: controller.batchCurrent / controller.batchTotal),
+                MotionLinearProgressIndicator(value: controller.batchCurrent / controller.batchTotal),
                 Text('正在处理 ${controller.batchCurrent}/${controller.batchTotal}'),
                 Align(
                   alignment: Alignment.centerRight,
@@ -87,17 +91,19 @@ class LocalImportPage extends ConsumerWidget {
                 ),
               ],
               for (final input in controller.selected)
-                ListTile(
+                MotionListTile(
                   key: ValueKey<String>('selected-${input.fileName}-${identityHashCode(input)}'),
                   leading: const Icon(Icons.description_outlined),
                   title: Text(input.fileName, maxLines: 1, overflow: TextOverflow.ellipsis),
                   subtitle: Text(input.bytes == null ? '大小将在读取时确认' : _formatBytes(input.bytes!)),
-                  trailing: IconButton(tooltip: '移除', onPressed: () => controller.removeSelected(input), icon: const Icon(Icons.close)),
+                  trailing: MotionIconButtonSurface(
+                    child: IconButton(tooltip: '移除', onPressed: () => controller.removeSelected(input), icon: const Icon(Icons.close)),
+                  ),
                 ),
               for (final error in controller.errors.entries)
-                Card(
+                MotionCard(
                   color: colors.errorContainer,
-                  child: ListTile(
+                  child: MotionListTile(
                     leading: Icon(Icons.error_outline, color: colors.onErrorContainer),
                     title: Text(error.value, style: TextStyle(color: colors.onErrorContainer)),
                     subtitle: Text(error.key, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -107,7 +113,9 @@ class LocalImportPage extends ConsumerWidget {
               Row(
                 children: <Widget>[
                   Expanded(child: Text('导入任务', style: Theme.of(context).textTheme.titleLarge)),
-                  IconButton(tooltip: '刷新', onPressed: controller.reload, icon: const Icon(Icons.refresh)),
+                  MotionIconButtonSurface(
+                    child: IconButton(tooltip: '刷新', onPressed: controller.reload, icon: const Icon(Icons.refresh)),
+                  ),
                 ],
               ),
               if (controller.jobs.isEmpty && !controller.loading)
@@ -119,29 +127,34 @@ class LocalImportPage extends ConsumerWidget {
                 children: <Widget>[
                   Expanded(child: Text('书库', style: Theme.of(context).textTheme.titleLarge)),
                   Text('占用 ${_formatBytes(controller.usageBytes)}'),
-                  IconButton(
-                    tooltip: '清理未引用的本地文件',
-                    onPressed: controller.loading
-                        ? null
-                        : () async {
-                            try {
-                              final freed = await controller.collectGarbage();
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(
-                                  context,
-                                ).showSnackBar(SnackBar(content: Text(freed == 0 ? '没有可清理的文件。' : '已清理 ${_formatBytes(freed)} 未引用文件。')));
+                  MotionIconButtonSurface(
+                    child: IconButton(
+                      tooltip: '清理未引用的本地文件',
+                      onPressed: controller.loading
+                          ? null
+                          : () async {
+                              try {
+                                final freed = await controller.collectGarbage();
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showMotionSnackBar(
+                                    context,
+                                    SnackBar(content: Text(freed == 0 ? '没有可清理的文件。' : '已清理 ${_formatBytes(freed)} 未引用文件。')),
+                                  );
+                                }
+                              } on Object catch (error) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showMotionSnackBar(context, SnackBar(content: Text('清理失败：$error')));
+                                }
                               }
-                            } on Object catch (error) {
-                              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('清理失败：$error')));
-                            }
-                          },
-                    icon: const Icon(Icons.cleaning_services_outlined),
+                            },
+                      icon: const Icon(Icons.cleaning_services_outlined),
+                    ),
                   ),
                 ],
               ),
               if (controller.documents.isEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Text('尚无本地书籍。')),
               for (final item in controller.documents)
-                ListTile(
+                MotionListTile(
                   key: ValueKey<String>('local-${item.id.value}'),
                   leading: const Icon(Icons.menu_book_outlined),
                   title: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -203,7 +216,7 @@ class _ImportJobCardState extends State<_ImportJobCard> {
       LocalImportStatus.needsAction => '需要处理',
       LocalImportStatus.failed => '失败',
     };
-    return Card(
+    return MotionCard(
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
@@ -221,18 +234,18 @@ class _ImportJobCardState extends State<_ImportJobCard> {
             if (job.totalBytes != null) Text('${_formatBytes(job.completedBytes)} / ${_formatBytes(job.totalBytes!)}'),
             if (job.workTotal case final int total when total > 0) ...<Widget>[
               const SizedBox(height: 8),
-              LinearProgressIndicator(value: ((job.workCompleted ?? 0) / total).clamp(0.0, 1.0).toDouble()),
+              MotionLinearProgressIndicator(value: ((job.workCompleted ?? 0) / total).clamp(0.0, 1.0).toDouble()),
               Text('${_workStageLabel(job.workStage)} · ${job.workCompleted ?? 0} / $total'),
             ],
             if (job.status == LocalImportStatus.awaitingConfirmation) ...<Widget>[
               const SizedBox(height: 10),
-              TextField(
+              MotionTextField(
                 controller: _title,
                 decoration: const InputDecoration(labelText: '书名', isDense: true),
                 onChanged: (value) =>
                     controller.updateMetadata(job.id, title: value, author: _author.text.trim().isEmpty ? null : _author.text.trim()),
               ),
-              TextField(
+              MotionTextField(
                 controller: _author,
                 decoration: const InputDecoration(labelText: '作者（可选）', isDense: true),
                 onChanged: (value) =>
@@ -240,7 +253,7 @@ class _ImportJobCardState extends State<_ImportJobCard> {
               ),
               const SizedBox(height: 10),
               if (job.format == LocalDocumentFormat.txt) ...<Widget>[
-                DropdownButtonFormField<String>(
+                MotionDropdownButtonFormField<String>(
                   initialValue: (controller.options[job.id] ?? job.options).encoding ?? 'auto',
                   decoration: const InputDecoration(labelText: 'TXT 编码', isDense: true),
                   items: const <DropdownMenuItem<String>>[
@@ -264,7 +277,7 @@ class _ImportJobCardState extends State<_ImportJobCard> {
                   },
                 ),
                 const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
+                MotionDropdownButtonFormField<String>(
                   initialValue: (controller.options[job.id] ?? job.options).chapterRule,
                   decoration: const InputDecoration(labelText: '章节识别', isDense: true),
                   items: const <DropdownMenuItem<String>>[
@@ -313,7 +326,7 @@ class _ImportJobCardState extends State<_ImportJobCard> {
                     job.errorCode == 'unsupported_encoding' ||
                     job.errorCode == 'malformed_text')) ...<Widget>[
               const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
+              MotionDropdownButtonFormField<String>(
                 initialValue: (controller.options[job.id] ?? job.options).encoding ?? 'auto',
                 decoration: const InputDecoration(labelText: 'TXT 编码', isDense: true),
                 items: const <DropdownMenuItem<String>>[
@@ -337,7 +350,7 @@ class _ImportJobCardState extends State<_ImportJobCard> {
                 },
               ),
               const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
+              MotionDropdownButtonFormField<String>(
                 initialValue: (controller.options[job.id] ?? job.options).chapterRule,
                 decoration: const InputDecoration(labelText: '章节识别', isDense: true),
                 items: const <DropdownMenuItem<String>>[
@@ -360,7 +373,7 @@ class _ImportJobCardState extends State<_ImportJobCard> {
                 (job.status == LocalImportStatus.awaitingConfirmation ||
                     job.status == LocalImportStatus.failed ||
                     job.status == LocalImportStatus.needsAction))
-              CheckboxListTile(
+              MotionCheckboxListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('用替换字符读取损坏的文本字节'),
                 subtitle: const Text('仅在无法修正编码时启用，并重新检查正文预览。'),

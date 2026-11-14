@@ -10,6 +10,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -96,7 +97,7 @@ class _LibraryBookSwipeActionsState extends State<LibraryBookSwipeActions> with 
                           for (final action in widget.actions)
                             SizedBox(
                               width: _buttonWidth,
-                              child: Material(
+                              child: MotionMaterial(
                                 color: _actionColor(theme, tokens, action),
                                 child: InkWell(
                                   key: ValueKey<String>('library-book-swipe-action-${action.id}'),

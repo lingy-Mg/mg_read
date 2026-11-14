@@ -69,7 +69,7 @@ extension _TextReaderLibraryBookmarks on _TextReaderViewState {
         return Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 560),
-            child: ListTile(
+            child: MotionListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: 12),
               leading: Icon(
                 Icons.bookmark_outline_rounded,
@@ -85,12 +85,14 @@ extension _TextReaderLibraryBookmarks on _TextReaderViewState {
               trailing: ReaderAccessibleTooltip(
                 label: ReaderStrings.removeBookmark,
                 onTap: removeBookmark,
-                child: IconButton(
-                  key: ValueKey<String>(
-                    'reader-bookmark-remove-${bookmark.id}',
+                child: MotionIconButtonSurface(
+                  child: IconButton(
+                    key: ValueKey<String>(
+                      'reader-bookmark-remove-${bookmark.id}',
+                    ),
+                    icon: const Icon(Icons.close_rounded, size: 19),
+                    onPressed: removeBookmark,
                   ),
-                  icon: const Icon(Icons.close_rounded, size: 19),
-                  onPressed: removeBookmark,
                 ),
               ),
               onTap: () {

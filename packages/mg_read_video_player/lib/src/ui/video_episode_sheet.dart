@@ -12,6 +12,7 @@ library;
 // Cross-file UI helpers are intentionally package-private despite Dart naming.
 // ignore_for_file: public_member_api_docs
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'video_tv_shortcuts.dart';
@@ -36,7 +37,7 @@ Future<VideoEpisodeChoice?> showVideoEpisodeSheet({
   maxWidth: 760,
   builder: (_) => VideoTvShortcuts(
     enabled: tvMode,
-    child: Theme(
+    child: MotionTheme(
       data: tvMode
           ? videoPlayerTheme().copyWith(
               focusColor: videoPlayerAccent.withValues(alpha: .5),
@@ -187,11 +188,13 @@ final class _VideoEpisodeSheetState extends State<_VideoEpisodeSheet> {
                       fontSize: 13,
                     ),
                   ),
-                  IconButton(
-                    key: const Key('video-player-episodes-close'),
-                    tooltip: '关闭选集',
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close_rounded, size: 22),
+                  MotionIconButtonSurface(
+                    child: IconButton(
+                      key: const Key('video-player-episodes-close'),
+                      tooltip: '关闭选集',
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close_rounded, size: 22),
+                    ),
                   ),
                 ],
               ),
@@ -217,7 +220,7 @@ final class _VideoEpisodeSheetState extends State<_VideoEpisodeSheet> {
               child: group?.deferred == true
                   ? Center(
                       child: _loading.contains(group!.id)
-                          ? const CircularProgressIndicator()
+                          ? const MotionCircularProgressIndicator()
                           : TextButton(
                               onPressed: () => _selectGroup(group.id),
                               child: Text(
@@ -312,13 +315,17 @@ final class _EpisodeTile extends StatelessWidget {
   final bool tvMode;
 
   @override
-  Widget build(BuildContext context) => Material(
+  Widget build(BuildContext context) => MotionMaterial(
     color: Colors.transparent,
-    child: ListTile(
+    child: MotionListTile(
       key: Key('video-player-episode-${group.id}-${episode.id}'),
       dense: !tvMode,
       visualDensity: tvMode ? VisualDensity.standard : VisualDensity.compact,
-      focusColor: tvMode ? videoPlayerAccent.withValues(alpha: .5) : null,
+      focusColor: motionDisabled(context)
+          ? Colors.transparent
+          : tvMode
+          ? videoPlayerAccent.withValues(alpha: .5)
+          : null,
       minLeadingWidth: 24,
       minVerticalPadding: 8,
       tileColor: Colors.transparent,
@@ -480,7 +487,8 @@ final class _GroupChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(right: 6),
-    child: FilterChip(
+    child: MotionFilterChip(
+      chipAnimationStyle: motionChipAnimationStyle(context),
       key: Key('video-player-group-${group.id}'),
       selected: selected,
       showCheckmark: false,

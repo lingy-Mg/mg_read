@@ -9,6 +9,7 @@
 /// - 标题栏固定在内容滚动区域之外，并由安全区和共享页面壳统一定位。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -30,7 +31,7 @@ class FeedbackPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return MotionScaffold(
       body: SafeArea(
         bottom: false,
         child: AppSecondaryPageContent(
@@ -151,5 +152,5 @@ Future<void> _openGithubIssues(BuildContext context) async {
 void _showLaunchFailure(BuildContext context) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(const SnackBar(content: Text('无法调用系统浏览器打开 GitHub 反馈地址。')));
+    ..showMotionSnackBar(context, const SnackBar(content: Text('无法调用系统浏览器打开 GitHub 反馈地址。')));
 }

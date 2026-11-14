@@ -12,6 +12,7 @@ library;
 // library-level public naming rules.
 // ignore_for_file: public_member_api_docs
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -55,14 +56,16 @@ final class VideoSessionStatusLayer extends StatelessWidget {
               padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: IconButton(
-                  key: const Key('video-player-status-back'),
-                  tooltip: '返回',
-                  style: IconButton.styleFrom(
-                    foregroundColor: videoPlayerForeground,
+                child: MotionIconButtonSurface(
+                  child: IconButton(
+                    key: const Key('video-player-status-back'),
+                    tooltip: '返回',
+                    style: IconButton.styleFrom(
+                      foregroundColor: videoPlayerForeground,
+                    ),
+                    onPressed: () => unawaited(onExit()),
+                    icon: const Icon(Icons.arrow_back_rounded),
                   ),
-                  onPressed: () => unawaited(onExit()),
-                  icon: const Icon(Icons.arrow_back_rounded),
                 ),
               ),
             ),
@@ -86,7 +89,7 @@ final class VideoSessionStatusLayer extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
                   if (!failure && !empty)
-                    const CircularProgressIndicator(
+                    const MotionCircularProgressIndicator(
                       key: Key('video-player-loading'),
                       color: videoPlayerAccent,
                     ),

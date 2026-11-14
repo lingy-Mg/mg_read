@@ -4,6 +4,7 @@ library;
 // Package-private UI helper.
 // ignore_for_file: public_member_api_docs
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -71,7 +72,7 @@ final class _VideoPlayerBufferingIndicatorState
                 children: <Widget>[
                   const SizedBox.square(
                     dimension: 24,
-                    child: CircularProgressIndicator(
+                    child: MotionCircularProgressIndicator(
                       strokeWidth: 2.4,
                       color: videoPlayerAccent,
                     ),

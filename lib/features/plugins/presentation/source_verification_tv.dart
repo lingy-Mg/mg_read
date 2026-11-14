@@ -74,7 +74,7 @@ extension on _SourceVerificationPageState {
               icon: Icons.radar,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [Text('检测中 · ${_stageLabel(current.stage)}'), const SizedBox(height: 12), const LinearProgressIndicator()],
+                children: [Text('检测中 · ${_stageLabel(current.stage)}'), const SizedBox(height: 12), const MotionLinearProgressIndicator()],
               ),
             ),
           if (completed > 0 && visible.isEmpty) const Padding(padding: EdgeInsets.all(20), child: Text('暂无符合条件的结果')),

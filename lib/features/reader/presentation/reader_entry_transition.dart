@@ -13,6 +13,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -485,11 +486,13 @@ class _ReaderEntryCover extends StatelessWidget {
                 SafeArea(
                   child: Align(
                     alignment: Alignment.topLeft,
-                    child: IconButton(
-                      key: const Key('reader-entry-back'),
-                      tooltip: '返回',
-                      onPressed: onExit,
-                      icon: Icon(Icons.arrow_back_rounded, color: tokens.surface.withValues(alpha: .92)),
+                    child: MotionIconButtonSurface(
+                      child: IconButton(
+                        key: const Key('reader-entry-back'),
+                        tooltip: '返回',
+                        onPressed: onExit,
+                        icon: Icon(Icons.arrow_back_rounded, color: tokens.surface.withValues(alpha: .92)),
+                      ),
                     ),
                   ),
                 ),
@@ -575,7 +578,7 @@ class _ReaderEntryStatus extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               if (!hasFailure)
-                SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: foreground))
+                SizedBox(width: 20, height: 20, child: MotionCircularProgressIndicator(strokeWidth: 2, color: foreground))
               else
                 Icon(Icons.refresh_rounded, color: foreground),
               const SizedBox(height: 12),

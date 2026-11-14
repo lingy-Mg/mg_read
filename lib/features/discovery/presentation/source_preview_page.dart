@@ -4,6 +4,7 @@
 /// 内容详情、书架和阅读仍由宿主回调负责；此页不访问 Runtime 协议或磁盘。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -59,7 +60,7 @@ class _SourcePreviewPageState extends State<SourcePreviewPage> {
       searchPageControllerProvider.overrideWith(SearchPageController.new),
     ],
     child: SourcePreviewScope(
-      child: Scaffold(
+      child: MotionScaffold(
         body: SafeArea(
           bottom: false,
           child: Column(

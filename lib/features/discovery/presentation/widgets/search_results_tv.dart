@@ -26,27 +26,30 @@ class _TvSearchResults extends StatelessWidget {
               onPressed: () => showDialog<void>(
                 context: context,
                 animationStyle: AppMotion.overlayStyle(context),
-                builder: (dialogContext) => TvDiscoveryDialog(
-                  title: '结果排序',
-                  actions: [TvFocusable(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消'))],
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (final order in SearchResultSortOrder.values)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: TvFocusable(
-                            autofocus: order == owner.sortOrder,
-                            selected: order == owner.sortOrder,
-                            onPressed: () {
-                              Navigator.pop(dialogContext);
-                              owner.onSortOrderChanged(order);
-                            },
-                            child: Text(order.label),
+                builder: motionOverlayBuilder(
+                  context,
+                  (dialogContext) => TvDiscoveryDialog(
+                    title: '结果排序',
+                    actions: [TvFocusable(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消'))],
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final order in SearchResultSortOrder.values)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: TvFocusable(
+                              autofocus: order == owner.sortOrder,
+                              selected: order == owner.sortOrder,
+                              onPressed: () {
+                                Navigator.pop(dialogContext);
+                                owner.onSortOrderChanged(order);
+                              },
+                              child: Text(order.label),
+                            ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),

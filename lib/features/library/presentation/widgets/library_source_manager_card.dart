@@ -1,3 +1,4 @@
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -5,11 +6,7 @@ import 'package:mg_read/app/app_theme.dart';
 /// Entry card for the future source-management feature.
 class LibrarySourceManagerCard extends StatelessWidget {
   /// Creates a non-networking source-management entry.
-  const LibrarySourceManagerCard({
-    required this.sourceCount,
-    required this.onPressed,
-    super.key,
-  });
+  const LibrarySourceManagerCard({required this.sourceCount, required this.onPressed, super.key});
 
   final int? sourceCount;
   final VoidCallback onPressed;
@@ -18,40 +15,24 @@ class LibrarySourceManagerCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final AppThemeTokens tokens = AppThemeTokens.of(context);
-    final Color sourceSurface = Color.lerp(
-      tokens.featureSurface,
-      tokens.surface,
-      0.45,
-    )!;
-    final Color sourceTitleColor = Color.lerp(
-      theme.colorScheme.onSurface,
-      tokens.mutedText,
-      0.35,
-    )!;
-    final String? sourceLabel = sourceCount == null
-        ? null
-        : '${sourceCount!} 个可用数据源';
+    final Color sourceSurface = Color.lerp(tokens.featureSurface, tokens.surface, 0.45)!;
+    final Color sourceTitleColor = Color.lerp(theme.colorScheme.onSurface, tokens.mutedText, 0.35)!;
+    final String? sourceLabel = sourceCount == null ? null : '${sourceCount!} 个可用数据源';
 
     return Semantics(
       button: true,
       label: sourceLabel == null ? '管理数据源' : '管理数据源，$sourceLabel',
-      child: Material(
+      child: MotionMaterial(
         color: Colors.transparent,
         child: InkWell(
           onTap: onPressed,
           borderRadius: AppRadii.surface,
           child: Ink(
-            decoration: BoxDecoration(
-              color: sourceSurface,
-              borderRadius: AppRadii.surface,
-            ),
+            decoration: BoxDecoration(color: sourceSurface, borderRadius: AppRadii.surface),
             child: SizedBox(
               height: AppSpacing.sourceManagerHeight,
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.comfortable,
-                  vertical: AppSpacing.compact,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.comfortable, vertical: AppSpacing.compact),
                 child: Row(
                   children: <Widget>[
                     Icon(Icons.hub_outlined, color: tokens.mutedText, size: 16),
@@ -59,11 +40,7 @@ class LibrarySourceManagerCard extends StatelessWidget {
                     Expanded(
                       child: Text(
                         '管理数据源',
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          fontWeight: FontWeight.w400,
-                          height: 1.2,
-                          color: sourceTitleColor,
-                        ),
+                        style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w400, height: 1.2, color: sourceTitleColor),
                       ),
                     ),
                     if (sourceLabel != null) ...<Widget>[
@@ -77,11 +54,7 @@ class LibrarySourceManagerCard extends StatelessWidget {
                       ),
                       const SizedBox(width: AppSpacing.compact),
                     ],
-                    Icon(
-                      Icons.chevron_right_rounded,
-                      size: 16,
-                      color: tokens.mutedText,
-                    ),
+                    Icon(Icons.chevron_right_rounded, size: 16, color: tokens.mutedText),
                   ],
                 ),
               ),

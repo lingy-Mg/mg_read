@@ -35,7 +35,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        Theme.of(tester.element(find.byType(AlertDialog))).brightness,
+        Theme.of(
+          tester.element(
+            find.byWidgetPredicate((widget) => widget is AlertDialog),
+          ),
+        ).brightness,
         Brightness.dark,
       );
       expect(find.text('可选范围：0–3 章'), findsOneWidget);
@@ -93,7 +97,9 @@ void main() {
       await tester.tap(find.text('缓存章节'));
       await tester.pumpAndSettle();
 
-      final Rect dialogRect = tester.getRect(find.byType(AlertDialog));
+      final Rect dialogRect = tester.getRect(
+        find.byWidgetPredicate((widget) => widget is AlertDialog),
+      );
       expect(dialogRect.left, lessThanOrEqualTo(16));
       expect(dialogRect.right, greaterThanOrEqualTo(484));
 

@@ -10,6 +10,7 @@
 /// - 仅用于阅读器中需要可见悬停提示的动作控件，不替代普通内容语义。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -81,11 +82,11 @@ class _ReaderAccessibleTooltipState extends State<ReaderAccessibleTooltip> {
 
     _entry = OverlayEntry(
       builder: (BuildContext overlayContext) {
-        final Widget tooltip = Theme(
+        final Widget tooltip = MotionTheme(
           data: theme,
           child: ExcludeSemantics(
             child: IgnorePointer(
-              child: Material(
+              child: MotionMaterial(
                 color: theme.colorScheme.inverseSurface,
                 elevation: 4,
                 borderRadius: BorderRadius.circular(4),

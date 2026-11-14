@@ -4,6 +4,7 @@
 /// combined targets after another condition loads. No IO runs in this widget.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:mg_read/shared/presentation/motion/app_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -41,7 +42,10 @@ class DiscoveryFilters extends StatelessWidget {
                   onPressed: () => showDialog<void>(
                     context: context,
                     animationStyle: AppMotion.overlayStyle(context),
-                    builder: (_) => _FilterDialog(initial: component, pluginId: pluginId, onSelected: onSelected),
+                    builder: motionOverlayBuilder(
+                      context,
+                      (_) => _FilterDialog(initial: component, pluginId: pluginId, onSelected: onSelected),
+                    ),
                   ),
                   child: const Text('筛选'),
                 ),
@@ -106,7 +110,8 @@ class _FilterRow extends StatelessWidget {
                           onPressed: () => onSelected(option.target),
                           child: Text(option.label, style: Theme.of(context).textTheme.titleMedium),
                         )
-                      : ChoiceChip(
+                      : MotionChoiceChip(
+                          chipAnimationStyle: motionChipAnimationStyle(context),
                           label: Text(option.label),
                           selected: option.id == group.selectedOptionId,
                           onSelected: (_) => onSelected(option.target),
@@ -136,7 +141,7 @@ class _FilterDialog extends ConsumerWidget {
       if (!busy) onSelected(target);
     }
 
-    return AlertDialog(
+    return MotionAlertDialog(
       key: const Key('tv-filter-dialog'),
       constraints: const BoxConstraints(maxWidth: 1100),
       insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
@@ -148,7 +153,7 @@ class _FilterDialog extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (busy) const LinearProgressIndicator(),
+              if (busy) const MotionLinearProgressIndicator(),
               if (state.error != null) const Text('筛选加载失败，请重新选择或关闭后重试。'),
               for (var i = 1; i < current.groups.length; i++)
                 _FilterRow(key: ValueKey(current.groups[i].id), group: current.groups[i], onSelected: select, autofocus: i == 1),

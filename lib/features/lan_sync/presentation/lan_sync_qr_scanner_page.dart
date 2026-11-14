@@ -10,6 +10,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -169,14 +170,18 @@ class _LanSyncQrScannerPageState extends State<LanSyncQrScannerPage> with Widget
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.purpose.title),
-        leading: IconButton(
-          key: const Key('lan-sync-scanner-close'),
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.close_rounded),
-          tooltip: '关闭扫码',
+    return MotionScaffold(
+      appBar: MotionAppBarSurface(
+        child: AppBar(
+          title: Text(widget.purpose.title),
+          leading: MotionIconButtonSurface(
+            child: IconButton(
+              key: const Key('lan-sync-scanner-close'),
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.close_rounded),
+              tooltip: '关闭扫码',
+            ),
+          ),
         ),
       ),
       body: Semantics(
@@ -220,7 +225,7 @@ class _LanSyncQrScannerPageState extends State<LanSyncQrScannerPage> with Widget
               alignment: Alignment.bottomCenter,
               child: SafeArea(
                 minimum: const EdgeInsets.all(AppSpacing.regular),
-                child: Card(
+                child: MotionCard(
                   color: colorScheme.surface,
                   child: Padding(
                     padding: const EdgeInsets.all(AppSpacing.regular),

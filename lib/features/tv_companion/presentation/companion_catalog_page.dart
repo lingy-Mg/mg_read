@@ -2,6 +2,7 @@
 /// attached to every result; TV re-resolves the selected episode at handoff.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:mg_read/app/app_theme.dart';
@@ -119,7 +120,7 @@ class _CompanionCatalogPageState extends State<CompanionCatalogPage> {
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: AppSpacing.comfortable),
-                  TextField(
+                  MotionTextField(
                     controller: _query,
                     maxLength: 256,
                     textInputAction: TextInputAction.search,
@@ -127,7 +128,7 @@ class _CompanionCatalogPageState extends State<CompanionCatalogPage> {
                     onSubmitted: _busy ? null : (_) => _search(),
                   ),
                   const SizedBox(height: AppSpacing.regular),
-                  DropdownButtonFormField<String>(
+                  MotionDropdownButtonFormField<String>(
                     key: ValueKey(_source),
                     initialValue: _source,
                     isExpanded: true,
@@ -177,7 +178,7 @@ class _CompanionCatalogPageState extends State<CompanionCatalogPage> {
                       padding: const EdgeInsets.symmetric(vertical: AppSpacing.compact),
                       child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
                     ),
-                  if (_busy || _loadingSources) const LinearProgressIndicator(),
+                  if (_busy || _loadingSources) const MotionLinearProgressIndicator(),
                   if (!_loadingSources && _sources.isEmpty && _error == null)
                     const Padding(
                       padding: EdgeInsets.only(top: AppSpacing.compact),
@@ -222,7 +223,7 @@ class _CompanionCatalogPageState extends State<CompanionCatalogPage> {
               padding: const EdgeInsets.fromLTRB(AppSpacing.compactPagePadding, 0, AppSpacing.compactPagePadding, AppSpacing.compact),
               child: CompanionPanel(
                 padding: 0,
-                child: ListTile(
+                child: MotionListTile(
                   contentPadding: const EdgeInsets.all(AppSpacing.regular),
                   shape: const RoundedRectangleBorder(borderRadius: AppRadii.card),
                   leading: Icon(Icons.movie_outlined, color: Theme.of(context).colorScheme.primary),
@@ -241,8 +242,8 @@ class _CompanionCatalogPageState extends State<CompanionCatalogPage> {
     );
     return widget.embedded
         ? body
-        : Scaffold(
-            appBar: AppBar(title: const Text('搜索 TV 来源')),
+        : MotionScaffold(
+            appBar: MotionAppBarSurface(child: AppBar(title: const Text('搜索 TV 来源'))),
             body: body,
           );
   }
@@ -257,16 +258,19 @@ class _CompanionCatalogPageState extends State<CompanionCatalogPage> {
         final choice = await showDialog<Object>(
           context: context,
           animationStyle: AppMotion.overlayStyle(context),
-          builder: (context) => SimpleDialog(
-            title: const Text('选择来源'),
-            children: [
-              for (final raw in choices)
-                SimpleDialogOption(
-                  onPressed: () => Navigator.pop(context, companionMap(raw)),
-                  child: Text(companionMap(raw)['sourceName'] as String),
-                ),
-              if (hasMore) SimpleDialogOption(onPressed: () => Navigator.pop(context, 'more'), child: const Text('更多来源')),
-            ],
+          builder: motionOverlayBuilder(
+            context,
+            (context) => SimpleDialog(
+              title: const Text('选择来源'),
+              children: [
+                for (final raw in choices)
+                  SimpleDialogOption(
+                    onPressed: () => Navigator.pop(context, companionMap(raw)),
+                    child: Text(companionMap(raw)['sourceName'] as String),
+                  ),
+                if (hasMore) SimpleDialogOption(onPressed: () => Navigator.pop(context, 'more'), child: const Text('更多来源')),
+              ],
+            ),
           ),
         );
         if (choice == null) return;
@@ -391,16 +395,16 @@ class _TvContentDetailState extends State<_TvContentDetail> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(widget.item['title'] as String)),
+  Widget build(BuildContext context) => MotionScaffold(
+    appBar: MotionAppBarSurface(child: AppBar(title: Text(widget.item['title'] as String))),
     body: ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        if (_busy || _sending) const LinearProgressIndicator(),
+        if (_busy || _sending) const MotionLinearProgressIndicator(),
         if (_detail != null) Text(_detail!['description'] as String? ?? ''),
         if (_error != null) ...[Text(_error!), TextButton(onPressed: _load, child: const Text('重试'))],
         if (_groups.isNotEmpty)
-          DropdownButtonFormField<String>(
+          MotionDropdownButtonFormField<String>(
             key: ValueKey(_group),
             initialValue: _group,
             decoration: const InputDecoration(labelText: '分组 / 线路'),
@@ -413,14 +417,14 @@ class _TvContentDetailState extends State<_TvContentDetail> {
                   },
           ),
         if (_groupOffset != null) TextButton(onPressed: _busy || _sending ? null : _moreGroups, child: const Text('更多分组 / 线路')),
-        SwitchListTile(
+        MotionSwitchListTile(
           title: const Text('使用 TV 已保存的观看位置'),
           subtitle: const Text('关闭后从所选集开头播放；观看记录入口可接续指定位置。'),
           value: _useTvProgress,
           onChanged: _sending ? null : (value) => setState(() => _useTvProgress = value),
         ),
         for (final episode in _episodes)
-          ListTile(
+          MotionListTile(
             title: Text(episode['title'] as String),
             trailing: const Icon(Icons.play_circle_outline),
             onTap: _sending ? null : () => _play(episode),
@@ -451,7 +455,7 @@ class _TvContentDetailState extends State<_TvContentDetail> {
       );
       if (!mounted) return;
       if (receipt.phase == CompanionCommandPhase.started) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('TV 已实际起播，可返回遥控页操作。')));
+        ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('TV 已实际起播，可返回遥控页操作。')));
         Navigator.pop(context);
       } else {
         setState(() => _error = companionErrorText(receipt.code));

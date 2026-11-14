@@ -6,6 +6,7 @@
 /// TV 使用全屏两栏，来源列表独立滚动并避让键盘；普通模式保持底部选择面板。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -93,12 +94,15 @@ Future<DiscoverySourcePickerResult?> showDiscoverySourcePicker(
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.38),
     elevation: 0,
-    builder: (context) => _DiscoverySourcePickerSheet(
-      sources: sources,
-      selectedSourceId: selectedSourceId,
-      allowAllSources: allowAllSources,
-      pinnedSourceIds: pinnedSourceIds,
-      onPinChanged: onPinChanged,
+    builder: motionOverlayBuilder(
+      context,
+      (context) => _DiscoverySourcePickerSheet(
+        sources: sources,
+        selectedSourceId: selectedSourceId,
+        allowAllSources: allowAllSources,
+        pinnedSourceIds: pinnedSourceIds,
+        onPinChanged: onPinChanged,
+      ),
     ),
   );
 }
@@ -201,7 +205,7 @@ class _DiscoverySourcePickerSheetState extends State<_DiscoverySourcePickerSheet
     } on Object {
       if (!mounted) return;
       setState(() => _pinnedSourceIds = previous);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('置顶状态保存失败，请稍后重试。')));
+      ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('置顶状态保存失败，请稍后重试。')));
     }
   }
 

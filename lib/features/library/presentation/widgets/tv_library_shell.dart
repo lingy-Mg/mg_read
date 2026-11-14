@@ -5,6 +5,7 @@
 /// Navigation selects on focus; Search and content commands require OK.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_book_list_view_data.dart';
@@ -57,7 +58,7 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
     try {
       await action();
     } on Object {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('操作失败，请重试')));
+      if (mounted) ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('操作失败，请重试')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -77,21 +78,24 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
       final action = await showDialog<String>(
         context: context,
         animationStyle: AppMotion.overlayStyle(context),
-        builder: (context) => AlertDialog(
-          scrollable: true,
-          title: Text(book.title),
-          content: SizedBox(
-            width: 440,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _dialogAction(context, entry.actionLabel, 'play', autofocus: true),
-                _dialogAction(context, '查看详情', 'detail'),
-                if (widget.callbacks.onRefreshBook != null) _dialogAction(context, '刷新内容', 'refresh'),
-                if (widget.callbacks.onDeleteBook != null) _dialogAction(context, '移除收藏', 'remove'),
-                _dialogAction(context, '取消', 'cancel'),
-              ],
+        builder: motionOverlayBuilder(
+          context,
+          (context) => MotionAlertDialog(
+            scrollable: true,
+            title: Text(book.title),
+            content: SizedBox(
+              width: 440,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _dialogAction(context, entry.actionLabel, 'play', autofocus: true),
+                  _dialogAction(context, '查看详情', 'detail'),
+                  if (widget.callbacks.onRefreshBook != null) _dialogAction(context, '刷新内容', 'refresh'),
+                  if (widget.callbacks.onDeleteBook != null) _dialogAction(context, '移除收藏', 'remove'),
+                  _dialogAction(context, '取消', 'cancel'),
+                ],
+              ),
             ),
           ),
         ),
@@ -108,14 +112,17 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
           final confirmed = await showDialog<bool>(
             context: context,
             animationStyle: AppMotion.overlayStyle(context),
-            builder: (context) => AlertDialog(
-              scrollable: true,
-              title: const Text('移除收藏？'),
-              content: Text('将《${book.title}》从收藏中移除。'),
-              actions: [
-                TextButton(autofocus: true, onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-                FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('移除')),
-              ],
+            builder: motionOverlayBuilder(
+              context,
+              (context) => MotionAlertDialog(
+                scrollable: true,
+                title: const Text('移除收藏？'),
+                content: Text('将《${book.title}》从收藏中移除。'),
+                actions: [
+                  TextButton(autofocus: true, onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+                  FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('移除')),
+                ],
+              ),
             ),
           );
           if (confirmed == true && mounted) await _run(() => widget.callbacks.onDeleteBook!(book));
@@ -151,7 +158,7 @@ class _TvLibraryShellState extends State<TvLibraryShell> {
         }
       },
       child: TvFocusRegion(
-        child: Scaffold(
+        child: MotionScaffold(
           key: const Key('tv-library-home'),
           backgroundColor: tokens.pageBackground,
           body: SafeArea(

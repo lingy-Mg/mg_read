@@ -1,3 +1,4 @@
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -43,7 +44,7 @@ class ReaderParagraphCommentButton extends StatelessWidget {
       height: reservedHeight,
       child: Align(
         alignment: Alignment.centerRight,
-        child: Tooltip(
+        child: MotionTooltip(
           message: semanticLabel,
           excludeFromSemantics: true,
           child: Semantics(
@@ -52,7 +53,7 @@ class ReaderParagraphCommentButton extends StatelessWidget {
             label: semanticLabel,
             onTap: loading ? null : action,
             excludeSemantics: true,
-            child: Material(
+            child: MotionMaterial(
               color: Colors.transparent,
               borderRadius: BorderRadius.circular(24),
               child: InkWell(
@@ -128,15 +129,16 @@ Future<void> showReaderCommentsSheet({
   ValueChanged<BuildContext>? onSheetBuilt,
 }) {
   return showModalBottomSheet<void>(
+    enableDrag: !motionDisabled(context),
     context: context,
     sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
         ? AnimationStyle.noAnimation
         : null,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (BuildContext context) {
+    builder: motionOverlayBuilder(context, (BuildContext context) {
       onSheetBuilt?.call(context);
-      return Theme(
+      return MotionTheme(
         data: readerThemeData(palette, font: font),
         child: ReaderCommentsSheet(
           feed: feed,
@@ -146,7 +148,7 @@ Future<void> showReaderCommentsSheet({
           onLoadError: onLoadError,
         ),
       );
-    },
+    }),
   );
 }
 
@@ -361,7 +363,7 @@ class _ReaderCommentsSheetState extends State<ReaderCommentsSheet> {
           constraints: const BoxConstraints(maxWidth: 640, maxHeight: 620),
           child: ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            child: Material(
+            child: MotionMaterial(
               color: palette.panel,
               child: SafeArea(
                 top: false,
@@ -396,10 +398,12 @@ class _ReaderCommentsSheetState extends State<ReaderCommentsSheet> {
                                 ),
                               ),
                             ),
-                            IconButton(
-                              tooltip: ReaderCommentStrings.close,
-                              onPressed: () => Navigator.of(context).pop(),
-                              icon: const Icon(Icons.close_rounded, size: 20),
+                            MotionIconButtonSurface(
+                              child: IconButton(
+                                tooltip: ReaderCommentStrings.close,
+                                onPressed: () => Navigator.of(context).pop(),
+                                icon: const Icon(Icons.close_rounded, size: 20),
+                              ),
                             ),
                           ],
                         ),
@@ -457,7 +461,7 @@ class _ReaderCommentsSheetState extends State<ReaderCommentsSheet> {
           children: <Widget>[
             SizedBox.square(
               dimension: 30,
-              child: CircularProgressIndicator(
+              child: MotionCircularProgressIndicator(
                 strokeWidth: 2,
                 color: widget.palette.accent,
               ),

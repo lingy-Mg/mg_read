@@ -74,23 +74,29 @@ class _SourcePickerHeader extends StatelessWidget {
                     ],
                   ),
                 ),
-                IconButton(
-                  key: const Key('discovery-source-picker-debug'),
-                  tooltip: 'Debug：依次检查所有数据源',
-                  onPressed: onDebug,
-                  icon: const Icon(Icons.bug_report_outlined, size: 22),
+                MotionIconButtonSurface(
+                  child: IconButton(
+                    key: const Key('discovery-source-picker-debug'),
+                    tooltip: 'Debug：依次检查所有数据源',
+                    onPressed: onDebug,
+                    icon: const Icon(Icons.bug_report_outlined, size: 22),
+                  ),
                 ),
-                IconButton(
-                  key: const Key('discovery-source-picker-search-toggle'),
-                  tooltip: searchExpanded ? '收起搜索' : '搜索数据源',
-                  onPressed: onToggleSearch,
-                  icon: Icon(searchExpanded ? Icons.search_off_rounded : Icons.search_rounded, size: 22),
+                MotionIconButtonSurface(
+                  child: IconButton(
+                    key: const Key('discovery-source-picker-search-toggle'),
+                    tooltip: searchExpanded ? '收起搜索' : '搜索数据源',
+                    onPressed: onToggleSearch,
+                    icon: Icon(searchExpanded ? Icons.search_off_rounded : Icons.search_rounded, size: 22),
+                  ),
                 ),
-                IconButton(
-                  key: const Key('discovery-source-picker-close'),
-                  tooltip: '关闭',
-                  onPressed: onClose,
-                  icon: const Icon(Icons.close_rounded, size: 22),
+                MotionIconButtonSurface(
+                  child: IconButton(
+                    key: const Key('discovery-source-picker-close'),
+                    tooltip: '关闭',
+                    onPressed: onClose,
+                    icon: const Icon(Icons.close_rounded, size: 22),
+                  ),
                 ),
               ],
             ),
@@ -99,7 +105,7 @@ class _SourcePickerHeader extends StatelessWidget {
               SizedBox(
                 height: TvModeScope.isEnabled(context) ? null : 46,
                 child: TvTextInputNavigation(
-                  child: TextField(
+                  child: MotionTextField(
                     key: const Key('discovery-source-picker-search'),
                     controller: searchController,
                     onChanged: onQueryChanged,
@@ -114,11 +120,13 @@ class _SourcePickerHeader extends StatelessWidget {
                       prefixIconConstraints: const BoxConstraints(minWidth: 44),
                       suffixIcon: query.isEmpty
                           ? null
-                          : IconButton(
-                              key: const Key('discovery-source-picker-search-clear'),
-                              tooltip: '清除搜索',
-                              onPressed: onClearQuery,
-                              icon: Icon(Icons.cancel_rounded, size: 18, color: tokens.mutedText),
+                          : MotionIconButtonSurface(
+                              child: IconButton(
+                                key: const Key('discovery-source-picker-search-clear'),
+                                tooltip: '清除搜索',
+                                onPressed: onClearQuery,
+                                icon: Icon(Icons.cancel_rounded, size: 18, color: tokens.mutedText),
+                              ),
                             ),
                       filled: true,
                       fillColor: controlSurface,

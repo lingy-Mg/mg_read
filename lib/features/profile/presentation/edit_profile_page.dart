@@ -9,6 +9,7 @@
 /// - 保存失败时保留用户输入，不自动退出页面。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_text_input_navigation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -57,7 +58,7 @@ final class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       _displayNameController.text = identity.displayName;
       _mottoController.text = identity.motto;
     }
-    return Scaffold(
+    return MotionScaffold(
       resizeToAvoidBottomInset: true,
       body: SafeArea(
         bottom: false,
@@ -194,7 +195,7 @@ class _ProfileFieldsCard extends StatelessWidget {
         child: Column(
           children: <Widget>[
             TvTextInputNavigation(
-              child: TextFormField(
+              child: MotionTextFormField(
                 key: const Key('edit-profile-display-name'),
                 controller: displayNameController,
                 enabled: enabled,
@@ -213,7 +214,7 @@ class _ProfileFieldsCard extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.compact),
             TvTextInputNavigation(
-              child: TextFormField(
+              child: MotionTextFormField(
                 key: const Key('edit-profile-motto'),
                 controller: mottoController,
                 enabled: enabled,
@@ -296,7 +297,7 @@ class _ProfileSaveBar extends StatelessWidget {
         child: FilledButton(
           key: const Key('edit-profile-save'),
           onPressed: onPressed,
-          child: saving ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('保存资料'),
+          child: saving ? const SizedBox.square(dimension: 20, child: MotionCircularProgressIndicator(strokeWidth: 2)) : const Text('保存资料'),
         ),
       ),
     );

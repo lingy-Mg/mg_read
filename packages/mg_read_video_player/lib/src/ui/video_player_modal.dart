@@ -6,6 +6,7 @@ library;
 // Internal package presentation.
 // ignore_for_file: public_member_api_docs
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'video_player_visuals.dart';
 
@@ -14,7 +15,7 @@ Future<T?> showVideoPlayerModal<T>({
   required WidgetBuilder builder,
   double maxWidth = 620,
 }) {
-  Widget content(BuildContext context) => Theme(
+  Widget content(BuildContext context) => MotionTheme(
     data: videoPlayerTheme(),
     child: ClipRRect(
       borderRadius: BorderRadius.circular(12),
@@ -28,21 +29,25 @@ Future<T?> showVideoPlayerModal<T>({
           ? AnimationStyle.noAnimation
           : null,
       barrierColor: const Color(0x80000000),
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        insetPadding: const EdgeInsets.all(24),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: maxWidth,
-            maxHeight: MediaQuery.sizeOf(context).height * .86,
+      builder: motionOverlayBuilder(
+        context,
+        (context) => MotionDialog(
+          backgroundColor: Colors.transparent,
+          surfaceTintColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: maxWidth,
+              maxHeight: MediaQuery.sizeOf(context).height * .86,
+            ),
+            child: content(context),
           ),
-          child: content(context),
         ),
       ),
     );
   }
   return showModalBottomSheet<T>(
+    enableDrag: !motionDisabled(context),
     context: context,
     sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
         ? AnimationStyle.noAnimation
@@ -54,6 +59,6 @@ Future<T?> showVideoPlayerModal<T>({
     showDragHandle: false,
     isScrollControlled: true,
     constraints: BoxConstraints(maxWidth: maxWidth),
-    builder: content,
+    builder: motionOverlayBuilder(context, content),
   );
 }

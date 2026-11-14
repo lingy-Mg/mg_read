@@ -8,6 +8,7 @@
 /// - Components receive projected state and callbacks; they own no session.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 
 import '../api/audio_models.dart';
@@ -36,11 +37,13 @@ final class AudioPlayerTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(
     children: <Widget>[
-      IconButton(
-        key: const Key('audio-back'),
-        tooltip: '收起播放器',
-        onPressed: onBack,
-        icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 30),
+      MotionIconButtonSurface(
+        child: IconButton(
+          key: const Key('audio-back'),
+          tooltip: '收起播放器',
+          onPressed: onBack,
+          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 30),
+        ),
       ),
       Expanded(
         child: Column(
@@ -83,11 +86,13 @@ final class AudioPlayerTopBar extends StatelessWidget {
           ],
         ),
       ),
-      IconButton(
-        key: const Key('audio-more'),
-        tooltip: '音频详情',
-        onPressed: onDetails,
-        icon: const Icon(Icons.more_horiz_rounded, size: 26),
+      MotionIconButtonSurface(
+        child: IconButton(
+          key: const Key('audio-more'),
+          tooltip: '音频详情',
+          onPressed: onDetails,
+          icon: const Icon(Icons.more_horiz_rounded, size: 26),
+        ),
       ),
     ],
   );
@@ -219,7 +224,7 @@ final class AudioProgressControl extends StatelessWidget {
               ),
               overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
             ),
-            child: Slider(
+            child: MotionSlider(
               key: const Key('audio-progress-slider'),
               padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 4),
               min: 0,
@@ -337,17 +342,19 @@ class _TransportButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: onPressed,
-      constraints: const BoxConstraints.tightFor(
-        width: AudioPlayerMetrics.minimumTapTarget,
-        height: AudioPlayerMetrics.minimumTapTarget,
+    return MotionIconButtonSurface(
+      child: IconButton(
+        tooltip: tooltip,
+        onPressed: onPressed,
+        constraints: const BoxConstraints.tightFor(
+          width: AudioPlayerMetrics.minimumTapTarget,
+          height: AudioPlayerMetrics.minimumTapTarget,
+        ),
+        padding: EdgeInsets.zero,
+        color: AudioPlayerColors.ink,
+        disabledColor: AudioPlayerColors.disabled,
+        icon: icon,
       ),
-      padding: EdgeInsets.zero,
-      color: AudioPlayerColors.ink,
-      disabledColor: AudioPlayerColors.disabled,
-      icon: icon,
     );
   }
 }
@@ -421,7 +428,7 @@ class _QuickAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Expanded(
-    child: Tooltip(
+    child: MotionTooltip(
       message: label,
       child: Semantics(
         button: true,

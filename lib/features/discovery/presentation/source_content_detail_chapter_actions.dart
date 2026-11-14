@@ -67,18 +67,20 @@ class _ChapterRow extends StatelessWidget {
   final VoidCallback onRead;
   final Future<void> Function(BuildContext context, Uri? url) onOpenUrl;
   @override
-  Widget build(BuildContext context) => ListTile(
+  Widget build(BuildContext context) => MotionListTile(
     key: ValueKey<String>('source-chapter-${chapter.id}'),
     contentPadding: EdgeInsets.zero,
     title: Text(chapter.title),
     subtitle: Text(_chapterSubtitle(chapter)),
     trailing: !_isOpenableExternalUrl(chapter.url)
         ? Icon(Icons.chevron_right_rounded, color: AppThemeTokens.of(context).mutedText)
-        : IconButton(
-            key: ValueKey<String>('source-chapter-url-${chapter.id}'),
-            tooltip: '在浏览器打开章节',
-            onPressed: () => unawaited(onOpenUrl(context, chapter.url)),
-            icon: const Icon(Icons.open_in_browser_rounded),
+        : MotionIconButtonSurface(
+            child: IconButton(
+              key: ValueKey<String>('source-chapter-url-${chapter.id}'),
+              tooltip: '在浏览器打开章节',
+              onPressed: () => unawaited(onOpenUrl(context, chapter.url)),
+              icon: const Icon(Icons.open_in_browser_rounded),
+            ),
           ),
     onTap: onRead,
   );
@@ -168,43 +170,47 @@ Future<void> _showChapterContent(
 }) {
   final contentFuture = gateway.getContent(pluginId: pluginId, id: id, chapterId: chapter.id);
   return showModalBottomSheet<void>(
+    enableDrag: !motionDisabled(context),
     context: context,
     sheetAnimationStyle: AppMotion.overlayStyle(context),
     isScrollControlled: true,
     showDragHandle: true,
-    builder: (context) => FractionallySizedBox(
-      heightFactor: .9,
-      child: FutureBuilder<PluginChapterContent>(
-        future: contentFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return _DetailFailure(error: AppError.fromUnknown(snapshot.error!), pluginId: pluginId, contentId: id, chapterId: chapter.id);
-          }
-          final content = snapshot.requireData;
-          return ListView(
-            key: const Key('source-chapter-content-sheet'),
-            padding: const EdgeInsets.all(AppSpacing.comfortable),
-            children: <Widget>[
-              Text(content.title ?? chapter.title, style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: AppSpacing.regular),
-              if (content.contentKind == PluginContentKind.novel)
-                SelectableText(content.text ?? '')
-              else
-                for (final page in content.pages)
-                  _ExternalRow(
-                    label: '第 ${page.index + 1} 页',
-                    subtitle: _mangaPageSubtitle(page),
-                    url: page.url,
-                    onOpenUrl: (context, url) async {
-                      if (url != null) await _launchSystemBrowser(url);
-                    },
-                  ),
-            ],
-          );
-        },
+    builder: motionOverlayBuilder(
+      context,
+      (context) => FractionallySizedBox(
+        heightFactor: .9,
+        child: FutureBuilder<PluginChapterContent>(
+          future: contentFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(child: MotionCircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return _DetailFailure(error: AppError.fromUnknown(snapshot.error!), pluginId: pluginId, contentId: id, chapterId: chapter.id);
+            }
+            final content = snapshot.requireData;
+            return ListView(
+              key: const Key('source-chapter-content-sheet'),
+              padding: const EdgeInsets.all(AppSpacing.comfortable),
+              children: <Widget>[
+                Text(content.title ?? chapter.title, style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: AppSpacing.regular),
+                if (content.contentKind == PluginContentKind.novel)
+                  SelectableText(content.text ?? '')
+                else
+                  for (final page in content.pages)
+                    _ExternalRow(
+                      label: '第 ${page.index + 1} 页',
+                      subtitle: _mangaPageSubtitle(page),
+                      url: page.url,
+                      onOpenUrl: (context, url) async {
+                        if (url != null) await _launchSystemBrowser(url);
+                      },
+                    ),
+              ],
+            );
+          },
+        ),
       ),
     ),
   );

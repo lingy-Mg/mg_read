@@ -2,6 +2,7 @@
 /// device branches are shown explicitly instead of silently picking a winner.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -52,20 +53,26 @@ class _CompanionHistoryPageState extends ConsumerState<CompanionHistoryPage> {
     final service = ref.read(companionControllerProvider);
     return AnimatedBuilder(
       animation: service,
-      builder: (context, _) => Scaffold(
-        appBar: AppBar(
-          title: const Text('本机与 TV 观看记录'),
-          actions: [IconButton(tooltip: '刷新观看记录', onPressed: _busy ? null : _load, icon: const Icon(Icons.refresh))],
+      builder: (context, _) => MotionScaffold(
+        appBar: MotionAppBarSurface(
+          child: AppBar(
+            title: const Text('本机与 TV 观看记录'),
+            actions: [
+              MotionIconButtonSurface(
+                child: IconButton(tooltip: '刷新观看记录', onPressed: _busy ? null : _load, icon: const Icon(Icons.refresh)),
+              ),
+            ],
+          ),
         ),
         body: ListView(
           padding: const EdgeInsets.all(20),
           children: [
             const Text('已同步的记录可在 TV 离线时使用。存在不同设备的记录时，请明确选择；在手机播放不会自动停止 TV。'),
-            if (_busy) const LinearProgressIndicator(),
+            if (_busy) const MotionLinearProgressIndicator(),
             if (_error != null) Text(_error!),
             if (_entries.isEmpty && !_busy) const Padding(padding: EdgeInsets.all(24), child: Text('暂无观看记录。视频起播后的进度会保存在这里，无需先收藏。')),
             for (final entry in _entries)
-              Card(
+              MotionCard(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
@@ -123,7 +130,7 @@ class _CompanionHistoryPageState extends ConsumerState<CompanionHistoryPage> {
           ),
         );
         if (result.phase != CompanionCommandPhase.started) throw CompanionFailure(result.code ?? 'operation_failed');
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('TV 已实际起播。')));
+        if (mounted) ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('TV 已实际起播。')));
       } else {
         await ref.read(companionLocalResumeLauncherProvider)(checkpoint);
       }

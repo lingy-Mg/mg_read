@@ -3,6 +3,7 @@
 /// these controls keep detailed collection separate from explicit file saving.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:mg_read/app/app_theme.dart';
 
@@ -27,7 +28,7 @@ class DiagnosticsViewerRecordingPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = AppThemeTokens.of(context);
-    return Material(
+    return MotionMaterial(
       color: tokens.surface,
       shape: RoundedRectangleBorder(
         borderRadius: AppRadii.detailCard,
@@ -62,12 +63,12 @@ class DiagnosticsViewerRecordingPanel extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (busy) const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                if (busy) const SizedBox.square(dimension: 18, child: MotionCircularProgressIndicator(strokeWidth: 2)),
               ],
             ),
           ),
           Divider(height: 1, color: tokens.divider),
-          SwitchListTile.adaptive(
+          MotionSwitchListTile.adaptive(
             key: const Key('diagnostics-detail-switch'),
             secondary: const Icon(Icons.manage_search_rounded),
             title: const Text('详细记录'),
@@ -75,7 +76,7 @@ class DiagnosticsViewerRecordingPanel extends StatelessWidget {
             value: detailed,
             onChanged: busy ? null : onDetailedChanged,
           ),
-          SwitchListTile.adaptive(
+          MotionSwitchListTile.adaptive(
             key: const Key('diagnostics-master-switch'),
             secondary: const Icon(Icons.save_outlined),
             title: const Text('保存到文件'),

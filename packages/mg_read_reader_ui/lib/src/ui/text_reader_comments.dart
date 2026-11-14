@@ -448,7 +448,7 @@ extension _TextReaderComments on _TextReaderViewState {
     final VoidCallback action = failed
         ? () => unawaited(_refreshCommentSummaries())
         : onPressed;
-    return Tooltip(
+    return MotionTooltip(
       message: semanticsLabel,
       excludeFromSemantics: true,
       child: Semantics(
@@ -458,7 +458,7 @@ extension _TextReaderComments on _TextReaderViewState {
         onTap: loading ? null : action,
         child: SizedBox.square(
           dimension: _TextReaderViewState._inlineCommentHitSize,
-          child: Material(
+          child: MotionMaterial(
             color: Colors.transparent,
             child: InkWell(
               borderRadius: BorderRadius.circular(12),
@@ -475,7 +475,7 @@ extension _TextReaderComments on _TextReaderViewState {
                     child: loading
                         ? SizedBox.square(
                             dimension: 12,
-                            child: CircularProgressIndicator(
+                            child: MotionCircularProgressIndicator(
                               strokeWidth: 1.5,
                               color: _palette.accent,
                             ),
@@ -529,7 +529,7 @@ extension _TextReaderComments on _TextReaderViewState {
     final ReaderCommentSummary summary = _commentSummary(target);
     return SizedBox(
       height: 168,
-      child: Material(
+      child: MotionMaterial(
         color: _palette.panel.withValues(alpha: .82),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),

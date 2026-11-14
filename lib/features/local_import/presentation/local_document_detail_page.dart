@@ -2,6 +2,7 @@
 /// export and cover reads go through ContentLibrary streams, never disk paths.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:mg_read/shared/presentation/motion/app_motion.dart';
 import 'dart:io';
 import 'dart:typed_data';
@@ -62,13 +63,19 @@ class _LocalDocumentDetailPageState extends ConsumerState<LocalDocumentDetailPag
   @override
   Widget build(BuildContext context) {
     final detail = _details;
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('本地书籍详情'),
-        actions: <Widget>[IconButton(tooltip: '刷新', onPressed: _load, icon: const Icon(Icons.refresh))],
+    return MotionScaffold(
+      appBar: MotionAppBarSurface(
+        child: AppBar(
+          title: const Text('本地书籍详情'),
+          actions: <Widget>[
+            MotionIconButtonSurface(
+              child: IconButton(tooltip: '刷新', onPressed: _load, icon: const Icon(Icons.refresh)),
+            ),
+          ],
+        ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: MotionCircularProgressIndicator())
           : _error != null
           ? Center(child: Text(_error!))
           : detail == null
@@ -142,26 +149,29 @@ class _LocalDocumentDetailPageState extends ConsumerState<LocalDocumentDetailPag
     final save = await showDialog<bool>(
       context: context,
       animationStyle: AppMotion.overlayStyle(context),
-      builder: (context) => AlertDialog(
-        title: const Text('编辑书籍信息'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            TextField(
-              controller: title,
-              autofocus: true,
-              decoration: const InputDecoration(labelText: '书名'),
-            ),
-            TextField(
-              controller: author,
-              decoration: const InputDecoration(labelText: '作者'),
-            ),
+      builder: motionOverlayBuilder(
+        context,
+        (context) => MotionAlertDialog(
+          title: const Text('编辑书籍信息'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              MotionTextField(
+                controller: title,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: '书名'),
+              ),
+              MotionTextField(
+                controller: author,
+                decoration: const InputDecoration(labelText: '作者'),
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('保存')),
           ],
         ),
-        actions: <Widget>[
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('保存')),
-        ],
       ),
     );
     if (save == true) {
@@ -315,13 +325,18 @@ class _LocalDocumentDetailPageState extends ConsumerState<LocalDocumentDetailPag
     final yes = await showDialog<bool>(
       context: context,
       animationStyle: AppMotion.overlayStyle(context),
-      builder: (context) => AlertDialog(
-        title: const Text('确认删除？'),
-        content: Text(policy == LibraryRemovalPolicy.removeFromShelfKeepContent ? '书籍会从当前书架隐藏，原文件和阅读数据会保留。' : '书籍会从书架移除，未被其他内容引用的本地数据会清理。'),
-        actions: <Widget>[
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('确认')),
-        ],
+      builder: motionOverlayBuilder(
+        context,
+        (context) => MotionAlertDialog(
+          title: const Text('确认删除？'),
+          content: Text(
+            policy == LibraryRemovalPolicy.removeFromShelfKeepContent ? '书籍会从当前书架隐藏，原文件和阅读数据会保留。' : '书籍会从书架移除，未被其他内容引用的本地数据会清理。',
+          ),
+          actions: <Widget>[
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('确认')),
+          ],
+        ),
       ),
     );
     if (yes != true) return;
@@ -338,7 +353,7 @@ class _LocalDocumentDetailPageState extends ConsumerState<LocalDocumentDetailPag
   }
 
   void _show(String message) {
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    if (mounted) ScaffoldMessenger.of(context).showMotionSnackBar(context, SnackBar(content: Text(message)));
   }
 }
 

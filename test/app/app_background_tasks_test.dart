@@ -61,7 +61,7 @@ void main() {
     expect(gateway.stages, 0);
     await app.elapse(tester, const Duration(seconds: 1));
     expect(gateway.stages, 1);
-    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byWidgetPredicate((widget) => widget is AlertDialog), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
   });
   testWidgets('launch with a newer release shows the same update prompt without installing', (tester) async {

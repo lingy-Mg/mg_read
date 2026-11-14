@@ -1,6 +1,7 @@
 part of 'discovery_page.dart';
 
 /// Hero recommendation carousel, its autoplay lifecycle, cards, and indicator.
+/// 无动画时拖动只识别方向，松手直接切页，不产生惯性或吸附过渡。
 class DiscoveryCarouselBooks extends StatefulWidget {
   const DiscoveryCarouselBooks({required this.books, required this.onBookPressed, super.key});
 
@@ -21,6 +22,7 @@ class _DiscoveryCarouselBooksState extends State<DiscoveryCarouselBooks> with Wi
   bool _tickerEnabled = true;
   bool _motionEnabled = true;
   bool _userScrolling = false;
+  double _directDragDistance = 0;
 
   @override
   void initState() {
@@ -137,19 +139,31 @@ class _DiscoveryCarouselBooksState extends State<DiscoveryCarouselBooks> with Wi
                   onNotification: _handleScrollNotification,
                   child: ScrollConfiguration(
                     behavior: discoveryDragScrollBehavior(context),
-                    child: PageView.builder(
-                      controller: _pageController,
-                      itemCount: widget.books.length,
-                      onPageChanged: (index) {
-                        if (_currentIndex != index) setState(() => _currentIndex = index);
-                      },
-                      itemBuilder: (context, index) {
-                        final book = widget.books[index];
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 1),
-                          child: DiscoveryCarouselHeroCard(data: book, onPressed: () => widget.onBookPressed(book)),
-                        );
-                      },
+                    child: GestureDetector(
+                      onHorizontalDragStart: _motionEnabled ? null : (_) => _directDragDistance = 0,
+                      onHorizontalDragUpdate: _motionEnabled ? null : (details) => _directDragDistance += details.delta.dx,
+                      onHorizontalDragEnd: _motionEnabled
+                          ? null
+                          : (_) {
+                              if (_directDragDistance.abs() < 36) return;
+                              final next = (_currentIndex + (_directDragDistance < 0 ? 1 : -1)).clamp(0, widget.books.length - 1);
+                              _pageController.jumpToPage(next);
+                            },
+                      child: PageView.builder(
+                        physics: _motionEnabled ? null : const NeverScrollableScrollPhysics(),
+                        controller: _pageController,
+                        itemCount: widget.books.length,
+                        onPageChanged: (index) {
+                          if (_currentIndex != index) setState(() => _currentIndex = index);
+                        },
+                        itemBuilder: (context, index) {
+                          final book = widget.books[index];
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 1),
+                            child: DiscoveryCarouselHeroCard(data: book, onPressed: () => widget.onBookPressed(book)),
+                          );
+                        },
+                      ),
                     ),
                   ),
                 ),
@@ -186,7 +200,7 @@ class DiscoveryCarouselHeroCard extends StatelessWidget {
         return Semantics(
           button: true,
           label: '打开书籍：${data.title}',
-          child: Material(
+          child: MotionMaterial(
             color: Colors.transparent,
             child: InkWell(
               key: const Key('discovery-carousel-hero-card'),

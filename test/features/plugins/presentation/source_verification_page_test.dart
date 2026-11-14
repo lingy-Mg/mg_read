@@ -11,6 +11,7 @@ import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/app/app_tv_theme.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
+import 'package:mg_read/features/plugins/application/source_verification.dart';
 import 'package:mg_read/features/plugins/presentation/source_verification_page.dart';
 
 void main() {
@@ -175,7 +176,11 @@ void main() {
 Future<void> _mount(WidgetTester tester, _PendingGateway gateway, {VoidCallback? onBack, bool largeText = false, bool tv = false}) async {
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [sourceContentGatewayProvider.overrideWithValue(gateway)],
+      overrides: [
+        sourceContentGatewayProvider.overrideWithValue(gateway),
+        if (tv)
+          sourceVerificationEngineProvider.overrideWithValue(SourceVerificationEngine(gateway, stopwatchFactory: _GoldenStopwatch.new)),
+      ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: tv ? appTvTheme(AppTheme.dark()) : AppTheme.light(),
@@ -229,4 +234,27 @@ final class _PendingGateway implements SourceContentGateway, CancellableSourceCo
 
   @override
   dynamic noSuchMethod(Invocation invocation) => throw StateError('Unexpected request: ${invocation.memberName}');
+}
+
+/// Golden timing is deliberately constant; rendering speed must not change elapsed labels.
+class _GoldenStopwatch implements Stopwatch {
+  bool _running = false;
+  @override
+  bool get isRunning => _running;
+  @override
+  Duration get elapsed => Duration.zero;
+  @override
+  int get elapsedTicks => 0;
+  @override
+  int get elapsedMicroseconds => 0;
+  @override
+  int get elapsedMilliseconds => 0;
+  @override
+  int get frequency => 1000000;
+  @override
+  void start() => _running = true;
+  @override
+  void stop() => _running = false;
+  @override
+  void reset() {}
 }

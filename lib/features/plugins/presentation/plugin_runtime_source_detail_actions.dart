@@ -38,7 +38,7 @@ class _RemoveSourceButton extends StatelessWidget {
         key: const Key('data-source-detail-remove'),
         onPressed: onPressed,
         icon: isRemoving
-            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+            ? const SizedBox(width: 18, height: 18, child: MotionCircularProgressIndicator(strokeWidth: 2))
             : const Icon(Icons.delete_outline),
         label: _detailActionLabel(isRemoving ? '正在处理' : '卸载数据源', compact),
         style: OutlinedButton.styleFrom(foregroundColor: tokens.notification),
@@ -197,7 +197,7 @@ class _OpenDirectoryButton extends StatelessWidget {
         key: const Key('data-source-detail-open-directory'),
         onPressed: onPressed,
         icon: isOpening
-            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+            ? const SizedBox(width: 18, height: 18, child: MotionCircularProgressIndicator(strokeWidth: 2))
             : const Icon(Icons.folder_open_outlined),
         label: _detailActionLabel(
           isOpening
@@ -229,7 +229,7 @@ class _PackageDevelopmentButton extends StatelessWidget {
         key: const Key('data-source-detail-package-development'),
         onPressed: onPressed,
         icon: isPackaging
-            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+            ? const SizedBox(width: 18, height: 18, child: MotionCircularProgressIndicator(strokeWidth: 2))
             : const Icon(Icons.inventory_2_outlined),
         label: _detailActionLabel(isPackaging ? '正在打包…' : '打包数据源插件', compact),
       ),
@@ -252,10 +252,12 @@ class _SourceEnabledControl extends ConsumerWidget {
     try {
       await ref.read(pluginRuntimeSourceActionProvider.notifier).setEnabled(pluginId: source.id, enabled: !source.enabled);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已${source.enabled ? '停用' : '启用'}“${source.displayName}”。')));
+        ScaffoldMessenger.of(
+          context,
+        ).showMotionSnackBar(context, SnackBar(content: Text('已${source.enabled ? '停用' : '启用'}“${source.displayName}”。')));
       }
     } on Object {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据源状态更新失败，请稍后重试。')));
+      if (context.mounted) ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('数据源状态更新失败，请稍后重试。')));
     }
   }
 
@@ -286,9 +288,9 @@ class _SourceEnabledControl extends ConsumerWidget {
         ),
       );
     }
-    return Material(
+    return MotionMaterial(
       color: Colors.transparent,
-      child: SwitchListTile.adaptive(
+      child: MotionSwitchListTile.adaptive(
         key: const Key('data-source-detail-enabled'),
         contentPadding: EdgeInsets.zero,
         title: Text(

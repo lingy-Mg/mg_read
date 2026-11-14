@@ -3,7 +3,7 @@ part of 'reader_settings_sheet.dart';
 
 extension _ReaderSettingsMainSections on _ReaderSettingsSheetState {
   Widget _buildMainPage(ReaderPalette palette) {
-    return Scrollbar(
+    return MotionScrollbar(
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(
           ReaderSettingsTokens.contentHorizontalPadding,
@@ -93,7 +93,7 @@ extension _ReaderSettingsMainSections on _ReaderSettingsSheetState {
       child: Row(
         children: <Widget>[
           Expanded(
-            child: Slider(
+            child: MotionSlider(
               key: const ValueKey<String>('reader-settings-brightness-slider'),
               value: _preferences.brightness,
               min: .05,

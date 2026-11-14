@@ -10,6 +10,7 @@
 /// - 清理漫画正文图片只删除可重新下载的图片文件，不删除 manifest、进度或书签。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -34,7 +35,7 @@ class CacheManagementPage extends ConsumerWidget {
     final databaseState = ref.watch(databaseCacheManagementProvider);
     final coverState = ref.watch(coverCacheManagementProvider);
     final mangaImageState = ref.watch(mangaImageCacheManagementProvider);
-    return Scaffold(
+    return MotionScaffold(
       body: SafeArea(
         bottom: false,
         child: AppSecondaryPageContent(
@@ -178,13 +179,16 @@ class CacheManagementPage extends ConsumerWidget {
       await showDialog<bool>(
         context: context,
         animationStyle: AppMotion.overlayStyle(context),
-        builder: (dialogContext) => AlertDialog(
-          title: Text(title),
-          content: Text(content),
-          actions: <Widget>[
-            TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
-            FilledButton(key: confirmKey, onPressed: () => Navigator.of(dialogContext).pop(true), child: Text(action)),
-          ],
+        builder: motionOverlayBuilder(
+          context,
+          (dialogContext) => MotionAlertDialog(
+            title: Text(title),
+            content: Text(content),
+            actions: <Widget>[
+              TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('取消')),
+              FilledButton(key: confirmKey, onPressed: () => Navigator.of(dialogContext).pop(true), child: Text(action)),
+            ],
+          ),
         ),
       ) ??
       false;
@@ -256,7 +260,7 @@ class _SourceCacheSection extends StatelessWidget {
     loading: () => const _CacheSummaryCard(
       title: '数据源网页与文件缓存',
       description: '正在读取各数据源缓存用量…',
-      trailing: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+      trailing: SizedBox(width: 18, height: 18, child: MotionCircularProgressIndicator(strokeWidth: 2)),
     ),
     error: (Object _, StackTrace _) => _CacheSummaryCard(
       title: '数据源网页与文件缓存',
@@ -273,13 +277,13 @@ class _SourceCacheSection extends StatelessWidget {
                 ? '正在统计，当前已读取 ${_formatBytes(value.totalBytes)}。包含数据源保存的网页响应和临时文件。'
                 : '共 ${_formatBytes(value.totalBytes)}。包含数据源保存的网页响应和临时文件。',
             trailing: value.isRefreshing || isScanning
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const SizedBox(width: 18, height: 18, child: MotionCircularProgressIndicator(strokeWidth: 2))
                 : null,
             action: FilledButton.tonalIcon(
               key: const Key('plugin-cache-clear-all'),
               onPressed: value.isClearing || value.entries.isEmpty ? null : () => onClearAll(value),
               icon: value.isClearing
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(width: 18, height: 18, child: MotionCircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.delete_outline_rounded),
               label: const Text('清理全部数据源缓存'),
             ),
@@ -317,7 +321,7 @@ class _CoverCacheSection extends StatelessWidget {
     loading: () => const _CacheSummaryCard(
       title: '封面缓存',
       description: '正在读取封面缓存用量…',
-      trailing: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+      trailing: SizedBox(width: 18, height: 18, child: MotionCircularProgressIndicator(strokeWidth: 2)),
     ),
     error: (Object _, StackTrace _) => _CacheSummaryCard(
       title: '封面缓存',
@@ -329,12 +333,14 @@ class _CoverCacheSection extends StatelessWidget {
         _CacheSummaryCard(
           title: '封面缓存',
           description: '${_formatBytes(value.bytes)}。封面可按需重新下载，清理不会删除书架数据。',
-          trailing: value.isRefreshing ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : null,
+          trailing: value.isRefreshing
+              ? const SizedBox(width: 18, height: 18, child: MotionCircularProgressIndicator(strokeWidth: 2))
+              : null,
           action: FilledButton.tonalIcon(
             key: const Key('cover-cache-clear'),
             onPressed: value.isClearing ? null : onClear,
             icon: value.isClearing
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const SizedBox(width: 18, height: 18, child: MotionCircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.delete_outline_rounded),
             label: Text(value.isClearing ? '正在清理' : '清理封面缓存'),
           ),
@@ -360,7 +366,7 @@ class _MangaImageCacheSection extends StatelessWidget {
     loading: () => const _CacheSummaryCard(
       title: '漫画正文图片缓存',
       description: '正在读取漫画正文图片缓存用量…',
-      trailing: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+      trailing: SizedBox(width: 18, height: 18, child: MotionCircularProgressIndicator(strokeWidth: 2)),
     ),
     error: (Object _, StackTrace _) => _CacheSummaryCard(
       title: '漫画正文图片缓存',
@@ -372,12 +378,14 @@ class _MangaImageCacheSection extends StatelessWidget {
         _CacheSummaryCard(
           title: '漫画正文图片缓存',
           description: '总计 ${_formatBytes(value.usage.totalBytes)}。图片可按需重新下载，清理不影响书架、章节清单（manifest）、阅读进度和书签。',
-          trailing: value.isRefreshing ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : null,
+          trailing: value.isRefreshing
+              ? const SizedBox(width: 18, height: 18, child: MotionCircularProgressIndicator(strokeWidth: 2))
+              : null,
           action: FilledButton.tonalIcon(
             key: const Key('manga-image-cache-clear'),
             onPressed: value.isClearing ? null : onClear,
             icon: value.isClearing
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const SizedBox(width: 18, height: 18, child: MotionCircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.delete_outline_rounded),
             label: Text(value.isClearing ? '正在清理' : '清理漫画正文图片缓存'),
           ),
@@ -462,7 +470,7 @@ class _PluginCacheEntryCard extends StatelessWidget {
           borderRadius: AppRadii.detailCard,
           border: Border.all(color: tokens.divider),
         ),
-        child: ListTile(
+        child: MotionListTile(
           key: ValueKey<String>('plugin-cache-${entry.pluginId}'),
           title: Text(entry.displayName, maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text(switch (entry.status) {

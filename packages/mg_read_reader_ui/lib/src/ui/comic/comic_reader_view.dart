@@ -13,6 +13,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'dart:collection';
 import 'dart:math' as math;
@@ -403,7 +404,7 @@ class _ComicReaderViewState extends State<ComicReaderView>
         child: MediaQuery.withClampedTextScaling(
           minScaleFactor: .85,
           maxScaleFactor: 1.3,
-          child: Theme(
+          child: MotionTheme(
             data: ThemeData(
               brightness: Brightness.dark,
               colorScheme: ColorScheme.fromSeed(
@@ -423,7 +424,7 @@ class _ComicReaderViewState extends State<ComicReaderView>
               focusNode: _focusNode,
               autofocus: true,
               onKeyEvent: _handleKeyEvent,
-              child: Scaffold(
+              child: MotionScaffold(
                 backgroundColor: Colors.white,
                 body: LayoutBuilder(
                   builder: (BuildContext context, BoxConstraints constraints) {
@@ -491,7 +492,7 @@ class _ComicReaderViewState extends State<ComicReaderView>
                         if (_loading && _window.isNotEmpty)
                           const Align(
                             alignment: Alignment.topCenter,
-                            child: LinearProgressIndicator(
+                            child: MotionLinearProgressIndicator(
                               key: ValueKey<String>(
                                 'comic-reader-chapter-loading',
                               ),

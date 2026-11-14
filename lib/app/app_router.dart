@@ -11,6 +11,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:mg_read/features/local_import/presentation/local_import_page.dart';
 import 'package:mg_read/features/local_import/presentation/local_document_detail_page.dart';
 import 'dart:async';
@@ -678,8 +679,8 @@ class _UnknownRoutePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('页面不存在')),
+    return MotionScaffold(
+      appBar: MotionAppBarSurface(child: AppBar(title: const Text('页面不存在'))),
       body: const SafeArea(
         child: Center(
           child: Padding(

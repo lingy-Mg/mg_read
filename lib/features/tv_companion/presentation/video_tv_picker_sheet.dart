@@ -5,6 +5,7 @@
 /// The whole sheet scrolls on short screens and respects the bottom safe area.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 
 import '../domain/companion_models.dart';
@@ -49,7 +50,7 @@ final class VideoTvPickerSheet extends StatelessWidget {
     final base = Theme.of(context);
     return Theme(
       data: themeFor(base),
-      child: Material(
+      child: MotionMaterial(
         color: backgroundColor,
         child: SafeArea(
           top: false,
@@ -84,12 +85,14 @@ final class VideoTvPickerSheet extends StatelessWidget {
                           ],
                         ),
                       ),
-                      IconButton(
-                        key: const Key('companion-cast-close'),
-                        tooltip: '关闭',
-                        onPressed: onClose,
-                        style: IconButton.styleFrom(foregroundColor: _secondary, visualDensity: VisualDensity.compact),
-                        icon: const Icon(Icons.close_rounded, size: 20),
+                      MotionIconButtonSurface(
+                        child: IconButton(
+                          key: const Key('companion-cast-close'),
+                          tooltip: '关闭',
+                          onPressed: onClose,
+                          style: IconButton.styleFrom(foregroundColor: _secondary, visualDensity: VisualDensity.compact),
+                          icon: const Icon(Icons.close_rounded, size: 20),
+                        ),
                       ),
                     ],
                   ),
@@ -184,7 +187,7 @@ final class _DiscoveryState extends StatelessWidget {
         if (loading)
           const Padding(
             padding: EdgeInsets.all(12),
-            child: SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2, color: _accent)),
+            child: SizedBox.square(dimension: 24, child: MotionCircularProgressIndicator(strokeWidth: 2, color: _accent)),
           )
         else
           _IconTile(icon: error == null ? Icons.tv_rounded : Icons.wifi_off_rounded),
@@ -224,7 +227,7 @@ final class _ActionCard extends StatelessWidget {
   final bool accented;
 
   @override
-  Widget build(BuildContext context) => Material(
+  Widget build(BuildContext context) => MotionMaterial(
     color: _card,
     borderRadius: BorderRadius.circular(8),
     clipBehavior: Clip.antiAlias,

@@ -3,6 +3,7 @@
 /// 展示自动扫描结果并提供显式清理、压缩和失败重试；不发起路径或 SQL 操作。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -21,7 +22,7 @@ final class DatabaseCacheSection extends StatelessWidget {
   Widget build(BuildContext context) => state.when(
     loading: () => const _DatabaseCard(
       description: '正在扫描可清理的数据库缓存…',
-      trailing: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+      trailing: SizedBox(width: 18, height: 18, child: MotionCircularProgressIndicator(strokeWidth: 2)),
     ),
     error: (Object _, StackTrace _) => _DatabaseCard(
       description: '数据库缓存信息暂不可用。',
@@ -40,7 +41,9 @@ final class DatabaseCacheSection extends StatelessWidget {
         children: <Widget>[
           _DatabaseCard(
             description: usage.isEmpty ? '未发现可清理的无引用正文对象。' : '预计可清理 ${_formatBytes(usage.estimatedReclaimableBytes)}；清理后空间会先供数据库复用。',
-            trailing: value.isRefreshing ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : null,
+            trailing: value.isRefreshing
+                ? const SizedBox(width: 18, height: 18, child: MotionCircularProgressIndicator(strokeWidth: 2))
+                : null,
             details: <Widget>[
               _Metric(label: '无引用正文对象', value: '${usage.orphanContentObjects} 个'),
               _Metric(label: '无引用正文大小', value: _formatBytes(usage.reclaimableContentBytes)),
@@ -51,7 +54,7 @@ final class DatabaseCacheSection extends StatelessWidget {
                 key: const Key('database-cache-clear'),
                 onPressed: value.isBusy || usage.isEmpty ? null : onClear,
                 icon: value.isClearing
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(width: 16, height: 16, child: MotionCircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.cleaning_services_outlined),
                 label: Text(value.isClearing ? '正在清理' : '全部清理'),
               ),
@@ -59,15 +62,17 @@ final class DatabaseCacheSection extends StatelessWidget {
                 key: const Key('database-cache-compact'),
                 onPressed: value.isBusy || (usage.compactableDatabaseBytes == 0 && !value.hasCompletedCleanup) ? null : onCompact,
                 icon: value.isCompacting
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(width: 16, height: 16, child: MotionCircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.compress_rounded),
                 label: Text(value.isCompacting ? '正在压缩' : '压缩数据库'),
               ),
-              IconButton(
-                key: const Key('database-cache-refresh'),
-                tooltip: '重新扫描',
-                onPressed: value.isBusy ? null : onRetry,
-                icon: const Icon(Icons.refresh_rounded),
+              MotionIconButtonSurface(
+                child: IconButton(
+                  key: const Key('database-cache-refresh'),
+                  tooltip: '重新扫描',
+                  onPressed: value.isBusy ? null : onRetry,
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
               ),
             ],
           ),

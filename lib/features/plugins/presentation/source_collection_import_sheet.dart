@@ -5,6 +5,7 @@
 /// Mobile headings scroll with filters on short screens; confirmation stays fixed.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -311,7 +312,7 @@ class _SourceCollectionSelectorState extends State<_SourceCollectionSelector> {
                     return Container(
                       key: Key('source-collection-card-${plugin.id}'),
                       margin: const EdgeInsets.only(bottom: AppSpacing.compact),
-                      child: Material(
+                      child: MotionMaterial(
                         color: checked
                             ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.28)
                             : AppThemeTokens.of(context).mutedSurface.withValues(alpha: 0.55),
@@ -324,7 +325,7 @@ class _SourceCollectionSelectorState extends State<_SourceCollectionSelector> {
                           ),
                         ),
                         clipBehavior: Clip.antiAlias,
-                        child: CheckboxListTile(
+                        child: MotionCheckboxListTile(
                           key: Key('source-collection-${plugin.id}'),
                           value: checked,
                           onChanged: enabled
@@ -381,7 +382,7 @@ class _SourceCollectionSelectorState extends State<_SourceCollectionSelector> {
                               try {
                                 Navigator.of(context).pop(sourceCollectionSelection(visibleCandidates, _selectedIds));
                               } on SourceCollectionImportException catch (error) {
-                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+                                ScaffoldMessenger.of(context).showMotionSnackBar(context, SnackBar(content: Text(error.message)));
                               }
                             },
                       child: Text('导入 ${_selectedIds.length} 项'),

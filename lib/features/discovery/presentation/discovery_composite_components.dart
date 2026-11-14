@@ -13,6 +13,7 @@
 /// - TV 封面网格使用约 156 逻辑像素的海报列宽和固定展示比例，避免普通断点撑满电视首屏。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'widgets/discovery_remote_action.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -323,7 +324,7 @@ class DiscoveryComponentSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AppThemeTokens.of(context);
-    return Material(
+    return MotionMaterial(
       color: tokens.surface,
       shape: RoundedRectangleBorder(
         borderRadius: AppRadii.discoveryPanel,
@@ -379,7 +380,7 @@ class DiscoveryComponentChip extends StatelessWidget {
     return SizedBox(
       height: AppSpacing.minimumTouchTarget,
       child: expanded
-          ? Material(
+          ? MotionMaterial(
               type: MaterialType.transparency,
               child: InkWell(
                 onTap: onPressed,
@@ -443,7 +444,8 @@ class DiscoveryComponentChip extends StatelessWidget {
                       ),
                       child: SizedBox(
                         height: AppSpacing.discoveryChipVisualHeight,
-                        child: ChoiceChip(
+                        child: MotionChoiceChip(
+                          chipAnimationStyle: motionChipAnimationStyle(context),
                           showCheckmark: false,
                           selected: selected,
                           onSelected: (_) => onPressed(),
@@ -591,7 +593,7 @@ class _CategoryGrid extends StatelessWidget {
                 child: DiscoveryRemoteAction(
                   label: category.title,
                   onPressed: () => onSelected(category.target),
-                  child: Material(
+                  child: MotionMaterial(
                     color: tokens.featureSurface,
                     shape: RoundedRectangleBorder(
                       borderRadius: AppRadii.discoveryTile,

@@ -12,6 +12,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -177,7 +178,7 @@ class _LibraryAnchoredMenuState extends State<LibraryAnchoredMenu> with SingleTi
                         scopesRoute: true,
                         namesRoute: true,
                         label: widget.tooltip,
-                        child: Material(
+                        child: MotionMaterial(
                           key: widget.menuKey,
                           color: tokens.surface,
                           surfaceTintColor: Colors.transparent,

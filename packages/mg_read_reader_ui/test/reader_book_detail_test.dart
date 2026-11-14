@@ -6,6 +6,7 @@ void main() {
   testWidgets('reader source row and book details expose source metadata', (
     WidgetTester tester,
   ) async {
+    final semantics = tester.ensureSemantics();
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -30,9 +31,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('演示数据源'), findsOneWidget);
     expect(
-      find.text('https://source.example/books/detail-book'),
+      find.bySemanticsLabel(
+        '在外部浏览器打开来源链接: https://source.example/books/detail-book',
+      ),
       findsOneWidget,
     );
+    semantics.dispose();
 
     await tester.tap(find.text('目录'));
     await tester.pumpAndSettle();

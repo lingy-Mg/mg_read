@@ -10,6 +10,7 @@
 /// - Decorative controllers stop while paused, buffering or motion-disabled.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -148,36 +149,38 @@ class _AudioAnimatedPlayPauseButtonState
               : const Duration(milliseconds: 120),
           curve: Curves.easeOutCubic,
           scale: _pressed ? 0.94 : 1,
-          child: IconButton.filled(
-            key: const Key('audio-play-pause'),
-            tooltip: widget.snapshot.playing ? '暂停' : '播放',
-            onPressed: widget.onPressed,
-            style: IconButton.styleFrom(
-              backgroundColor: AudioPlayerColors.ink,
-              foregroundColor: AudioPlayerColors.backgroundBottom,
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-            ),
-            iconSize: 40,
-            icon: AnimatedSwitcher(
-              duration: widget.disableAnimations
-                  ? Duration.zero
-                  : const Duration(milliseconds: 160),
-              child: waiting
-                  ? const SizedBox.square(
-                      key: Key('audio-buffering'),
-                      dimension: 28,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.4,
-                        color: AudioPlayerColors.backgroundBottom,
+          child: MotionIconButtonSurface(
+            child: IconButton.filled(
+              key: const Key('audio-play-pause'),
+              tooltip: widget.snapshot.playing ? '暂停' : '播放',
+              onPressed: widget.onPressed,
+              style: IconButton.styleFrom(
+                backgroundColor: AudioPlayerColors.ink,
+                foregroundColor: AudioPlayerColors.backgroundBottom,
+                shape: const CircleBorder(),
+                padding: EdgeInsets.zero,
+              ),
+              iconSize: 40,
+              icon: AnimatedSwitcher(
+                duration: widget.disableAnimations
+                    ? Duration.zero
+                    : const Duration(milliseconds: 160),
+                child: waiting
+                    ? const SizedBox.square(
+                        key: Key('audio-buffering'),
+                        dimension: 28,
+                        child: MotionCircularProgressIndicator(
+                          strokeWidth: 2.4,
+                          color: AudioPlayerColors.backgroundBottom,
+                        ),
+                      )
+                    : Icon(
+                        widget.snapshot.playing
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                        key: ValueKey<bool>(widget.snapshot.playing),
                       ),
-                    )
-                  : Icon(
-                      widget.snapshot.playing
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
-                      key: ValueKey<bool>(widget.snapshot.playing),
-                    ),
+              ),
             ),
           ),
         ),
@@ -246,33 +249,35 @@ class _AudioAnimatedSeekButtonState extends State<AudioAnimatedSeekButton> {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      tooltip: widget.tooltip,
-      onPressed: _activate,
-      constraints: const BoxConstraints.tightFor(
-        width: AudioPlayerMetrics.minimumTapTarget,
-        height: AudioPlayerMetrics.minimumTapTarget,
-      ),
-      padding: EdgeInsets.zero,
-      color: AudioPlayerColors.ink,
-      icon: AnimatedRotation(
-        key: Key(
-          widget.forward
-              ? 'audio-seek-forward-motion'
-              : 'audio-seek-back-motion',
+    return MotionIconButtonSurface(
+      child: IconButton(
+        tooltip: widget.tooltip,
+        onPressed: _activate,
+        constraints: const BoxConstraints.tightFor(
+          width: AudioPlayerMetrics.minimumTapTarget,
+          height: AudioPlayerMetrics.minimumTapTarget,
         ),
-        turns: _turns,
-        duration: widget.disableAnimations
-            ? Duration.zero
-            : const Duration(milliseconds: 130),
-        curve: Curves.easeOutCubic,
-        child: AnimatedScale(
-          scale: _compressed ? 0.92 : 1,
+        padding: EdgeInsets.zero,
+        color: AudioPlayerColors.ink,
+        icon: AnimatedRotation(
+          key: Key(
+            widget.forward
+                ? 'audio-seek-forward-motion'
+                : 'audio-seek-back-motion',
+          ),
+          turns: _turns,
           duration: widget.disableAnimations
               ? Duration.zero
               : const Duration(milliseconds: 130),
           curve: Curves.easeOutCubic,
-          child: _SeekFifteenIcon(forward: widget.forward),
+          child: AnimatedScale(
+            scale: _compressed ? 0.92 : 1,
+            duration: widget.disableAnimations
+                ? Duration.zero
+                : const Duration(milliseconds: 130),
+            curve: Curves.easeOutCubic,
+            child: _SeekFifteenIcon(forward: widget.forward),
+          ),
         ),
       ),
     );

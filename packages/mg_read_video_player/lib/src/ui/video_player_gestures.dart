@@ -13,6 +13,7 @@ library;
 // Cross-file UI helpers are intentionally package-private despite Dart naming.
 // ignore_for_file: public_member_api_docs
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -386,7 +387,7 @@ final class _GestureHudView extends StatelessWidget {
           ],
           if (hud.progress case final progress?) ...<Widget>[
             const SizedBox(height: 5),
-            LinearProgressIndicator(
+            MotionLinearProgressIndicator(
               minHeight: 2,
               value: progress.clamp(0, 1),
               backgroundColor: const Color(0x32FFFFFF),

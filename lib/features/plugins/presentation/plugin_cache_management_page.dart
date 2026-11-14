@@ -1,6 +1,7 @@
 /// 数据源缓存维护。IO 与反馈由应用层持有；TV 将总量/批量操作与逐源清单分栏。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 import 'package:mg_read/shared/presentation/widgets/tv_focusable.dart';
@@ -28,7 +29,7 @@ class _PluginCacheManagementPageState extends ConsumerState<PluginCacheManagemen
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(pluginCacheManagementProvider);
-    return Scaffold(
+    return MotionScaffold(
       body: SafeArea(
         bottom: false,
         child: AppSecondaryPageContent(
@@ -203,7 +204,7 @@ class _CacheContent extends StatelessWidget {
                   children: <Widget>[
                     Expanded(child: Text('数据源缓存', style: Theme.of(context).textTheme.titleLarge)),
                     if (state.isRefreshing) ...<Widget>[
-                      const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                      const SizedBox(width: 16, height: 16, child: MotionCircularProgressIndicator(strokeWidth: 2)),
                       const SizedBox(width: AppSpacing.unit),
                       Text('正在刷新', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: tokens.mutedText)),
                     ],
@@ -219,7 +220,7 @@ class _CacheContent extends StatelessWidget {
                   key: const Key('plugin-cache-clear-all'),
                   onPressed: state.isClearing || state.entries.isEmpty ? null : onClearAll,
                   icon: state.isClearing
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      ? const SizedBox(width: 18, height: 18, child: MotionCircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.delete_outline_rounded),
                   label: const Text('清理全部缓存'),
                 ),
@@ -263,7 +264,7 @@ class _CacheEntryCard extends StatelessWidget {
           borderRadius: AppRadii.profileList,
           border: Border.all(color: tokens.divider),
         ),
-        child: ListTile(
+        child: MotionListTile(
           key: ValueKey<String>('plugin-cache-${entry.pluginId}'),
           title: Text(entry.displayName, maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text(switch (entry.status) {

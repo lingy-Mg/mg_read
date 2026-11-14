@@ -3,6 +3,7 @@
 /// available as a compatibility option and shares installed sources with Bun.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -41,13 +42,16 @@ class _DesktopRuntimeSettingsPageState extends ConsumerState<DesktopRuntimeSetti
       final restart = await showDialog<bool>(
         context: context,
         animationStyle: AppMotion.overlayStyle(context),
-        builder: (context) => AlertDialog(
-          title: const Text('重启后生效'),
-          content: Text('已选择 ${_label(backend)}。重启后启用，已安装的数据源保留。当前阅读、播放和下载会中断。'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('稍后重启')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('立即重启')),
-          ],
+        builder: motionOverlayBuilder(
+          context,
+          (context) => MotionAlertDialog(
+            title: const Text('重启后生效'),
+            content: Text('已选择 ${_label(backend)}。重启后启用，已安装的数据源保留。当前阅读、播放和下载会中断。'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('稍后重启')),
+              FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('立即重启')),
+            ],
+          ),
         ),
       );
       if (restart == true && mounted) await _restart();
@@ -81,7 +85,7 @@ class _DesktopRuntimeSettingsPageState extends ConsumerState<DesktopRuntimeSetti
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(desktopRuntimeSettingsProvider);
-    return Scaffold(
+    return MotionScaffold(
       body: SafeArea(
         child: AppSecondaryPageContent(
           child: Column(
@@ -96,8 +100,8 @@ class _DesktopRuntimeSettingsPageState extends ConsumerState<DesktopRuntimeSetti
                     const Text('两种运行时共用已安装的数据源和配置，切换后无需重新导入。每次只运行所选的一种；遇到数据源兼容问题时，可切回 Node.js。'),
                     const SizedBox(height: AppSpacing.regular),
                     for (final backend in DesktopRuntimeBackend.values)
-                      Card(
-                        child: ListTile(
+                      MotionCard(
+                        child: MotionListTile(
                           key: Key('desktop-runtime-${backend.name}'),
                           title: Text(_label(backend)),
                           subtitle: Text(
@@ -119,7 +123,7 @@ class _DesktopRuntimeSettingsPageState extends ConsumerState<DesktopRuntimeSetti
                       const SizedBox(height: AppSpacing.regular),
                       FilledButton(onPressed: _busy ? null : _restart, child: const Text('立即重启')),
                     ],
-                    if (_busy) const LinearProgressIndicator(),
+                    if (_busy) const MotionLinearProgressIndicator(),
                     if (_error != null) Text(_error!, key: const Key('desktop-runtime-error')),
                   ],
                 ),

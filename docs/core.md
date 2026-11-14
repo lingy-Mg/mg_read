@@ -248,6 +248,12 @@ plugins/sources/                    真实数据源及其他能力参考实现
   `effectiveDuration`；自有控制器在策略变化时同步落到目标值，Hero 随策略关闭。
 - 不以整树 `TickerMode(false)` 实现无动画，避免动画冻结和状态丢失。播放、下载、加载与真实进度继续工作。
   package 只读取 `MediaQuery.disableAnimations`，弹层解析 `AnimationStyle.noAnimation`，不导入宿主类型。
+- 宿主与阅读/播放 package 复用 `mg_read_motion` 的加载、刷新、开关、复选、滑杆、下拉、提示条与悬停/滚动组件。
+  未知进度使用静态等待反馈；真实进度即时更新，纵向翻页使用 `jumpTo`，标签页禁用滑动并即时切换。
+  无动画不保留墨水、筛选标签、滚动条渐隐或松手惯性；不得直接使用绕过策略的框架控件。
+  `test/app/app_motion_coverage_test.dart` 防止调用点遗漏，行为测试同时验证零持续动画帧与正常模式恢复。
+- Material/Scaffold/卡片/对话框表面、列表项及输入框同样经过共享适配，避免主题内置颜色/文字插值和光标闪烁；静态输入保留
+  同一 EditableText、控制器、选择与焦点。无动画底部面板关闭拖动，内置悬停提示不启动淡入淡出。
 - 退出内容不可点击、不可取焦点或产生重复语义播报；快速往返不残留遮罩。控制器、曲线、Timer 和监听
   成对释放；装饰循环同时遵守动效策略、TickerMode、路由可见性和前后台生命周期。
 - 验证入口为 `test/app/app_motion_test.dart`、`app_motion_policy_test.dart`、`app_top_level_navigation_test.dart`

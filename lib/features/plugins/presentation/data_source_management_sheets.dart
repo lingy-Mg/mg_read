@@ -4,6 +4,7 @@
 /// 注意：面板不执行 IO；调用方在关闭面板后检查生命周期与忙碌状态。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -244,7 +245,7 @@ class _ActionTile extends StatelessWidget {
         ),
       );
     }
-    return ListTile(
+    return MotionListTile(
       key: actionKey,
       contentPadding: const EdgeInsets.symmetric(vertical: AppSpacing.unit),
       enabled: onTap != null,

@@ -42,14 +42,14 @@ class _AudioRememberPositionCardState extends State<_AudioRememberPositionCard> 
   @override
   Widget build(BuildContext context) {
     final tokens = AppThemeTokens.of(context);
-    return Material(
+    return MotionMaterial(
       color: tokens.surface,
       shape: RoundedRectangleBorder(
         borderRadius: AppRadii.detailCard,
         side: BorderSide(color: tokens.divider),
       ),
       clipBehavior: Clip.antiAlias,
-      child: SwitchListTile(
+      child: MotionSwitchListTile(
         key: const Key('profile-audio-remember-position'),
         title: const Text('记住上次播放位置'),
         subtitle: const Text('书架音频下次从上次章节和时间点继续；关闭后从所选章节开头播放，保留已有记录。'),
@@ -114,11 +114,13 @@ class _NovelPreloadChapterCountCardState extends State<_NovelPreloadChapterCount
                 ],
               ),
             ),
-            IconButton(
-              key: const Key('novel-preload-count-decrease'),
-              tooltip: '减少预加载章节',
-              onPressed: _value > 0 ? () => _change(_value - 1) : null,
-              icon: const Icon(Icons.remove_circle_outline_rounded),
+            MotionIconButtonSurface(
+              child: IconButton(
+                key: const Key('novel-preload-count-decrease'),
+                tooltip: '减少预加载章节',
+                onPressed: _value > 0 ? () => _change(_value - 1) : null,
+                icon: const Icon(Icons.remove_circle_outline_rounded),
+              ),
             ),
             Semantics(
               label: '当前预加载章节数量',
@@ -129,11 +131,13 @@ class _NovelPreloadChapterCountCardState extends State<_NovelPreloadChapterCount
                 child: Text(_value == 0 ? '关闭' : '$_value 章', textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleSmall),
               ),
             ),
-            IconButton(
-              key: const Key('novel-preload-count-increase'),
-              tooltip: '增加预加载章节',
-              onPressed: _value < 5 ? () => _change(_value + 1) : null,
-              icon: const Icon(Icons.add_circle_outline_rounded),
+            MotionIconButtonSurface(
+              child: IconButton(
+                key: const Key('novel-preload-count-increase'),
+                tooltip: '增加预加载章节',
+                onPressed: _value < 5 ? () => _change(_value + 1) : null,
+                icon: const Icon(Icons.add_circle_outline_rounded),
+              ),
             ),
           ],
         ),

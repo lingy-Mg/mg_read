@@ -4,6 +4,7 @@
 /// renders that projection and provides explicit copy/open actions.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -27,7 +28,7 @@ class RuntimeDebugPanel extends ConsumerWidget {
   Future<void> _copyEndpoint(BuildContext context, String endpoint) async {
     await Clipboard.setData(ClipboardData(text: endpoint));
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('调试地址已复制。')));
+    ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('调试地址已复制。')));
   }
 
   Future<void> _openEndpoint(BuildContext context, String endpoint) async {
@@ -41,7 +42,7 @@ class RuntimeDebugPanel extends ConsumerWidget {
       }
     }
     if (!context.mounted || launched) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无法调用系统浏览器打开调试页面。')));
+    ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('无法调用系统浏览器打开调试页面。')));
   }
 
   @override
@@ -69,7 +70,7 @@ class RuntimeDebugPanel extends ConsumerWidget {
                 Icon(Icons.bug_report_outlined, color: tokens.accent),
                 const SizedBox(width: AppSpacing.compact),
                 Expanded(child: Text('数据源 Runtime 调试', style: Theme.of(context).textTheme.titleMedium)),
-                if (state.isLoading) const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                if (state.isLoading) const SizedBox.square(dimension: 18, child: MotionCircularProgressIndicator(strokeWidth: 2)),
               ],
             ),
             const SizedBox(height: AppSpacing.compact),
@@ -88,9 +89,9 @@ class RuntimeDebugPanel extends ConsumerWidget {
                 child: Text(value.configuredEnabled ? '关闭 Runtime 检查页' : '开启 Runtime 检查页'),
               )
             else
-              Material(
+              MotionMaterial(
                 type: MaterialType.transparency,
-                child: SwitchListTile.adaptive(
+                child: MotionSwitchListTile.adaptive(
                   key: const Key('runtime-debug-http-toggle'),
                   contentPadding: EdgeInsets.zero,
                   title: Text(value.configuredEnabled ? 'Runtime 检查页已开启' : '开启 Runtime 检查页'),

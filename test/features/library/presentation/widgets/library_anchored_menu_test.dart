@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../../../support/visual_evidence.dart';
 
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/library/presentation/library_home_view_data.dart';
@@ -136,7 +137,7 @@ void main() {
       testWidgets('$kind menu visual in ${brightness.name} theme', (tester) async {
         await _viewport(tester, const Size(390, 900));
         await tester.pumpWidget(_homeHost(brightness: brightness, card: kind == 'card'));
-        await tester.pumpAndSettle();
+        await settleWidgetImages(tester);
         final Finder popup;
         if (kind == 'top') {
           await tester.tap(find.byTooltip('更多操作'));

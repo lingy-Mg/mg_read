@@ -228,7 +228,7 @@ void main() {
     await tester.tap(find.byKey(const Key('app-nav-profile')));
     await tester.pumpAndSettle();
     expect(find.byType(ProfilePage), findsOneWidget);
-    expect(find.text('阅读与外观'), findsOneWidget);
+    expect(find.text('主题与外观'), findsOneWidget);
 
     _expectBrightnessForCurrentPage(tester, Brightness.light);
     await tester.tap(find.byKey(const Key('theme-mode-toggle')));

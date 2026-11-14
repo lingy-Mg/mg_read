@@ -4,6 +4,7 @@
 /// 阅读器内部字体、主题和排版仍由阅读器自己的设置面板管理。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -45,7 +46,7 @@ class ProfileGeneralSettingPage extends ConsumerWidget {
     final settings = ref.watch(appSettingsProvider);
     final spec = ProfileSettingsCatalog.find(settingId);
     final items = ProfileSettingsCatalog.children(settingId);
-    return Scaffold(
+    return MotionScaffold(
       body: SafeArea(
         bottom: false,
         child: AppSecondaryPageContent(
@@ -85,7 +86,7 @@ class ProfileGeneralSettingPage extends ConsumerWidget {
 
   List<Widget> _sections(BuildContext context, AppSettingsManager settings) => switch (settingId) {
     'novel-settings' => [
-      SwitchListTile.adaptive(
+      MotionSwitchListTile.adaptive(
         key: const Key('bookshelf-auto-catalog-refresh'),
         contentPadding: EdgeInsets.zero,
         title: const Text('自动检查新章节'),
@@ -124,7 +125,7 @@ class ProfileGeneralSettingPage extends ConsumerWidget {
     'video-settings' => [const ProfileVideoSettings()],
     'display-settings' || 'theme-colors' || 'bookshelf-settings' => [_AppearanceSettings(settings: settings, settingId: settingId)],
     'source-updates' => [
-      SwitchListTile.adaptive(
+      MotionSwitchListTile.adaptive(
         key: const Key('source-auto-update-check'),
         contentPadding: EdgeInsets.zero,
         title: const Text('自动更新数据源'),

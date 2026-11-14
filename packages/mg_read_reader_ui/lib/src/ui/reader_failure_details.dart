@@ -2,6 +2,7 @@
 /// 复制失败保留原始错误，长内容由外层失败页面滚动容纳。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -69,7 +70,7 @@ class ReaderFailureDetails extends StatelessWidget {
           if (context.mounted) {
             ScaffoldMessenger.maybeOf(
               context,
-            )?.showSnackBar(SnackBar(content: Text(message)));
+            )?.showMotionSnackBar(context, SnackBar(content: Text(message)));
           }
         },
         icon: const Icon(Icons.copy_rounded, size: 16),

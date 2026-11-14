@@ -3,6 +3,7 @@
 /// Standard-mode metadata uses aligned label/value rows without nested cards.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -44,7 +45,7 @@ class PluginRuntimeSourceDetailPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final connection = ref.watch(pluginRuntimeConnectionProvider);
-    return Scaffold(
+    return MotionScaffold(
       body: SafeArea(
         bottom: false,
         child: AppSecondaryPageContent(
@@ -72,7 +73,7 @@ class PluginRuntimeSourceDetailPage extends ConsumerWidget {
                       onVerificationRequested: onVerificationRequested,
                       onRemoved: () {
                         if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已卸载“${source.displayName}”。')));
+                        ScaffoldMessenger.of(context).showMotionSnackBar(context, SnackBar(content: Text('已卸载“${source.displayName}”。')));
                         onBackRequested();
                       },
                     );
@@ -243,14 +244,14 @@ class _DetailContent extends ConsumerWidget {
     try {
       final fileName = await ref.read(pluginRuntimeDevelopmentPackageProvider.notifier).package(pluginId: source.id);
       if (!context.mounted || fileName == null) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已打包 $fileName。')));
+      ScaffoldMessenger.of(context).showMotionSnackBar(context, SnackBar(content: Text('已打包 $fileName。')));
     } on AppError catch (error) {
       if (!context.mounted) return;
       final message = error.code == AppErrorCode.conflict ? '目标目录已有相同版本的数据源插件包，请更换目录或先处理旧文件。' : '数据源插件打包失败，请检查开发项目和目标目录。';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context).showMotionSnackBar(context, SnackBar(content: Text(message)));
     } on Object {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据源插件打包失败，请检查开发项目和目标目录。')));
+      ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('数据源插件打包失败，请检查开发项目和目标目录。')));
     }
   }
 
@@ -264,11 +265,11 @@ class _DetailContent extends ConsumerWidget {
         PluginCodeDirectoryKind.installed => '已打开已安装版本文件夹。该副本不会作为开发数据源插件即时生效。',
         PluginCodeDirectoryKind.archive => '已打开原始安装包文件夹。已安装源码目录不存在，需重新安装才能恢复使用。',
       };
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context).showMotionSnackBar(context, SnackBar(content: Text(message)));
     } on Object {
       if (!context.mounted) return;
       final message = isDevelopment ? '开发项目文件夹打开失败。' : '已安装版本文件夹打开失败。';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context).showMotionSnackBar(context, SnackBar(content: Text(message)));
     }
   }
 
@@ -300,7 +301,7 @@ class _DetailContent extends ConsumerWidget {
       onRemoved();
     } on Object {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据源卸载失败，请稍后重试。')));
+      ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('数据源卸载失败，请稍后重试。')));
     }
   }
 }
@@ -414,7 +415,7 @@ class _DetailField extends StatelessWidget {
       style: Theme.of(context).textTheme.bodyMedium,
     );
     final stacked = width < 280 || MediaQuery.textScalerOf(context).scale(1) > 1.3;
-    return Material(
+    return MotionMaterial(
       color: Colors.transparent,
       child: Semantics(
         button: field.expandable,

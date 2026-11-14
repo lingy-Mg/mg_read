@@ -2,6 +2,7 @@
 ///
 /// 职责：经生产 SourceContentGateway 顺序验证发现、搜索、详情、完整目录、内容抽样、Runtime 资源代理和视频播放。
 /// 注意：只产生计数与稳定错误码；内容值仅在当前调用栈内用于下一阶段，不进入报告或诊断。
+/// 可注入单调计时器用于确定性 UI 证据；默认真实计时，超时与取消仍由既有等待链持有。
 library;
 
 import 'dart:async';
@@ -51,11 +52,17 @@ final sourceVerificationEngineProvider = Provider<SourceVerificationEngine>((Ref
 });
 
 final class SourceVerificationEngine {
-  SourceVerificationEngine(this._gateway, {this._httpClientFactory = _defaultHttpClient, this.stageTimeout = const Duration(minutes: 2)});
+  SourceVerificationEngine(
+    this._gateway, {
+    this._httpClientFactory = _defaultHttpClient,
+    this.stageTimeout = const Duration(minutes: 2),
+    Stopwatch Function()? stopwatchFactory,
+  }) : _stopwatchFactory = stopwatchFactory ?? Stopwatch.new;
 
   final SourceContentGateway _gateway;
   final SourceVerificationHttpClientFactory _httpClientFactory;
   final Duration stageTimeout;
+  final Stopwatch Function() _stopwatchFactory;
 
   Future<SourceVerificationReport> run({
     String? pluginId,
@@ -65,7 +72,7 @@ final class SourceVerificationEngine {
     SourceVerificationVideoPlaybackProbe? videoPlaybackProbe,
   }) async {
     final startedAt = DateTime.now();
-    final stopwatch = Stopwatch()..start();
+    final stopwatch = _stopwatchFactory()..start();
     final token = cancellationToken ?? SourceVerificationCancellationToken();
     List<PluginSourceDescriptor> sources;
     try {
@@ -145,7 +152,7 @@ final class SourceVerificationEngine {
     SourceVerificationCancellationToken? cancellationToken,
     SourceVerificationVideoPlaybackProbe? videoPlaybackProbe,
   }) async {
-    final stopwatch = Stopwatch()..start();
+    final stopwatch = _stopwatchFactory()..start();
     final stages = <SourceVerificationStageResult>[
       SourceVerificationStageResult(
         stage: 'runtime',
@@ -155,6 +162,7 @@ final class SourceVerificationEngine {
       ),
     ];
     final context = _SourceRunContext(
+      stopwatchFactory: _stopwatchFactory,
       gateway: _gateway,
       source: source,
       stages: stages,
@@ -389,6 +397,7 @@ bool _hasImageSignature(List<int> bytes) {
 
 final class _SourceRunContext {
   const _SourceRunContext({
+    required this.stopwatchFactory,
     required this.gateway,
     required this.source,
     required this.stages,
@@ -399,6 +408,7 @@ final class _SourceRunContext {
   });
 
   final SourceContentGateway gateway;
+  final Stopwatch Function() stopwatchFactory;
   final PluginSourceDescriptor source;
   final List<SourceVerificationStageResult> stages;
   final Duration stageTimeout;
@@ -424,7 +434,7 @@ final class _SourceRunContext {
         stages: List.unmodifiable(stages),
       ),
     );
-    final stopwatch = Stopwatch()..start();
+    final stopwatch = stopwatchFactory()..start();
     final token = SourceVerificationCancellationToken();
     final remove = cancellationToken?.listen(token.cancel);
     try {

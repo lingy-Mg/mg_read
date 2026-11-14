@@ -100,7 +100,7 @@ class _RecommendationsSectionState extends State<_RecommendationsSection> {
             ),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              physics: const ClampingScrollPhysics(),
+              physics: motionDisabled(context) ? const InstantScrollPhysics() : const ClampingScrollPhysics(),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: _visibleCandidates

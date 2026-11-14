@@ -30,7 +30,12 @@ class _DataSourceImportProgress extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.unit),
-          LinearProgressIndicator(value: fraction, minHeight: 4, backgroundColor: tokens.mutedSurface, color: tokens.dataSourceAccent),
+          MotionLinearProgressIndicator(
+            value: fraction,
+            minHeight: 4,
+            backgroundColor: tokens.mutedSurface,
+            color: tokens.dataSourceAccent,
+          ),
         ],
       ),
     );
@@ -128,7 +133,7 @@ class _DataSourceOverviewCard extends StatelessWidget {
             const SizedBox(height: AppSpacing.regular),
             _DataSourceImportProgress(state: importState),
             if (importState.logs.isNotEmpty)
-              Material(
+              MotionMaterial(
                 color: Colors.transparent,
                 child: ExpansionTile(
                   title: const Text('查看处理记录'),
@@ -168,7 +173,7 @@ class _DataSourceRemovalProgress extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.unit),
-          LinearProgressIndicator(value: fraction, minHeight: 4, backgroundColor: tokens.mutedSurface, color: tokens.notification),
+          MotionLinearProgressIndicator(value: fraction, minHeight: 4, backgroundColor: tokens.mutedSurface, color: tokens.notification),
         ],
       ),
     );
@@ -187,7 +192,7 @@ class _DataSourceSearchField extends StatelessWidget {
   Widget build(BuildContext context) {
     final AppThemeTokens tokens = AppThemeTokens.of(context);
     return TvTextInputNavigation(
-      child: TextField(
+      child: MotionTextField(
         key: const Key('data-source-search'),
         controller: controller,
         onChanged: onChanged,
@@ -197,11 +202,13 @@ class _DataSourceSearchField extends StatelessWidget {
           prefixIcon: const Icon(Icons.search_rounded, size: 21),
           suffixIcon: query.isEmpty
               ? null
-              : IconButton(
-                  key: const Key('data-source-search-clear'),
-                  tooltip: '清除搜索',
-                  onPressed: onClear,
-                  icon: const Icon(Icons.close_rounded),
+              : MotionIconButtonSurface(
+                  child: IconButton(
+                    key: const Key('data-source-search-clear'),
+                    tooltip: '清除搜索',
+                    onPressed: onClear,
+                    icon: const Icon(Icons.close_rounded),
+                  ),
                 ),
           filled: true,
           fillColor: tokens.surface,
@@ -242,7 +249,8 @@ class _DataSourceFilterBar extends StatelessWidget {
               child: Text(_filterLabel(filter)),
             )
           else
-            ChoiceChip(
+            MotionChoiceChip(
+              chipAnimationStyle: motionChipAnimationStyle(context),
               key: Key('data-source-filter-${filter.name}'),
               label: Text(_filterLabel(filter)),
               selected: selected == filter,
@@ -277,11 +285,13 @@ class _DataSourceListHeader extends StatelessWidget {
       children: <Widget>[
         Expanded(child: Text('我的数据源', style: theme.textTheme.titleMedium)),
         if (!TvModeScope.isEnabled(context))
-          IconButton(
-            key: const Key('data-source-density'),
-            tooltip: compact ? '切换详细视图' : '切换紧凑视图',
-            onPressed: onToggle,
-            icon: Icon(compact ? Icons.view_agenda_outlined : Icons.view_list_outlined),
+          MotionIconButtonSurface(
+            child: IconButton(
+              key: const Key('data-source-density'),
+              tooltip: compact ? '切换详细视图' : '切换紧凑视图',
+              onPressed: onToggle,
+              icon: Icon(compact ? Icons.view_agenda_outlined : Icons.view_list_outlined),
+            ),
           ),
         Text(
           visibleCount == totalCount ? '共 $totalCount 个' : '$visibleCount / $totalCount',
@@ -353,7 +363,7 @@ class _AddDataSourceButton extends StatelessWidget {
         icon: isImporting
             ? SizedBox.square(
                 dimension: 18,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.onPrimary),
+                child: MotionCircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.onPrimary),
               )
             : const Icon(Icons.add_rounded, size: 21),
         label: Text(isImporting ? '正在导入…' : '添加数据源'),
@@ -382,7 +392,8 @@ class _DataSourceStatusBar extends StatelessWidget {
     spacing: AppSpacing.compact,
     children: [
       for (final value in _DataSourceStatusFilter.values)
-        ChoiceChip(
+        MotionChoiceChip(
+          chipAnimationStyle: motionChipAnimationStyle(context),
           key: Key('data-source-status-${value.name}'),
           label: Text('${value.label} ${sources.where(value.matches).length}'),
           selected: value == selected,

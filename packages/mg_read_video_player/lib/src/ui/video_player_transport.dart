@@ -6,6 +6,7 @@ library;
 // Internal composition, not exported from the package.
 // ignore_for_file: public_member_api_docs
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../api/controller.dart';
@@ -89,7 +90,7 @@ class VideoPlayerTransport extends StatelessWidget {
                   ),
                   child: SizedBox(
                     height: 28,
-                    child: Slider(
+                    child: MotionSlider(
                       key: const Key('video-player-slider'),
                       padding: const EdgeInsets.symmetric(horizontal: 6),
                       value: value,
@@ -163,7 +164,7 @@ class VideoPlayerTransport extends StatelessWidget {
                               overlayRadius: 10,
                             ),
                           ),
-                          child: Slider(
+                          child: MotionSlider(
                             key: const Key('video-player-volume'),
                             padding: const EdgeInsets.symmetric(horizontal: 8),
                             value: snapshot.volume.clamp(0, 100),
@@ -226,18 +227,26 @@ Widget videoPlayerControl(
   IconData icon,
   VoidCallback? onPressed, {
   double size = 28,
-}) => IconButton(
-  key: Key(key),
-  tooltip: label,
-  onPressed: onPressed,
-  style: IconButton.styleFrom(
-    foregroundColor: Colors.white,
-    disabledForegroundColor: Colors.white30,
-    minimumSize: const Size.square(44),
-    padding: const EdgeInsets.all(8),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-    hoverColor: Colors.white12,
-    focusColor: Colors.white24,
+}) => Builder(
+  builder: (context) => MotionIconButtonSurface(
+    child: IconButton(
+      key: Key(key),
+      tooltip: label,
+      onPressed: onPressed,
+      style: IconButton.styleFrom(
+        foregroundColor: Colors.white,
+        disabledForegroundColor: Colors.white30,
+        minimumSize: const Size.square(44),
+        padding: const EdgeInsets.all(8),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+        hoverColor: motionDisabled(context)
+            ? Colors.transparent
+            : Colors.white12,
+        focusColor: motionDisabled(context)
+            ? Colors.transparent
+            : Colors.white24,
+      ),
+      icon: Icon(icon, size: size),
+    ),
   ),
-  icon: Icon(icon, size: size),
 );

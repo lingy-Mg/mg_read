@@ -3,6 +3,7 @@ part of 'text_reader_view.dart';
 // ignore_for_file: invalid_use_of_protected_member
 
 /// 当前章分页完成后通过相邻准备协调器触发布局预排；过期批次只丢弃。
+/// 无动画纵向翻页直接 jumpTo，禁止向 animateTo 传入零时长。
 extension _TextReaderPagination on _TextReaderViewState {
   void _ensurePagination(Size size) {
     if (_content == null ||
@@ -394,15 +395,19 @@ extension _TextReaderPagination on _TextReaderViewState {
     if (userInitiated) _stopAutoReading();
     if (_preferences.navigationMode == ReaderNavigationMode.verticalScroll) {
       if (_verticalController.hasClients) {
-        await _verticalController.animateTo(
-          (_verticalController.offset +
-                  _verticalController.position.viewportDimension * 0.85)
-              .clamp(0, _verticalController.position.maxScrollExtent),
-          duration: MediaQuery.disableAnimationsOf(context)
-              ? Duration.zero
-              : const Duration(milliseconds: 220),
-          curve: Curves.easeOut,
-        );
+        final double target =
+            (_verticalController.offset +
+                    _verticalController.position.viewportDimension * 0.85)
+                .clamp(0, _verticalController.position.maxScrollExtent);
+        if (MediaQuery.disableAnimationsOf(context)) {
+          _verticalController.jumpTo(target);
+        } else {
+          await _verticalController.animateTo(
+            target,
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOut,
+          );
+        }
       }
       return;
     }
@@ -425,15 +430,19 @@ extension _TextReaderPagination on _TextReaderViewState {
     if (userInitiated) _stopAutoReading();
     if (_preferences.navigationMode == ReaderNavigationMode.verticalScroll) {
       if (_verticalController.hasClients) {
-        await _verticalController.animateTo(
-          (_verticalController.offset -
-                  _verticalController.position.viewportDimension * 0.85)
-              .clamp(0, _verticalController.position.maxScrollExtent),
-          duration: MediaQuery.disableAnimationsOf(context)
-              ? Duration.zero
-              : const Duration(milliseconds: 220),
-          curve: Curves.easeOut,
-        );
+        final double target =
+            (_verticalController.offset -
+                    _verticalController.position.viewportDimension * 0.85)
+                .clamp(0, _verticalController.position.maxScrollExtent);
+        if (MediaQuery.disableAnimationsOf(context)) {
+          _verticalController.jumpTo(target);
+        } else {
+          await _verticalController.animateTo(
+            target,
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOut,
+          );
+        }
       }
       return;
     }

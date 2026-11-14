@@ -2,6 +2,7 @@
 /// The page owns sorting, expiry filtering, IO and discovery subscriptions.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:mg_read/app/app_theme.dart';
 
@@ -97,11 +98,13 @@ class CompanionDevicesView extends StatelessWidget {
               child: Text(connected ? '其他电视' : '附近的电视', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
             ),
             if (available.isNotEmpty) Text('${available.length} 台', style: theme.textTheme.labelMedium),
-            IconButton(
-              key: const Key('companion-refresh'),
-              tooltip: '重新搜索',
-              onPressed: busy ? null : onRefresh,
-              icon: const Icon(Icons.refresh_rounded),
+            MotionIconButtonSurface(
+              child: IconButton(
+                key: const Key('companion-refresh'),
+                tooltip: '重新搜索',
+                onPressed: busy ? null : onRefresh,
+                icon: const Icon(Icons.refresh_rounded),
+              ),
             ),
           ],
         ),

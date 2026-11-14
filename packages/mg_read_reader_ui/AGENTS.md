@@ -16,6 +16,7 @@ Android 验收规则。
   鉴权、Cookie、数据库、下载、账号、支付、DRM、宿主路由或评论写入。
 - 唯一公共入口是 `package:novel_reader_ui/novel_reader_ui.dart`；未导出的 `lib/src/` 符号均为私有。
 - 工具栏、设置、弹层与翻页消费 `MediaQuery.disableAnimations`；宿主无动画偏好通过该边界传入，不导入宿主动效类。
+- 基础动效控件复用 `mg_read_motion`；加载/刷新保持静态反馈，纵向翻页用 `jumpTo`，目录标签禁用滑动并零时长切换。
 - 宿主临时亮屏通过公共 `ScreenAwakeCoordinator` 使用独立 holder 并成对释放；不修改阅读偏好，
   同步等宿主业务生命周期仍由主应用持有。
 - 文本位置使用 `chapterId + paragraphId + characterOffset`，漫画位置使用

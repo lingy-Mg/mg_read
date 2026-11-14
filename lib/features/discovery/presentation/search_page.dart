@@ -12,6 +12,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:mg_read/features/tv_companion/application/companion_text_input.dart';
 
 import 'source_debug_page.dart';
@@ -209,7 +210,7 @@ class _SearchPageState extends ConsumerState<SearchPage> {
     if (TvModeScope.isEnabled(context)) return _buildTvSearch(state, controller, results);
 
     return TvFocusRegion(
-      child: Scaffold(
+      child: MotionScaffold(
         appBar: TvModeScope.isEnabled(context) && !SourcePreviewScope.active(context)
             ? AppBottomNavigation(selected: AppNavigationDestination.search, onSelected: widget.onDestinationRequested)
             : null,
@@ -434,7 +435,7 @@ class _SearchTopBar extends StatelessWidget {
             child: SizedBox(
               height: TvModeScope.isEnabled(context) ? null : AppSpacing.searchQueryHeight,
               child: TvTextInputNavigation(
-                child: TextField(
+                child: MotionTextField(
                   key: const Key('source-search-query'),
                   controller: queryController,
                   focusNode: queryFocusNode,
@@ -454,11 +455,13 @@ class _SearchTopBar extends StatelessWidget {
                           ? const _SearchFieldProgress()
                           : queryController.text.isEmpty
                           ? const SizedBox.shrink(key: ValueKey<String>('empty'))
-                          : IconButton(
-                              key: const ValueKey<String>('clear'),
-                              tooltip: '清空搜索',
-                              onPressed: onClear,
-                              icon: const Icon(Icons.cancel_rounded),
+                          : MotionIconButtonSurface(
+                              child: IconButton(
+                                key: const ValueKey<String>('clear'),
+                                tooltip: '清空搜索',
+                                onPressed: onClear,
+                                icon: const Icon(Icons.cancel_rounded),
+                              ),
                             ),
                     ),
                     filled: true,
@@ -514,7 +517,11 @@ class _SearchFieldProgress extends StatelessWidget {
         key: Key('source-search-field-progress'),
         widthFactor: 1,
         heightFactor: 1,
-        child: SizedBox(width: AppSpacing.comfortable, height: AppSpacing.comfortable, child: CircularProgressIndicator(strokeWidth: 2)),
+        child: SizedBox(
+          width: AppSpacing.comfortable,
+          height: AppSpacing.comfortable,
+          child: MotionCircularProgressIndicator(strokeWidth: 2),
+        ),
       ),
     ),
   );
@@ -601,7 +608,9 @@ class _SearchPageHeader extends ConsumerWidget {
                 },
               );
         } on AppError {
-          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('WebView 调试窗口打开失败，请稍后重试。')));
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('WebView 调试窗口打开失败，请稍后重试。')));
+          }
         }
       case null:
         return;

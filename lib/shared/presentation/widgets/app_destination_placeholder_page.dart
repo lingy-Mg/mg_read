@@ -1,3 +1,4 @@
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
@@ -9,18 +10,14 @@ import 'package:mg_read/shared/presentation/widgets/app_bottom_navigation.dart';
 /// tied to the current route rather than a temporary state on another page.
 class AppDestinationPlaceholderPage extends StatelessWidget {
   /// Creates an empty surface for [destination].
-  const AppDestinationPlaceholderPage({
-    required this.destination,
-    required this.onDestinationSelected,
-    super.key,
-  });
+  const AppDestinationPlaceholderPage({required this.destination, required this.onDestinationSelected, super.key});
 
   final AppNavigationDestination destination;
   final ValueChanged<AppNavigationDestination> onDestinationSelected;
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return MotionScaffold(
       extendBody: true,
       body: SafeArea(
         bottom: false,
@@ -29,17 +26,12 @@ class AppDestinationPlaceholderPage extends StatelessWidget {
           scopesRoute: true,
           explicitChildNodes: true,
           label: _labelFor(destination),
-          child: SizedBox.expand(
-            key: ValueKey<String>('app-empty-${destination.name}-page'),
-          ),
+          child: SizedBox.expand(key: ValueKey<String>('app-empty-${destination.name}-page')),
         ),
       ),
       bottomNavigationBar: SafeArea(
         top: false,
-        child: AppBottomNavigation(
-          selected: destination,
-          onSelected: onDestinationSelected,
-        ),
+        child: AppBottomNavigation(selected: destination, onSelected: onDestinationSelected),
       ),
     );
   }

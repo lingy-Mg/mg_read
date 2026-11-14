@@ -7,6 +7,7 @@ library;
 // Internal package composition, not part of the public import surface.
 // ignore_for_file: public_member_api_docs
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../api/models.dart';
@@ -103,7 +104,7 @@ class VideoPlayerTvChrome extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      LinearProgressIndicator(
+                      MotionLinearProgressIndicator(
                         key: const Key('tv-video-progress'),
                         color: videoPlayerAccent,
                         backgroundColor: Colors.white24,
@@ -233,28 +234,31 @@ class VideoPlayerTvChrome extends StatelessWidget {
       animationStyle: MediaQuery.disableAnimationsOf(context)
           ? AnimationStyle.noAnimation
           : null,
-      builder: (context) => VideoTvShortcuts(
-        child: Theme(
-          data: videoPlayerTheme(),
-          child: AlertDialog(
-            backgroundColor: const Color(0xFF181818),
-            surfaceTintColor: Colors.transparent,
-            scrollable: true,
-            title: const Text('播放速度'),
-            content: Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                for (final value in [.5, 1.0, 1.25, 1.5, 2.0])
-                  TextButton(
-                    autofocus: value == snapshot.rate,
-                    onPressed: () => Navigator.pop(context, value),
-                    child: Text(
-                      '$value×',
-                      style: const TextStyle(fontSize: 24),
+      builder: motionOverlayBuilder(
+        context,
+        (context) => VideoTvShortcuts(
+          child: MotionTheme(
+            data: videoPlayerTheme(),
+            child: MotionAlertDialog(
+              backgroundColor: const Color(0xFF181818),
+              surfaceTintColor: Colors.transparent,
+              scrollable: true,
+              title: const Text('播放速度'),
+              content: Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  for (final value in [.5, 1.0, 1.25, 1.5, 2.0])
+                    TextButton(
+                      autofocus: value == snapshot.rate,
+                      onPressed: () => Navigator.pop(context, value),
+                      child: Text(
+                        '$value×',
+                        style: const TextStyle(fontSize: 24),
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

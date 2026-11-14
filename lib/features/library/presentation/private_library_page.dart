@@ -13,6 +13,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -78,7 +79,7 @@ class PrivateLibraryPage extends ConsumerWidget {
       });
     }
 
-    return Scaffold(
+    return MotionScaffold(
       extendBody: true,
       body: SafeArea(
         bottom: false,
@@ -166,7 +167,7 @@ class _PrivateLibraryBodyState extends ConsumerState<_PrivateLibraryBody> {
       if (widget.visibilityChanger != null) _restoreBookAction,
       if (widget.remover != null) _deleteBookAction,
     ];
-    return RefreshIndicator(
+    return MotionRefreshIndicator(
       onRefresh: widget.controller.refresh,
       child: CustomScrollView(
         key: const Key('private-library-content'),
@@ -352,8 +353,14 @@ class _PrivateLibraryFeedback extends StatelessWidget {
               Icon(Icons.info_outline_rounded, color: tokens.accent),
               const SizedBox(width: AppSpacing.compact),
               Expanded(child: Text(message)),
-              if (onRetry != null) IconButton(tooltip: '重试刷新', onPressed: onRetry, icon: const Icon(Icons.refresh_rounded)),
-              if (onDismiss != null) IconButton(tooltip: '关闭提示', onPressed: onDismiss, icon: const Icon(Icons.close_rounded)),
+              if (onRetry != null)
+                MotionIconButtonSurface(
+                  child: IconButton(tooltip: '重试刷新', onPressed: onRetry, icon: const Icon(Icons.refresh_rounded)),
+                ),
+              if (onDismiss != null)
+                MotionIconButtonSurface(
+                  child: IconButton(tooltip: '关闭提示', onPressed: onDismiss, icon: const Icon(Icons.close_rounded)),
+                ),
             ],
           ),
         ),

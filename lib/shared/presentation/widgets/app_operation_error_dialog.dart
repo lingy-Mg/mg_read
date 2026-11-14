@@ -9,6 +9,7 @@
 /// - 复制能力失败不得覆盖原始业务错误或阻止用户关闭弹窗。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:mg_read/shared/presentation/motion/app_motion.dart';
 import 'dart:async';
 
@@ -32,8 +33,11 @@ Future<void> showAppOperationErrorDialog(
     context: context,
     animationStyle: AppMotion.overlayStyle(context),
     useRootNavigator: true,
-    builder: (BuildContext dialogContext) =>
-        AppOperationErrorDialog(details: details, guidance: guidance, onCopy: () => copyError(details.copyPayload)),
+    builder: motionOverlayBuilder(
+      context,
+      (BuildContext dialogContext) =>
+          AppOperationErrorDialog(details: details, guidance: guidance, onCopy: () => copyError(details.copyPayload)),
+    ),
   );
 }
 
@@ -77,7 +81,7 @@ final class AppOperationErrorDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return AlertDialog(
+    return MotionAlertDialog(
       scrollable: true,
       title: Text('${details.operation}失败'),
       content: SelectionArea(

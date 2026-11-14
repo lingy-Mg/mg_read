@@ -8,6 +8,8 @@ environment:
   flutter: ">=3.44.0"
 
 dependencies:
+  mg_read_motion:
+    path: ../mg_read_motion
   flutter:
     sdk: flutter
   media_kit: 1.2.6

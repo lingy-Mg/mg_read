@@ -3,6 +3,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:mg_read_motion/mg_read_motion.dart';
 
 class AppMotionScope extends StatelessWidget {
   const AppMotionScope({required this.disabled, required this.child, super.key});
@@ -16,7 +17,13 @@ class AppMotionScope extends StatelessWidget {
     final reduceMotion = disabled || media.disableAnimations;
     return MediaQuery(
       data: media.copyWith(disableAnimations: reduceMotion),
-      child: HeroMode(enabled: !reduceMotion, child: child),
+      child: HeroMode(
+        enabled: !reduceMotion,
+        child: TooltipVisibility(
+          visible: !reduceMotion,
+          child: MotionScrollScope(child: child),
+        ),
+      ),
     );
   }
 }

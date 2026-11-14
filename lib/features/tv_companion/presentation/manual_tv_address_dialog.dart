@@ -3,6 +3,7 @@
 /// Validation reuses the LAN endpoint policy; network connection is caller-owned.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/features/lan_sync/domain/lan_endpoint_policy.dart';
@@ -12,7 +13,7 @@ typedef ManualTvAddress = ({String address, int port});
 Future<ManualTvAddress?> showManualTvAddressDialog(BuildContext context) => showDialog<ManualTvAddress>(
   context: context,
   animationStyle: AppMotion.overlayStyle(context),
-  builder: (_) => const _ManualTvAddressDialog(),
+  builder: motionOverlayBuilder(context, (_) => const _ManualTvAddressDialog()),
 );
 
 final class _ManualTvAddressDialog extends StatefulWidget {
@@ -40,7 +41,7 @@ final class _ManualTvAddressDialogState extends State<_ManualTvAddressDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => MotionAlertDialog(
     scrollable: true,
     title: const Text('手动连接 TV'),
     content: Form(
@@ -51,7 +52,7 @@ final class _ManualTvAddressDialogState extends State<_ManualTvAddressDialog> {
         children: [
           const Text('在电视上打开“局域网 TV 播放”，将页面显示的地址和端口填在下方。'),
           const SizedBox(height: AppSpacing.section),
-          TextFormField(
+          MotionTextFormField(
             key: const Key('companion-manual-address'),
             controller: _address,
             decoration: const InputDecoration(
@@ -66,7 +67,7 @@ final class _ManualTvAddressDialogState extends State<_ManualTvAddressDialog> {
             validator: (value) => isLanSyncPrivateIpv4((value ?? '').trim()) ? null : '请输入有效的局域网 IPv4 地址',
           ),
           const SizedBox(height: AppSpacing.comfortable),
-          TextFormField(
+          MotionTextFormField(
             key: const Key('companion-manual-port'),
             controller: _port,
             decoration: const InputDecoration(

@@ -10,6 +10,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -104,7 +105,7 @@ class DataSourceManagementRow extends StatelessWidget {
     return Semantics(
       key: ValueKey<String>('data-source-${source.id}'),
       container: true,
-      child: Material(
+      child: MotionMaterial(
         color: Colors.transparent,
         child: InkWell(
           onTap: onPressed,
@@ -143,16 +144,16 @@ class DataSourceManagementRow extends StatelessWidget {
                     ),
                     const SizedBox(width: AppSpacing.unit),
                     if (!source.isDevelopment)
-                      Tooltip(
+                      MotionTooltip(
                         message: source.enabled ? '停用 ${source.name}' : '启用 ${source.name}',
-                        child: Switch.adaptive(
+                        child: MotionSwitch.adaptive(
                           key: ValueKey<String>('data-source-enabled-${source.id}'),
                           value: source.enabled,
                           onChanged: isPending ? null : onChanged,
                         ),
                       )
                     else
-                      const Tooltip(message: '开发数据源由开发目录管理', child: Icon(Icons.code_rounded)),
+                      const MotionTooltip(message: '开发数据源由开发目录管理', child: Icon(Icons.code_rounded)),
                     const Icon(Icons.chevron_right_rounded, size: 18),
                   ],
                 ),
@@ -184,31 +185,34 @@ class DataSourceManagementRow extends StatelessWidget {
                 ],
                 Align(
                   alignment: Alignment.centerRight,
-                  child: PopupMenuButton<String>(
-                    key: ValueKey<String>('data-source-menu-${source.id}'),
-                    tooltip: '${source.name}内容操作',
-                    enabled: !isPending,
-                    onSelected: (value) {
-                      if (value == 'discover') onDiscover?.call();
-                      if (value == 'search') onSearch?.call();
-                      if (value == 'website') onOpenSourceUrl?.call();
-                    },
-                    itemBuilder: (_) => [
-                      if (onDiscover != null)
-                        PopupMenuItem(value: 'discover', enabled: source.canOpen && source.enabled, child: const Text('浏览内容')),
-                      if (onSearch != null)
-                        PopupMenuItem(value: 'search', enabled: source.canOpen && source.enabled, child: const Text('搜索内容')),
-                      PopupMenuItem(value: 'website', enabled: onOpenSourceUrl != null, child: const Text('打开来源网站')),
-                    ],
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppSpacing.compact),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('内容与网站', style: theme.textTheme.labelMedium?.copyWith(color: tokens.mutedText)),
-                          const SizedBox(width: AppSpacing.unit),
-                          const Icon(Icons.more_horiz_rounded, size: 20),
-                        ],
+                  child: MotionPopupMenuSurface(
+                    child: PopupMenuButton<String>(
+                      popUpAnimationStyle: motionDisabled(context) ? AnimationStyle.noAnimation : null,
+                      key: ValueKey<String>('data-source-menu-${source.id}'),
+                      tooltip: '${source.name}内容操作',
+                      enabled: !isPending,
+                      onSelected: (value) {
+                        if (value == 'discover') onDiscover?.call();
+                        if (value == 'search') onSearch?.call();
+                        if (value == 'website') onOpenSourceUrl?.call();
+                      },
+                      itemBuilder: (_) => [
+                        if (onDiscover != null)
+                          PopupMenuItem(value: 'discover', enabled: source.canOpen && source.enabled, child: const Text('浏览内容')),
+                        if (onSearch != null)
+                          PopupMenuItem(value: 'search', enabled: source.canOpen && source.enabled, child: const Text('搜索内容')),
+                        PopupMenuItem(value: 'website', enabled: onOpenSourceUrl != null, child: const Text('打开来源网站')),
+                      ],
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppSpacing.compact),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('内容与网站', style: theme.textTheme.labelMedium?.copyWith(color: tokens.mutedText)),
+                            const SizedBox(width: AppSpacing.unit),
+                            const Icon(Icons.more_horiz_rounded, size: 20),
+                          ],
+                        ),
                       ),
                     ),
                   ),

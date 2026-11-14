@@ -2,6 +2,7 @@
 /// this widget does not enable reception or change any device trust policy.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mg_read/app/app_theme.dart';
@@ -65,13 +66,17 @@ class CompanionReceiverView extends StatelessWidget {
               Row(
                 children: [
                   Expanded(child: SelectableText(address, style: Theme.of(context).textTheme.titleMedium)),
-                  IconButton(
-                    tooltip: '复制地址',
-                    onPressed: () async {
-                      await Clipboard.setData(ClipboardData(text: address));
-                      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('TV 地址已复制')));
-                    },
-                    icon: const Icon(Icons.copy_rounded),
+                  MotionIconButtonSurface(
+                    child: IconButton(
+                      tooltip: '复制地址',
+                      onPressed: () async {
+                        await Clipboard.setData(ClipboardData(text: address));
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('TV 地址已复制')));
+                        }
+                      },
+                      icon: const Icon(Icons.copy_rounded),
+                    ),
                   ),
                 ],
               ),
@@ -87,7 +92,7 @@ class CompanionReceiverView extends StatelessWidget {
             const SizedBox(height: AppSpacing.regular),
             if (controllers.isEmpty) const Text('等待手机连接。无需扫码或在电视端批准。'),
             for (final controller in controllers)
-              ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.smartphone_rounded), title: Text(controller)),
+              MotionListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.smartphone_rounded), title: Text(controller)),
             const SizedBox(height: AppSpacing.compact),
             Text('手机断开不影响 TV 播放，观看进度按各自设备管理。', style: Theme.of(context).textTheme.bodySmall),
           ],

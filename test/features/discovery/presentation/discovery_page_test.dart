@@ -265,6 +265,30 @@ void main() {
     expect(find.text('低动态第二本'), findsOneWidget);
   });
 
+  testWidgets('reduced motion carousel waits for release then jumps to the next card', (tester) async {
+    const books = <DiscoveryHeroViewData>[
+      DiscoveryHeroViewData(title: '静态第一本', category: null, description: null, metadata: null, coverVariant: DiscoveryCoverVariant.gothic),
+      DiscoveryHeroViewData(title: '静态第二本', category: null, description: null, metadata: null, coverVariant: DiscoveryCoverVariant.abyss),
+    ];
+    final tickerEnabled = ValueNotifier(true);
+    final disabled = ValueNotifier(true);
+    addTearDown(tickerEnabled.dispose);
+    addTearDown(disabled.dispose);
+    await tester.pumpWidget(_carouselApp(books, tickerEnabled: tickerEnabled, disableAnimations: disabled));
+    await tester.pumpAndSettle();
+    final page = tester.widget<PageView>(find.byType(PageView)).controller!;
+    final drag = await tester.startGesture(tester.getCenter(find.byType(PageView)));
+    await drag.moveBy(const Offset(-40, 0));
+    await tester.pump();
+    await drag.moveBy(const Offset(-120, 0));
+    await tester.pump();
+    expect(page.page, 0);
+    await drag.up();
+    await tester.pump();
+    expect(page.page, 1);
+    expect(tester.binding.transientCallbackCount, 0);
+  });
+
   testWidgets('pauses and resumes autoplay with app lifecycle visibility', (WidgetTester tester) async {
     const books = <DiscoveryHeroViewData>[
       DiscoveryHeroViewData(

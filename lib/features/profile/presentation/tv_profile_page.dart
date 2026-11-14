@@ -5,6 +5,7 @@
 /// The mode exit stays in the category rail and is available from every panel.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -122,7 +123,7 @@ class _TvProfilePageState extends State<TvProfilePage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return TvFocusRegion(
-      child: Scaffold(
+      child: MotionScaffold(
         key: const Key('tv-settings-page'),
         appBar: AppBottomNavigation(selected: AppNavigationDestination.profile, onSelected: widget.onDestinationRequested),
         body: SafeArea(

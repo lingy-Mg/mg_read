@@ -2,6 +2,7 @@
 /// Widgets render explicit state and callbacks; they own no discovery or leases.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:mg_read/app/app_theme.dart';
 
@@ -14,7 +15,7 @@ class CompanionPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Material(
+    return MotionMaterial(
       color: tonal ? colors.primaryContainer.withValues(alpha: .35) : colors.surface,
       shape: RoundedRectangleBorder(
         borderRadius: AppRadii.card,
@@ -76,7 +77,7 @@ class CompanionPageTabs extends StatelessWidget {
               child: Semantics(
                 button: true,
                 selected: selected == item.$1,
-                child: Material(
+                child: MotionMaterial(
                   color: selected == item.$1 ? colors.surface : Colors.transparent,
                   borderRadius: AppRadii.control,
                   child: InkWell(
@@ -174,7 +175,7 @@ class CompanionTools extends StatelessWidget {
     padding: 0,
     child: Column(
       children: [
-        ListTile(
+        MotionListTile(
           key: const Key('companion-history'),
           contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.comfortable, vertical: AppSpacing.unit),
           shape: const RoundedRectangleBorder(borderRadius: AppRadii.card),
@@ -185,7 +186,7 @@ class CompanionTools extends StatelessWidget {
           onTap: onHistory,
         ),
         const Divider(height: 1, indent: AppSpacing.comfortable, endIndent: AppSpacing.comfortable),
-        ListTile(
+        MotionListTile(
           key: const Key('companion-sync'),
           contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.comfortable, vertical: AppSpacing.unit),
           shape: const RoundedRectangleBorder(borderRadius: AppRadii.card),

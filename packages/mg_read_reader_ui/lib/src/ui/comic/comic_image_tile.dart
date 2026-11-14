@@ -6,6 +6,7 @@
 /// 总量或单图上限为 null 时不施加对应软上限，仍允许内存压力后切回有限预算。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:typed_data';
 import 'dart:math' as math;
 
@@ -272,7 +273,7 @@ class _ComicProgressiveImageTileState extends State<ComicProgressiveImageTile> {
           _reservedImagePixelLimit = widget.decodeBudget.maximumImagePixels;
           if (maxDecodedPixels == 0) {
             return _placeholder(
-              const CircularProgressIndicator(strokeWidth: 2),
+              const MotionCircularProgressIndicator(strokeWidth: 2),
             );
           }
           final double pixelSafeWidth = math.sqrt(
@@ -367,7 +368,7 @@ class _ComicProgressiveImageTileState extends State<ComicProgressiveImageTile> {
             child: SizedBox(
               width: 24,
               height: 24,
-              child: CircularProgressIndicator(
+              child: MotionCircularProgressIndicator(
                 strokeWidth: 2,
                 color: widget.palette.accent,
               ),
@@ -519,14 +520,14 @@ class _ComicImageCommentButtonState extends State<_ComicImageCommentButton> {
         : _failed
         ? ComicReaderStrings.imageCommentFailed
         : ComicReaderStrings.imageCommentCount(_count);
-    return Tooltip(
+    return MotionTooltip(
       message: label,
       excludeFromSemantics: true,
       child: Semantics(
         button: true,
         label: label,
         excludeSemantics: true,
-        child: Material(
+        child: MotionMaterial(
           color: const Color(0xB8181A1C),
           shape: const CircleBorder(),
           child: InkWell(

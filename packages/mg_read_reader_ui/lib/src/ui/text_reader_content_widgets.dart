@@ -164,10 +164,12 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
                   child: ReaderAccessibleTooltip(
                     label: ReaderStrings.back,
                     onTap: _requestExit,
-                    child: IconButton(
-                      key: const ValueKey<String>('reader-back-action'),
-                      onPressed: _requestExit,
-                      icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                    child: MotionIconButtonSurface(
+                      child: IconButton(
+                        key: const ValueKey<String>('reader-back-action'),
+                        onPressed: _requestExit,
+                        icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                      ),
                     ),
                   ),
                 ),
@@ -293,7 +295,7 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
     if (_pages.isEmpty) {
       return Center(
         child: _changingChapter
-            ? const CircularProgressIndicator(strokeWidth: 2)
+            ? const MotionCircularProgressIndicator(strokeWidth: 2)
             : Text(
                 _content!.paragraphs.isEmpty
                     ? ReaderStrings.emptyChapter
@@ -435,7 +437,7 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
   Widget _chapterBoundary(String label, {bool loading = false}) {
     return Center(
       child: _changingChapter || loading
-          ? const CircularProgressIndicator(strokeWidth: 2)
+          ? const MotionCircularProgressIndicator(strokeWidth: 2)
           : Text(label, style: TextStyle(color: _palette.secondaryText)),
     );
   }
@@ -611,7 +613,7 @@ extension _TextReaderContentWidgets on _TextReaderViewState {
     final double resolvedHeight = height.clamp(0, 168).toDouble();
     return SizedBox(
       height: resolvedHeight,
-      child: Material(
+      child: MotionMaterial(
         color: _palette.panel.withValues(alpha: .82),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),

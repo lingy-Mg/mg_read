@@ -13,6 +13,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -328,7 +329,7 @@ class _ContinueReadingAction extends StatelessWidget {
                         ),
                       ),
                     ),
-                  Material(
+                  MotionMaterial(
                     color: Colors.transparent,
                     child: InkWell(
                       key: const Key('continue-reading-cta'),
@@ -337,7 +338,7 @@ class _ContinueReadingAction extends StatelessWidget {
                         child: isPreparing
                             ? SizedBox.square(
                                 dimension: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.onPrimary),
+                                child: MotionCircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.onPrimary),
                               )
                             : Text(
                                 actionLabel,

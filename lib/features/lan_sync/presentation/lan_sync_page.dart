@@ -12,6 +12,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -80,7 +81,7 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) unawaited(_back());
       },
-      child: Scaffold(
+      child: MotionScaffold(
         body: DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -228,9 +229,9 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
       ],
       LanSyncPhase.preparing || LanSyncPhase.previewing || LanSyncPhase.transferring || LanSyncPhase.applying => <Widget>[
         if (state.progress case final progress?)
-          LinearProgressIndicator(key: const Key('lan-sync-progress'), value: progress)
+          MotionLinearProgressIndicator(key: const Key('lan-sync-progress'), value: progress)
         else
-          const LinearProgressIndicator(key: Key('lan-sync-progress')),
+          const MotionLinearProgressIndicator(key: Key('lan-sync-progress')),
         const SizedBox(height: AppSpacing.regular),
         _CancelButton(onPressed: _cancel),
       ],
@@ -290,20 +291,24 @@ class _LanSyncPageState extends ConsumerState<LanSyncPage> {
 
   Future<void> _showTemporaryDataSheet({required bool receiving}) async {
     await showModalBottomSheet<void>(
+      enableDrag: !motionDisabled(context),
       context: context,
       sheetAnimationStyle: AppMotion.overlayStyle(context),
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (sheetContext) => Consumer(
-        builder: (context, ref, _) => _TemporaryDataSheet(
-          state: ref.watch(lanSyncControllerProvider),
-          receiving: receiving,
-          onCancel: () {
-            unawaited(ref.read(lanSyncControllerProvider.notifier).cancel());
-            Navigator.of(sheetContext).pop();
-          },
-          onReset: () => ref.read(lanSyncControllerProvider.notifier).reset(),
-          phaseContent: _phaseContent,
+      builder: motionOverlayBuilder(
+        context,
+        (sheetContext) => Consumer(
+          builder: (context, ref, _) => _TemporaryDataSheet(
+            state: ref.watch(lanSyncControllerProvider),
+            receiving: receiving,
+            onCancel: () {
+              unawaited(ref.read(lanSyncControllerProvider.notifier).cancel());
+              Navigator.of(sheetContext).pop();
+            },
+            onReset: () => ref.read(lanSyncControllerProvider.notifier).reset(),
+            phaseContent: _phaseContent,
+          ),
         ),
       ),
     );
@@ -326,7 +331,7 @@ class LanSyncConnectionQrCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final value = offer;
-    return Card(
+    return MotionCard(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.regular),
         child: Column(
@@ -358,7 +363,7 @@ class _PairingCard extends StatelessWidget {
   final String code;
 
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) => MotionCard(
     child: Padding(
       padding: const EdgeInsets.all(AppSpacing.section),
       child: Column(
@@ -383,7 +388,7 @@ class _PreviewSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final preview = state.preview!;
-    return Card(
+    return MotionCard(
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.regular),
         child: Column(
@@ -442,7 +447,7 @@ class LanSyncContentSelection extends StatelessWidget {
       for (final plugin in manifest.plugins)
         if (_isSelectablePlugin(plugin, preview)) plugin.id,
     };
-    return Card(
+    return MotionCard(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.compact),
         child: Column(
@@ -452,7 +457,7 @@ class LanSyncContentSelection extends StatelessWidget {
               padding: EdgeInsets.symmetric(horizontal: AppSpacing.regular),
               child: Text('选择同步内容'),
             ),
-            CheckboxListTile(
+            MotionCheckboxListTile(
               key: const Key('lan-sync-select-all'),
               value: allSelected
                   ? true
@@ -514,7 +519,7 @@ class LanSyncContentSelection extends StatelessWidget {
                 onChanged: onSelectAllLocalDocuments,
               ),
               for (final document in manifest.localDocuments)
-                CheckboxListTile(
+                MotionCheckboxListTile(
                   key: Key('lan-sync-local-document-${document.documentId}'),
                   value: preview.selectedLocalDocumentIds.contains(document.documentId),
                   onChanged: (value) => onLocalDocumentChanged(document.documentId, value ?? false),
@@ -536,7 +541,7 @@ class _LocalDocumentConflictCard extends StatelessWidget {
   final ValueChanged<LanSyncConflictChoice> onChanged;
 
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) => MotionCard(
     child: Padding(
       padding: const EdgeInsets.all(AppSpacing.regular),
       child: Column(
@@ -544,7 +549,7 @@ class _LocalDocumentConflictCard extends StatelessWidget {
         children: <Widget>[
           Text('本地原书已存在：${conflict.senderTitle}', style: Theme.of(context).textTheme.titleSmall),
           Text('本机书名：${conflict.localTitle}'),
-          DropdownButton<LanSyncConflictChoice>(
+          MotionDropdownButton<LanSyncConflictChoice>(
             value: conflict.choice,
             isExpanded: true,
             onChanged: (choice) {
@@ -577,7 +582,7 @@ class _SelectionSectionTitle extends StatelessWidget {
   final ValueChanged<bool> onChanged;
 
   @override
-  Widget build(BuildContext context) => CheckboxListTile(
+  Widget build(BuildContext context) => MotionCheckboxListTile(
     value: value,
     tristate: true,
     onChanged: (_) => onChanged(value != true),
@@ -595,7 +600,7 @@ class _ShelfSelectionTile extends StatelessWidget {
   final ValueChanged<bool> onChanged;
 
   @override
-  Widget build(BuildContext context) => CheckboxListTile(
+  Widget build(BuildContext context) => MotionCheckboxListTile(
     value: selected,
     onChanged: (value) {
       if (value != null) onChanged(value);
@@ -614,7 +619,7 @@ class _PluginSelectionTile extends StatelessWidget {
   final ValueChanged<bool>? onChanged;
 
   @override
-  Widget build(BuildContext context) => CheckboxListTile(
+  Widget build(BuildContext context) => MotionCheckboxListTile(
     value: onChanged == null ? false : selected,
     onChanged: onChanged == null
         ? null
@@ -663,7 +668,7 @@ class _ConflictCard extends StatelessWidget {
   final LanSyncBookConflict conflict;
 
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) => MotionCard(
     child: Padding(
       padding: const EdgeInsets.all(AppSpacing.regular),
       child: Column(
@@ -687,7 +692,7 @@ class _ResultCard extends StatelessWidget {
   final LanSyncApplyResult result;
 
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) => MotionCard(
     child: Padding(
       padding: const EdgeInsets.all(AppSpacing.regular),
       child: Column(
@@ -710,8 +715,8 @@ class _HintCard extends StatelessWidget {
   final bool error;
 
   @override
-  Widget build(BuildContext context) => Card(
-    child: ListTile(leading: Icon(error ? Icons.error_outline_rounded : Icons.info_outline), title: Text(message)),
+  Widget build(BuildContext context) => MotionCard(
+    child: MotionListTile(leading: Icon(error ? Icons.error_outline_rounded : Icons.info_outline), title: Text(message)),
   );
 }
 

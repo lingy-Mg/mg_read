@@ -8,10 +8,10 @@ class _StatusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Semantics(
     liveRegion: true,
-    child: Card(
-      child: ListTile(
+    child: MotionCard(
+      child: MotionListTile(
         leading: state.busy
-            ? const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2))
+            ? const SizedBox.square(dimension: 24, child: MotionCircularProgressIndicator(strokeWidth: 2))
             : Icon(
                 state.phase == LanSyncPhase.completed
                     ? Icons.check_circle_rounded

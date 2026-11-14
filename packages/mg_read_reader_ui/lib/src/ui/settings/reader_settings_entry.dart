@@ -41,7 +41,7 @@ Future<void> showReaderSettingsSheet({
     useSafeArea: false,
     backgroundColor: Colors.transparent,
     barrierColor: ReaderSettingsTokens.sheetBarrier(palette),
-    builder: (BuildContext context) {
+    builder: motionOverlayBuilder(context, (BuildContext context) {
       final double height =
           (MediaQuery.sizeOf(context).height *
                   ReaderSettingsTokens.sheetHeightFactor)
@@ -81,7 +81,7 @@ Future<void> showReaderSettingsSheet({
           onBookmarksPressed: onBookmarksPressed,
         ),
       );
-    },
+    }),
   ).whenComplete(() {
     // A route can be dismissed while a Slider gesture is still active. Flush
     // exactly its latest preview rather than losing it or persisting every

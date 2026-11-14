@@ -11,6 +11,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -79,7 +80,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return MotionScaffold(
       extendBody: true,
       body: AppPageBackdrop(
         style: AppPageBackdropStyle.discover,
@@ -94,7 +95,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                 return Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: AppSpacing.contentMaxWidth),
-                    child: Scrollbar(
+                    child: MotionScrollbar(
                       controller: _scrollController,
                       child: ListView(
                         key: const Key('discovery-page-content'),
@@ -218,7 +219,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     messenger
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('此操作尚未接入真实数据，可由后续功能替换。')));
+      ..showMotionSnackBar(context, const SnackBar(content: Text('此操作尚未接入真实数据，可由后续功能替换。')));
   }
 }
 
@@ -391,9 +392,9 @@ class DiscoverySourceSelector extends StatelessWidget {
     return Semantics(
       button: true,
       label: label,
-      child: Tooltip(
+      child: MotionTooltip(
         message: label,
-        child: Material(
+        child: MotionMaterial(
           color: Colors.transparent,
           child: InkWell(
             key: selectorKey ?? const Key('discovery-source-selector'),
@@ -476,7 +477,7 @@ class DiscoveryTab extends StatelessWidget {
       button: true,
       selected: selected,
       label: label,
-      child: Material(
+      child: MotionMaterial(
         color: Colors.transparent,
         child: InkResponse(
           key: ValueKey<String>('discovery-tab-$label'),
@@ -523,7 +524,7 @@ class DiscoveryHeroCard extends StatelessWidget {
     return Semantics(
       button: true,
       label: '打开书籍：${data.title}',
-      child: Material(
+      child: MotionMaterial(
         color: Colors.transparent,
         child: InkWell(
           key: const Key('discovery-hero-card'),

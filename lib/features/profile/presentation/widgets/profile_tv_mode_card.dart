@@ -2,6 +2,7 @@
 /// 本组件不持有设置副本、不执行 IO；切换后由 ProfilePage 展示对应界面。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:mg_read/app/app_theme.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
@@ -13,14 +14,14 @@ class ProfileTvModeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final mode = TvModeScope.maybeOf(context);
     final tokens = AppThemeTokens.of(context);
-    return Material(
+    return MotionMaterial(
       color: tokens.surface,
       shape: RoundedRectangleBorder(
         borderRadius: AppRadii.profileList,
         side: BorderSide(color: tokens.divider),
       ),
       clipBehavior: Clip.antiAlias,
-      child: SwitchListTile.adaptive(
+      child: MotionSwitchListTile.adaptive(
         key: const Key('profile-tv-mode'),
         contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.comfortable, vertical: AppSpacing.compact),
         secondary: Icon(Icons.tv_rounded, color: tokens.accent),

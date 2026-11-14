@@ -13,6 +13,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -103,7 +104,7 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return MotionScaffold(
       extendBody: true,
       body: SafeArea(
         bottom: false,
@@ -112,7 +113,7 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
             children: <Widget>[
               ProfileDetailTopBar(title: '问题诊断', onBack: widget.onBackRequested),
               Expanded(
-                child: RefreshIndicator(
+                child: MotionRefreshIndicator(
                   onRefresh: _loadLogFiles,
                   child: CustomScrollView(
                     key: const Key('diagnostics-viewer-content'),
@@ -156,7 +157,7 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
                             if (_loading)
                               const Padding(
                                 padding: EdgeInsets.all(AppSpacing.page),
-                                child: Center(child: CircularProgressIndicator(key: Key('diagnostics-viewer-loading'))),
+                                child: Center(child: MotionCircularProgressIndicator(key: Key('diagnostics-viewer-loading'))),
                               )
                             else if (_loadError != null)
                               _LoadFailure(errorCode: _loadError!, onRetry: () => _loadEvents(reset: true))
@@ -173,7 +174,7 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
                                   key: const Key('diagnostics-load-more'),
                                   onPressed: _loadingMore ? null : () => _loadEvents(reset: false),
                                   icon: _loadingMore
-                                      ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                      ? const SizedBox.square(dimension: 16, child: MotionCircularProgressIndicator(strokeWidth: 2))
                                       : const Icon(Icons.expand_more_rounded),
                                   label: Text(_loadingMore ? '正在读取…' : '读取更早日志'),
                                 ),
@@ -288,13 +289,16 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       animationStyle: AppMotion.overlayStyle(context),
-      builder: (context) => AlertDialog(
-        title: const Text('删除这份记录？'),
-        content: Text('${_formatFileDate(file.startedAtUtcMicros)}\n删除后无法恢复。'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('删除')),
-        ],
+      builder: motionOverlayBuilder(
+        context,
+        (context) => MotionAlertDialog(
+          title: const Text('删除这份记录？'),
+          content: Text('${_formatFileDate(file.startedAtUtcMicros)}\n删除后无法恢复。'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('删除')),
+          ],
+        ),
       ),
     );
     if (confirmed != true || !mounted) return;
@@ -312,7 +316,7 @@ class _DiagnosticsViewerPageState extends ConsumerState<DiagnosticsViewerPage> {
     try {
       final result = await _gateway.exportLogFile(file.fileId);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已导出 ${result.byteLength} 字节')));
+      ScaffoldMessenger.of(context).showMotionSnackBar(context, SnackBar(content: Text('已导出 ${result.byteLength} 字节')));
     } on Object catch (error) {
       if (mounted) setState(() => _loadError = _viewerErrorCode(error));
     }

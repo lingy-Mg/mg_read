@@ -21,7 +21,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('请输入有效的局域网 IPv4 地址'), findsOneWidget);
     expect(find.text('请输入 1–65535 之间的端口'), findsOneWidget);
-    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.byWidgetPredicate((widget) => widget is AlertDialog), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

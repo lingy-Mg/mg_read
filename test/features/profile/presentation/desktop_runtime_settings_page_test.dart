@@ -65,7 +65,7 @@ void main() {
     expect(find.byKey(const Key('desktop-runtime-pending')), findsOneWidget);
     expect(restarts, 0);
     await select(tester, DesktopRuntimeBackend.node);
-    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byWidgetPredicate((widget) => widget is AlertDialog), findsNothing);
     expect(find.byKey(const Key('desktop-runtime-pending')), findsNothing);
   });
 

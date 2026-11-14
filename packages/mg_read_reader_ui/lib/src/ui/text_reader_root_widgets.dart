@@ -59,14 +59,14 @@ extension _TextReaderRootWidgets on _TextReaderViewState {
                 systemStatusBarContrastEnforced: false,
                 systemNavigationBarContrastEnforced: false,
               ),
-      child: Theme(
+      child: MotionTheme(
         data: readerThemeData(palette, font: _preferences.font),
         child: PopScope<void>(
           canPop: true,
           onPopInvokedWithResult: (bool didPop, void result) {
             if (didPop) unawaited(_requestExit());
           },
-          child: Material(
+          child: MotionMaterial(
             color: palette.background,
             child: CallbackShortcuts(
               bindings: shortcuts,
@@ -77,7 +77,12 @@ extension _TextReaderRootWidgets on _TextReaderViewState {
                   builder: (BuildContext context, BoxConstraints constraints) {
                     _ensurePagination(constraints.biggest);
                     return ScrollConfiguration(
-                      behavior: const _ReaderScrollBehavior(),
+                      behavior: const _ReaderScrollBehavior().copyWith(
+                        physics: motionDisabled(context)
+                            ? const InstantScrollPhysics()
+                            : null,
+                        overscroll: !motionDisabled(context),
+                      ),
                       child: Stack(
                         fit: StackFit.expand,
                         children: <Widget>[

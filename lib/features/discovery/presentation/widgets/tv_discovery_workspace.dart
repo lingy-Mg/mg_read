@@ -2,6 +2,7 @@
 /// 两栏分别滚动，短屏不挤压操作；长正文通过方向键逐屏阅读，边界交还焦点遍历。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mg_read/app/app_theme.dart';
@@ -38,10 +39,13 @@ class TvDiscoveryWorkspace extends StatelessWidget {
 Future<void> showTvDiscoveryText(BuildContext context, {required String title, required String text}) => showDialog<void>(
   context: context,
   animationStyle: AppMotion.overlayStyle(context),
-  builder: (context) => TvDiscoveryDialog(
-    title: title,
-    actions: [TvFocusable(autofocus: true, onPressed: () => Navigator.pop(context), child: const Text('关闭'))],
-    child: Text(text),
+  builder: motionOverlayBuilder(
+    context,
+    (context) => TvDiscoveryDialog(
+      title: title,
+      actions: [TvFocusable(autofocus: true, onPressed: () => Navigator.pop(context), child: const Text('关闭'))],
+      child: Text(text),
+    ),
   ),
 );
 
@@ -52,7 +56,7 @@ class TvDiscoveryDialog extends StatelessWidget {
   final List<Widget> actions;
 
   @override
-  Widget build(BuildContext context) => Dialog(
+  Widget build(BuildContext context) => MotionDialog(
     insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
     child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 880, maxHeight: 600),

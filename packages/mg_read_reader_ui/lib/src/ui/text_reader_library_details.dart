@@ -430,12 +430,14 @@ extension _TextReaderLibraryDetails on _TextReaderViewState {
             ReaderAccessibleTooltip(
               label: ReaderStrings.openSourceUrl,
               onTap: openSourceAction!,
-              child: IconButton(
-                onPressed: openSourceAction,
-                icon: Icon(
-                  Icons.open_in_new_rounded,
-                  size: 20,
-                  color: _palette.accent,
+              child: MotionIconButtonSurface(
+                child: IconButton(
+                  onPressed: openSourceAction,
+                  icon: Icon(
+                    Icons.open_in_new_rounded,
+                    size: 20,
+                    color: _palette.accent,
+                  ),
                 ),
               ),
             ),
@@ -459,16 +461,20 @@ extension _TextReaderLibraryDetails on _TextReaderViewState {
           onTap: () {
             if (enabled) unawaited(_refreshBookFromHost());
           },
-          child: IconButton(
-            key: const ValueKey<String>('reader-refresh-book-detail'),
-            visualDensity: VisualDensity.compact,
-            onPressed: enabled ? () => unawaited(_refreshBookFromHost()) : null,
-            icon: _bookRefreshLoading
-                ? const SizedBox.square(
-                    dimension: 17,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.sync_rounded, size: 19),
+          child: MotionIconButtonSurface(
+            child: IconButton(
+              key: const ValueKey<String>('reader-refresh-book-detail'),
+              visualDensity: VisualDensity.compact,
+              onPressed: enabled
+                  ? () => unawaited(_refreshBookFromHost())
+                  : null,
+              icon: _bookRefreshLoading
+                  ? const SizedBox.square(
+                      dimension: 17,
+                      child: MotionCircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.sync_rounded, size: 19),
+            ),
           ),
         );
       },

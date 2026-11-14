@@ -8,6 +8,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 
 import 'package:mg_read/app/app_theme.dart';
@@ -31,9 +32,9 @@ class DiscoveryTopAction extends StatelessWidget {
       button: true,
       label: tooltip,
       onTap: onPressed,
-      child: Tooltip(
+      child: MotionTooltip(
         message: tooltip,
-        child: Material(
+        child: MotionMaterial(
           color: Colors.transparent,
           child: InkResponse(
             onTap: onPressed,

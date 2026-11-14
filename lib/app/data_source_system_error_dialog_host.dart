@@ -1,3 +1,4 @@
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -74,8 +75,10 @@ final class _DataSourceSystemErrorDialogHostState extends State<DataSourceSystem
         context: navigator.context,
         animationStyle: AppMotion.overlayStyle(navigator.context),
         barrierDismissible: false,
-        builder: (BuildContext context) =>
-            _DataSourceSystemErrorDialog(report: report, onCopy: () => widget.copyReport(report.copyPayload)),
+        builder: motionOverlayBuilder(
+          navigator.context,
+          (BuildContext context) => _DataSourceSystemErrorDialog(report: report, onCopy: () => widget.copyReport(report.copyPayload)),
+        ),
       );
     } catch (_) {
       // The overlay is optional and must not affect source isolation.
@@ -105,7 +108,7 @@ final class _DataSourceSystemErrorDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = theme.extension<AppThemeTokens>();
-    return AlertDialog(
+    return MotionAlertDialog(
       title: const Text('数据源系统异常'),
       content: SelectionArea(
         child: Text(

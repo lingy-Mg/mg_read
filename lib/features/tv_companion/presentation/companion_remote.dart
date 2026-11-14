@@ -2,6 +2,7 @@
 /// local; a dropped connection cancels pending previews/holds, never playback.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:mg_read/app/app_theme.dart';
@@ -153,10 +154,12 @@ class _CompanionRemoteState extends State<CompanionRemote> {
     child: SizedBox(
       width: 72,
       height: 64,
-      child: IconButton.filledTonal(
-        tooltip: label,
-        onPressed: enabled ? () => _send(CompanionCommandType.navigate, {'key': key}) : null,
-        icon: Icon(icon),
+      child: MotionIconButtonSurface(
+        child: IconButton.filledTonal(
+          tooltip: label,
+          onPressed: enabled ? () => _send(CompanionCommandType.navigate, {'key': key}) : null,
+          icon: Icon(icon),
+        ),
       ),
     ),
   );
@@ -251,7 +254,7 @@ class _CompanionRemoteState extends State<CompanionRemote> {
                 if (service.lastReceipt case final receipt?)
                   Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(_phaseLabel(receipt))),
                 if (state != null && state.durationMs > 0) ...[
-                  Slider(
+                  MotionSlider(
                     value: (_dragPosition ?? state.positionMs.toDouble()).clamp(0, state.durationMs.toDouble()),
                     min: 0,
                     max: state.durationMs.toDouble(),
@@ -265,43 +268,53 @@ class _CompanionRemoteState extends State<CompanionRemote> {
                   spacing: 12,
                   runSpacing: 8,
                   children: [
-                    IconButton(
-                      tooltip: '上一集',
-                      onPressed: enabled && state?.hasPrevious == true ? () => _send(CompanionCommandType.previousEpisode) : null,
-                      icon: const Icon(Icons.skip_previous),
+                    MotionIconButtonSurface(
+                      child: IconButton(
+                        tooltip: '上一集',
+                        onPressed: enabled && state?.hasPrevious == true ? () => _send(CompanionCommandType.previousEpisode) : null,
+                        icon: const Icon(Icons.skip_previous),
+                      ),
                     ),
-                    IconButton(
-                      tooltip: '后退 10 秒',
-                      onPressed: enabled && (state?.durationMs ?? 0) > 0
-                          ? () => _seek(((state!.positionMs - 10000).clamp(0, state.durationMs)).toDouble(), finalValue: true)
-                          : null,
-                      icon: const Icon(Icons.replay_10),
+                    MotionIconButtonSurface(
+                      child: IconButton(
+                        tooltip: '后退 10 秒',
+                        onPressed: enabled && (state?.durationMs ?? 0) > 0
+                            ? () => _seek(((state!.positionMs - 10000).clamp(0, state.durationMs)).toDouble(), finalValue: true)
+                            : null,
+                        icon: const Icon(Icons.replay_10),
+                      ),
                     ),
-                    IconButton.filled(
-                      tooltip: state?.playing == true ? '暂停' : '播放',
-                      onPressed: enabled && state?.content != null
-                          ? () => _send(state!.playing ? CompanionCommandType.pause : CompanionCommandType.play)
-                          : null,
-                      icon: Icon(state?.playing == true ? Icons.pause : Icons.play_arrow),
-                      iconSize: 40,
+                    MotionIconButtonSurface(
+                      child: IconButton.filled(
+                        tooltip: state?.playing == true ? '暂停' : '播放',
+                        onPressed: enabled && state?.content != null
+                            ? () => _send(state!.playing ? CompanionCommandType.pause : CompanionCommandType.play)
+                            : null,
+                        icon: Icon(state?.playing == true ? Icons.pause : Icons.play_arrow),
+                        iconSize: 40,
+                      ),
                     ),
-                    IconButton(
-                      tooltip: '前进 10 秒',
-                      onPressed: enabled && (state?.durationMs ?? 0) > 0
-                          ? () => _seek(((state!.positionMs + 10000).clamp(0, state.durationMs)).toDouble(), finalValue: true)
-                          : null,
-                      icon: const Icon(Icons.forward_10),
+                    MotionIconButtonSurface(
+                      child: IconButton(
+                        tooltip: '前进 10 秒',
+                        onPressed: enabled && (state?.durationMs ?? 0) > 0
+                            ? () => _seek(((state!.positionMs + 10000).clamp(0, state.durationMs)).toDouble(), finalValue: true)
+                            : null,
+                        icon: const Icon(Icons.forward_10),
+                      ),
                     ),
-                    IconButton(
-                      tooltip: '下一集',
-                      onPressed: enabled && state?.hasNext == true ? () => _send(CompanionCommandType.nextEpisode) : null,
-                      icon: const Icon(Icons.skip_next),
+                    MotionIconButtonSurface(
+                      child: IconButton(
+                        tooltip: '下一集',
+                        onPressed: enabled && state?.hasNext == true ? () => _send(CompanionCommandType.nextEpisode) : null,
+                        icon: const Icon(Icons.skip_next),
+                      ),
                     ),
                   ],
                 ),
                 if (state?.content != null) ...[
                   const SizedBox(height: 16),
-                  DropdownButtonFormField<double>(
+                  MotionDropdownButtonFormField<double>(
                     initialValue: state!.rate,
                     decoration: const InputDecoration(labelText: '播放倍速'),
                     items: [
@@ -321,7 +334,7 @@ class _CompanionRemoteState extends State<CompanionRemote> {
                     icon: Icon(state.volume == 0 ? Icons.volume_off : Icons.volume_up),
                     label: Text(state.volume == 0 ? '取消应用静音' : '应用静音'),
                   ),
-                  Slider(
+                  MotionSlider(
                     value: (_volumePreviews[CompanionCommandType.setVolume] ?? state.volume).clamp(0, 100),
                     min: 0,
                     max: 100,
@@ -330,7 +343,7 @@ class _CompanionRemoteState extends State<CompanionRemote> {
                   ),
                   if (state.canSystemVolume) ...[
                     const Text('TV 系统媒体音量'),
-                    Slider(
+                    MotionSlider(
                       value: (_volumePreviews[CompanionCommandType.setSystemVolume] ?? state.systemVolume ?? 0).clamp(0, 100),
                       min: 0,
                       max: 100,
@@ -416,13 +429,16 @@ class _CompanionRemoteState extends State<CompanionRemote> {
     final confirmed = await showDialog<bool>(
       context: context,
       animationStyle: AppMotion.overlayStyle(context),
-      builder: (context) => AlertDialog(
-        title: const Text('退出 TV 播放？'),
-        content: const Text('TV 会保存进度并退出当前视频。仅断开遥控不会停止播放。'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('退出播放')),
-        ],
+      builder: motionOverlayBuilder(
+        context,
+        (context) => MotionAlertDialog(
+          title: const Text('退出 TV 播放？'),
+          content: const Text('TV 会保存进度并退出当前视频。仅断开遥控不会停止播放。'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('退出播放')),
+          ],
+        ),
       ),
     );
     if (confirmed == true) await _send(CompanionCommandType.exitPlayback);
@@ -454,17 +470,20 @@ class _CompanionRemoteState extends State<CompanionRemote> {
         final choice = await showDialog<Object>(
           context: context,
           animationStyle: AppMotion.overlayStyle(context),
-          builder: (context) => SimpleDialog(
-            title: const Text('选择分组'),
-            children: [
-              for (final raw in catalog['groups'] as List)
-                SimpleDialogOption(
-                  onPressed: () => Navigator.pop(context, companionMap(raw)),
-                  child: Text(companionMap(raw)['title'] as String),
-                ),
-              if (catalog['nextOffset'] != null)
-                SimpleDialogOption(onPressed: () => Navigator.pop(context, 'more'), child: const Text('下一页分组')),
-            ],
+          builder: motionOverlayBuilder(
+            context,
+            (context) => SimpleDialog(
+              title: const Text('选择分组'),
+              children: [
+                for (final raw in catalog['groups'] as List)
+                  SimpleDialogOption(
+                    onPressed: () => Navigator.pop(context, companionMap(raw)),
+                    child: Text(companionMap(raw)['title'] as String),
+                  ),
+                if (catalog['nextOffset'] != null)
+                  SimpleDialogOption(onPressed: () => Navigator.pop(context, 'more'), child: const Text('下一页分组')),
+              ],
+            ),
           ),
         );
         if (choice == 'more') {
@@ -486,17 +505,20 @@ class _CompanionRemoteState extends State<CompanionRemote> {
         final selected = await showDialog<String>(
           context: context,
           animationStyle: AppMotion.overlayStyle(context),
-          builder: (context) => SimpleDialog(
-            title: Text(selectedGroup['title'] as String),
-            children: [
-              for (final raw in episodes['items'] as List)
-                SimpleDialogOption(
-                  onPressed: () => Navigator.pop(context, companionMap(raw)['id'] as String),
-                  child: Text(companionMap(raw)['title'] as String),
-                ),
-              if (episodes['nextOffset'] != null)
-                SimpleDialogOption(onPressed: () => Navigator.pop(context, '__more__'), child: const Text('下一页')),
-            ],
+          builder: motionOverlayBuilder(
+            context,
+            (context) => SimpleDialog(
+              title: Text(selectedGroup['title'] as String),
+              children: [
+                for (final raw in episodes['items'] as List)
+                  SimpleDialogOption(
+                    onPressed: () => Navigator.pop(context, companionMap(raw)['id'] as String),
+                    child: Text(companionMap(raw)['title'] as String),
+                  ),
+                if (episodes['nextOffset'] != null)
+                  SimpleDialogOption(onPressed: () => Navigator.pop(context, '__more__'), child: const Text('下一页')),
+              ],
+            ),
           ),
         );
         if (selected == '__more__') {

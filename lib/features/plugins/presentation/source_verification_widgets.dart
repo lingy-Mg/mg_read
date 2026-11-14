@@ -85,7 +85,7 @@ class _VerificationOverview extends StatelessWidget {
           ),
           if (running) ...[
             const SizedBox(height: AppSpacing.comfortable),
-            LinearProgressIndicator(value: total == 0 || stopping ? null : completed / total),
+            MotionLinearProgressIndicator(value: total == 0 || stopping ? null : completed / total),
           ],
           if (results.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.comfortable),
@@ -141,7 +141,7 @@ class _SourceResultCard extends StatelessWidget {
         borderRadius: AppRadii.detailCard,
         border: Border.all(color: tokens.divider),
       ),
-      child: Material(
+      child: MotionMaterial(
         color: Colors.transparent,
         child: ExpansionTile(
           key: ValueKey('${source.pluginId}-$active'),
@@ -194,7 +194,7 @@ class _SourceResultCard extends StatelessWidget {
                 padding: const EdgeInsets.only(top: AppSpacing.regular),
                 child: Row(
                   children: [
-                    const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                    const SizedBox(width: 16, height: 16, child: MotionCircularProgressIndicator(strokeWidth: 2)),
                     const SizedBox(width: AppSpacing.regular),
                     Expanded(child: Text(activeStage == 'next' ? '准备下一阶段…' : '${_stageLabel(activeStage!)}…')),
                   ],

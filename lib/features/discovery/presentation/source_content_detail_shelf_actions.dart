@@ -69,7 +69,7 @@ class _ShelfActionBarState extends State<_ShelfActionBar> {
                 key: const Key('source-detail-refresh-action'),
                 onPressed: _isRunning ? null : () => _run(SourceShelfAction.refresh),
                 icon: _isRefreshing
-                    ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox.square(dimension: 18, child: MotionCircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.refresh_rounded),
                 label: Text(_isRefreshing ? '刷新中' : '刷新'),
                 style: style(tokens.accent, tokens.accent),
@@ -149,7 +149,7 @@ class _ShelfActionBarState extends State<_ShelfActionBar> {
         await showAppOperationErrorDialog(context, operation: '刷新书籍', error: error, guidance: '书架已保留刷新前的数据。请稍后重试。');
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('操作未能完成，请稍后重试。')));
+      ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('操作未能完成，请稍后重试。')));
     } finally {
       if (mounted) setState(() => _runningAction = null);
     }

@@ -277,7 +277,7 @@ extension _ReaderSettingsSubpageSections on _ReaderSettingsSheetState {
   }
 
   Widget _subpage({required Widget header, required List<Widget> children}) {
-    return Scrollbar(
+    return MotionScrollbar(
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
         child: Align(
@@ -386,11 +386,11 @@ extension _ReaderSettingsSubpageSections on _ReaderSettingsSheetState {
     required ValueChanged<bool> onChanged,
   }) {
     final ReaderPalette palette = widget.palette;
-    return Material(
+    return MotionMaterial(
       type: MaterialType.transparency,
       borderRadius: BorderRadius.circular(ReaderSettingsTokens.smallRadius),
       clipBehavior: Clip.antiAlias,
-      child: SwitchListTile(
+      child: MotionSwitchListTile(
         // Keep the switch rows on the same 48dp rhythm as the segmented
         // controls above. The previous dense tile compressed the rows while the
         // control itself kept its full size, which made the right edge feel

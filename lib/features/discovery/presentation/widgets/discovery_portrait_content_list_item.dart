@@ -10,6 +10,7 @@
 /// - 组件只消费 Runtime 已校验的数据，不执行封面以外的 IO。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -185,7 +186,7 @@ class _PortraitContentListItem extends StatelessWidget {
         return Semantics(
           button: true,
           label: '查看 ${content.title}${isInBookshelf ? '，已在书架' : ''}',
-          child: Material(
+          child: MotionMaterial(
             color: rowBackground,
             child: InkWell(
               key: ValueKey<String>('$keyPrefix-${content.id}'),

@@ -596,7 +596,7 @@ void main() {
       await tester.ensureVisible(play);
       await tester.tap(play);
       await tester.pump();
-      expect(find.byTooltip('暂停'), findsOneWidget);
+      expect(tester.widget<IconButton>(play).tooltip, '暂停');
       final queue = find.byKey(const Key('audio-queue'));
       await tester.ensureVisible(queue);
       await tester.tap(queue);

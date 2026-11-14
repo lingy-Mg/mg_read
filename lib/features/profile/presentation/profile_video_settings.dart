@@ -5,6 +5,7 @@
 /// shows the active renderer and offers a restart only after the save succeeds.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -238,7 +239,7 @@ class _ProfileVideoSettingsState extends ConsumerState<ProfileVideoSettings> {
     required String? selected,
     required List<(String, String)> options,
     required Future<void> Function(String)? onSelect,
-  }) => Card(
+  }) => MotionCard(
     margin: EdgeInsets.zero,
     child: Padding(
       padding: const EdgeInsets.all(AppSpacing.regular),
@@ -266,7 +267,8 @@ class _ProfileVideoSettingsState extends ConsumerState<ProfileVideoSettings> {
                     child: Text(option.$2),
                   )
                 else
-                  ChoiceChip(
+                  MotionChoiceChip(
+                    chipAnimationStyle: motionChipAnimationStyle(context),
                     key: Key('$id-${option.$1}'),
                     label: Text(option.$2),
                     selected: selected == option.$1,

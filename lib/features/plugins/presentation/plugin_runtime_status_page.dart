@@ -11,6 +11,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -138,10 +139,10 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
     try {
       await ref.read(pluginRuntimeSourceActionProvider.notifier).uninstallAll(totalItems: installedSourceCount);
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已卸载 $installedSourceCount 个本地数据源。')));
+      ScaffoldMessenger.of(context).showMotionSnackBar(context, SnackBar(content: Text('已卸载 $installedSourceCount 个本地数据源。')));
     } on Object {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('卸载失败，请稍后重试。')));
+      ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('卸载失败，请稍后重试。')));
     }
   }
 
@@ -152,17 +153,17 @@ class PluginRuntimeStatusPage extends ConsumerWidget {
       final uri = Uri.parse(sourceUrl);
       final opened = launchSourceUrl == null ? await launchUrl(uri, mode: LaunchMode.externalApplication) : await launchSourceUrl!(uri);
       if (!opened && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无法调用系统浏览器打开来源网址。')));
+        ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('无法调用系统浏览器打开来源网址。')));
       }
     } on Object {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无法调用系统浏览器打开来源网址。')));
+      if (context.mounted) ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('无法调用系统浏览器打开来源网址。')));
     }
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AsyncValue<PluginRuntimeConnection> connection = ref.watch(pluginRuntimeConnectionProvider);
-    return Scaffold(
+    return MotionScaffold(
       body: SafeArea(
         bottom: false,
         child: AppSecondaryPageContent(

@@ -21,6 +21,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'source_preview_page.dart';
 import '../application/tv_discovery_session.dart';
 import 'widgets/discovery_filters.dart';
@@ -140,39 +141,41 @@ class RuntimeDiscoveryPage extends StatelessWidget {
               onPopInvokedWithResult: (didPop, _) {
                 if (!allowsRoutePop && !didPop) onBackRequested();
               },
-              child: Scaffold(
+              child: MotionScaffold(
                 extendBody: !TvModeScope.isEnabled(context),
                 appBar: tv && !isNestedPage && !SourcePreviewScope.active(context)
                     ? AppBottomNavigation(selected: AppNavigationDestination.discover, onSelected: onDestinationRequested)
                     : tv && isNestedPage
-                    ? AppBar(
-                        automaticallyImplyLeading: false,
-                        toolbarHeight: 76,
-                        title: Row(
-                          key: const Key('runtime-discovery-nested-header'),
-                          children: [
-                            TvFocusable(
-                              key: const Key('runtime-discovery-back'),
-                              label: '返回上一级',
-                              onPressed: onBackRequested,
-                              child: const Icon(Icons.arrow_back_rounded),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(child: Text(_nestedPageTitle(components) ?? '发现', maxLines: 1, overflow: TextOverflow.ellipsis)),
-                            TvFocusable(
-                              key: const Key('discovery-refresh-action'),
-                              label: '刷新',
-                              onPressed: onRefreshRequested,
-                              child: const Icon(Icons.refresh_rounded),
-                            ),
-                            const SizedBox(width: 12),
-                            TvFocusable(
-                              key: const Key('discovery-search-action'),
-                              label: '搜索',
-                              onPressed: onSearchRequested ?? () => onDestinationRequested(AppNavigationDestination.search),
-                              child: const Icon(Icons.search_rounded),
-                            ),
-                          ],
+                    ? MotionAppBarSurface(
+                        child: AppBar(
+                          automaticallyImplyLeading: false,
+                          toolbarHeight: 76,
+                          title: Row(
+                            key: const Key('runtime-discovery-nested-header'),
+                            children: [
+                              TvFocusable(
+                                key: const Key('runtime-discovery-back'),
+                                label: '返回上一级',
+                                onPressed: onBackRequested,
+                                child: const Icon(Icons.arrow_back_rounded),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(child: Text(_nestedPageTitle(components) ?? '发现', maxLines: 1, overflow: TextOverflow.ellipsis)),
+                              TvFocusable(
+                                key: const Key('discovery-refresh-action'),
+                                label: '刷新',
+                                onPressed: onRefreshRequested,
+                                child: const Icon(Icons.refresh_rounded),
+                              ),
+                              const SizedBox(width: 12),
+                              TvFocusable(
+                                key: const Key('discovery-search-action'),
+                                label: '搜索',
+                                onPressed: onSearchRequested ?? () => onDestinationRequested(AppNavigationDestination.search),
+                                child: const Icon(Icons.search_rounded),
+                              ),
+                            ],
+                          ),
                         ),
                       )
                     : null,
@@ -234,7 +237,10 @@ class RuntimeDiscoveryPage extends StatelessWidget {
                                               showThemeToggle: false,
                                             ),
                                           if (result != null && components.isNotEmpty && isContentLoading)
-                                            const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: LinearProgressIndicator()),
+                                            const Padding(
+                                              padding: EdgeInsets.symmetric(vertical: 8),
+                                              child: MotionLinearProgressIndicator(),
+                                            ),
                                           if (result != null && components.isNotEmpty && contentFailureMessage != null)
                                             DiscoveryContentState(
                                               isLoading: false,

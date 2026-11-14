@@ -14,6 +14,7 @@ library;
 // library-level public naming rules.
 // ignore_for_file: public_member_api_docs
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 
@@ -198,21 +199,23 @@ final class _VideoPlayerChromeState extends State<VideoPlayerChrome> {
                           size: 32,
                         ),
                         const SizedBox(width: 28),
-                        IconButton(
-                          key: const Key('video-player-play-pause'),
-                          tooltip: snapshot.playing ? '暂停' : '播放',
-                          onPressed: () =>
-                              unawaited(widget.controller.playOrPause()),
-                          style: IconButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            backgroundColor: const Color(0x66000000),
-                            fixedSize: const Size.square(64),
-                          ),
-                          icon: Icon(
-                            snapshot.playing
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded,
-                            size: 44,
+                        MotionIconButtonSurface(
+                          child: IconButton(
+                            key: const Key('video-player-play-pause'),
+                            tooltip: snapshot.playing ? '暂停' : '播放',
+                            onPressed: () =>
+                                unawaited(widget.controller.playOrPause()),
+                            style: IconButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              backgroundColor: const Color(0x66000000),
+                              fixedSize: const Size.square(64),
+                            ),
+                            icon: Icon(
+                              snapshot.playing
+                                  ? Icons.pause_rounded
+                                  : Icons.play_arrow_rounded,
+                              size: 44,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 28),

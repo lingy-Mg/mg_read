@@ -295,7 +295,7 @@ class _TvSourceSearchDialogState extends State<_TvSourceSearchDialog> {
     content: SizedBox(
       width: 480,
       child: TvTextInputNavigation(
-        child: TextField(
+        child: MotionTextField(
           key: const Key('data-source-search'),
           controller: _controller,
           autofocus: true,

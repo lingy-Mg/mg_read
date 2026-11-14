@@ -57,10 +57,10 @@ class _DataSourceContentState extends ConsumerState<_DataSourceContent> {
     try {
       await ref.read(pluginRuntimeSourceActionProvider.notifier).setEnabled(pluginId: source.id, enabled: enabled);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已${enabled ? '启用' : '停用'}“${source.name}”。')));
+      ScaffoldMessenger.of(context).showMotionSnackBar(context, SnackBar(content: Text('已${enabled ? '启用' : '停用'}“${source.name}”。')));
     } on Object {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据源状态更新失败，请稍后重试。')));
+      ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('数据源状态更新失败，请稍后重试。')));
     }
   }
 

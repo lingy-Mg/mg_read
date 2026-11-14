@@ -12,6 +12,7 @@
 /// - 减少动态效果时立即完成交接，不保留不可见动画层。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -193,7 +194,7 @@ final class MediaEntryCoverSurface extends StatelessWidget {
     final hasFailure = failureMessage != null;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: _mediaEntrySystemUiStyle,
-      child: Material(
+      child: MotionMaterial(
         color: Colors.black,
         child: Stack(
           fit: StackFit.expand,
@@ -286,7 +287,7 @@ final class MediaEntryCoverSurface extends StatelessWidget {
                                   dimension: 22,
                                   child: AppMotion.disablesAnimations(context)
                                       ? const Icon(Icons.hourglass_empty_rounded, color: Colors.white, size: 22)
-                                      : const CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white),
+                                      : const MotionCircularProgressIndicator(strokeWidth: 2.2, color: Colors.white),
                                 )
                               else
                                 const Icon(Icons.refresh_rounded, color: Colors.white),
@@ -341,11 +342,13 @@ final class MediaEntryCoverSurface extends StatelessWidget {
             SafeArea(
               child: Align(
                 alignment: Alignment.topLeft,
-                child: IconButton(
-                  key: const Key('media-entry-back'),
-                  tooltip: '返回',
-                  onPressed: onExit,
-                  icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                child: MotionIconButtonSurface(
+                  child: IconButton(
+                    key: const Key('media-entry-back'),
+                    tooltip: '返回',
+                    onPressed: onExit,
+                    icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                  ),
                 ),
               ),
             ),

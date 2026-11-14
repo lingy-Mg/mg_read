@@ -31,11 +31,11 @@ void main() {
     await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
     await tester.pump(const Duration(milliseconds: 650));
     await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.byWidgetPredicate((widget) => widget is AlertDialog), findsOneWidget);
     await tester.sendKeyRepeatEvent(LogicalKeyboardKey.select);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.byWidgetPredicate((widget) => widget is AlertDialog), findsOneWidget);
     expect(played, isEmpty);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
@@ -146,7 +146,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.contextMenu);
     await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.byWidgetPredicate((widget) => widget is AlertDialog), findsOneWidget);
     expect(tester.takeException(), isNull);
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('goldens/tv_library_menu_large_text.png'));
     // Reach Cancel by remote; the dialog must scroll with focus.
@@ -156,7 +156,7 @@ void main() {
     }
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byWidgetPredicate((widget) => widget is AlertDialog), findsNothing);
     expect(focus.focusNode!.hasFocus, isTrue);
   });
 
@@ -223,7 +223,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.contextMenu);
     await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.byWidgetPredicate((widget) => widget is AlertDialog), findsOneWidget);
     await tester.tap(find.text('移除收藏'));
     await tester.pumpAndSettle();
     expect(find.text('移除收藏？'), findsOneWidget);

@@ -4,6 +4,7 @@
 /// 本文件只负责交互呈现；发现、密钥和同步事务仍由 DeviceSyncController 持有。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -46,7 +47,7 @@ class DevicePairingSheet extends StatelessWidget {
       children: <Widget>[
         if (state.pairingPhase == DevicePairingPhase.idle)
           const Center(
-            child: Padding(padding: EdgeInsets.all(AppSpacing.regular), child: CircularProgressIndicator()),
+            child: Padding(padding: EdgeInsets.all(AppSpacing.regular), child: MotionCircularProgressIndicator()),
           )
         else
           _PairingPanel(state: state, onApprove: onApprovePairing, onReject: onRejectPairing, onRetry: onBeginPairing),
@@ -79,7 +80,7 @@ class _PairingPanel extends StatelessWidget {
         child: Column(
           children: <Widget>[
             if (state.pairingPhase == DevicePairingPhase.creatingOffer || state.pairingPhase == DevicePairingPhase.joining) ...<Widget>[
-              const CircularProgressIndicator(),
+              const MotionCircularProgressIndicator(),
               const SizedBox(height: AppSpacing.compact),
               Text(state.pairingPhase == DevicePairingPhase.joining ? '正在建立加密配对连接' : '正在生成一次性配对码'),
             ] else if (state.pairingPhase == DevicePairingPhase.showingOffer && offer != null) ...<Widget>[
@@ -183,21 +184,21 @@ class DeviceSettingsSheet extends ConsumerWidget {
           children: <Widget>[
             Text(device.label, style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: AppSpacing.compact),
-            SwitchListTile(
+            MotionSwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('自动同步'),
               subtitle: const Text('两端都打开后自动检查变化'),
               value: device.autoSync,
               onChanged: (value) => controller.updateDeviceSettings(device.deviceId, autoSync: value),
             ),
-            SwitchListTile(
+            MotionSwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('数据源插件'),
               subtitle: const Text('包含正式插件和开发书源副本'),
               value: device.syncPlugins,
               onChanged: (value) => controller.updateDeviceSettings(device.deviceId, syncPlugins: value),
             ),
-            SwitchListTile(
+            MotionSwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('书架与阅读进度'),
               subtitle: const Text('单向同步，发送端覆盖本机数据'),
@@ -233,13 +234,16 @@ class DeviceSettingsSheet extends ConsumerWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       animationStyle: AppMotion.overlayStyle(context),
-      builder: (context) => AlertDialog(
-        title: const Text('解除配对？'),
-        content: Text('将删除 ${device.label} 的本机信任密钥。另一台设备也需要单独解除配对。'),
-        actions: <Widget>[
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('解除')),
-        ],
+      builder: motionOverlayBuilder(
+        context,
+        (context) => MotionAlertDialog(
+          title: const Text('解除配对？'),
+          content: Text('将删除 ${device.label} 的本机信任密钥。另一台设备也需要单独解除配对。'),
+          actions: <Widget>[
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('解除')),
+          ],
+        ),
       ),
     );
     if (confirmed != true) return;

@@ -106,6 +106,12 @@ extension _TextReaderLibraryCatalog on _TextReaderViewState {
           });
         }
         return RawScrollbar(
+          fadeDuration: motionDisabled(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 300),
+          timeToFade: motionDisabled(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 600),
           key: const ValueKey<String>('reader-catalog-scrollbar'),
           controller: _catalogScrollController,
           thumbVisibility: true,
@@ -193,11 +199,11 @@ extension _TextReaderLibraryCatalog on _TextReaderViewState {
                     : hasBeenRead
                     ? _palette.secondaryText
                     : _palette.text;
-                return Material(
+                return MotionMaterial(
                   type: MaterialType.transparency,
                   borderRadius: const BorderRadius.all(Radius.circular(14)),
                   clipBehavior: Clip.antiAlias,
-                  child: ListTile(
+                  child: MotionListTile(
                     key: ValueKey<String>(
                       'reader-catalog-chapter-${chapter.id}',
                     ),
@@ -211,7 +217,9 @@ extension _TextReaderLibraryCatalog on _TextReaderViewState {
                       vertical: 2,
                     ),
                     tileColor: chapterBackground,
-                    hoverColor: _palette.accent.withValues(alpha: .08),
+                    hoverColor: motionDisabled(context)
+                        ? Colors.transparent
+                        : _palette.accent.withValues(alpha: .08),
                     selected: isCurrentChapter,
                     selectedColor: _palette.accent,
                     selectedTileColor: _palette.accent.withValues(alpha: .15),
@@ -352,7 +360,7 @@ extension _TextReaderLibraryCatalog on _TextReaderViewState {
                 icon: _bookRefreshLoading
                     ? const SizedBox.square(
                         dimension: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: MotionCircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.sync_rounded, size: 18),
                 label: Text(

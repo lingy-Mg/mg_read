@@ -7,6 +7,7 @@
 /// - Sheets issue commands through the public controller and own no media state.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -24,6 +25,7 @@ Future<void> showAudioQueueSheet(
   required AudioPlayerController controller,
   AudioQueueArtworkBuilder? artworkBuilder,
 }) => showModalBottomSheet<void>(
+  enableDrag: !motionDisabled(context),
   context: context,
   sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
       ? AnimationStyle.noAnimation
@@ -31,10 +33,16 @@ Future<void> showAudioQueueSheet(
   isScrollControlled: true,
   backgroundColor: Colors.transparent,
   barrierColor: AudioPlayerColors.scrim,
-  builder: (sheetContext) => _AudioQueueSheet(
-    snapshot: snapshot,
-    controller: controller,
-    artworkBuilder: artworkBuilder,
+  builder: motionOverlayBuilder(
+    context,
+    (sheetContext) => MotionTheme(
+      data: Theme.of(sheetContext),
+      child: _AudioQueueSheet(
+        snapshot: snapshot,
+        controller: controller,
+        artworkBuilder: artworkBuilder,
+      ),
+    ),
   ),
 );
 
@@ -99,7 +107,7 @@ class _AudioQueueSheetState extends State<_AudioQueueSheet> {
             top: Radius.circular(AudioPlayerMetrics.sheetRadius),
           ),
           tone: AudioSurfaceTone.strong,
-          child: Material(
+          child: MotionMaterial(
             color: Colors.transparent,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -130,11 +138,13 @@ class _AudioQueueSheetState extends State<_AudioQueueSheet> {
                           ],
                         ),
                       ),
-                      IconButton(
-                        key: const Key('audio-queue-close'),
-                        tooltip: '关闭章节列表',
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close_rounded),
+                      MotionIconButtonSurface(
+                        child: IconButton(
+                          key: const Key('audio-queue-close'),
+                          tooltip: '关闭章节列表',
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
                       ),
                     ],
                   ),
@@ -216,7 +226,7 @@ class _AudioQueueTile extends StatelessWidget {
             );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Material(
+      child: MotionMaterial(
         color: selected ? AudioPlayerColors.accentSoft : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(

@@ -34,10 +34,10 @@ extension _ComicReaderCatalog on _ComicReaderViewState {
           : null,
       isScrollControlled: true,
       isDismissible: true,
-      enableDrag: true,
+      enableDrag: !motionDisabled(context),
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black.withValues(alpha: .68),
-      builder: (BuildContext sheetContext) {
+      builder: motionOverlayBuilder(context, (BuildContext sheetContext) {
         _captureSheetContext(sheetContext, sheetGeneration);
         return StatefulBuilder(
           builder: (BuildContext context, void Function(VoidCallback) _) {
@@ -82,7 +82,7 @@ extension _ComicReaderCatalog on _ComicReaderViewState {
                         borderRadius: const BorderRadius.vertical(
                           top: Radius.circular(22),
                         ),
-                        child: Material(
+                        child: MotionMaterial(
                           color: palette.panel,
                           child: _darkSheet(
                             SafeArea(
@@ -138,7 +138,7 @@ extension _ComicReaderCatalog on _ComicReaderViewState {
             );
           },
         );
-      },
+      }),
     );
     unawaited(
       sheet.whenComplete(() {
@@ -213,18 +213,22 @@ extension _ComicReaderCatalog on _ComicReaderViewState {
               ),
             ),
             if (widget.bookRefreshCapability != null)
-              IconButton(
-                key: const ValueKey<String>('comic-reader-refresh-book'),
-                tooltip: ComicReaderStrings.refreshBook,
-                onPressed: _bookRefreshLoading
-                    ? null
-                    : () => unawaited(_refreshBookFromHost()),
-                icon: _bookRefreshLoading
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.sync_rounded),
+              MotionIconButtonSurface(
+                child: IconButton(
+                  key: const ValueKey<String>('comic-reader-refresh-book'),
+                  tooltip: ComicReaderStrings.refreshBook,
+                  onPressed: _bookRefreshLoading
+                      ? null
+                      : () => unawaited(_refreshBookFromHost()),
+                  icon: _bookRefreshLoading
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: MotionCircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Icon(Icons.sync_rounded),
+                ),
               ),
           ],
         ),
@@ -260,6 +264,12 @@ extension _ComicReaderCatalog on _ComicReaderViewState {
       );
     }
     return RawScrollbar(
+      fadeDuration: motionDisabled(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 300),
+      timeToFade: motionDisabled(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 600),
       key: const ValueKey<String>('comic-reader-catalog-scrollbar'),
       controller: catalogScrollController,
       thumbVisibility: true,
@@ -294,7 +304,7 @@ extension _ComicReaderCatalog on _ComicReaderViewState {
                         ),
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(
+                        child: MotionCircularProgressIndicator(
                           strokeWidth: 2,
                           color: palette.accent,
                         ),
@@ -333,7 +343,7 @@ extension _ComicReaderCatalog on _ComicReaderViewState {
             return Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 560),
-                child: ListTile(
+                child: MotionListTile(
                   key: ValueKey<String>(
                     'comic-reader-catalog-chapter-${chapter.id}',
                   ),
@@ -348,7 +358,9 @@ extension _ComicReaderCatalog on _ComicReaderViewState {
                   tileColor: isCurrentChapter
                       ? palette.accent.withValues(alpha: .14)
                       : null,
-                  hoverColor: palette.accent.withValues(alpha: .08),
+                  hoverColor: motionDisabled(context)
+                      ? Colors.transparent
+                      : palette.accent.withValues(alpha: .08),
                   selected: isCurrentChapter,
                   selectedColor: palette.accent,
                   selectedTileColor: palette.accent.withValues(alpha: .14),

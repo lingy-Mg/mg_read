@@ -299,7 +299,7 @@ class _AllSourcesPickerRow extends StatelessWidget {
     );
     return Padding(
       padding: const EdgeInsets.fromLTRB(AppSpacing.comfortable, AppSpacing.regular, AppSpacing.comfortable, 0),
-      child: Material(
+      child: MotionMaterial(
         color: selected ? selectedColor : theme.colorScheme.surface,
         borderRadius: AppRadii.control,
         child: InkWell(
@@ -378,7 +378,7 @@ class _SourcePickerRow extends StatelessWidget {
       child: GestureDetector(
         onLongPressStart: (details) => _showSourcePickerActions(context, details.globalPosition, pinned, onPinPressed, onWebViewAction),
         onSecondaryTapUp: (details) => _showSourcePickerActions(context, details.globalPosition, pinned, onPinPressed, onWebViewAction),
-        child: Material(
+        child: MotionMaterial(
           color: selected ? selectedColor : theme.colorScheme.surface,
           borderRadius: AppRadii.control,
           child: InkWell(
@@ -427,24 +427,29 @@ class _SourcePickerRow extends StatelessWidget {
                       ],
                     ),
                   ),
-                  IconButton(
-                    key: ValueKey<String>('discovery-source-picker-pin-${source.id}'),
-                    tooltip: pinned ? '取消置顶' : '置顶',
-                    onPressed: () => unawaited(onPinPressed()),
-                    visualDensity: VisualDensity.compact,
-                    icon: Icon(
-                      pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
-                      size: 19,
-                      color: pinned ? tokens.accent : tokens.mutedText,
+                  MotionIconButtonSurface(
+                    child: IconButton(
+                      key: ValueKey<String>('discovery-source-picker-pin-${source.id}'),
+                      tooltip: pinned ? '取消置顶' : '置顶',
+                      onPressed: () => unawaited(onPinPressed()),
+                      visualDensity: VisualDensity.compact,
+                      icon: Icon(
+                        pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+                        size: 19,
+                        color: pinned ? tokens.accent : tokens.mutedText,
+                      ),
                     ),
                   ),
-                  PopupMenuButton<_SourcePickerAction>(
-                    key: ValueKey<String>('discovery-source-picker-actions-${source.id}'),
-                    tooltip: '更多操作',
-                    onOpened: () => menuFocus = FocusManager.instance.primaryFocus,
-                    onSelected: (action) => _handleSourcePickerAction(action, onPinPressed, onWebViewAction, returnFocus: menuFocus),
-                    icon: Icon(Icons.more_vert_rounded, size: 20, color: tokens.mutedText),
-                    itemBuilder: (context) => _sourcePickerActionItems(pinned),
+                  MotionPopupMenuSurface(
+                    child: PopupMenuButton<_SourcePickerAction>(
+                      popUpAnimationStyle: motionDisabled(context) ? AnimationStyle.noAnimation : null,
+                      key: ValueKey<String>('discovery-source-picker-actions-${source.id}'),
+                      tooltip: '更多操作',
+                      onOpened: () => menuFocus = FocusManager.instance.primaryFocus,
+                      onSelected: (action) => _handleSourcePickerAction(action, onPinPressed, onWebViewAction, returnFocus: menuFocus),
+                      icon: Icon(Icons.more_vert_rounded, size: 20, color: tokens.mutedText),
+                      itemBuilder: (context) => _sourcePickerActionItems(pinned),
+                    ),
                   ),
                 ],
               ),
@@ -509,15 +514,15 @@ List<PopupMenuEntry<_SourcePickerAction>> _sourcePickerActionItems(bool pinned) 
   return <PopupMenuEntry<_SourcePickerAction>>[
     PopupMenuItem<_SourcePickerAction>(
       value: _SourcePickerAction.togglePin,
-      child: ListTile(leading: Icon(pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined), title: Text(pinned ? '取消置顶' : '置顶')),
+      child: MotionListTile(leading: Icon(pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined), title: Text(pinned ? '取消置顶' : '置顶')),
     ),
     const PopupMenuItem<_SourcePickerAction>(
       value: _SourcePickerAction.enterDebug,
-      child: ListTile(leading: Icon(Icons.open_in_browser_rounded), title: Text('进入 WebView 调试')),
+      child: MotionListTile(leading: Icon(Icons.open_in_browser_rounded), title: Text('进入 WebView 调试')),
     ),
     const PopupMenuItem<_SourcePickerAction>(
       value: _SourcePickerAction.show,
-      child: ListTile(leading: Icon(Icons.visibility_rounded), title: Text('显示 WebView')),
+      child: MotionListTile(leading: Icon(Icons.visibility_rounded), title: Text('显示 WebView')),
     ),
   ];
 }

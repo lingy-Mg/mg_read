@@ -5,6 +5,7 @@
 /// explicit retry, and source/category changes reset the local attempt guard.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -180,7 +181,7 @@ class _PaginationFooterState extends State<DiscoveryTvPaginationFooter> {
                   ? const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+                        SizedBox.square(dimension: 22, child: MotionCircularProgressIndicator(strokeWidth: 2)),
                         SizedBox(width: 12),
                         Text('正在加载下一页…'),
                       ],

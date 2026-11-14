@@ -1,3 +1,4 @@
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -150,7 +151,7 @@ class ReaderSettingsCapsule extends StatelessWidget {
   Widget build(BuildContext context) {
     final Widget result = SizedBox(
       height: ReaderSettingsTokens.touchTarget,
-      child: Material(
+      child: MotionMaterial(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(
           ReaderSettingsTokens.controlRadius + 4,
@@ -276,7 +277,7 @@ class ReaderSettingsSegmentedControl<T> extends StatelessWidget {
                                   label: labelFor(value),
                                   onTap: () => onSelected(value),
                                   excludeSemantics: true,
-                                  child: Material(
+                                  child: MotionMaterial(
                                     color: Colors.transparent,
                                     borderRadius: BorderRadius.circular(
                                       ReaderSettingsTokens.controlRadius,
@@ -366,7 +367,7 @@ class ReaderThemeSwatch extends StatelessWidget {
       label: label,
       onTap: onTap,
       excludeSemantics: true,
-      child: Material(
+      child: MotionMaterial(
         type: MaterialType.transparency,
         shape: const CircleBorder(),
         clipBehavior: Clip.antiAlias,
@@ -434,7 +435,7 @@ class ReaderBackgroundChoice extends StatelessWidget {
       label: label,
       onTap: onTap,
       excludeSemantics: true,
-      child: Material(
+      child: MotionMaterial(
         type: MaterialType.transparency,
         borderRadius: BorderRadius.circular(ReaderSettingsTokens.smallRadius),
         clipBehavior: Clip.antiAlias,
@@ -514,11 +515,13 @@ class ReaderSettingsSubpageHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: <Widget>[
-        IconButton(
-          tooltip: ReaderStrings.back,
-          onPressed: onBack,
-          iconSize: 18,
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+        MotionIconButtonSurface(
+          child: IconButton(
+            tooltip: ReaderStrings.back,
+            onPressed: onBack,
+            iconSize: 18,
+            icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          ),
         ),
         const SizedBox(width: 2),
         Expanded(

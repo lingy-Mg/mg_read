@@ -9,6 +9,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -30,7 +31,7 @@ class _OpenSourceLicensesPageState extends State<OpenSourceLicensesPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return MotionScaffold(
       body: SafeArea(
         bottom: false,
         child: AppSecondaryPageContent(
@@ -43,7 +44,7 @@ class _OpenSourceLicensesPageState extends State<OpenSourceLicensesPage> {
                   builder: (BuildContext context, AsyncSnapshot<List<_RegisteredLicense>> snapshot) {
                     if (snapshot.hasError) return const _LicenseMessage(icon: Icons.error_outline, message: '许可信息读取失败，请稍后重试。');
                     final licenses = snapshot.data;
-                    if (licenses == null) return const Center(child: CircularProgressIndicator());
+                    if (licenses == null) return const Center(child: MotionCircularProgressIndicator());
                     if (licenses.isEmpty) return const _LicenseMessage(icon: Icons.code_rounded, message: '当前构建没有注册可展示的许可信息。');
                     return _LicenseList(licenses: licenses);
                   },
@@ -94,7 +95,7 @@ class _LicenseList extends StatelessWidget {
         final license = licenses[index - 1];
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
-          child: Material(
+          child: MotionMaterial(
             color: tokens.surface,
             shape: RoundedRectangleBorder(
               borderRadius: AppRadii.detailCard,

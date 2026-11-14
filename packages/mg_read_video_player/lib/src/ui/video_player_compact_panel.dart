@@ -6,6 +6,7 @@ library;
 // Internal presentation, not exported from the package.
 // ignore_for_file: public_member_api_docs
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'video_player_visuals.dart';
@@ -34,7 +35,7 @@ class VideoPlayerCompactPanel extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: const Color(0x18FFFFFF)),
       ),
-      child: Material(
+      child: MotionMaterial(
         type: MaterialType.transparency,
         child: SafeArea(
           top: false,
@@ -69,19 +70,21 @@ class VideoPlayerCompactPanel extends StatelessWidget {
                         ),
                       ),
                     ),
-                    IconButton(
-                      key: closeKey,
-                      tooltip: '关闭$title',
-                      onPressed: () => Navigator.pop(context),
-                      style: IconButton.styleFrom(
-                        foregroundColor: videoPlayerSecondary,
-                        minimumSize: Size.square(pointer ? 32 : 44),
-                        tapTargetSize: pointer
-                            ? MaterialTapTargetSize.shrinkWrap
-                            : MaterialTapTargetSize.padded,
-                        padding: const EdgeInsets.all(6),
+                    MotionIconButtonSurface(
+                      child: IconButton(
+                        key: closeKey,
+                        tooltip: '关闭$title',
+                        onPressed: () => Navigator.pop(context),
+                        style: IconButton.styleFrom(
+                          foregroundColor: videoPlayerSecondary,
+                          minimumSize: Size.square(pointer ? 32 : 44),
+                          tapTargetSize: pointer
+                              ? MaterialTapTargetSize.shrinkWrap
+                              : MaterialTapTargetSize.padded,
+                          padding: const EdgeInsets.all(6),
+                        ),
+                        icon: const Icon(Icons.close_rounded, size: 17),
                       ),
-                      icon: const Icon(Icons.close_rounded, size: 17),
                     ),
                   ],
                 ),

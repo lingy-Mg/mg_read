@@ -4,6 +4,7 @@
 /// 首页报告首次可见内容就绪后撤下遮罩，不重新挂载路由。失败提供重试和诊断入口。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -138,7 +139,7 @@ class _AppStartupGateState extends ConsumerState<AppStartupGate> {
             const SizedBox(height: AppSpacing.comfortable),
             Text('MgRead', style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: AppSpacing.section),
-            SizedBox(width: 24, height: 24, child: _loadingArmed ? const CircularProgressIndicator(strokeWidth: 2) : null),
+            SizedBox(width: 24, height: 24, child: _loadingArmed ? const MotionCircularProgressIndicator(strokeWidth: 2) : null),
             const SizedBox(height: AppSpacing.regular),
             Text(startup.activePhase.label, style: Theme.of(context).textTheme.bodyMedium),
           ],
@@ -152,7 +153,7 @@ class _AppStartupGateState extends ConsumerState<AppStartupGate> {
     const DiagnosticsRoute().go(context);
   }
 
-  Widget _waiting(BuildContext context, AppStartupController startup) => Material(
+  Widget _waiting(BuildContext context, AppStartupController startup) => MotionMaterial(
     color: Colors.transparent,
     child: Center(
       child: SingleChildScrollView(
@@ -181,7 +182,7 @@ class _AppStartupGateState extends ConsumerState<AppStartupGate> {
     ),
   );
 
-  Widget _failure(BuildContext context, AppStartupController startup, AppStartupState state) => Material(
+  Widget _failure(BuildContext context, AppStartupController startup, AppStartupState state) => MotionMaterial(
     color: Colors.transparent,
     child: Center(
       child: Column(

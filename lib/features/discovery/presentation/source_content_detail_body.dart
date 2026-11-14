@@ -252,7 +252,7 @@ class _SourceDetailBody extends StatelessWidget {
           const SizedBox(height: AppSpacing.comfortable),
           _RecommendationsSection(candidates: recommendationCandidates, onRecommendationRequested: onRecommendationRequested),
           const SizedBox(height: AppSpacing.regular),
-          Material(
+          MotionMaterial(
             color: tokens.mutedSurface,
             borderRadius: BorderRadius.circular(14),
             child: Semantics(
@@ -310,6 +310,6 @@ class _SourceDetailBody extends StatelessWidget {
     if (url == null || (url.scheme != 'http' && url.scheme != 'https')) return;
     final launched = await onExternalUrlRequested(url);
     if (!context.mounted || launched) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无法调用系统浏览器打开该链接。')));
+    ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('无法调用系统浏览器打开该链接。')));
   }
 }

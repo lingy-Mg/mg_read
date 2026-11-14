@@ -15,6 +15,7 @@ library;
 
 export 'package:mg_read/shared/presentation/motion/app_bottom_navigation_motion_scope.dart';
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
@@ -255,7 +256,7 @@ class _AppNavigationItem extends StatelessWidget {
       button: true,
       selected: semanticallySelected,
       label: data.label,
-      child: Material(
+      child: MotionMaterial(
         color: Colors.transparent,
         child: InkResponse(
           key: ValueKey<String>('app-nav-${destination.name}'),
@@ -265,7 +266,7 @@ class _AppNavigationItem extends StatelessWidget {
           hoverColor: Colors.transparent,
           splashColor: Colors.transparent,
           highlightColor: Colors.transparent,
-          focusColor: tokens.focusRing.withValues(alpha: 0.16),
+          focusColor: AppMotion.disablesAnimations(context) ? Colors.transparent : tokens.focusRing.withValues(alpha: 0.16),
           child: SizedBox.expand(
             child: Stack(
               children: <Widget>[

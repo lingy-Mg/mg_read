@@ -6,6 +6,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 
 import 'audio_player_artwork_stage.dart';
@@ -35,13 +36,15 @@ final class AudioLoadingView extends StatelessWidget {
                     children: <Widget>[
                       Row(
                         children: <Widget>[
-                          IconButton(
-                            key: const Key('audio-back'),
-                            tooltip: '返回',
-                            onPressed: onBack,
-                            icon: const Icon(
-                              Icons.keyboard_arrow_down_rounded,
-                              size: 30,
+                          MotionIconButtonSurface(
+                            child: IconButton(
+                              key: const Key('audio-back'),
+                              tooltip: '返回',
+                              onPressed: onBack,
+                              icon: const Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                size: 30,
+                              ),
                             ),
                           ),
                           const Expanded(child: Center(child: Text('正在加载'))),
@@ -66,7 +69,9 @@ final class AudioLoadingView extends StatelessWidget {
                           children: <Widget>[
                             SizedBox.square(
                               dimension: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child: MotionCircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
                             ),
                             SizedBox(width: 12),
                             Text('正在准备音频…'),
@@ -122,17 +127,19 @@ final class AudioErrorView extends StatelessWidget {
                   alignment: Alignment.centerLeft,
                   child: AudioSurfacePanel(
                     borderRadius: BorderRadius.circular(99),
-                    child: IconButton(
-                      key: const Key('audio-back'),
-                      tooltip: '返回',
-                      onPressed: onBack,
-                      style: IconButton.styleFrom(
-                        fixedSize: const Size.square(44),
-                        foregroundColor: AudioPlayerColors.ink,
-                      ),
-                      icon: const Icon(
-                        Icons.arrow_back_ios_new_rounded,
-                        size: 20,
+                    child: MotionIconButtonSurface(
+                      child: IconButton(
+                        key: const Key('audio-back'),
+                        tooltip: '返回',
+                        onPressed: onBack,
+                        style: IconButton.styleFrom(
+                          fixedSize: const Size.square(44),
+                          foregroundColor: AudioPlayerColors.ink,
+                        ),
+                        icon: const Icon(
+                          Icons.arrow_back_ios_new_rounded,
+                          size: 20,
+                        ),
                       ),
                     ),
                   ),

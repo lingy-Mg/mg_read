@@ -4,6 +4,7 @@
 /// 详情复用本轮已检查的快照，不重复请求，也不修改主发现页选择或阅读记录。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:mg_read/shared/presentation/motion/app_motion.dart';
 import 'dart:async';
 
@@ -62,22 +63,29 @@ class _SourceDebugPageState extends State<SourceDebugPage> {
       final results = _controller.results;
       final passed = results.where((value) => value.outcome == SourceDebugOutcome.passed).length;
       final failed = results.where((value) => value.outcome == SourceDebugOutcome.failed).length;
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('数据源 Debug'),
-          actions: [
-            if (_controller.running) TextButton(key: const Key('source-debug-stop'), onPressed: _controller.stop, child: const Text('停止')),
-            IconButton(
-              tooltip: '复制检查报告',
-              onPressed: results.isEmpty
-                  ? null
-                  : () async {
-                      await Clipboard.setData(ClipboardData(text: _controller.report));
-                      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('检查报告已复制')));
-                    },
-              icon: const Icon(Icons.copy_outlined),
-            ),
-          ],
+      return MotionScaffold(
+        appBar: MotionAppBarSurface(
+          child: AppBar(
+            title: const Text('数据源 Debug'),
+            actions: [
+              if (_controller.running)
+                TextButton(key: const Key('source-debug-stop'), onPressed: _controller.stop, child: const Text('停止')),
+              MotionIconButtonSurface(
+                child: IconButton(
+                  tooltip: '复制检查报告',
+                  onPressed: results.isEmpty
+                      ? null
+                      : () async {
+                          await Clipboard.setData(ClipboardData(text: _controller.report));
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('检查报告已复制')));
+                          }
+                        },
+                  icon: const Icon(Icons.copy_outlined),
+                ),
+              ),
+            ],
+          ),
         ),
         body: SafeArea(
           child: Column(
@@ -101,7 +109,7 @@ class _SourceDebugPageState extends State<SourceDebugPage> {
                           : '已检查 ${results.length}/${widget.sources.length} · 通过 $passed · 失败 $failed · 未验证 ${results.where((value) => value.outcome == SourceDebugOutcome.skipped).length}',
                     ),
                     const SizedBox(height: 8),
-                    LinearProgressIndicator(value: widget.sources.isEmpty ? 0 : results.length / widget.sources.length),
+                    MotionLinearProgressIndicator(value: widget.sources.isEmpty ? 0 : results.length / widget.sources.length),
                     const SizedBox(height: 8),
                     Text('自动切换并打开首个资源，检查目录及首章解析。图片下载和音视频播放需另行确认。', style: Theme.of(context).textTheme.bodySmall),
                   ],
@@ -119,11 +127,15 @@ class _SourceDebugPageState extends State<SourceDebugPage> {
                   onPressed: results.isEmpty
                       ? null
                       : () => showModalBottomSheet<void>(
+                          enableDrag: !motionDisabled(context),
                           context: context,
                           sheetAnimationStyle: AppMotion.overlayStyle(context),
                           isScrollControlled: true,
                           useSafeArea: true,
-                          builder: (_) => FractionallySizedBox(heightFactor: .7, child: _DebugResults(results: results)),
+                          builder: motionOverlayBuilder(
+                            context,
+                            (_) => FractionallySizedBox(heightFactor: .7, child: _DebugResults(results: results)),
+                          ),
                         ),
                   child: Text('查看已完成结果（${results.length}）'),
                 ),
@@ -149,7 +161,7 @@ class _DebugResults extends StatelessWidget {
           separatorBuilder: (_, _) => const Divider(height: 1),
           itemBuilder: (context, index) {
             final result = results[index];
-            return ListTile(
+            return MotionListTile(
               key: ValueKey('source-debug-result-${result.source.id}'),
               leading: Icon(switch (result.outcome) {
                 SourceDebugOutcome.passed => Icons.check_circle_outline,

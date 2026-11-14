@@ -96,7 +96,7 @@ void main() {
     await mount(tester);
     await tester.tap(find.byKey(const Key('node-runtime-javet')));
     await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byWidgetPredicate((widget) => widget is AlertDialog), findsNothing);
     await tester.tap(find.byKey(const Key('node-runtime-nodeProcess')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('稍后重启'));
@@ -104,7 +104,7 @@ void main() {
     await tester.tap(find.byKey(const Key('node-runtime-javet')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('node-runtime-pending')), findsNothing);
-    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byWidgetPredicate((widget) => widget is AlertDialog), findsNothing);
     expect(persisted, 'javet');
   });
 
@@ -114,7 +114,7 @@ void main() {
     await tester.tap(find.byKey(const Key('node-runtime-nodeProcess')));
     await tester.pumpAndSettle();
     expect(find.text('保存失败，请重试。'), findsOneWidget);
-    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byWidgetPredicate((widget) => widget is AlertDialog), findsNothing);
     expect(settings.selected, AndroidNodeBackend.javet);
     expect(restarts, 0);
   });

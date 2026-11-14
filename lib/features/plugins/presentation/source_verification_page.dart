@@ -4,6 +4,7 @@
 /// 生命周期：返回、停止和 dispose 共用取消令牌；完成后保留本轮报告供筛选与导出。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -152,10 +153,10 @@ class _SourceVerificationPageState extends ConsumerState<SourceVerificationPage>
       if (location == null) return;
       await const SourceVerificationReportWriter().write(location.path, report);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据源检测报告已导出。')));
+      ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('数据源检测报告已导出。')));
     } on Object {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('报告导出失败，请更换保存位置后重试。')));
+      ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('报告导出失败，请更换保存位置后重试。')));
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
@@ -168,7 +169,7 @@ class _SourceVerificationPageState extends ConsumerState<SourceVerificationPage>
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) unawaited(_requestBack());
       },
-      child: Scaffold(
+      child: MotionScaffold(
         body: SafeArea(
           bottom: false,
           child: AppSecondaryPageContent(
@@ -285,7 +286,8 @@ class _SourceVerificationPageState extends ConsumerState<SourceVerificationPage>
             runSpacing: AppSpacing.unit,
             children: [
               for (final filter in _ResultFilter.values)
-                ChoiceChip(
+                MotionChoiceChip(
+                  chipAnimationStyle: motionChipAnimationStyle(context),
                   label: Text(switch (filter) {
                     _ResultFilter.all => '全部',
                     _ResultFilter.issues => '异常 / 待处理',

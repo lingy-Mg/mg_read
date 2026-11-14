@@ -31,8 +31,9 @@ void main() {
         SystemChannels.platform,
         (call) async {
           if (call.method == 'Clipboard.setData') {
-            if (unavailable)
+            if (unavailable) {
               throw PlatformException(code: 'clipboard_unavailable');
+            }
             copied = (call.arguments as Map)['text'] as String?;
           }
           return null;

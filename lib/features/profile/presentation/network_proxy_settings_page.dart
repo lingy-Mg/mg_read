@@ -5,6 +5,7 @@
 /// remains delegated to the app-owned proxy boundaries below.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -57,7 +58,7 @@ final class _NetworkProxySettingsPageState extends ConsumerState<NetworkProxySet
   Widget build(BuildContext context) {
     final preferences = ref.watch(networkProxySettingsProvider);
     if (!_initialized) _load(preferences);
-    return Scaffold(
+    return MotionScaffold(
       resizeToAvoidBottomInset: true,
       body: SafeArea(
         bottom: false,
@@ -190,7 +191,7 @@ final class _NetworkProxySettingsPageState extends ConsumerState<NetworkProxySet
         if (applyWarning == null) {
           ScaffoldMessenger.of(context)
             ..hideCurrentSnackBar()
-            ..showSnackBar(const SnackBar(content: Text('代理设置已保存')));
+            ..showMotionSnackBar(context, const SnackBar(content: Text('代理设置已保存')));
         }
       }
     } on Object {
@@ -316,7 +317,7 @@ class _ProxyEndpointCard extends StatelessWidget {
         padding: const EdgeInsets.all(AppSpacing.comfortable),
         child: Column(
           children: <Widget>[
-            DropdownButtonFormField<NetworkProxyProtocol>(
+            MotionDropdownButtonFormField<NetworkProxyProtocol>(
               key: const Key('network-proxy-protocol'),
               initialValue: protocol,
               isExpanded: true,
@@ -338,7 +339,7 @@ class _ProxyEndpointCard extends StatelessWidget {
                   flex: tv ? 0 : 3,
                   fit: tv ? FlexFit.loose : FlexFit.tight,
                   child: TvTextInputNavigation(
-                    child: TextField(
+                    child: MotionTextField(
                       key: const Key('network-proxy-host'),
                       controller: hostController,
                       enabled: enabled,
@@ -354,7 +355,7 @@ class _ProxyEndpointCard extends StatelessWidget {
                   flex: tv ? 0 : 2,
                   fit: tv ? FlexFit.loose : FlexFit.tight,
                   child: TvTextInputNavigation(
-                    child: TextField(
+                    child: MotionTextField(
                       key: const Key('network-proxy-port'),
                       controller: portController,
                       enabled: enabled,
@@ -485,7 +486,7 @@ class _PlayerLocalProxyCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: AppSpacing.compact),
-            Switch(key: const Key('network-proxy-force-player-local'), value: value, onChanged: enabled ? onChanged : null),
+            MotionSwitch(key: const Key('network-proxy-force-player-local'), value: value, onChanged: enabled ? onChanged : null),
           ],
         ),
       ),
@@ -530,7 +531,7 @@ class _ProxyTrafficRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: AppSpacing.compact),
-            Switch(value: value, onChanged: enabled ? onChanged : null),
+            MotionSwitch(value: value, onChanged: enabled ? onChanged : null),
           ],
         ),
       ),
@@ -605,7 +606,10 @@ class _ProxySaveBar extends StatelessWidget {
               key: const Key('network-proxy-save'),
               onPressed: onPressed,
               icon: saving
-                  ? SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.onPrimary))
+                  ? SizedBox.square(
+                      dimension: 18,
+                      child: MotionCircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.onPrimary),
+                    )
                   : const Icon(Icons.check_rounded, size: 20),
               label: Text(saving ? '正在保存…' : '保存设置'),
               style: FilledButton.styleFrom(shape: const RoundedRectangleBorder(borderRadius: AppRadii.control)),

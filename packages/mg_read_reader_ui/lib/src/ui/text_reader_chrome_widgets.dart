@@ -33,7 +33,7 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Material(
+          MotionMaterial(
             key: const ValueKey<String>('reader-primary-top-bar'),
             color: _palette.panel,
             elevation: 0,
@@ -70,10 +70,12 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
                     child: ReaderAccessibleTooltip(
                       label: ReaderStrings.back,
                       onTap: _requestExit,
-                      child: IconButton(
-                        key: const ValueKey<String>('reader-back-action'),
-                        onPressed: _requestExit,
-                        icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                      child: MotionIconButtonSurface(
+                        child: IconButton(
+                          key: const ValueKey<String>('reader-back-action'),
+                          onPressed: _requestExit,
+                          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                        ),
                       ),
                     ),
                   ),
@@ -85,18 +87,20 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
                         ReaderAccessibleTooltip(
                           label: bookmarkLabel,
                           onTap: _toggleBookmark,
-                          child: IconButton(
-                            key: const ValueKey<String>(
-                              'reader-toolbar-bookmark',
-                            ),
-                            onPressed: _toggleBookmark,
-                            icon: Icon(
-                              _isCurrentBookmarked
-                                  ? Icons.bookmark_rounded
-                                  : Icons.bookmark_border_rounded,
-                              color: _isCurrentBookmarked
-                                  ? _palette.accent
-                                  : null,
+                          child: MotionIconButtonSurface(
+                            child: IconButton(
+                              key: const ValueKey<String>(
+                                'reader-toolbar-bookmark',
+                              ),
+                              onPressed: _toggleBookmark,
+                              icon: Icon(
+                                _isCurrentBookmarked
+                                    ? Icons.bookmark_rounded
+                                    : Icons.bookmark_border_rounded,
+                                color: _isCurrentBookmarked
+                                    ? _palette.accent
+                                    : null,
+                              ),
                             ),
                           ),
                         ),
@@ -104,12 +108,17 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
                           ReaderAccessibleTooltip(
                             label: ReaderStrings.refreshChapter,
                             onTap: refreshAction,
-                            child: IconButton(
-                              key: const ValueKey<String>(
-                                'reader-toolbar-refresh-chapter',
+                            child: MotionIconButtonSurface(
+                              child: IconButton(
+                                key: const ValueKey<String>(
+                                  'reader-toolbar-refresh-chapter',
+                                ),
+                                onPressed: refreshAction,
+                                icon: const Icon(
+                                  Icons.refresh_rounded,
+                                  size: 21,
+                                ),
                               ),
-                              onPressed: refreshAction,
-                              icon: const Icon(Icons.refresh_rounded, size: 21),
                             ),
                           ),
                         if (widget.extensions.chapterCacheCapability != null ||
@@ -215,7 +224,7 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
 
   Widget _buildBottomBar() {
     final double progress = _sliderPreview ?? _progress?.bookFraction ?? 0;
-    return Material(
+    return MotionMaterial(
       color: _palette.panel,
       elevation: 0,
       child: SafeArea(
@@ -255,7 +264,7 @@ extension _TextReaderChromeWidgets on _TextReaderViewState {
                     child: const Text(ReaderStrings.previousChapter),
                   ),
                   Expanded(
-                    child: Slider(
+                    child: MotionSlider(
                       label: _bookProgressLabel(progress),
                       semanticFormatterCallback: _bookProgressLabel,
                       value: progress.clamp(0, 1),

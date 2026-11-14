@@ -2,6 +2,7 @@
 /// 左侧导航/操作与右侧内容分别滚动；短屏保留可达性，长正文支持方向键逐屏阅读。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mg_read/app/app_theme.dart';
@@ -146,7 +147,7 @@ class _TvSourceScrollBodyState extends State<TvSourceScrollBody> {
         border: Border.all(color: _focused ? AppThemeTokens.of(context).accent : Colors.transparent, width: 2),
         borderRadius: AppRadii.detailControl,
       ),
-      child: Scrollbar(
+      child: MotionScrollbar(
         controller: _scroll,
         child: SingleChildScrollView(controller: _scroll, padding: const EdgeInsets.all(8), child: widget.child),
       ),

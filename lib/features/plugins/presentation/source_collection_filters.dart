@@ -44,7 +44,8 @@ class _CollectionFilters extends StatelessWidget {
             ),
           )
         else
-          ChoiceChip(
+          MotionChoiceChip(
+            chipAnimationStyle: motionChipAnimationStyle(context),
             key: Key('source-collection-kind-${value.name}'),
             label: Text(value.label),
             selected: kind == value,
@@ -80,7 +81,7 @@ class _CollectionFilters extends StatelessWidget {
               ),
             )
           else
-            SwitchListTile(
+            MotionSwitchListTile(
               key: const Key('source-collection-show-r18'),
               contentPadding: EdgeInsets.zero,
               title: const Text('显示 R18 数据源'),

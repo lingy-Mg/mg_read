@@ -14,6 +14,7 @@ library;
 // library-level public naming rules.
 // ignore_for_file: public_member_api_docs
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -119,7 +120,7 @@ final class VideoPlayerStage extends StatelessWidget {
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: _videoPlayerSystemUiStyle,
-      child: Theme(
+      child: MotionTheme(
         data: videoPlayerTheme(),
         child: VideoTvShortcuts(
           enabled: tvMode,
@@ -138,7 +139,7 @@ final class VideoPlayerStage extends StatelessWidget {
                   onInteractionStart();
                   onInteractionEnd();
                 },
-                child: Scaffold(
+                child: MotionScaffold(
                   backgroundColor: videoPlayerBackground,
                   body: Stack(
                     fit: StackFit.expand,
@@ -224,23 +225,25 @@ final class VideoPlayerStage extends StatelessWidget {
                           alignment: Alignment.centerLeft,
                           child: SafeArea(
                             minimum: const EdgeInsets.only(left: 8),
-                            child: IconButton.filledTonal(
-                              key: const Key('video-player-controls-lock'),
-                              tooltip: snapshot.controlsLocked
-                                  ? '解锁手势'
-                                  : '锁定手势',
-                              onPressed: () => unawaited(
-                                onControlsLocked(!snapshot.controlsLocked),
-                              ),
-                              style: IconButton.styleFrom(
-                                backgroundColor: const Color(0xA305070A),
-                                foregroundColor: videoPlayerForeground,
-                              ),
-                              icon: Icon(
-                                snapshot.controlsLocked
-                                    ? Icons.lock_rounded
-                                    : Icons.lock_open_rounded,
-                                size: 20,
+                            child: MotionIconButtonSurface(
+                              child: IconButton.filledTonal(
+                                key: const Key('video-player-controls-lock'),
+                                tooltip: snapshot.controlsLocked
+                                    ? '解锁手势'
+                                    : '锁定手势',
+                                onPressed: () => unawaited(
+                                  onControlsLocked(!snapshot.controlsLocked),
+                                ),
+                                style: IconButton.styleFrom(
+                                  backgroundColor: const Color(0xA305070A),
+                                  foregroundColor: videoPlayerForeground,
+                                ),
+                                icon: Icon(
+                                  snapshot.controlsLocked
+                                      ? Icons.lock_rounded
+                                      : Icons.lock_open_rounded,
+                                  size: 20,
+                                ),
                               ),
                             ),
                           ),

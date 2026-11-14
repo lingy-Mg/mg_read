@@ -42,7 +42,9 @@ class _ActionFeedbackBanner extends StatelessWidget {
               Expanded(
                 child: Text(message, style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onPrimaryContainer)),
               ),
-              IconButton(tooltip: '关闭提示', onPressed: onDismiss, icon: const Icon(Icons.close_rounded)),
+              MotionIconButtonSurface(
+                child: IconButton(tooltip: '关闭提示', onPressed: onDismiss, icon: const Icon(Icons.close_rounded)),
+              ),
             ],
           ),
         ),

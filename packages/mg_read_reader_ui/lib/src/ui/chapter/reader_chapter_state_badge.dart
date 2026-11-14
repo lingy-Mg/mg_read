@@ -5,6 +5,7 @@
 /// their icon pair scales down only when it cannot fit that target.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 
 import '../../api/models.dart';
@@ -130,7 +131,7 @@ class ReaderChapterStateBadge extends StatelessWidget {
         loading
             ? SizedBox.square(
                 dimension: 15,
-                child: CircularProgressIndicator(
+                child: MotionCircularProgressIndicator(
                   strokeWidth: 1.7,
                   color: availabilityStyle.$3,
                 ),
@@ -149,7 +150,7 @@ class ReaderChapterStateBadge extends StatelessWidget {
       label: '${semantics.join('，')}，${ReaderChapterStateStrings.retry}',
       tooltipMessage: ReaderChapterStateStrings.retry,
       onTap: onRetry!,
-      child: Material(
+      child: MotionMaterial(
         type: MaterialType.transparency,
         child: InkWell(
           borderRadius: BorderRadius.circular(10),

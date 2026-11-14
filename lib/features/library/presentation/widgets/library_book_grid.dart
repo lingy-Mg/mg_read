@@ -13,6 +13,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
@@ -134,7 +135,7 @@ class LibraryBookGridItem extends StatelessWidget {
       button: true,
       liveRegion: isPreparing,
       label: isPreparing ? '${data.title}，正在准备阅读内容' : _semanticLabel,
-      child: Material(
+      child: MotionMaterial(
         color: Colors.transparent,
         child: InkWell(
           key: ValueKey<String>('library-book-card-${data.id}'),
@@ -214,7 +215,10 @@ class LibraryBookGridItem extends StatelessWidget {
                         child: DecoratedBox(
                           decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.22), borderRadius: AppRadii.bookCover),
                           child: const Center(
-                            child: SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                            child: SizedBox.square(
+                              dimension: 24,
+                              child: MotionCircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            ),
                           ),
                         ),
                       ),
@@ -419,19 +423,21 @@ class _GridBookMenuState extends State<_GridBookMenu> {
               onSelected: () => widget.onAction!(action),
             ),
         ],
-        triggerBuilder: (BuildContext context, VoidCallback onPressed) => Tooltip(
+        triggerBuilder: (BuildContext context, VoidCallback onPressed) => MotionTooltip(
           message: '书籍更多操作',
           child: InkWell(onTap: onPressed, customBorder: const CircleBorder(), child: trigger),
         ),
       );
     } else {
-      button = IconButton(
-        tooltip: '书籍更多操作',
-        onPressed: widget.onMore,
-        padding: EdgeInsets.zero,
-        iconSize: 17,
-        style: IconButton.styleFrom(minimumSize: const Size.square(32), fixedSize: const Size.square(32)),
-        icon: trigger,
+      button = MotionIconButtonSurface(
+        child: IconButton(
+          tooltip: '书籍更多操作',
+          onPressed: widget.onMore,
+          padding: EdgeInsets.zero,
+          iconSize: 17,
+          style: IconButton.styleFrom(minimumSize: const Size.square(32), fixedSize: const Size.square(32)),
+          icon: trigger,
+        ),
       );
     }
 

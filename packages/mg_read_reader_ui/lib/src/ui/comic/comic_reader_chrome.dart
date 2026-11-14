@@ -157,7 +157,7 @@ extension _ComicReaderChrome on _ComicReaderViewState {
             ? const SizedBox(
                 width: 24,
                 height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: MotionCircularProgressIndicator(strokeWidth: 2),
               )
             : TextButton(
                 onPressed: () => unawaited(_loadNextAdjacent(entry.index)),
@@ -232,44 +232,50 @@ extension _ComicReaderChrome on _ComicReaderViewState {
                                 onPressed: () => unawaited(_addBookmark()),
                               ),
                               if (widget.bookRefreshCapability != null)
-                                PopupMenuButton<_ComicOverflowAction>(
-                                  key: _comicOverflowMenuKey,
-                                  tooltip: ComicReaderStrings.more,
-                                  icon: const Icon(Icons.more_vert_rounded),
-                                  onSelected: (_ComicOverflowAction action) {
-                                    switch (action) {
-                                      case _ComicOverflowAction.refreshBook:
-                                        unawaited(_refreshBookFromHost());
-                                    }
-                                  },
-                                  itemBuilder: (BuildContext context) =>
-                                      <PopupMenuEntry<_ComicOverflowAction>>[
-                                        PopupMenuItem<_ComicOverflowAction>(
-                                          value:
-                                              _ComicOverflowAction.refreshBook,
-                                          enabled: !_bookRefreshLoading,
-                                          child: Row(
-                                            children: <Widget>[
-                                              _bookRefreshLoading
-                                                  ? const SizedBox.square(
-                                                      dimension: 20,
-                                                      child:
-                                                          CircularProgressIndicator(
-                                                            strokeWidth: 2,
-                                                          ),
-                                                    )
-                                                  : const Icon(
-                                                      Icons.sync_rounded,
-                                                      size: 20,
-                                                    ),
-                                              const SizedBox(width: 12),
-                                              const Text(
-                                                ComicReaderStrings.refreshBook,
-                                              ),
-                                            ],
+                                MotionPopupMenuSurface(
+                                  child: PopupMenuButton<_ComicOverflowAction>(
+                                    popUpAnimationStyle: motionDisabled(context)
+                                        ? AnimationStyle.noAnimation
+                                        : null,
+                                    key: _comicOverflowMenuKey,
+                                    tooltip: ComicReaderStrings.more,
+                                    icon: const Icon(Icons.more_vert_rounded),
+                                    onSelected: (_ComicOverflowAction action) {
+                                      switch (action) {
+                                        case _ComicOverflowAction.refreshBook:
+                                          unawaited(_refreshBookFromHost());
+                                      }
+                                    },
+                                    itemBuilder: (BuildContext context) =>
+                                        <PopupMenuEntry<_ComicOverflowAction>>[
+                                          PopupMenuItem<_ComicOverflowAction>(
+                                            value: _ComicOverflowAction
+                                                .refreshBook,
+                                            enabled: !_bookRefreshLoading,
+                                            child: Row(
+                                              children: <Widget>[
+                                                _bookRefreshLoading
+                                                    ? const SizedBox.square(
+                                                        dimension: 20,
+                                                        child:
+                                                            MotionCircularProgressIndicator(
+                                                              strokeWidth: 2,
+                                                            ),
+                                                      )
+                                                    : const Icon(
+                                                        Icons.sync_rounded,
+                                                        size: 20,
+                                                      ),
+                                                const SizedBox(width: 12),
+                                                const Text(
+                                                  ComicReaderStrings
+                                                      .refreshBook,
+                                                ),
+                                              ],
+                                            ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                  ),
                                 ),
                             ],
                           ),
@@ -371,12 +377,14 @@ extension _ComicReaderChrome on _ComicReaderViewState {
     required String label,
     required VoidCallback onPressed,
   }) {
-    return IconButton(
-      key: key,
-      constraints: const BoxConstraints.tightFor(width: 48, height: 48),
-      tooltip: label,
-      icon: Icon(icon),
-      onPressed: onPressed,
+    return MotionIconButtonSurface(
+      child: IconButton(
+        key: key,
+        constraints: const BoxConstraints.tightFor(width: 48, height: 48),
+        tooltip: label,
+        icon: Icon(icon),
+        onPressed: onPressed,
+      ),
     );
   }
 
@@ -428,7 +436,10 @@ extension _ComicReaderChrome on _ComicReaderViewState {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            CircularProgressIndicator(color: palette.accent, strokeWidth: 2),
+            MotionCircularProgressIndicator(
+              color: palette.accent,
+              strokeWidth: 2,
+            ),
             const SizedBox(height: 16),
             Text(
               ComicReaderStrings.loading,

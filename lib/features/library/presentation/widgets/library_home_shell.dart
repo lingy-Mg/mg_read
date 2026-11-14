@@ -14,6 +14,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -136,7 +137,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return MotionScaffold(
       extendBody: true,
       body: Align(
         alignment: Alignment.topCenter,
@@ -150,9 +151,9 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                 builder: (BuildContext context, BoxConstraints constraints) {
                   final bool useWidePagePadding = constraints.maxWidth >= AppSpacing.compactLayoutBreakpoint;
                   final double pagePadding = useWidePagePadding ? AppSpacing.widePagePadding : AppSpacing.compactPagePadding;
-                  return RefreshIndicator(
+                  return MotionRefreshIndicator(
                     onRefresh: _handleRefresh,
-                    child: Scrollbar(
+                    child: MotionScrollbar(
                       controller: _scrollController,
                       child: CustomScrollView(
                         key: const Key('library-home-content'),
@@ -245,7 +246,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
                     ),
                     if (widget.isRefreshing || _manualRefreshPending) ...<Widget>[
                       const SizedBox(height: AppSpacing.regular),
-                      Semantics(label: '正在刷新书架', child: const LinearProgressIndicator()),
+                      Semantics(label: '正在刷新书架', child: const MotionLinearProgressIndicator()),
                     ],
                     if (widget.errorNotice != null) ...<Widget>[const SizedBox(height: AppSpacing.comfortable), widget.errorNotice!],
                     if (_actionFeedback != null) ...<Widget>[
@@ -277,7 +278,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
           const SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.only(top: AppSpacing.comfortable),
-              child: Center(child: CircularProgressIndicator()),
+              child: Center(child: MotionCircularProgressIndicator()),
             ),
           )
         else ...<Widget>[
@@ -576,7 +577,8 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
       final bool isBlurred = !book.isCoverBlurred;
       final messenger = ScaffoldMessenger.of(context);
       messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(
+      messenger.showMotionSnackBar(
+        context,
         SnackBar(behavior: SnackBarBehavior.floating, content: Text(isBlurred ? '已模糊《${book.title}》的封面' : '已取消《${book.title}》的封面模糊')),
       );
     } catch (_) {
@@ -595,7 +597,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
       if (!mounted) return;
       final messenger = ScaffoldMessenger.of(context);
       messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(SnackBar(behavior: SnackBarBehavior.floating, content: Text('《${book.title}》已刷新')));
+      messenger.showMotionSnackBar(context, SnackBar(behavior: SnackBarBehavior.floating, content: Text('《${book.title}》已刷新')));
     } on Object catch (error) {
       if (!mounted) return;
       await showAppOperationErrorDialog(context, operation: '刷新书籍', error: error, guidance: '书架已保留刷新前的数据。请稍后重试。');
@@ -623,7 +625,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
       });
       final messenger = ScaffoldMessenger.of(context);
       messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(SnackBar(behavior: SnackBarBehavior.floating, content: Text('已将《${book.title}》设为隐私书籍')));
+      messenger.showMotionSnackBar(context, SnackBar(behavior: SnackBarBehavior.floating, content: Text('已将《${book.title}》设为隐私书籍')));
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -654,7 +656,7 @@ class _LibraryHomeShellState extends State<LibraryHomeShell> {
       });
       final messenger = ScaffoldMessenger.of(context);
       messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(SnackBar(behavior: SnackBarBehavior.floating, content: Text('已从书架删除《${book.title}》')));
+      messenger.showMotionSnackBar(context, SnackBar(behavior: SnackBarBehavior.floating, content: Text('已从书架删除《${book.title}》')));
     } catch (_) {
       if (!mounted) return;
       setState(() {

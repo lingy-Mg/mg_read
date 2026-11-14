@@ -6,6 +6,7 @@
 /// Pointer hosts use a bounded dialog; touch hosts use a sheet in the same theme.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:mg_read/shared/presentation/motion/app_motion.dart';
 import 'dart:async';
 
@@ -28,12 +29,14 @@ final class VideoPlayOnTvAction extends ConsumerWidget {
   const VideoPlayOnTvAction({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => IconButton(
-    key: const Key('video-play-on-tv'),
-    onPressed: () => unawaited(_chooseAndPlay(context, ref)),
-    tooltip: '在电视上播放',
-    icon: const Icon(Icons.cast_rounded, size: 21),
-    style: IconButton.styleFrom(foregroundColor: Colors.white, visualDensity: VisualDensity.compact),
+  Widget build(BuildContext context, WidgetRef ref) => MotionIconButtonSurface(
+    child: IconButton(
+      key: const Key('video-play-on-tv'),
+      onPressed: () => unawaited(_chooseAndPlay(context, ref)),
+      tooltip: '在电视上播放',
+      icon: const Icon(Icons.cast_rounded, size: 21),
+      style: IconButton.styleFrom(foregroundColor: Colors.white, visualDensity: VisualDensity.compact),
+    ),
   );
 }
 
@@ -49,16 +52,20 @@ Future<_TvTarget?> _showTvTargetPicker(BuildContext context, CompanionController
       context: context,
       animationStyle: AppMotion.overlayStyle(context),
       barrierColor: Colors.black54,
-      builder: (context) => Dialog(
-        backgroundColor: VideoTvPickerSheet.backgroundColor,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        clipBehavior: Clip.antiAlias,
-        child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 560), child: picker(context)),
+      builder: motionOverlayBuilder(
+        context,
+        (context) => MotionDialog(
+          backgroundColor: VideoTvPickerSheet.backgroundColor,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          clipBehavior: Clip.antiAlias,
+          child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 560), child: picker(context)),
+        ),
       ),
     );
   }
   return showModalBottomSheet<_TvTarget>(
+    enableDrag: !motionDisabled(context),
     context: context,
     sheetAnimationStyle: AppMotion.overlayStyle(context),
     isScrollControlled: true,
@@ -69,7 +76,7 @@ Future<_TvTarget?> _showTvTargetPicker(BuildContext context, CompanionController
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(12))),
     clipBehavior: Clip.antiAlias,
     constraints: const BoxConstraints(maxWidth: 560),
-    builder: picker,
+    builder: motionOverlayBuilder(context, picker),
   );
 }
 
@@ -85,7 +92,7 @@ Future<void> _chooseAndPlay(BuildContext context, WidgetRef ref) async {
       current.identity != content.identity ||
       current.groupId != content.groupId ||
       current.episodeId != content.episodeId) {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('当前视频已切换，请重新选择 TV。')));
+    ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('当前视频已切换，请重新选择 TV。')));
     return;
   }
   try {
@@ -107,7 +114,8 @@ Future<void> _chooseAndPlay(BuildContext context, WidgetRef ref) async {
       companionHandoffContentForTarget(phoneContent: latest, tvContent: service.remoteState?.content, tvStateFresh: !service.stale),
     );
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    ScaffoldMessenger.of(context).showMotionSnackBar(
+      context,
       SnackBar(
         content: Text(result.phase == CompanionCommandPhase.started ? '已在 ${service.selectedLabel} 开始播放' : companionErrorText(result.code)),
       ),
@@ -116,7 +124,7 @@ Future<void> _chooseAndPlay(BuildContext context, WidgetRef ref) async {
     if (!context.mounted) return;
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text(companionErrorText(error is CompanionFailure ? error.code : 'operation_failed'))));
+    ).showMotionSnackBar(context, SnackBar(content: Text(companionErrorText(error is CompanionFailure ? error.code : 'operation_failed'))));
   }
 }
 

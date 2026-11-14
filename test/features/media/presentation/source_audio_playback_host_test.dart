@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:mg_read_audio_player/mg_read_audio_player.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
 
@@ -163,7 +164,7 @@ void main() {
     final miniGradient = miniDecoration.gradient! as LinearGradient;
     final miniTokens = AppThemeTokens.of(tester.element(find.byKey(const Key('source-audio-mini-glass'))));
     expect(miniGradient.colors, <Color>[miniTokens.surface.withValues(alpha: 0.58), miniTokens.mutedSurface.withValues(alpha: 0.38)]);
-    expect(tester.widget<Material>(find.byKey(const Key('source-audio-mini-player'))).color, Colors.transparent);
+    expect(tester.widget<MotionMaterial>(find.byKey(const Key('source-audio-mini-player'))).color, Colors.transparent);
     expect(find.byKey(const Key('source-audio-player')), findsNothing);
     expect(backend.disposeCalls, 0);
     expect(service.controller, isNotNull);
@@ -298,7 +299,7 @@ void main() {
         await tester.tap(toggle);
         await tester.pump();
         expect(controller.snapshot.playing, isFalse);
-        expect(find.byTooltip('音频已暂停'), findsOneWidget);
+        expect(find.byWidgetPredicate((widget) => widget is MotionTooltip && widget.message == '音频已暂停'), findsOneWidget);
         await tester.tap(toggle);
         await tester.pump();
         expect(controller.snapshot.playing, isTrue);

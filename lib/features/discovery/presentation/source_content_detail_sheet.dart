@@ -16,6 +16,7 @@
 /// - 横向推荐列表允许触摸、手写笔、触控板和鼠标直接拖动。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -176,11 +177,14 @@ Future<void> showSourceContentDetailSheet(
       constraints: TvModeScope.isEnabled(context) ? const BoxConstraints(maxWidth: 1200) : null,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => FractionallySizedBox(
-        heightFactor: 0.92,
-        child: ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          child: detail,
+      builder: motionOverlayBuilder(
+        context,
+        (_) => FractionallySizedBox(
+          heightFactor: 0.92,
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            child: detail,
+          ),
         ),
       ),
     );
@@ -403,7 +407,7 @@ class _SourceDetailScreenState extends State<_SourceDetailScreen> {
     final Widget detailScreen = BookCoverSourceScope(
       pluginId: widget.pluginId,
       pluginVersion: widget.pluginVersion,
-      child: Scaffold(
+      child: MotionScaffold(
         body: SafeArea(
           child: Center(
             child: ConstrainedBox(
@@ -671,14 +675,14 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
         _isSavingToShelf = false;
         _shelfState = SourceDetailShelfState.alreadyAdded;
       });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_tvCollection ? '已加入收藏。' : '已加入书架。')));
+      ScaffoldMessenger.of(context).showMotionSnackBar(context, SnackBar(content: Text(_tvCollection ? '已加入收藏。' : '已加入书架。')));
     } on Object catch (error) {
       if (!mounted) return;
       setState(() => _isSavingToShelf = false);
       final message = error is BookshelfCapacityExceededException
           ? (_tvCollection ? '收藏已满，请先清理。' : '书架已满，请先清理书籍。')
           : (_tvCollection ? '暂时无法加入收藏，请稍后重试。' : '暂时无法加入书架，请稍后重试。');
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context).showMotionSnackBar(context, SnackBar(content: Text(message)));
     }
   }
 
@@ -697,11 +701,13 @@ class _SourceDetailViewState extends State<_SourceDetailView> {
         _isRemovingFromShelf = false;
         _shelfState = SourceDetailShelfState.canAdd;
       });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已从${_tvCollection ? '收藏' : '书架'}移出《${content.title}》')));
+      ScaffoldMessenger.of(
+        context,
+      ).showMotionSnackBar(context, SnackBar(content: Text('已从${_tvCollection ? '收藏' : '书架'}移出《${content.title}》')));
     } on Object {
       if (!mounted) return;
       setState(() => _isRemovingFromShelf = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_tvCollection ? '移出收藏失败，请稍后重试。' : '移出书架失败，请稍后重试。')));
+      ScaffoldMessenger.of(context).showMotionSnackBar(context, SnackBar(content: Text(_tvCollection ? '移出收藏失败，请稍后重试。' : '移出书架失败，请稍后重试。')));
     }
   }
 

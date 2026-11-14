@@ -3,6 +3,7 @@
 /// 历史关键词由本组件持有横向滚动控制器，保留滑动但不显示滚动条。
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:mg_read/shared/presentation/motion/app_content_transition.dart';
 import 'package:mgread_plugin_runtime/mgread_plugin_runtime.dart';
@@ -140,16 +141,18 @@ class _SearchHistoryRowState extends State<_SearchHistoryRow> {
             ),
           ),
           const SizedBox(width: AppSpacing.unit),
-          IconButton(
-            key: const Key('search-history-clear'),
-            tooltip: '清空搜索历史',
-            onPressed: widget.history.isEmpty ? null : widget.onHistoryCleared,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints.tightFor(
-              width: AppSpacing.searchHistoryChipHeight,
-              height: AppSpacing.searchHistoryChipHeight,
+          MotionIconButtonSurface(
+            child: IconButton(
+              key: const Key('search-history-clear'),
+              tooltip: '清空搜索历史',
+              onPressed: widget.history.isEmpty ? null : widget.onHistoryCleared,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(
+                width: AppSpacing.searchHistoryChipHeight,
+                height: AppSpacing.searchHistoryChipHeight,
+              ),
+              icon: const Icon(Icons.delete_outline_rounded, size: 20),
             ),
-            icon: const Icon(Icons.delete_outline_rounded, size: 20),
           ),
         ],
       ),
@@ -355,7 +358,11 @@ class _SearchInProgressState extends StatelessWidget {
           child: Center(
             child: Column(
               children: <Widget>[
-                const SizedBox(width: AppSpacing.section, height: AppSpacing.section, child: CircularProgressIndicator(strokeWidth: 2)),
+                const SizedBox(
+                  width: AppSpacing.section,
+                  height: AppSpacing.section,
+                  child: MotionCircularProgressIndicator(strokeWidth: 2),
+                ),
                 const SizedBox(height: AppSpacing.regular),
                 Text('正在搜索“$query”', style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: AppSpacing.unit),
@@ -457,7 +464,7 @@ class _SearchHistoryChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AppThemeTokens.of(context);
-    return Material(
+    return MotionMaterial(
       color: tokens.mutedSurface,
       borderRadius: AppRadii.control,
       child: InkWell(
@@ -533,30 +540,33 @@ class _ResultHeader extends StatelessWidget {
           children: <Widget>[
             Text('搜索结果', style: Theme.of(context).textTheme.titleMedium),
             const Spacer(),
-            PopupMenuButton<SearchResultSortOrder>(
-              key: const Key('search-result-sort'),
-              tooltip: '选择搜索结果排序',
-              onSelected: onSortOrderChanged,
-              itemBuilder: (context) => <PopupMenuEntry<SearchResultSortOrder>>[
-                for (final order in SearchResultSortOrder.values)
-                  PopupMenuItem<SearchResultSortOrder>(
-                    value: order,
-                    child: Row(
-                      children: <Widget>[
-                        SizedBox(width: 24, child: order == sortOrder ? const Icon(Icons.check_rounded, size: 18) : null),
-                        Text(order.label),
-                      ],
+            MotionPopupMenuSurface(
+              child: PopupMenuButton<SearchResultSortOrder>(
+                popUpAnimationStyle: motionDisabled(context) ? AnimationStyle.noAnimation : null,
+                key: const Key('search-result-sort'),
+                tooltip: '选择搜索结果排序',
+                onSelected: onSortOrderChanged,
+                itemBuilder: (context) => <PopupMenuEntry<SearchResultSortOrder>>[
+                  for (final order in SearchResultSortOrder.values)
+                    PopupMenuItem<SearchResultSortOrder>(
+                      value: order,
+                      child: Row(
+                        children: <Widget>[
+                          SizedBox(width: 24, child: order == sortOrder ? const Icon(Icons.check_rounded, size: 18) : null),
+                          Text(order.label),
+                        ],
+                      ),
                     ),
+                ],
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.unit, vertical: AppSpacing.unit),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Text(sortOrder.label, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText)),
+                      Icon(Icons.arrow_drop_down_rounded, color: tokens.mutedText),
+                    ],
                   ),
-              ],
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.unit, vertical: AppSpacing.unit),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Text(sortOrder.label, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: tokens.mutedText)),
-                    Icon(Icons.arrow_drop_down_rounded, color: tokens.mutedText),
-                  ],
                 ),
               ),
             ),
@@ -586,7 +596,7 @@ class _PartialSearchFailure extends StatelessWidget {
   final VoidCallback onRetry;
 
   @override
-  Widget build(BuildContext context) => Material(
+  Widget build(BuildContext context) => MotionMaterial(
     color: AppThemeTokens.of(context).mutedSurface,
     borderRadius: AppRadii.control,
     child: Padding(
@@ -606,7 +616,7 @@ class _InlineSearchFailure extends StatelessWidget {
   final AppError error;
   final VoidCallback onRetry;
   @override
-  Widget build(BuildContext context) => Material(
+  Widget build(BuildContext context) => MotionMaterial(
     color: Theme.of(context).colorScheme.errorContainer,
     borderRadius: AppRadii.control,
     child: Padding(
@@ -646,7 +656,7 @@ class _SearchResultMessage extends StatelessWidget {
         child: Column(
           children: <Widget>[
             if (loading)
-              const SizedBox(width: AppSpacing.section, height: AppSpacing.section, child: CircularProgressIndicator(strokeWidth: 2))
+              const SizedBox(width: AppSpacing.section, height: AppSpacing.section, child: MotionCircularProgressIndicator(strokeWidth: 2))
             else
               Icon(icon, size: AppSpacing.section, color: tokens.mutedText),
             const SizedBox(height: AppSpacing.regular),

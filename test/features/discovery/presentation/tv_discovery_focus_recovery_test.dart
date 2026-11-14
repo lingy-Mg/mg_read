@@ -90,7 +90,7 @@ void main() {
     expect(FocusManager.instance.primaryFocus, dialogFocus);
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byWidgetPredicate((widget) => widget is AlertDialog), findsNothing);
     expect(FocusManager.instance.primaryFocus, isNot(isA<FocusScopeNode>()));
     final restored = FocusManager.instance.primaryFocus;
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);

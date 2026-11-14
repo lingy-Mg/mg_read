@@ -11,6 +11,7 @@
 /// - Compact phones may scroll the cards, while completion remains reachable.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -35,6 +36,7 @@ Future<void> showAudioPlaybackSettingsSheet(
   AudioSettingsSection? initialSection,
   Future<void> Function(bool enabled)? onRememberPositionChanged,
 }) => showModalBottomSheet<void>(
+  enableDrag: !motionDisabled(context),
   context: context,
   sheetAnimationStyle: MediaQuery.disableAnimationsOf(context)
       ? AnimationStyle.noAnimation
@@ -42,14 +44,20 @@ Future<void> showAudioPlaybackSettingsSheet(
   isScrollControlled: true,
   backgroundColor: Colors.transparent,
   barrierColor: AudioPlayerColors.scrim,
-  builder: (sheetContext) => _AudioPlaybackSettingsSheet(
-    snapshot: snapshot,
-    controller: controller,
-    keepScreenOn: keepScreenOn,
-    onKeepScreenOnChanged: onKeepScreenOnChanged,
-    rememberPosition: rememberPosition,
-    initialSection: initialSection,
-    onRememberPositionChanged: onRememberPositionChanged,
+  builder: motionOverlayBuilder(
+    context,
+    (sheetContext) => MotionTheme(
+      data: Theme.of(sheetContext),
+      child: _AudioPlaybackSettingsSheet(
+        snapshot: snapshot,
+        controller: controller,
+        keepScreenOn: keepScreenOn,
+        onKeepScreenOnChanged: onKeepScreenOnChanged,
+        rememberPosition: rememberPosition,
+        initialSection: initialSection,
+        onRememberPositionChanged: onRememberPositionChanged,
+      ),
+    ),
   ),
 );
 
@@ -142,7 +150,7 @@ final class _AudioPlaybackSettingsSheetState
             top: Radius.circular(AudioPlayerMetrics.sheetRadius),
           ),
           tone: AudioSurfaceTone.strong,
-          child: Material(
+          child: MotionMaterial(
             color: Colors.transparent,
             child: Column(
               children: <Widget>[

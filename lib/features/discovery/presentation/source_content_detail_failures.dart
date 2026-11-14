@@ -57,7 +57,7 @@ class _DetailFailure extends StatelessWidget {
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 620),
-          child: Material(
+          child: MotionMaterial(
             key: const Key('source-content-sheet-failure'),
             color: colors.errorContainer,
             shape: RoundedRectangleBorder(

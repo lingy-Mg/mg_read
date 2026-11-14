@@ -6,14 +6,17 @@ Future<bool> _confirmTvFavoriteRemoval(BuildContext context, String title) async
     await showDialog<bool>(
       context: context,
       animationStyle: AppMotion.overlayStyle(context),
-      builder: (context) => TvDiscoveryDialog(
-        key: const Key('tv-favorite-removal-confirmation'),
-        title: '移出收藏',
-        actions: [
-          TvFocusable(autofocus: true, onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          TvFocusable(onPressed: () => Navigator.pop(context, true), child: const Text('移出')),
-        ],
-        child: Text('确定要将《$title》移出收藏吗？'),
+      builder: motionOverlayBuilder(
+        context,
+        (context) => TvDiscoveryDialog(
+          key: const Key('tv-favorite-removal-confirmation'),
+          title: '移出收藏',
+          actions: [
+            TvFocusable(autofocus: true, onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+            TvFocusable(onPressed: () => Navigator.pop(context, true), child: const Text('移出')),
+          ],
+          child: Text('确定要将《$title》移出收藏吗？'),
+        ),
       ),
     ) ??
     false;

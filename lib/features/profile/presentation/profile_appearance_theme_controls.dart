@@ -90,7 +90,7 @@ class _ThemePaletteCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AppThemeTokens.of(context);
-    return Material(
+    return MotionMaterial(
       color: tokens.surface,
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(

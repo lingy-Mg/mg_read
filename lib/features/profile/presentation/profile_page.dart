@@ -12,6 +12,7 @@
 ///
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'package:flutter/material.dart';
 import 'package:mg_read/shared/presentation/tv_mode_scope.dart';
 
@@ -96,7 +97,7 @@ class _ProfilePageState extends State<ProfilePage> {
     if (widget.readingStats case final stats?) {
       data = data.withReadingStats(stats);
     }
-    return Scaffold(
+    return MotionScaffold(
       extendBody: !TvModeScope.isEnabled(context),
       body: AppPageBackdrop(
         style: AppPageBackdropStyle.profile,
@@ -111,7 +112,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   constraints: const BoxConstraints(maxWidth: AppSpacing.contentMaxWidth),
                   child: SizedBox(
                     width: double.infinity,
-                    child: Scrollbar(
+                    child: MotionScrollbar(
                       controller: _scrollController,
                       thumbVisibility: false,
                       thickness: AppSpacing.unit - 1,
@@ -299,9 +300,9 @@ class _ProfileTopBarAction extends StatelessWidget {
       button: true,
       label: tooltip,
       onTap: onPressed,
-      child: Tooltip(
+      child: MotionTooltip(
         message: tooltip,
-        child: Material(
+        child: MotionMaterial(
           color: Colors.transparent,
           child: InkResponse(
             onTap: onPressed,
@@ -372,7 +373,9 @@ class _ProfileActionFeedback extends StatelessWidget {
               Expanded(
                 child: Text(message, style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onPrimaryContainer)),
               ),
-              IconButton(tooltip: '关闭提示', onPressed: onDismiss, icon: const Icon(Icons.close_rounded)),
+              MotionIconButtonSurface(
+                child: IconButton(tooltip: '关闭提示', onPressed: onDismiss, icon: const Icon(Icons.close_rounded)),
+              ),
             ],
           ),
         ),

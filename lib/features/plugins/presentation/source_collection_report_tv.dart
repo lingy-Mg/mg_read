@@ -19,7 +19,7 @@ class _TvSourceCollectionReview extends StatelessWidget {
   final List<Widget> actions;
 
   @override
-  Widget build(BuildContext context) => Dialog.fullscreen(
+  Widget build(BuildContext context) => MotionDialog.fullscreen(
     child: SafeArea(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),

@@ -1,3 +1,4 @@
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -76,7 +77,10 @@ final class _AppFatalErrorDialogHostState extends State<AppFatalErrorDialogHost>
         context: navigator.context,
         animationStyle: AppMotion.overlayStyle(navigator.context),
         barrierDismissible: false,
-        builder: (BuildContext context) => _FatalErrorDialog(report: report, onCopy: () => widget.copyReport(report.copyPayload)),
+        builder: motionOverlayBuilder(
+          navigator.context,
+          (BuildContext context) => _FatalErrorDialog(report: report, onCopy: () => widget.copyReport(report.copyPayload)),
+        ),
       );
     } catch (_) {
       // A broken overlay must not replace the original application failure.
@@ -106,7 +110,7 @@ final class _FatalErrorDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = theme.extension<AppThemeTokens>();
-    return AlertDialog(
+    return MotionAlertDialog(
       title: const Text('应用遇到严重错误'),
       content: SelectionArea(
         child: Text(

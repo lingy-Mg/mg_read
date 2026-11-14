@@ -281,7 +281,7 @@ void _registerLibraryHomeShellBasics() {
     await settleWidgetImages(tester);
     await tester.tap(find.byKey(Key('library-grid-book-action-${completedCard.data.id}-delete')));
     await settleWidgetImages(tester);
-    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.byWidgetPredicate((widget) => widget is AlertDialog), findsOneWidget);
     await tester.tap(find.widgetWithText(FilledButton, '删除'));
     await tester.pump(AppMotion.destinationTransition);
     await settleWidgetImages(tester);
@@ -375,7 +375,7 @@ void _registerLibraryHomeShellBasics() {
     await tester.pumpWidget(_host(disableAnimations: true));
     await settleWidgetImages(tester);
 
-    await tester.tap(find.byTooltip('更多操作'));
+    await tester.tap(find.byKey(const Key('library-top-overflow-trigger')));
     await tester.pump();
     expect(find.byKey(const Key('library-top-overflow-menu')), findsOneWidget);
 
@@ -460,7 +460,7 @@ void _registerLibraryHomeShellBasics() {
     await tester.pump();
     await tester.pump(AppMotion.destinationTransition);
 
-    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.byWidgetPredicate((widget) => widget is AlertDialog), findsOneWidget);
     expect(find.text('刷新书籍失败'), findsOneWidget);
     expect(find.text('Bad state: source returned HTTP 503'), findsOneWidget);
     expect(find.byKey(const Key('app-operation-error-copy')), findsOneWidget);

@@ -109,6 +109,26 @@ void main() {
     expect(requestedContent?.title, '大道朝天');
   });
 
+  testWidgets('recommendations stop at release without inertia in no-animation mode', (tester) async {
+    await _setViewport(tester, const Size(390, 900));
+    await tester.pumpWidget(const _DetailGoldenHost(useReference: true, disableAnimations: true));
+    await tester.pumpAndSettle();
+    final recommendations = find.byKey(const Key('source-detail-recommendations-scroll'));
+    await tester.scrollUntilVisible(recommendations, 280, scrollable: _detailVerticalScrollableFinder());
+    await tester.ensureVisible(recommendations);
+    await tester.pumpAndSettle();
+    final horizontal = find.descendant(of: recommendations, matching: find.byType(Scrollable));
+    final position = tester.state<ScrollableState>(horizontal).position;
+    await tester.fling(horizontal, const Offset(-100, 0), 1200);
+    await tester.pump();
+    final releasedAt = position.pixels;
+    expect(releasedAt, greaterThan(0));
+    expect(releasedAt, lessThan(position.maxScrollExtent));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(position.pixels, releasedAt);
+    expect(position.isScrollingNotifier.value, isFalse);
+  });
+
   testWidgets('reveals more chapters locally without another source request', (WidgetTester tester) async {
     await _setViewport(tester, const Size(390, 900));
     final gateway = _GoldenDetailGateway(catalogItemCount: 22);
@@ -207,6 +227,7 @@ class _DetailGoldenHost extends StatelessWidget {
     this.useReference = false,
     this.includeInitialContent = true,
     this.appTheme,
+    this.disableAnimations = false,
     this.onRecommendationRequested,
     this.onCopyFailure,
   });
@@ -215,6 +236,7 @@ class _DetailGoldenHost extends StatelessWidget {
   final bool useReference;
   final bool includeInitialContent;
   final ThemeData? appTheme;
+  final bool disableAnimations;
   final SourceRecommendationRequested? onRecommendationRequested;
   final SourceDetailFailureCopy? onCopyFailure;
 
@@ -226,7 +248,11 @@ class _DetailGoldenHost extends StatelessWidget {
     builder: (BuildContext context, Widget? child) {
       final MediaQueryData mediaQuery = MediaQuery.of(context);
       return MediaQuery(
-        data: mediaQuery.copyWith(padding: const EdgeInsets.only(top: 24), viewPadding: const EdgeInsets.only(top: 24)),
+        data: mediaQuery.copyWith(
+          padding: const EdgeInsets.only(top: 24),
+          viewPadding: const EdgeInsets.only(top: 24),
+          disableAnimations: disableAnimations,
+        ),
         child: child ?? const SizedBox.shrink(),
       );
     },

@@ -15,7 +15,7 @@ class DiscoveryEditorsChoiceCard extends StatelessWidget {
     return Semantics(
       button: true,
       label: '打开书籍：${data.title}',
-      child: Material(
+      child: MotionMaterial(
         color: Colors.transparent,
         child: InkWell(
           key: const Key('discovery-editors-choice'),

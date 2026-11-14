@@ -45,7 +45,7 @@ extension _DataSourceImportFlow on _DataSourceContentState {
             .read(pluginRuntimeSourceImportProvider.notifier)
             .importLocalPlugin(native: choice == DataSourceImportChoice.native);
         if (!mounted || !imported) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('数据源已添加。')));
+        ScaffoldMessenger.of(context).showMotionSnackBar(context, const SnackBar(content: Text('数据源已添加。')));
       }
     } on Object catch (error) {
       if (!mounted) return;

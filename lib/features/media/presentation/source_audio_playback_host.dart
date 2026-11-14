@@ -13,6 +13,7 @@
 /// - Mini-player bounds include scaled bar text and fixed square touch targets.
 library;
 
+import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -289,7 +290,7 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
         const ModalBarrier(key: Key('audio-background-exit-barrier'), dismissible: false, color: Colors.black54),
         SafeArea(
           child: Center(
-            child: AlertDialog(
+            child: MotionAlertDialog(
               key: const Key('audio-background-exit-dialog'),
               title: const Text('是否继续播放？'),
               content: Column(
@@ -298,7 +299,7 @@ final class _ActiveSourceAudioPlaybackHostState extends ConsumerState<_ActiveSou
                 children: <Widget>[
                   const Text('继续后可从应用内播放条恢复；Android 也可从系统媒体通知控制。'),
                   const SizedBox(height: AppSpacing.compact),
-                  CheckboxListTile(
+                  MotionCheckboxListTile(
                     key: const Key('audio-background-remember-choice'),
                     contentPadding: EdgeInsets.zero,
                     controlAffinity: ListTileControlAffinity.leading,
@@ -583,7 +584,7 @@ final class _SourceAudioMiniPlayerState extends State<_SourceAudioMiniPlayer> {
                   ),
                   border: Border.all(color: foreground.withValues(alpha: 0.12)),
                 ),
-                child: Material(
+                child: MotionMaterial(
                   key: const Key('source-audio-mini-player'),
                   color: Colors.transparent,
                   borderRadius: AppRadii.detailControl,
