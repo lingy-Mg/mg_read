@@ -5,7 +5,8 @@
 ## CI 耗时与缓存
 
 桌面 job 只编译一次 Runtime，再运行 `test:compiled` / `test:bun:compiled`；本地 `test` / `test:bun`
-仍会先 build。Flutter 收尾检查只运行一次 Final，包含格式、全仓分析、源码规模和原有直接测试。
+仍会先 build。Flutter 日常检查仅处理传入的 Dart 文件和直接测试，不附带全仓分析或源码行数门槛；
+完整分析与测试通过 `tools/run_flutter_checks.ps1 -Mode Full` 显式执行。
 Windows 使用仓库随固定 Node 提供的 npm，不重复安装未使用的全局 npm。
 Windows 固定 npm 的依赖 `dist` 文件必须随仓库跟踪，不能依赖开发机上被忽略的文件；这些开发文件不进入发布包。
 macOS 代理回归保留整个 127/8 范围的测试地址：CI 临时执行 `sudo ifconfig lo0 alias 127.173.137.161`，

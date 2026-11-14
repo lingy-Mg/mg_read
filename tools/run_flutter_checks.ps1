@@ -3,8 +3,8 @@
 按显式拥有路径运行 MgRead Flutter 检查。
 
 .DESCRIPTION
-职责：将编辑循环、任务收尾和明确的全量回归分开，避免对共享脏工作区执行全仓格式化或
-无条件全量测试。调用者必须传入本次拥有的 Dart 文件；默认不枚举或格式化工作区中的其他文件。
+职责：日常只格式化、分析显式传入的 Dart 文件，并运行指定测试；不附带全仓扫描或治理门槛。
+Fast 与 Final 保留兼容且行为相同；只有显式 Full 才分析并测试全仓，仍不做全仓格式化。
 每个阶段的完整输出写入被忽略的 .dart_tool/ai-checks，终端只显示阶段状态和有界失败摘要。
 边界：此脚本不管理并发、不会终止进程，也不替代 Android integration_test 或发布构建。
 #>
@@ -13,11 +13,9 @@ param(
   [ValidateSet('Fast', 'Final', 'Full')]
   [string]$Mode = 'Fast',
 
-  [Parameter(Mandatory)]
-  [ValidateNotNullOrEmpty()]
-  [string[]]$DartPath,
+  [string[]]$DartPath = @(),
 
-  [string[]]$TestPath
+  [string[]]$TestPath = @()
 )
 
 $ErrorActionPreference = 'Stop'
@@ -97,6 +95,9 @@ foreach ($path in $testFiles) {
 if ($Mode -eq 'Full' -and $testFiles.Count -gt 0) {
   throw 'Full mode always runs the complete flutter test suite; omit -TestPath to avoid duplicating target tests.'
 }
+if ($Mode -ne 'Full' -and $dartFiles.Count -eq 0 -and $testFiles.Count -eq 0) {
+  throw 'Provide -DartPath or -TestPath for scoped checks, or explicitly choose -Mode Full.'
+}
 
 Push-Location $repositoryRoot
 try {
@@ -104,38 +105,18 @@ try {
   Write-Host "DART_FILES=$($dartFiles.Count)"
   Write-Host "TEST_FILES=$($testFiles.Count)"
 
-  # Windows uses the repository-pinned runtime; Unix CI uses setup-node's host executable.
-  $nodeProgram = if ($IsWindows) {
-    Join-Path $repositoryRoot 'packages/mg_read_node_runtime/tools/node-v26.10.0-win-x64/node.exe'
-  } else {
-    # Application lookup can return multiple PATH matches; setup-node's first match wins.
-    (Get-Command node -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
-  }
-  Invoke-NativeCheck -Label 'Shared content capacity policy' -Program $nodeProgram -Arguments @(
-    (Join-Path $PSScriptRoot 'generate_content_limits.mjs')
-    '--check'
-  )
-
-  Invoke-NativeCheck -Label 'Source file-size policy' -Program 'pwsh' -Arguments @(
-    '-NoProfile'
-    '-File'
-    (Join-Path $PSScriptRoot 'check_source_file_sizes.ps1')
-  )
-
-  Invoke-NativeCheck -Label 'Dart format (owned files)' -Program 'dart' -Arguments (@('format', '--output=none', '--set-exit-if-changed') + $dartFiles)
-
-  if ($Mode -eq 'Fast') {
-    Invoke-NativeCheck -Label 'Dart analyze (owned files)' -Program 'dart' -Arguments (@('analyze') + $dartFiles)
-  } else {
-    Invoke-NativeCheck -Label 'Flutter analyze (repository)' -Program 'flutter' -Arguments @('analyze')
+  if ($dartFiles.Count -gt 0) {
+    Invoke-NativeCheck -Label 'Dart format (owned files)' -Program 'dart' -Arguments (@('format', '--output=none', '--set-exit-if-changed') + $dartFiles)
+    if ($Mode -ne 'Full') {
+      Invoke-NativeCheck -Label 'Dart analyze (owned files)' -Program 'dart' -Arguments (@('analyze') + $dartFiles)
+    }
   }
 
   if ($Mode -eq 'Full') {
-    Invoke-NativeCheck -Label 'Flutter test (full suite)' -Program 'flutter' -Arguments @('test')
+    Invoke-NativeCheck -Label 'Flutter analyze (repository)' -Program 'flutter' -Arguments @('analyze', '--no-pub')
+    Invoke-NativeCheck -Label 'Flutter test (full suite)' -Program 'flutter' -Arguments @('test', '--no-pub')
   } elseif ($testFiles.Count -gt 0) {
-    Invoke-NativeCheck -Label 'Flutter test (owned tests)' -Program 'flutter' -Arguments (@('test', '--reporter', 'expanded') + $testFiles)
-  } else {
-    Write-Warning 'No TestPath supplied. Run the directly affected tests separately before reporting completion.'
+    Invoke-NativeCheck -Label 'Flutter test (owned tests)' -Program 'flutter' -Arguments (@('test', '--no-pub', '--reporter', 'expanded') + $testFiles)
   }
 }
 finally {

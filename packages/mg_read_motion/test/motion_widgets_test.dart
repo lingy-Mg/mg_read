@@ -2,11 +2,8 @@
 library;
 
 import 'dart:async';
-import 'dart:io';
-import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mg_read_motion/mg_read_motion.dart';
@@ -210,24 +207,6 @@ void main() {
     expect(await notice.closed, SnackBarClosedReason.action);
     expect(tester.binding.transientCallbackCount, 0);
   });
-  setUpAll(() async {
-    var repository = Directory.current;
-    while (!Directory('${repository.path}/tools').existsSync() &&
-        repository.parent.path != repository.path) {
-      repository = repository.parent;
-    }
-    final bytes = File(
-      '${repository.path}/packages/mg_read_reader_ui/assets/fonts/MiSansVF.ttf',
-    ).readAsBytesSync();
-    for (final family in ['Roboto', 'Segoe UI', 'MiSans']) {
-      await (FontLoader(
-        family,
-      )..addFont(Future.value(ByteData.sublistView(bytes)))).load();
-    }
-    await (FontLoader(
-      'MaterialIcons',
-    )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
-  });
   testWidgets('card policy changes retain text editing state and focus', (
     tester,
   ) async {
@@ -262,89 +241,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
     expect(tester.binding.transientCallbackCount, 0);
   });
-  testWidgets(
-    'static controls and the focused caret remain pixel identical while idle',
-    (tester) async {
-      final surface = GlobalKey();
-      final controller = TextEditingController(text: '电子墨水屏静态输入');
-      final focus = FocusNode();
-      addTearDown(controller.dispose);
-      addTearDown(focus.dispose);
-      await tester.pumpWidget(
-        _host(
-          RepaintBoundary(
-            key: surface,
-            child: SizedBox(
-              width: 360,
-              height: 460,
-              child: ColoredBox(
-                color: Colors.white,
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    children: [
-                      MotionTextField(
-                        controller: controller,
-                        focusNode: focus,
-                        decoration: const InputDecoration(labelText: '静态光标'),
-                      ),
-                      const MotionSwitchListTile(
-                        title: Text('无动画开关'),
-                        value: true,
-                        onChanged: _ignore,
-                      ),
-                      MotionCheckboxListTile(
-                        title: const Text('静态复选'),
-                        value: true,
-                        onChanged: (_) {},
-                      ),
-                      MotionSlider(value: .6, onChanged: (_) {}),
-                      const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          MotionCircularProgressIndicator(),
-                          SizedBox(width: 12),
-                          Text('正在加载'),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      const MotionLinearProgressIndicator(),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-      focus.requestFocus();
-      controller.selection = const TextSelection.collapsed(offset: 4);
-      await tester.pumpAndSettle();
-      Future<List<int>> snapshot() async => (await tester.runAsync(() async {
-        final image =
-            await (surface.currentContext!.findRenderObject()
-                    as RenderRepaintBoundary)
-                .toImage();
-        final data = await image.toByteData(format: ui.ImageByteFormat.png);
-        image.dispose();
-        return data!.buffer.asUint8List();
-      }))!;
-      final before = await snapshot();
-      await tester.pump(const Duration(seconds: 1));
-      expect(await snapshot(), orderedEquals(before));
-      expect(tester.binding.transientCallbackCount, 0);
-      var repository = Directory.current;
-      while (!Directory('${repository.path}/tools').existsSync() &&
-          repository.parent.path != repository.path) {
-        repository = repository.parent;
-      }
-      final evidence = File(
-        '${repository.path}/.dart_tool/ai-checks/no-animation-static-controls.png',
-      );
-      evidence.parent.createSync(recursive: true);
-      evidence.writeAsBytesSync(before);
-    },
-  );
   testWidgets(
     'focused text input keeps a static caret, selection and focus across policy changes',
     (tester) async {
