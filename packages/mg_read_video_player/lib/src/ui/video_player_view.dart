@@ -47,6 +47,7 @@ final class VideoPlayerView extends StatefulWidget {
     this.controlsAutoHideDelay = const Duration(seconds: 3),
     this.firstFrameTimeout = const Duration(seconds: 25),
     this.topRightAction,
+    this.tvAction,
     super.key,
   });
 
@@ -100,6 +101,9 @@ final class VideoPlayerView extends StatefulWidget {
   /// Use an icon button. It shares chrome visibility and gesture locking, and
   /// is omitted in TV mode.
   final Widget? topRightAction;
+
+  /// Optional host action presented in the TV playback control band.
+  final VideoPlayerTvAction? tvAction;
 
   @override
   State<VideoPlayerView> createState() => _VideoPlayerViewState();

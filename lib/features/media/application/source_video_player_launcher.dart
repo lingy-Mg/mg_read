@@ -10,6 +10,8 @@
 /// User decoder/output overrides are also sampled once; rebuilds never replace
 /// the live player's native configuration.
 /// Covered routes cannot reclaim the companion binding from a newer player.
+/// Download tasks outlive this route. Offline playback keeps a file lease until
+/// its route has been removed.
 library;
 
 import 'dart:async';
@@ -28,6 +30,7 @@ import 'package:mg_read/core/diagnostics/diagnostics.dart';
 import 'package:mg_read/core/settings/settings.dart';
 import 'package:mg_read/features/discovery/application/source_content_gateway.dart';
 import 'package:mg_read/features/media/application/source_audio_playback_service.dart';
+import 'package:mg_read/features/media/application/source_video_cache.dart';
 import 'package:mg_read/features/media/application/source_video_data_source.dart';
 import 'package:mg_read/features/media/application/source_video_audio_session_controller.dart';
 import 'package:mg_read/features/media/application/source_video_fullscreen_controller.dart';
@@ -35,6 +38,7 @@ import 'package:mg_read/features/media/application/source_video_playback_platfor
 import 'package:mg_read/features/media/application/source_video_preferences.dart';
 import 'package:mg_read/features/media/application/transient_source_video_playback_state_store.dart';
 import 'package:mg_read/features/media/presentation/media_entry_cover.dart';
+import 'package:mg_read/features/media/presentation/source_video_downloads_page.dart';
 import 'package:mg_read/features/network_proxy/application/flutter_network_proxy_manager.dart';
 import 'package:mg_read/features/network_proxy/application/network_proxy_settings.dart';
 import 'package:mg_read/features/lan_sync/application/device_identity_store.dart';
@@ -166,6 +170,10 @@ final class SourceVideoPlayerDestinationState extends State<SourceVideoPlayerDes
   final Completer<void> _closedCompleter = Completer<void>();
   int _generation = 0;
 
+  Future<Uri?> _findCachedEpisode(String contentId, String groupId, String episodeId) => widget.container
+      .read(sourceVideoCacheProvider)
+      .findPlaybackUri((pluginId: widget.detail.pluginId, contentId: contentId, groupId: groupId, episodeId: episodeId));
+
   @override
   void initState() {
     super.initState();
@@ -230,6 +238,7 @@ final class SourceVideoPlayerDestinationState extends State<SourceVideoPlayerDes
           // Force the player to resolve the real source catalog in that case.
           initialCatalog: widget.libraryItemId == null ? widget.initialCatalog : null,
           playbackGate: widget.playbackGate,
+          findCachedEpisode: privateContent ? null : _findCachedEpisode,
           adFilterEnabled: videoPreferences.adFilterEnabled,
         ),
         stateStore: TransientSourceVideoPlaybackStateStore(
@@ -387,6 +396,44 @@ final class SourceVideoPlayerDestinationState extends State<SourceVideoPlayerDes
     await _playerController.pause();
   }
 
+  Future<void> _showDownloadActions(SourceVideoPlayerSetup setup) async {
+    final snapshot = _playerController.snapshot;
+    final groupId = snapshot.activeGroupId;
+    final episodeId = snapshot.activeEpisodeId;
+    if (groupId == null || episodeId == null) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text('请先选择要下载的集数。')));
+      return;
+    }
+    final episode = snapshot.groups
+        .where((group) => group.id == groupId)
+        .firstOrNull
+        ?.episodes
+        .where((item) => item.id == episodeId)
+        .firstOrNull;
+    final detail = widget.detail;
+    final contentId = snapshot.contentId;
+    final source = SourceVideoDataSource(
+      gateway: setup.dataSource.gateway,
+      pluginId: detail.pluginId,
+      initialDetail: setup.dataSource.initialDetail,
+      initialCatalog: setup.dataSource.initialCatalog,
+      adFilterEnabled: setup.preferences.adFilterEnabled,
+    );
+    await showSourceVideoDownloadActions(
+      context,
+      cache: widget.container.read(sourceVideoCacheProvider),
+      key: (pluginId: detail.pluginId, contentId: contentId, groupId: groupId, episodeId: episodeId),
+      title: snapshot.title,
+      episodeTitle: episode?.title ?? episodeId,
+      resolve: () => source.resolveDownloadEpisode(contentId, groupId: groupId, episodeId: episodeId),
+      onPlay: (downloadContext, entry) async {
+        if (!mounted) return;
+        await _playerController.pause();
+        if (downloadContext.mounted) await openCachedSourceVideoPlayer(downloadContext, entry);
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final setup = _setup;
@@ -419,7 +466,21 @@ final class SourceVideoPlayerDestinationState extends State<SourceVideoPlayerDes
         dataSource: setup.dataSource,
         stateStore: setup.stateStore,
         controller: _playerController,
-        topRightAction: setup.privateContent ? null : const VideoPlayOnTvAction(),
+        topRightAction: setup.privateContent
+            ? null
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  IconButton(
+                    key: const Key('source-video-download'),
+                    tooltip: '下载缓存',
+                    icon: const Icon(Icons.download_rounded, color: Colors.white),
+                    onPressed: () => unawaited(_showDownloadActions(setup)),
+                  ),
+                  const VideoPlayOnTvAction(),
+                ],
+              ),
+        tvAction: setup.privateContent ? null : (label: '下载缓存', icon: Icons.download_rounded, onPressed: () => _showDownloadActions(setup)),
         preparedSession: widget.preparedSession,
         autoPlay: widget.autoPlay,
         observer: _VideoEntryObserver(
@@ -466,6 +527,89 @@ final class SourceVideoPlayerDestinationState extends State<SourceVideoPlayerDes
     );
     _playerController.dispose();
     super.dispose();
+  }
+}
+
+/// Opens a completed download without resolving a source catalog or URL.
+Future<void> openCachedSourceVideoPlayer(BuildContext context, SourceVideoCacheEntry entry) async {
+  final container = ProviderScope.containerOf(context, listen: false);
+  final navigator = Navigator.of(context);
+  final settings = container.read(appSettingsProvider);
+  final tvMode = settings.get(AppSettingKeys.tvMode);
+  final preferences = SourceVideoPreferences.fromSettings(settings);
+  final controller = VideoPlayerController();
+  final fullscreen = SourceVideoFullscreenController(tvMode: tvMode);
+  final platform = SourceVideoPlaybackPlatformController();
+  final audio = SourceVideoAudioSessionController(
+    onPauseRequested: () async {
+      if (controller.snapshot.playing) await controller.pause();
+    },
+  );
+  try {
+    await container.read(sourceVideoCacheProvider).withExportFile<void>(entry.key, (file, _, _) async {
+      final preferAndroidSurface = await readSourceVideoDirectSurfacePreference();
+      if (!context.mounted || !navigator.mounted) return;
+      await container.read(sourceAudioPlaybackServiceProvider.notifier).stop();
+      if (!context.mounted || !navigator.mounted) return;
+      await fullscreen.activate();
+      if (!context.mounted || !navigator.mounted) return;
+
+      final source = _CachedVideoDataSource(entry, file.uri);
+      final stateStore = _CachedVideoStateStore();
+      final route = MaterialPageRoute<void>(
+        settings: const RouteSettings(name: appContentSessionRouteName),
+        builder: (_) => VideoPlayerView(
+          contentId: entry.key.contentId,
+          dataSource: source,
+          stateStore: stateStore,
+          controller: controller,
+          observer: _DismissVideoPlayerObserver(navigator, fullscreen, platform, audio),
+          tvMode: tvMode,
+          backendFactory: () => createMediaKitVideoPlaybackBackend(
+            preferAndroidSurface: preferAndroidSurface,
+            decoderMode: preferences.decoderMode,
+            androidOutputMode: preferences.androidOutputMode,
+          ),
+        ),
+      );
+      await navigator.push(route);
+      await route.completed;
+    });
+  } finally {
+    controller.dispose();
+    await Future.wait<void>([fullscreen.restoreAndClose(), platform.restoreAndClose(), audio.restoreAndClose()]);
+  }
+}
+
+final class _CachedVideoDataSource implements VideoDataSource {
+  const _CachedVideoDataSource(this.entry, this.uri);
+
+  final SourceVideoCacheEntry entry;
+  final Uri uri;
+
+  @override
+  Future<VideoContent> load(String contentId) async => VideoContent(
+    id: contentId,
+    title: entry.title,
+    groups: [
+      VideoEpisodeGroup(
+        id: entry.key.groupId,
+        title: '已缓存',
+        episodes: [VideoEpisode(id: entry.key.episodeId, title: entry.episodeTitle, uri: uri.toString())],
+      ),
+    ],
+  );
+}
+
+final class _CachedVideoStateStore implements VideoPlaybackStateStore {
+  VideoPlaybackProgress? _progress;
+
+  @override
+  Future<VideoPlaybackProgress?> load(String contentId) async => _progress;
+
+  @override
+  Future<void> save(VideoPlaybackProgress progress) async {
+    _progress = progress;
   }
 }
 

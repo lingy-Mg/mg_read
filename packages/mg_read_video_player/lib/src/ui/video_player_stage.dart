@@ -52,6 +52,7 @@ final class VideoPlayerStage extends StatelessWidget {
     required this.focusNode,
     this.tvMode = false,
     this.topRightAction,
+    this.tvAction,
     this.tvPlayFocus,
     required this.exitAuthorized,
     required this.onPopAttempt,
@@ -88,6 +89,7 @@ final class VideoPlayerStage extends StatelessWidget {
   final FocusNode focusNode;
   final bool tvMode;
   final Widget? topRightAction;
+  final VideoPlayerTvAction? tvAction;
   final FocusNode? tvPlayFocus;
   final bool exitAuthorized;
   final VoidCallback onPopAttempt;
@@ -177,6 +179,7 @@ final class VideoPlayerStage extends StatelessWidget {
                           onReveal: onToggleControls,
                           onInteractionStart: onInteractionStart,
                           onInteractionEnd: onInteractionEnd,
+                          hostAction: tvAction,
                         ),
                       if (snapshot.status == VideoPlayerStatus.ready && !tvMode)
                         _VideoPlayerInteractionLayer(

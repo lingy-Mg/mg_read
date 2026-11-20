@@ -67,6 +67,37 @@ void main() {
     expect(await source.exists(), isFalse);
   });
 
+  test('keeps a cached video and supplies its filename and MIME type to SAF', () async {
+    final root = await Directory.systemTemp.createTemp('mgread-saf-video-export-');
+    addTearDown(() => root.delete(recursive: true));
+    final source = File.fromUri(root.uri.resolve('cache.bin'));
+    await source.writeAsBytes([1, 2, 3]);
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      switch (call.method) {
+        case 'createExport':
+          expect(call.arguments, <String, Object?>{'fileName': '第 1 集.mp4', 'mimeType': 'video/mp4'});
+          return <String, Object?>{'token': 'video-token'};
+        case 'writeChunk':
+          final args = call.arguments! as Map<Object?, Object?>;
+          expect(args['data'], [1, 2, 3]);
+          return null;
+        case 'finishExport':
+          expect(call.arguments, <String, Object?>{'token': 'video-token', 'success': true});
+          return null;
+        default:
+          fail('Unexpected method ${call.method}');
+      }
+    });
+
+    expect(
+      await AndroidBackupFileExporter(
+        channel: channel,
+      ).exportFile(source.path, fileName: '第 1 集.mp4', mimeType: 'video/mp4', deleteSourceAfterExport: false),
+      isTrue,
+    );
+    expect(await source.readAsBytes(), [1, 2, 3]);
+  });
+
   test('aborts and deletes an incomplete SAF document after a write failure', () async {
     final root = await Directory.systemTemp.createTemp('mgread-saf-export-failure-');
     addTearDown(() => root.delete(recursive: true));

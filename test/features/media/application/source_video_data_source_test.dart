@@ -90,6 +90,31 @@ void main() {
     expect(content.groups.single.episodes.single.uri, isNull);
   });
 
+  test('playback uses the cached file while downloading resolves a fresh source resource', () async {
+    final gateway = _VideoGateway(failEpisodeResource: false);
+    final playbackGate = Completer<void>();
+    final cachedUri = Uri.file('/offline/video.mp4');
+    final source = SourceVideoDataSource(
+      gateway: gateway,
+      pluginId: _pluginId,
+      playbackGate: playbackGate.future,
+      findCachedEpisode: (contentId, groupId, episodeId) async {
+        expect((contentId, groupId, episodeId), ('video-1', 'default', 'episode-1'));
+        return cachedUri;
+      },
+    );
+
+    final download = await source.resolveDownloadEpisode('video-1', groupId: 'default', episodeId: 'episode-1');
+    expect(download.uri, 'http://127.0.0.1/source-resource/episode-1');
+    expect(gateway.contentCalls, ['episode-1']);
+    playbackGate.complete();
+
+    final playback = await source.loadEpisode('video-1', groupId: 'default', episodeId: 'episode-1');
+    expect(playback.uri, cachedUri.toString());
+    expect(playback.httpHeaders, isEmpty);
+    expect(gateway.contentCalls, ['episode-1']);
+  });
+
   test('refreshes an empty shelf placeholder instead of treating it as the video catalog', () async {
     final gateway = _VideoGateway(failEpisodeResource: false);
     final detail = await gateway.getDetail(pluginId: _pluginId, id: 'video-1');

@@ -20,6 +20,7 @@ mixin _VideoPlayerViewDelegate on State<VideoPlayerView>
     activeEpisode: _player._episode,
     tvMode: widget.tvMode,
     topRightAction: widget.topRightAction,
+    tvAction: widget.tvAction,
     tvPlayFocus: _player._tvPlayFocus,
     focusNode: _player._focusNode,
     exitAuthorized: _player._exitAuthorized,

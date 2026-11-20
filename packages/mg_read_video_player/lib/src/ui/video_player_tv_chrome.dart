@@ -10,6 +10,7 @@ library;
 import 'package:mg_read_motion/mg_read_motion.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../api/contracts.dart';
 import '../api/models.dart';
 import 'video_tv_shortcuts.dart';
 import 'video_player_visuals.dart';
@@ -29,6 +30,7 @@ class VideoPlayerTvChrome extends StatelessWidget {
     required this.onReveal,
     required this.onInteractionStart,
     required this.onInteractionEnd,
+    this.hostAction,
     super.key,
   });
   final VideoPlayerSnapshot snapshot;
@@ -44,6 +46,7 @@ class VideoPlayerTvChrome extends StatelessWidget {
   final Future<void> Function() onReveal;
   final VoidCallback onInteractionStart;
   final VoidCallback onInteractionEnd;
+  final VideoPlayerTvAction? hostAction;
 
   @override
   Widget build(BuildContext context) => VideoTvShortcuts(
@@ -151,6 +154,13 @@ class VideoPlayerTvChrome extends StatelessWidget {
                             () => _chooseRate(context),
                           ),
                           _button('tv-video-fit', '画面比例', onFit),
+                          if (hostAction case final action?)
+                            _button(
+                              'tv-video-host-action',
+                              action.label,
+                              action.onPressed,
+                              icon: action.icon,
+                            ),
                           _button('tv-video-exit', '退出播放', onExit),
                         ],
                       ),
@@ -174,6 +184,7 @@ class VideoPlayerTvChrome extends StatelessWidget {
     String label,
     Future<void> Function() action, {
     FocusNode? focus,
+    IconData? icon,
   }) => FilledButton.icon(
     key: Key(key),
     focusNode: focus,
@@ -204,18 +215,22 @@ class VideoPlayerTvChrome extends StatelessWidget {
       ),
       foregroundColor: const WidgetStatePropertyAll(Colors.white),
     ),
-    icon: Icon(switch (key) {
-      'tv-video-play' =>
-        snapshot.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-      'tv-video-backward' => Icons.replay_10_rounded,
-      'tv-video-forward' => Icons.forward_10_rounded,
-      'tv-video-episodes' => Icons.playlist_play_rounded,
-      'tv-video-previous' => Icons.skip_previous_rounded,
-      'tv-video-next' => Icons.skip_next_rounded,
-      'tv-video-rate' => Icons.speed_rounded,
-      'tv-video-fit' => Icons.aspect_ratio_rounded,
-      _ => Icons.close_rounded,
-    }, size: 22),
+    icon: Icon(
+      icon ??
+          switch (key) {
+            'tv-video-play' =>
+              snapshot.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            'tv-video-backward' => Icons.replay_10_rounded,
+            'tv-video-forward' => Icons.forward_10_rounded,
+            'tv-video-episodes' => Icons.playlist_play_rounded,
+            'tv-video-previous' => Icons.skip_previous_rounded,
+            'tv-video-next' => Icons.skip_next_rounded,
+            'tv-video-rate' => Icons.speed_rounded,
+            'tv-video-fit' => Icons.aspect_ratio_rounded,
+            _ => Icons.close_rounded,
+          },
+      size: 22,
+    ),
     label: Text(label, style: const TextStyle(fontSize: 16)),
   );
 

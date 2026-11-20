@@ -2,7 +2,8 @@
 ///
 /// Responsibilities:
 /// - Decode neutral Runtime media groups into the video player model.
-/// - Resolve only proxy URLs and source-supplied request headers for playback.
+/// - Prefer an available offline file for playback and resolve a fresh source
+///   resource for downloads.
 /// - Apply the host's captured HLS ad-filter preference during opaque resolution.
 /// - Load explicitly deferred groups on demand; retain three recent additional
 ///   whole-group catalogs and reuse the gateway's bounded shared cache.
@@ -26,6 +27,7 @@ final class SourceVideoDataSource implements VideoGroupDataSource {
     this.initialDetail,
     this.initialCatalog,
     this.playbackGate,
+    this.findCachedEpisode,
     this.adFilterEnabled = true,
     this.maximumEpisodes = 5000,
   }) : assert(maximumEpisodes > 0 && maximumEpisodes <= 5000);
@@ -35,6 +37,7 @@ final class SourceVideoDataSource implements VideoGroupDataSource {
   final PluginContentDetail? initialDetail;
   final PluginChaptersResult? initialCatalog;
   final Future<void>? playbackGate;
+  final Future<Uri?> Function(String contentId, String groupId, String episodeId)? findCachedEpisode;
   final bool adFilterEnabled;
   final int maximumEpisodes;
   String? _cachedContentId;
@@ -118,7 +121,19 @@ final class SourceVideoDataSource implements VideoGroupDataSource {
   }
 
   @override
-  Future<VideoEpisode> loadEpisode(String contentId, {required String groupId, required String episodeId}) async {
+  Future<VideoEpisode> loadEpisode(String contentId, {required String groupId, required String episodeId}) =>
+      _resolveEpisode(contentId, groupId: groupId, episodeId: episodeId, forPlayback: true);
+
+  /// Downloads always obtain a fresh transport URL, independently of playback.
+  Future<VideoEpisode> resolveDownloadEpisode(String contentId, {required String groupId, required String episodeId}) =>
+      _resolveEpisode(contentId, groupId: groupId, episodeId: episodeId, forPlayback: false);
+
+  Future<VideoEpisode> _resolveEpisode(
+    String contentId, {
+    required String groupId,
+    required String episodeId,
+    required bool forPlayback,
+  }) async {
     if ((await _loadCatalog(contentId)).groups.any((group) => group.id == groupId && group.deferred)) {
       await loadGroup(contentId, groupId);
     }
@@ -140,8 +155,15 @@ final class SourceVideoDataSource implements VideoGroupDataSource {
     if (selected == null) {
       throw const VideoPlayerLoadException(code: 'video_episode_unavailable', location: '校验所选视频', message: '所选视频已下架、锁定或不在当前目录中。');
     }
+    final gate = forPlayback ? playbackGate : null;
+    if (forPlayback && findCachedEpisode != null) {
+      final localUri = await findCachedEpisode!(contentId, groupId, selected.id);
+      if (localUri != null) {
+        await gate;
+        return VideoEpisode(id: selected.id, title: selected.title, uri: localUri.toString());
+      }
+    }
     final contentFuture = _loadEpisode(contentId, selected.id);
-    final gate = playbackGate;
     if (gate != null) {
       await Future.wait<Object?>(<Future<Object?>>[contentFuture, gate]);
     }

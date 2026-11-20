@@ -1,8 +1,8 @@
-/// Streams a temporary backup file into an Android SAF-created document.
+/// Streams a file into an Android SAF-created document.
 ///
 /// The native local-import channel owns the create-document picker and its URI
 /// token. This helper owns bounded writes, cancellation, failed-output cleanup,
-/// and deletion of the app's temporary bundle. Platform selection belongs to
+/// and optional deletion of temporary input. Platform selection belongs to
 /// the caller so the channel protocol remains directly testable.
 library;
 
@@ -16,12 +16,17 @@ final class AndroidBackupFileExporter {
   static const int maxChunkBytes = 256 * 1024;
   final MethodChannel _channel;
 
-  Future<bool> exportFile(String path, {String? fileName}) async {
+  Future<bool> exportFile(
+    String path, {
+    String? fileName,
+    String mimeType = 'application/octet-stream',
+    bool deleteSourceAfterExport = true,
+  }) async {
     String? token;
     try {
       final response = await _channel.invokeMapMethod<String, Object?>('createExport', <String, Object?>{
         'fileName': fileName ?? _fileName(path),
-        'mimeType': 'application/octet-stream',
+        'mimeType': mimeType,
       });
       if (response == null) return false;
       token = response['token'] as String?;
@@ -41,12 +46,13 @@ final class AndroidBackupFileExporter {
       if (token != null) await _finishFailedExport(token);
       rethrow;
     } finally {
-      final temporary = File(path);
-      try {
-        if (await temporary.exists()) await temporary.delete();
-      } on FileSystemException {
-        // The SAF result is authoritative; a stale cache file can be cleared
-        // by the operating system if temporary-file cleanup itself fails.
+      if (deleteSourceAfterExport) {
+        final temporary = File(path);
+        try {
+          if (await temporary.exists()) await temporary.delete();
+        } on FileSystemException {
+          // A stale temporary file can be cleared independently of the SAF result.
+        }
       }
     }
   }

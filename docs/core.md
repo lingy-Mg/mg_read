@@ -44,6 +44,8 @@ plugins/sources/                    真实数据源及其他能力参考实现
   后台预热，不阻塞 metadata 和设置就绪后的书架首屏。
 - Runtime 结果只有经公开 Facade 和强类型 adapter 校验后才能入库；没有公开协议时保持 `unsupported`。
 - 宿主详情快照必须有界且 JSON 兼容。
+- 视频离线缓存由主应用媒体模块按数据源、内容、分组与选集管理。下载任务独立于播放器路由，
+  只在文件写完后发布可播放缓存。播放地址和请求头仅用于当前下载，不写入缓存索引或备份。
 - 本地 TXT/EPUB 由 `ContentLibrary` 受控导入，不使用虚构插件身份或 Runtime。导入先持久化任务、流式复制
   与摘要校验，在可取消 isolate 内解析，确认后发布不可变 generation 并事务切换目录、进度及书签；失败不生成半本书。
   原文件、解析资源、用户封面只由 core persistence 管理。阅读/导出持有 generation lease，GC 保留活动、上一版本及

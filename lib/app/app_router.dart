@@ -28,6 +28,8 @@ import 'package:mg_read/app/app_theme_mode_scope.dart';
 import 'package:mg_read/core/diagnostics/diagnostics.dart';
 
 import 'package:mg_read/features/cache/presentation/cache_management_page.dart';
+import 'package:mg_read/features/media/application/source_video_player_launcher.dart';
+import 'package:mg_read/features/media/presentation/source_video_downloads_page.dart';
 import 'package:mg_read/features/diagnostics/presentation/diagnostics_viewer_page.dart';
 
 import 'package:mg_read/features/discovery/presentation/source_preview_page.dart';
@@ -567,6 +569,11 @@ class PluginCacheRoute extends GoRouteData with $PluginCacheRoute {
   Widget build(BuildContext context, GoRouterState state) {
     return CacheManagementPage(
       onBackRequested: () => _returnToProfile(context),
+      onVideoDownloadsRequested: () {
+        Navigator.of(
+          context,
+        ).push<void>(MaterialPageRoute<void>(builder: (_) => const SourceVideoDownloadsPage(onPlay: openCachedSourceVideoPlayer)));
+      },
       onDestinationRequested: (AppNavigationDestination destination) {
         _goToDestination(context, destination);
       },

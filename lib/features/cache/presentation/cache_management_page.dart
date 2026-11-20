@@ -24,10 +24,16 @@ import 'package:mg_read/shared/presentation/app_navigation_destination.dart';
 import 'package:mg_read/shared/presentation/widgets/app_secondary_page_chrome.dart';
 
 class CacheManagementPage extends ConsumerWidget {
-  const CacheManagementPage({required this.onBackRequested, required this.onDestinationRequested, super.key});
+  const CacheManagementPage({
+    required this.onBackRequested,
+    required this.onDestinationRequested,
+    this.onVideoDownloadsRequested,
+    super.key,
+  });
 
   final VoidCallback onBackRequested;
   final ValueChanged<AppNavigationDestination> onDestinationRequested;
+  final VoidCallback? onVideoDownloadsRequested;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -54,6 +60,17 @@ class CacheManagementPage extends ConsumerWidget {
                   children: <Widget>[
                     const _CacheOverviewHero(),
                     const SizedBox(height: AppSpacing.section),
+                    if (onVideoDownloadsRequested != null) ...[
+                      ListTile(
+                        key: const Key('cache-management-video-downloads'),
+                        leading: const Icon(Icons.download_rounded),
+                        title: const Text('视频下载'),
+                        subtitle: const Text('离线播放、导出和管理已下载视频'),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: onVideoDownloadsRequested,
+                      ),
+                      const SizedBox(height: AppSpacing.regular),
+                    ],
                     _SourceCacheSection(
                       state: pluginState,
                       onRetry: () => ref.read(pluginCacheManagementProvider.notifier).refresh(),

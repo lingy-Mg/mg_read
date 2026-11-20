@@ -16,6 +16,13 @@ import 'package:flutter/widgets.dart';
 
 import 'models.dart';
 
+/// A host-defined action presented with the TV playback controls.
+typedef VideoPlayerTvAction = ({
+  String label,
+  IconData icon,
+  Future<void> Function() onPressed,
+});
+
 /// Resolves a stable content identifier into immutable video metadata.
 abstract interface class VideoDataSource {
   /// Loads the title and ordered host-defined groups for [contentId].

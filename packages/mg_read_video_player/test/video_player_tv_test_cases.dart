@@ -2,6 +2,43 @@
 part of 'video_player_view_test.dart';
 
 void _registerTvTests() {
+  testWidgets('TV host action remains available while its dialog is open', (
+    tester,
+  ) async {
+    final controller = VideoPlayerController();
+    final action = Completer<void>();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VideoPlayerView(
+          tvMode: true,
+          contentId: 'show',
+          dataSource: const _ImmediateDataSource(),
+          stateStore: _RecordingStore(),
+          controller: controller,
+          backendFactory: _FakeVideoBackend.new,
+          controlsAutoHideDelay: const Duration(seconds: 1),
+          tvAction: (
+            label: '下载缓存',
+            icon: Icons.download_rounded,
+            onPressed: () => action.future,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('tv-video-host-action')));
+    await tester.pump(const Duration(seconds: 2));
+    expect(controller.snapshot.controlsVisible, isTrue);
+    action.complete();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    expect(controller.snapshot.controlsVisible, isFalse);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets(
     'TV held seek accelerates independently of repeated events and stops on key up',
     (tester) async {

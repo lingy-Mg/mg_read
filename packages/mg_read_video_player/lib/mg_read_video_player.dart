@@ -16,7 +16,8 @@ export 'src/api/contracts.dart'
         VideoPlaybackBackend,
         VideoPlaybackBackendFactory,
         VideoPlaybackStateStore,
-        VideoPlayerObserver;
+        VideoPlayerObserver,
+        VideoPlayerTvAction;
 export 'src/api/controller.dart' show VideoPlayerController, VideoRemoteKey;
 export 'src/api/prepared_session.dart'
     show VideoPreparationStatus, VideoPreparedSession;
